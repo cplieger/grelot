@@ -1,0 +1,9 @@
+# The Dockerfile needs only these build inputs: deny everything, then allow
+# them back in.
+*
+!go.mod
+!go.sum
+!*.go
+!LICENSE
+!NOTICE
+!scripts/collect-licenses.sh

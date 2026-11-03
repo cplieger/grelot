@@ -1,0 +1,10 @@
+# Example compose for grelot. See the README for all configuration options and hardening.
+services:
+  grelot:
+    image: ghcr.io/cplieger/grelot:latest
+    container_name: grelot
+    restart: unless-stopped
+
+    ports:
+      # There is no login yet. Publish this port only to a network you trust, see README "Security".
+      - "8080:8080"
