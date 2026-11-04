@@ -1,7 +1,7 @@
 github.com/cplieger/bolttable v1.0.0-dev.2 h1:Ey5fpgdGJ5xoKzr/WEtk4at1Cm3hkA5ruzsCe6JD8Oo=
 github.com/cplieger/bolttable v1.0.0-dev.2/go.mod h1:bFvz8kd9zVEJSFpWvOrCoI2XKJfVOdWdTDn8XmirtVM=
-github.com/cplieger/pathinside v1.0.2 h1:KP06X7uiKCrXDhgpg3tv3VYs40vEsECEVhxT1Qu6JGc=
-github.com/cplieger/pathinside v1.0.2/go.mod h1:71xlTttDRbMdtyIqyQGRW+BDIm06s2ploc6T5zNUXng=
+github.com/cplieger/pathinside/v2 v2.1.0 h1:yBnm859aLMKALi8bTIaYBy7t1osIqCSMIJo8PFqQohM=
+github.com/cplieger/pathinside/v2 v2.1.0/go.mod h1:sMHw6mQSFsGWsirWPQyQZ1+kqrAsXf9VcMUTUJsqm0w=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
