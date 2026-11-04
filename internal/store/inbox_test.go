@@ -19,7 +19,7 @@ func direct(t *testing.T, s *Store, from, to string, n int) {
 
 func mustInbox(t *testing.T, s *Store, session string, limit int) Page {
 	t.Helper()
-	p, err := s.Inbox(t.Context(), session, limit)
+	p, err := s.Inbox(t.Context(), Caller{Session: session}, limit)
 	if err != nil {
 		t.Fatalf("Inbox(%s): %v", session, err)
 	}
@@ -28,7 +28,7 @@ func mustInbox(t *testing.T, s *Store, session string, limit int) Page {
 
 func mustAck(t *testing.T, s *Store, session string, upto uint64) Acked {
 	t.Helper()
-	a, err := s.Ack(t.Context(), session, upto)
+	a, err := s.Ack(t.Context(), Caller{Session: session}, upto)
 	if err != nil {
 		t.Fatalf("Ack(%s, %d): %v", session, upto, err)
 	}
@@ -36,7 +36,9 @@ func mustAck(t *testing.T, s *Store, session string, upto uint64) Acked {
 }
 
 // total counts every delivery in c, cards included.
-func total(c Counts) int { return c.Direct + c.Path + c.Announce + c.Identity + c.Cards }
+func total(c Counts) int {
+	return c.Direct + c.Path + c.Announce + c.Identity + c.Reservation + c.Receipts + c.Cards
+}
 
 func subjects(es []Entry) []string {
 	out := make([]string, 0, len(es))
@@ -156,7 +158,7 @@ func TestInbox_limit(t *testing.T) {
 		t.Errorf("page of %d at the largest limit, want every one", len(p.Entries))
 	}
 	for _, bad := range []int{-1, MaxInboxLimit + 1} {
-		_, err := s.Inbox(t.Context(), sess("bravo"), bad)
+		_, err := s.Inbox(t.Context(), Caller{Session: sess("bravo")}, bad)
 		wantRefusal(t, err, KindInvalid, "", "limit", "1 to 100")
 	}
 }
@@ -164,7 +166,7 @@ func TestInbox_limit(t *testing.T) {
 func TestInbox_anEventCarriesItsTextAndNoSender(t *testing.T) {
 	s, _ := openClockStore(t)
 	me := regAt(t, s, "bravo", "/workspace/bravo")
-	putRows(t, s, func(w *wtx) error { return w.deliverEvent(me.ID, kindIdentityExpiring, "your identity bravo expires") })
+	putRows(t, s, func(w *wtx) error { return w.writeEvent(me.ID, kindIdentityExpiring, "your identity bravo expires") })
 	e := mustInbox(t, s, sess("bravo"), 0).Entries[0]
 	if e.Kind != kindIdentityExpiring || e.Text != "your identity bravo expires" || e.From != "" ||
 		e.Relation != "" || e.Message != 0 || !e.Wake {
@@ -199,7 +201,7 @@ func TestInbox_relationIsReadFromTheMessageSnapshot(t *testing.T) {
 	mustRegister(t, s, registration(sess("alpha"), "alpha", sender, repoSubflux+"/cmd"))
 	mustRegister(t, s, registration(sess("bravo"), "bravo", reader, repoSubflux))
 	mustPost(t, s, posting(sess("alpha"), Target{Path: repoSubflux + "/internal"}))
-	if err := s.Retire(t.Context(), sess("alpha")); err != nil {
+	if err := s.Retire(t.Context(), Caller{Session: sess("alpha")}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -231,7 +233,7 @@ func TestInbox_aCardIsQuietAndRelatedAtItsPath(t *testing.T) {
 		t.Errorf("unread %+v, want one card and no wake event", p.Unread)
 	}
 
-	if err := s.Retire(t.Context(), sess("charlie")); err != nil {
+	if err := s.Retire(t.Context(), Caller{Session: sess("charlie")}); err != nil {
 		t.Fatal(err)
 	}
 	p = mustInbox(t, s, sess("bravo"), 0)
@@ -246,7 +248,7 @@ func TestHold_advancesShownOnlyOverAWakeEvent(t *testing.T) {
 	bravo := getIdentity(t, s, 1)
 	mustRegister(t, s, registration(sess("charlie"), "charlie", envA(), repoSubflux))
 
-	h, err := s.Hold(t.Context(), sess("bravo"))
+	h, err := s.Hold(t.Context(), Caller{Session: sess("bravo")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,14 +256,14 @@ func TestHold_advancesShownOnlyOverAWakeEvent(t *testing.T) {
 		t.Errorf("hold over a card alone %+v, want the card counted and shown left at 0", h)
 	}
 	direct(t, s, "charlie", "bravo", 1)
-	h, err = s.Hold(t.Context(), sess("bravo"))
+	h, err = s.Hold(t.Context(), Caller{Session: sess("bravo")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if h.Counts.Direct != 1 || h.Counts.Cards != 1 || h.Shown != 2 {
 		t.Errorf("hold %+v, want 1 direct and 1 card, shown 2", h)
 	}
-	h, err = s.Hold(t.Context(), sess("bravo"))
+	h, err = s.Hold(t.Context(), Caller{Session: sess("bravo")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +288,7 @@ func TestHold_writesTheRowOnlyWhenItMovesSomething(t *testing.T) {
 
 	for range 2 {
 		clk.advance(time.Minute)
-		h, err := s.Hold(t.Context(), sess("bravo"))
+		h, err := s.Hold(t.Context(), Caller{Session: sess("bravo")})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -303,7 +305,7 @@ func TestHold_writesTheRowOnlyWhenItMovesSomething(t *testing.T) {
 
 	clk.advance(time.Minute)
 	direct(t, s, "alpha", "bravo", 1)
-	if _, err := s.Hold(t.Context(), sess("bravo")); err != nil {
+	if _, err := s.Hold(t.Context(), Caller{Session: sess("bravo")}); err != nil {
 		t.Fatal(err)
 	}
 	if row := getIdentity(t, s, bravo.ID); row.Shown != 1 || !row.LastSeen.Equal(testNow) {
@@ -311,7 +313,7 @@ func TestHold_writesTheRowOnlyWhenItMovesSomething(t *testing.T) {
 	}
 
 	clk.set(testNow.Add(5 * time.Minute))
-	if _, err := s.Hold(t.Context(), sess("bravo")); err != nil {
+	if _, err := s.Hold(t.Context(), Caller{Session: sess("bravo")}); err != nil {
 		t.Fatal(err)
 	}
 	if row := getIdentity(t, s, bravo.ID); !row.LastSeen.Equal(clk.now()) {
@@ -331,12 +333,12 @@ func TestReads_neverMoveTheLease(t *testing.T) {
 		name string
 		call func() error
 	}{
-		{"inbox", func() error { _, err := s.Inbox(ctx, me, 0); return err }},
-		{"ack", func() error { _, err := s.Ack(ctx, me, 1); return err }},
-		{"hold", func() error { _, err := s.Hold(ctx, me); return err }},
-		{"history", func() error { _, err := s.History(ctx, me, &HistoryQuery{}); return err }},
-		{"follow", func() error { _, err := s.Follow(ctx, me, "/workspace/alpha"); return err }},
-		{"unfollow", func() error { _, err := s.Unfollow(ctx, me, "/workspace/alpha"); return err }},
+		{"inbox", func() error { _, err := s.Inbox(ctx, Caller{Session: me}, 0); return err }},
+		{"ack", func() error { _, err := s.Ack(ctx, Caller{Session: me}, 1); return err }},
+		{"hold", func() error { _, err := s.Hold(ctx, Caller{Session: me}); return err }},
+		{"history", func() error { _, err := s.History(ctx, Caller{Session: me}, &HistoryQuery{}); return err }},
+		{"follow", func() error { _, err := s.Follow(ctx, Caller{Session: me}, "/workspace/alpha"); return err }},
+		{"unfollow", func() error { _, err := s.Unfollow(ctx, Caller{Session: me}, "/workspace/alpha"); return err }},
 	}
 	for _, c := range calls {
 		clk.advance(10 * time.Minute)
@@ -357,13 +359,13 @@ func TestInbox_aDormantSessionGetsTheReviveOffer(t *testing.T) {
 	clk.set(bravo.Expires.Add(3*time.Hour + 59*time.Minute))
 	want := "your identity bravo expired 3 h ago with 2 unread; `grelot revive --ttl <d>` restores it"
 
-	_, err := s.Inbox(t.Context(), sess("bravo"), 0)
+	_, err := s.Inbox(t.Context(), Caller{Session: sess("bravo")}, 0)
 	wantRefusal(t, err, KindGone, "dormant", want)
-	_, err = s.Ack(t.Context(), sess("bravo"), 1)
+	_, err = s.Ack(t.Context(), Caller{Session: sess("bravo")}, 1)
 	wantRefusal(t, err, KindGone, "dormant", want)
-	_, err = s.Hold(t.Context(), sess("bravo"))
+	_, err = s.Hold(t.Context(), Caller{Session: sess("bravo")})
 	wantRefusal(t, err, KindGone, "dormant", want)
-	_, err = s.Inbox(t.Context(), sess("nobody"), 0)
+	_, err = s.Inbox(t.Context(), Caller{Session: sess("nobody")}, 0)
 	wantRefusal(t, err, KindGone, "none")
 }
 
@@ -377,11 +379,11 @@ func TestInbox_clearsEnded(t *testing.T) {
 		var err error
 		switch call {
 		case "inbox":
-			_, err = s.Inbox(t.Context(), sess("bravo"), 0)
+			_, err = s.Inbox(t.Context(), Caller{Session: sess("bravo")}, 0)
 		case "ack":
-			_, err = s.Ack(t.Context(), sess("bravo"), 0)
+			_, err = s.Ack(t.Context(), Caller{Session: sess("bravo")}, 0)
 		case "hold":
-			_, err = s.Hold(t.Context(), sess("bravo"))
+			_, err = s.Hold(t.Context(), Caller{Session: sess("bravo")})
 		}
 		if err != nil {
 			t.Fatal(err)

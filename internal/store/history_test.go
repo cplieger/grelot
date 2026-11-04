@@ -8,7 +8,7 @@ import (
 
 func mustHistory(t *testing.T, s *Store, session string, q HistoryQuery) History {
 	t.Helper()
-	h, err := s.History(t.Context(), session, &q)
+	h, err := s.History(t.Context(), Caller{Session: session}, &q)
 	if err != nil {
 		t.Fatalf("History(%s, %+v): %v", session, q, err)
 	}
@@ -162,7 +162,7 @@ func TestHistory_pathFilterReadsThePathsThreadAndItsSubtree(t *testing.T) {
 		t.Errorf("unfiltered history %q lacks delta's join card, which the path filter must leave out", subjects(h.Entries))
 	}
 	for _, bad := range []string{"workspace/bravo", "/workspace/../bravo", "/workspace/bravo/"} {
-		_, err := s.History(t.Context(), sess("bravo"), &HistoryQuery{Path: bad})
+		_, err := s.History(t.Context(), Caller{Session: sess("bravo")}, &HistoryQuery{Path: bad})
 		wantRefusal(t, err, KindInvalid, "", "canonical path")
 	}
 }
@@ -183,9 +183,9 @@ func TestHistory_withFilterReadsTheDirectThreadWithThatAgent(t *testing.T) {
 	wantSubjects(t, "with alpha", historySubjects(t, s, sess("bravo"), HistoryQuery{With: "alpha"}), "a1", "b1")
 	wantSubjects(t, "with charlie", historySubjects(t, s, sess("bravo"), HistoryQuery{With: "charlie"}), "c1", "b2")
 	wantSubjects(t, "with dave, no thread", historySubjects(t, s, sess("bravo"), HistoryQuery{With: "dave"}))
-	_, err := s.History(t.Context(), sess("bravo"), &HistoryQuery{With: "bravo"})
+	_, err := s.History(t.Context(), Caller{Session: sess("bravo")}, &HistoryQuery{With: "bravo"})
 	wantRefusal(t, err, KindInvalid, "", "yourself")
-	_, err = s.History(t.Context(), sess("bravo"), &HistoryQuery{With: "nobody"})
+	_, err = s.History(t.Context(), Caller{Session: sess("bravo")}, &HistoryQuery{With: "nobody"})
 	wantRefusal(t, err, KindNotFound, "", "nobody")
 }
 
@@ -229,9 +229,9 @@ func TestHistory_fromFilter(t *testing.T) {
 	wantSubjects(t, "from charlie, not its join card", historySubjects(t, s, sess("bravo"), HistoryQuery{From: "charlie"}), "c1")
 	wantSubjects(t, "from @me, not the card about bravo", historySubjects(t, s, sess("bravo"), HistoryQuery{FromMe: true}), "b1", "b2")
 	wantSubjects(t, "from its own name", historySubjects(t, s, sess("bravo"), HistoryQuery{From: "bravo"}), "b1", "b2")
-	_, err := s.History(t.Context(), sess("bravo"), &HistoryQuery{From: "alpha", FromMe: true})
+	_, err := s.History(t.Context(), Caller{Session: sess("bravo")}, &HistoryQuery{From: "alpha", FromMe: true})
 	wantRefusal(t, err, KindInvalid, "", "@me")
-	_, err = s.History(t.Context(), sess("bravo"), &HistoryQuery{From: "nobody"})
+	_, err = s.History(t.Context(), Caller{Session: sess("bravo")}, &HistoryQuery{From: "nobody"})
 	wantRefusal(t, err, KindNotFound, "", "nobody")
 }
 
@@ -254,11 +254,11 @@ func TestHistory_sinceAndUntil(t *testing.T) {
 		HistoryQuery{Since: testNow, Until: testNow.Add(time.Hour)}), "m1", "b1")
 	wantSubjects(t, "until the second own post's time", historySubjects(t, s, sess("bravo"),
 		HistoryQuery{Since: testNow.Add(time.Minute), Until: testNow.Add(25 * time.Hour)}), "b1", "m2")
-	_, err := s.History(t.Context(), sess("bravo"), &HistoryQuery{Since: testNow.Add(time.Hour), Until: testNow})
+	_, err := s.History(t.Context(), Caller{Session: sess("bravo")}, &HistoryQuery{Since: testNow.Add(time.Hour), Until: testNow})
 	wantRefusal(t, err, KindInvalid, "", "since", "until")
 	wantSubjects(t, "until alone, inside the default window", historySubjects(t, s, sess("bravo"),
 		HistoryQuery{Until: testNow.Add(25 * time.Hour)}), "m2")
-	_, err = s.History(t.Context(), sess("bravo"), &HistoryQuery{Until: testNow.Add(time.Hour)})
+	_, err = s.History(t.Context(), Caller{Session: sess("bravo")}, &HistoryQuery{Until: testNow.Add(time.Hour)})
 	wantRefusal(t, err, KindInvalid, "", "--until", "default 24 h window", "--since")
 }
 
@@ -305,7 +305,7 @@ func TestHistory_limitKeepsTheNewestWithTheNewestLast(t *testing.T) {
 	say(t, s, "bravo", Target{Agent: "alpha"}, "own")
 	wantSubjects(t, "limit 2 with an own post", historySubjects(t, s, sess("bravo"), HistoryQuery{Limit: 2}), all[24], "own")
 	for _, bad := range []int{-1, MaxHistoryLimit + 1} {
-		_, err := s.History(t.Context(), sess("bravo"), &HistoryQuery{Limit: bad})
+		_, err := s.History(t.Context(), Caller{Session: sess("bravo")}, &HistoryQuery{Limit: bad})
 		wantRefusal(t, err, KindInvalid, "", "limit")
 	}
 }
@@ -425,7 +425,7 @@ func TestHistory_keepsARetiredSendersMessagesAndRelation(t *testing.T) {
 	regAt(t, s, "alpha", "/workspace/alpha")
 	regAt(t, s, "bravo", "/workspace/bravo")
 	say(t, s, "alpha", Target{Agent: "bravo"}, "a1")
-	if err := s.Retire(t.Context(), sess("alpha")); err != nil {
+	if err := s.Retire(t.Context(), Caller{Session: sess("alpha")}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -438,10 +438,10 @@ func TestHistory_keepsARetiredSendersMessagesAndRelation(t *testing.T) {
 func TestHistory_needsALiveIdentity(t *testing.T) {
 	s, clk := openClockStore(t)
 	regAt(t, s, "bravo", "/workspace/bravo")
-	_, err := s.History(t.Context(), sess("nobody"), &HistoryQuery{})
+	_, err := s.History(t.Context(), Caller{Session: sess("nobody")}, &HistoryQuery{})
 	wantRefusal(t, err, KindGone, "none")
 	clk.advance(6 * time.Hour)
-	_, err = s.History(t.Context(), sess("bravo"), &HistoryQuery{})
+	_, err = s.History(t.Context(), Caller{Session: sess("bravo")}, &HistoryQuery{})
 	wantRefusal(t, err, KindGone, "dormant", "grelot revive")
 }
 

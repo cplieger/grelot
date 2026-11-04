@@ -114,7 +114,7 @@ func TestSweep_catchesUpAfterARestart(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
-	_, err = s.Inbox(t.Context(), sess("bravo"), 0)
+	_, err = s.Inbox(t.Context(), Caller{Session: sess("bravo")}, 0)
 	wantRefusal(t, err, KindGone, "dormant", "your identity bravo expired 22 h ago with 0 unread")
 
 	mustSweep(t, s)
@@ -125,7 +125,7 @@ func TestSweep_catchesUpAfterARestart(t *testing.T) {
 		t.Error("the direct thread outlived its post across the restart")
 	}
 	for _, name := range []string{"alpha", "bravo"} {
-		_, err := s.Inbox(t.Context(), sess(name), 0)
+		_, err := s.Inbox(t.Context(), Caller{Session: sess(name)}, 0)
 		wantRefusal(t, err, KindGone, "dormant")
 	}
 	p := mustInbox(t, s, sess("carol"), 0)

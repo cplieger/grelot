@@ -103,6 +103,10 @@ func shareEnvironment(a, b Where) bool {
 		(a.Machine == "" || b.Machine == "" || a.Machine == b.Machine)
 }
 
+// relationUnknown is the relation when nothing is known to be shared, or
+// the other side's row is gone.
+const relationUnknown = "unknown"
+
 // relation names what two identities share, best rank first. path is the
 // one the read item names, or "" for a direct message, an announcement,
 // who and the name refusals, which then read same environment at best.
@@ -120,7 +124,7 @@ func relation(a, b Where, path string) string {
 	case a.Machine != "" && b.Machine != "" && machineKind(a.Machine) == machineKind(b.Machine):
 		return "other machine"
 	default:
-		return "unknown"
+		return relationUnknown
 	}
 }
 

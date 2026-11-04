@@ -19,14 +19,14 @@ func keepFields() Fields {
 }
 
 func posting(session string, to Target) Posting {
-	return Posting{Session: session, To: to, Subject: "Start: one-engine refactor", Body: "body", Fields: keepFields()}
+	return Posting{Caller: Caller{Session: session}, To: to, Subject: "Start: one-engine refactor", Body: "body", Fields: keepFields()}
 }
 
 func mustPost(t *testing.T, s *Store, p Posting) Posted {
 	t.Helper()
 	got, err := s.Post(t.Context(), &p)
 	if err != nil {
-		t.Fatalf("Post(%s, %+v): %v", p.Session, p.To, err)
+		t.Fatalf("Post(%s, %+v): %v", p.Caller.Session, p.To, err)
 	}
 	return got
 }
@@ -387,7 +387,7 @@ func TestPost_messageKeepsTheSendersWhereAsItStoodAtThePost(t *testing.T) {
 	}
 	check("at the post")
 	moved := Where{Machine: dmi("2"), Environment: hex32("b")}
-	if _, err := s.Set(t.Context(), sess("alpha"), Change{TTL: time.Hour, Where: &moved}); err != nil {
+	if _, err := s.Set(t.Context(), Caller{Session: sess("alpha")}, Change{TTL: time.Hour, Where: &moved}); err != nil {
 		t.Fatal(err)
 	}
 	check("after the sender renewed from elsewhere")

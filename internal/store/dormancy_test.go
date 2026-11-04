@@ -27,7 +27,7 @@ func deliverEvents(t *testing.T, s *Store, id uint64, n int) {
 	t.Helper()
 	putRows(t, s, func(w *wtx) error {
 		for range n {
-			if err := w.deliverEvent(id, kindIdentityExpiring, "event"); err != nil {
+			if err := w.writeEvent(id, kindIdentityExpiring, "event"); err != nil {
 				return err
 			}
 		}
@@ -81,10 +81,10 @@ func TestDormant_isNeverWarned(t *testing.T) {
 func TestDormant_itsSessionOnlyReadsItsStatus(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
 	expireToDormant(t, s, clk, "subflux-dev")
-	_, err := s.Set(t.Context(), sessA, Change{Fields: Fields{Description: "new work"}})
+	_, err := s.Set(t.Context(), Caller{Session: sessA}, Change{Fields: Fields{Description: "new work"}})
 	wantRefusal(t, err, KindGone, "dormant", "your identity subflux-dev expired 0 h ago with 0 unread; `grelot revive --ttl <d>` restores it")
 	wantRefusal(t, s.EndSession(t.Context(), sessA), KindGone, "dormant")
-	got, err := s.Seen(t.Context(), sessA)
+	got, err := s.Seen(t.Context(), Caller{Session: sessA})
 	if err != nil {
 		t.Fatalf("Seen of a dormant session: %v", err)
 	}
@@ -102,14 +102,14 @@ func TestDormant_readsCommitNothing(t *testing.T) {
 	ctx := t.Context()
 	start := commitCount(t, s)
 
-	_, err := s.Inbox(ctx, sessA, 0)
+	_, err := s.Inbox(ctx, Caller{Session: sessA}, 0)
 	wantRefusal(t, err, KindGone, "dormant", "`grelot revive --ttl <d>` restores it")
-	_, err = s.History(ctx, sessA, &HistoryQuery{})
+	_, err = s.History(ctx, Caller{Session: sessA}, &HistoryQuery{})
 	wantRefusal(t, err, KindGone, "dormant")
-	if _, err := s.Who(ctx, sessA, WhoQuery{}); err != nil {
+	if _, err := s.Who(ctx, Caller{Session: sessA}, WhoQuery{}); err != nil {
 		t.Fatalf("who from the dormant session: %v", err)
 	}
-	if _, err := s.Who(ctx, "kiro-cli:nobody", WhoQuery{}); err != nil {
+	if _, err := s.Who(ctx, Caller{Session: "kiro-cli:nobody"}, WhoQuery{}); err != nil {
 		t.Fatalf("who from a session with no identity: %v", err)
 	}
 	if n := commitCount(t, s) - start; n != 0 {
@@ -133,13 +133,13 @@ func TestDormant_readsNeverWaitForTheWriter(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_, err := s.Inbox(ctx, sessA, 0)
+		_, err := s.Inbox(ctx, Caller{Session: sessA}, 0)
 		errs = append(errs, err)
-		_, err = s.History(ctx, sessA, &HistoryQuery{})
+		_, err = s.History(ctx, Caller{Session: sessA}, &HistoryQuery{})
 		errs = append(errs, err)
-		_, err = s.Who(ctx, sessA, WhoQuery{})
+		_, err = s.Who(ctx, Caller{Session: sessA}, WhoQuery{})
 		errs = append(errs, err)
-		_, err = s.Who(ctx, "kiro-cli:nobody", WhoQuery{})
+		_, err = s.Who(ctx, Caller{Session: "kiro-cli:nobody"}, WhoQuery{})
 		errs = append(errs, err)
 	}()
 	select {

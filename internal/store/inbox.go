@@ -36,21 +36,28 @@ type Entry struct {
 	OS         string
 	Arch       string
 	Relation   string
-	Seq        uint64
-	Message    uint64
-	Thread     uint64
-	Wake       bool
+	// Via is the delegate handle of a parent's copy.
+	Via     string
+	Seq     uint64
+	Message uint64
+	Thread  uint64
+	Wake    bool
 	// Truncated is a history entry whose Body was cut to its first line.
 	Truncated bool
 }
 
-// Counts are deliveries by kind. Cards are quiet; every other kind wakes.
+// Counts are deliveries by kind. Cards and a delegate's copies are quiet;
+// every other kind wakes.
 type Counts struct {
-	Direct, Path, Announce, Identity, Cards int
+	Direct, Path, Announce, Identity, Reservation, Receipts, Cards, Copies int
 }
 
-func (c *Counts) add(kind string) {
-	switch kind {
+func (c *Counts) add(d *deliveryRow) {
+	if d.Via != "" {
+		c.Copies++
+		return
+	}
+	switch d.Kind {
 	case kindDirect:
 		c.Direct++
 	case kindPath:
@@ -59,15 +66,21 @@ func (c *Counts) add(kind string) {
 		c.Announce++
 	case kindIdentityExpiring:
 		c.Identity++
+	case kindReservationGranted, kindReservationExpiring, kindReservationExpired:
+		c.Reservation++
+	case kindReceiptsComplete, kindReceiptsDue:
+		c.Receipts++
 	case kindJoin, kindLeft:
 		c.Cards++
 	}
 }
 
 // Wake counts the deliveries that wake an agent.
-func (c Counts) Wake() int { return c.Direct + c.Path + c.Announce + c.Identity }
+func (c Counts) Wake() int {
+	return c.Direct + c.Path + c.Announce + c.Identity + c.Reservation + c.Receipts
+}
 
-func isWake(kind string) bool { return kind != kindJoin && kind != kindLeft }
+func (d *deliveryRow) wakes() bool { return d.Via == "" && d.Kind != kindJoin && d.Kind != kindLeft }
 
 // Page is an inbox fetch: the oldest unread deliveries, and Unread, every
 // delivery past read, the page's included.
@@ -93,30 +106,30 @@ type Held struct {
 	Shown    uint64
 }
 
-// Inbox returns up to limit of session's unexpired deliveries past read,
+// Inbox returns up to limit of c's unexpired deliveries past read,
 // oldest first, and moves no cursor: the caller acks what it printed.
 // Refusals: KindInvalid for a limit outside 0 to MaxInboxLimit; KindGone
 // for a session with no live identity.
-func (s *Store) Inbox(ctx context.Context, session string, limit int) (Page, error) {
+func (s *Store) Inbox(ctx context.Context, c Caller, limit int) (Page, error) {
 	switch {
 	case limit == 0:
 		limit = DefaultInboxLimit
 	case limit < 0 || limit > MaxInboxLimit:
 		return Page{}, refuse(KindInvalid, fmt.Sprintf("the inbox limit must be 1 to %d", MaxInboxLimit))
 	}
-	if _, err := s.Seen(ctx, session); err != nil {
+	if _, err := s.Seen(ctx, c); err != nil {
 		return Page{}, err
 	}
 	var out Page
 	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
-		me, err := s.liveFor(r, session, now)
+		me, err := s.liveFor(r, c, now)
 		if err != nil {
 			return err
 		}
 		out.Identity = s.view(&me)
 		return s.scanUnread(r, me.ID, me.Read, now, func(d *deliveryRow) error {
-			out.Unread.add(d.Kind)
+			out.Unread.add(d)
 			if len(out.Entries) == limit {
 				return nil
 			}
@@ -132,7 +145,7 @@ func (s *Store) Inbox(ctx context.Context, session string, limit int) (Page, err
 func (s *Store) entry(r *bolttable.ReadTx, me *identityRow, d *deliveryRow) (Entry, error) {
 	e := Entry{
 		Written: d.Written, ReadAt: d.ReadAt, Kind: d.Kind, Text: d.Text, Matched: d.Path,
-		Seq: d.Seq, Message: d.Message, Thread: d.Thread, Wake: isWake(d.Kind),
+		Seq: d.Seq, Message: d.Message, Thread: d.Thread, Via: d.Via, Wake: d.wakes(),
 	}
 	if d.Message == 0 {
 		return e, nil
@@ -157,14 +170,14 @@ func fillMessage(e *Entry, me *identityRow, m *messageRow) {
 	e.Relation = party{where: me.Where, id: me.ID}.relationTo(party{where: m.Where, id: m.Sender}, m.Path)
 }
 
-// Ack moves session's read cursor to max(read, upto), never past its
+// Ack moves c's read cursor to max(read, upto), never past its
 // highest seq, stamps read_at on each delivery it passes and records the
 // range as last_page; a stale upto changes nothing. A session with no
 // live identity is KindGone.
-func (s *Store) Ack(ctx context.Context, session string, upto uint64) (Acked, error) {
+func (s *Store) Ack(ctx context.Context, c Caller, upto uint64) (Acked, error) {
 	var out Acked
 	err := s.update(ctx, func(w *wtx) error {
-		me, err := w.liveBySession(session)
+		me, err := w.liveAs(c)
 		if err != nil {
 			return err
 		}
@@ -179,9 +192,13 @@ func (s *Store) Ack(ctx context.Context, session string, upto uint64) (Acked, er
 		if err := s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {
 			return err
 		}
-		out = Acked{Identity: s.view(&me), Read: me.Read}
+		v, verr := w.viewOf(&me)
+		if verr != nil {
+			return verr
+		}
+		out = Acked{Identity: v, Read: me.Read}
 		return s.scanUnread(w.r, me.ID, me.Read, w.now, func(d *deliveryRow) error {
-			out.Left.add(d.Kind)
+			out.Left.add(d)
 			return nil
 		})
 	})
@@ -189,7 +206,8 @@ func (s *Store) Ack(ctx context.Context, session string, upto uint64) (Acked, er
 }
 
 // stampRead sets read_at on me's unexpired deliveries past read up to to,
-// and returns the first one's seq, or read+1 when every one has expired.
+// takes me out of each receipt watch they name, and returns the first
+// one's seq, or read+1 when every one has expired.
 func (w *wtx) stampRead(me *identityRow, to uint64) (uint64, error) {
 	var rows []deliveryRow
 	err := w.s.scanUnread(w.r, me.ID, me.Read, w.now, func(d *deliveryRow) error {
@@ -206,27 +224,30 @@ func (w *wtx) stampRead(me *identityRow, to uint64) (uint64, error) {
 		if err := w.s.t.deliveries.table.Put(w.tx, pairKey(me.ID, rows[i].Seq), &rows[i]); err != nil {
 			return 0, err
 		}
+		if err := w.leaveWatch(rows[i].Watch, me, exitRead); err != nil {
+			return 0, err
+		}
 	}
 	return rows[0].Seq, nil
 }
 
-// Hold counts session's deliveries past max(read, shown) and, when one of
+// Hold counts c's deliveries past max(read, shown) and, when one of
 // them wakes, advances shown to the highest seq, so the next hold shows
 // only what commits after this one; cards alone advance nothing, and wait
 // for the next hold that shows a wake event. It never moves read, and
 // commits only when shown moves or seenDue asks for a write, since the
 // hooks hold on every tool call. A session with no live identity is
 // KindGone.
-func (s *Store) Hold(ctx context.Context, session string) (Held, error) {
+func (s *Store) Hold(ctx context.Context, c Caller) (Held, error) {
 	var out Held
 	write := false
 	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
-		me, err := s.liveFor(r, session, now)
+		me, err := s.liveFor(r, c, now)
 		if err != nil {
 			return err
 		}
-		if out, err = s.held(r, &me, now); err != nil {
+		if out, _, err = s.held(r, &me, now); err != nil {
 			return err
 		}
 		if write = seenDue(&me, now) || out.Counts.Wake() > 0; !write {
@@ -239,33 +260,50 @@ func (s *Store) Hold(ctx context.Context, session string) (Held, error) {
 		return out, err
 	}
 	err = s.update(ctx, func(w *wtx) error {
-		me, lerr := w.liveBySession(session)
-		if lerr != nil {
-			return lerr
-		}
-		if out, lerr = s.held(w.r, &me, w.now); lerr != nil {
-			return lerr
-		}
-		w.seen(&me)
-		out.Identity = s.view(&me)
-		return s.t.identities.table.Put(w.tx, me.ID, &me)
+		var herr error
+		out, herr = w.hold(c)
+		return herr
 	})
 	return out, err
 }
 
+// hold is Hold's write: it advances shown and, when no nudge is
+// outstanding, records what it showed as the nudge.
+func (w *wtx) hold(c Caller) (Held, error) {
+	me, err := w.liveAs(c)
+	if err != nil {
+		return Held{}, err
+	}
+	out, shown, err := w.s.held(w.r, &me, w.now)
+	if err != nil {
+		return out, err
+	}
+	w.seen(&me)
+	if shown.count > 0 && me.Parent == 0 && me.Read >= me.Nudged {
+		// What a hold shows inside the turn is the nudge, so no push or
+		// watcher sends it; the re-nudge still covers an unread one.
+		w.recordNudge(&me, &Nudge{Seq: shown.newest, Oldest: shown.oldest, Attempt: 1}, nudgeByHook)
+	}
+	if out.Identity, err = w.viewOf(&me); err != nil {
+		return out, err
+	}
+	return out, w.s.t.identities.table.Put(w.tx, me.ID, &me)
+}
+
 // held counts me's deliveries past max(read, shown) and, when one of them
-// wakes, advances me's shown to its highest seq.
-func (s *Store) held(r *bolttable.ReadTx, me *identityRow, now time.Time) (Held, error) {
-	var out Held
-	err := s.scanUnread(r, me.ID, max(me.Read, me.Shown), now, func(d *deliveryRow) error {
-		out.Counts.add(d.Kind)
+// wakes, advances me's shown to its highest seq. shown is the wake
+// deliveries among them.
+func (s *Store) held(r *bolttable.ReadTx, me *identityRow, now time.Time) (out Held, shown wakeBatch, err error) {
+	err = s.scanUnread(r, me.ID, max(me.Read, me.Shown), now, func(d *deliveryRow) error {
+		out.Counts.add(d)
+		shown.add(d)
 		return nil
 	})
-	if out.Counts.Wake() > 0 {
+	if shown.count > 0 {
 		me.Shown = me.Seq
 	}
 	out.Shown = me.Shown
-	return out, err
+	return out, shown, err
 }
 
 // scanUnread calls fn, in seq order, for each of identity id's unexpired

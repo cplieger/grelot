@@ -6,12 +6,12 @@ import (
 	"slices"
 )
 
-// Follow adds the live path thread at path to session's identity's
+// Follow adds the live path thread at path to c's identity's
 // follows and returns the identity; following it again changes nothing.
 // Refusals: KindInvalid for a bad path; KindGone for a session with no
-// live identity; KindNotFound for no live thread there; KindConflict at
-// the follow cap.
-func (s *Store) Follow(ctx context.Context, session, path string) (Identity, error) {
+// live identity; KindForbidden for a delegate; KindNotFound for no live
+// thread there; KindConflict at the follow cap.
+func (s *Store) Follow(ctx context.Context, c Caller, path string) (Identity, error) {
 	if _, err := checkPaths([]string{path}); err != nil {
 		return Identity{}, err
 	}
@@ -21,11 +21,13 @@ func (s *Store) Follow(ctx context.Context, session, path string) (Identity, err
 		if err != nil {
 			return err
 		}
-		me, err := w.liveBySession(session)
+		me, err := w.liveAs(c)
 		if err != nil {
 			return err
 		}
 		switch {
+		case me.Parent != 0:
+			return refuse(KindForbidden, "a delegate follows nothing: its scope decides what it receives")
 		case !live:
 			return refuse(KindNotFound, fmt.Sprintf("no thread at %s; post there to start one", path))
 		case slices.Contains(me.Follows, path):
@@ -44,18 +46,23 @@ func (s *Store) Follow(ctx context.Context, session, path string) (Identity, err
 	return out, err
 }
 
-// Unfollow takes path out of session's identity's follows and returns the
+// Unfollow takes path out of c's identity's follows and returns the
 // identity; a path it does not follow changes nothing. A thread at or
-// under a work path cannot be muted, since the work path delivers it.
-// Refusals: KindInvalid for a bad path; KindGone for a session with no
-// live identity; KindConflict under a work path.
-func (s *Store) Unfollow(ctx context.Context, session, path string) (Identity, error) {
+// under a work path or a held reservation cannot be muted, since that
+// delivers it. Refusals: KindInvalid for a bad path; KindGone for a
+// session with no live identity; KindConflict under a work path or a held
+// reservation.
+func (s *Store) Unfollow(ctx context.Context, c Caller, path string) (Identity, error) {
 	if _, err := checkPaths([]string{path}); err != nil {
 		return Identity{}, err
 	}
 	var out Identity
 	err := s.update(ctx, func(w *wtx) error {
-		me, err := w.liveBySession(session)
+		held, err := w.heldOverlapping(path)
+		if err != nil {
+			return err
+		}
+		me, err := w.liveAs(c)
 		if err != nil {
 			return err
 		}
@@ -64,13 +71,19 @@ func (s *Store) Unfollow(ctx context.Context, session, path string) (Identity, e
 				"%s is under your work path %s, which delivers it whatever you follow: narrow your paths with grelot set --paths to stop hearing it", path, me.Paths[i],
 			))
 		}
+		if i := slices.IndexFunc(held, func(r reservationRow) bool { return r.Holder == me.ID && under(path, r.Path) }); i >= 0 {
+			return refuse(KindConflict, fmt.Sprintf(
+				"%s is under your reservation %d on %s, which delivers it whatever you follow: release %d first", path, held[i].ID, held[i].Path, held[i].ID,
+			))
+		}
 		me.Follows = slices.DeleteFunc(me.Follows, func(f string) bool { return f == path })
 		me.Ended, me.LastSeen = false, w.now
 		if err := s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {
 			return err
 		}
-		out = s.view(&me)
-		return nil
+		var verr error
+		out, verr = w.viewOf(&me)
+		return verr
 	})
 	return out, err
 }
