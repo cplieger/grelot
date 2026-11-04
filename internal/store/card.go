@@ -2,11 +2,8 @@ package store
 
 import (
 	"fmt"
-	"maps"
 	"slices"
 	"strings"
-
-	"github.com/cplieger/bolttable"
 )
 
 // card is a join or left card owed for one path of an identity, with the
@@ -44,8 +41,8 @@ func (w *wtx) flushCards() error {
 }
 
 // writeCard stores c in the cards thread and delivers it to each live
-// identity whose work paths overlap c's path either way, but not to the
-// identity it is about. A card nobody receives is not stored. It never
+// identity whose work paths or held reservations overlap c's path either
+// way, but not to the identity it is about. A card nobody receives is not stored. It never
 // touches a path thread.
 func (w *wtx) writeCard(c *card) error {
 	rs, err := w.cardRecipients(c)
@@ -91,29 +88,22 @@ func (w *wtx) cardRecipients(c *card) ([]identityRow, error) {
 	return out, nil
 }
 
-// overlapping lists, in id order, the identities with a work path at, above
-// or under p.
+// overlapping lists, in id order, the identities with a work path or a
+// held reservation at, above or under p, settling the reservations first.
 func (w *wtx) overlapping(p string) ([]uint64, error) {
-	set := map[uint64]bool{}
-	add := func(id uint64) (bool, error) {
-		set[id] = true
-		return true, nil
+	ids, err := overlapIDs(w.r, w.s.t.byPath, p)
+	if err != nil {
+		return nil, err
 	}
-	above := ancestors(p)
-	for _, a := range above[:len(above)-1] {
-		if err := scanExact(w.r, w.s.t.byPath, a, add); err != nil {
-			return nil, err
-		}
+	held, err := w.heldOverlapping(p)
+	if err != nil {
+		return nil, err
 	}
-	// The prefix also matches a name-prefix sibling such as p-old, which
-	// under drops.
-	err := w.s.t.byPath.Scan(w.r, bolttable.Range{Prefix: []byte(p)}, func(ikey []byte, id uint64, _ []byte) (bool, error) {
-		if under(string(ikey), p) {
-			set[id] = true
-		}
-		return true, nil
-	})
-	return slices.Sorted(maps.Keys(set)), err
+	for i := range held {
+		ids = append(ids, held[i].Holder)
+	}
+	slices.Sort(ids)
+	return slices.Compact(ids), nil
 }
 
 // storeCard stores c as a message in the cards thread, which Open created

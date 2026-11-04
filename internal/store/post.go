@@ -100,6 +100,13 @@ func checkMessage(p *Posting) error {
 }
 
 func (w *wtx) post(p *Posting) (Posted, error) {
+	// Settled before the sender is read: a hand-off can write to the
+	// sender's row, and storing an older copy after it would reuse a seq.
+	if p.To.Path != "" {
+		if err := w.settleReservations(p.To.Path); err != nil {
+			return Posted{}, err
+		}
+	}
 	me, err := w.liveBySession(p.Session)
 	if err != nil {
 		return Posted{}, err
@@ -191,11 +198,12 @@ func (w *wtx) announceRoute() (route, error) {
 	return rt, err
 }
 
-// pathRoute reaches the identities with a work path at p or above it, and
-// p's followers. Posts go down the tree only, so a work path under p does
-// not match. Walking p's ancestors shortest first leaves each recipient
-// labelled with its most specific match; a follow is of p itself, the most
-// specific of all. The sender follows p unless it is at the cap.
+// pathRoute reaches the identities with a work path or a held reservation
+// at p or above it, and p's followers. Posts go down the tree only, so a
+// work path under p does not match. Walking p's ancestors shortest first
+// leaves each recipient labelled with its most specific match; a follow is
+// of p itself, the most specific of all. The sender follows p unless it is
+// at the cap.
 func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 	th, _, err := w.thread(p)
 	if err != nil {
@@ -207,6 +215,15 @@ func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 		if err := scanExact(w.r, w.s.t.byPath, a, func(id uint64) (bool, error) {
 			rt.recipients[id] = a
 			return true, nil
+		}); err != nil {
+			return route{}, err
+		}
+		if err := scanExact(w.r, w.s.t.resvPath, a, func(id uint64) (bool, error) {
+			v, found, err := w.s.t.resv.table.Get(w.r, id)
+			if found && v.State == reservationHeld {
+				rt.recipients[v.Holder] = a
+			}
+			return err == nil, err
 		}); err != nil {
 			return route{}, err
 		}

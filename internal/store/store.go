@@ -1,5 +1,6 @@
 // Package store holds grelot's state in one bolttable file: identities,
-// threads, messages and their deliveries, and the leases that expire them.
+// threads, messages and their deliveries, reservations, and the leases
+// that expire them.
 package store
 
 import (
@@ -30,6 +31,8 @@ const (
 	DefaultThreadTTL  = 72 * time.Hour
 	DefaultDormantTTL = 72 * time.Hour
 	DefaultMaxBytes   = 512 << 20
+	// DefaultReservationMaxTTL is RESERVATION_MAX_TTL's default.
+	DefaultReservationMaxTTL = 8 * time.Hour
 )
 
 // Options configures Open. A nil Logger discards; a nil Now is time.Now;
@@ -45,6 +48,8 @@ type Options struct {
 	// MaxBytes is the ceiling on the bytes in use; posts are refused past
 	// 90 % of it.
 	MaxBytes int64
+	// ReservationMaxTTL is the longest TTL a reservation may declare.
+	ReservationMaxTTL time.Duration
 }
 
 // Store is an open grelot store.
@@ -55,6 +60,7 @@ type Store struct {
 	now func() time.Time
 	// seen is each identity's newest request time; seenMu guards it.
 	seen       map[uint64]time.Time
+	resvPolicy leasePolicy
 	threadTTL  time.Duration
 	dormantTTL time.Duration
 	maxBytes   int64
@@ -70,22 +76,7 @@ type Store struct {
 // invalid is renamed <path>.corrupt-<UTC time as 20060102T150405Z> and
 // replaced by an empty store, with an ERROR.
 func Open(path string, o Options) (*Store, error) {
-	s := &Store{log: o.Logger, now: o.Now, threadTTL: o.ThreadTTL, dormantTTL: o.DormantTTL, maxBytes: o.MaxBytes, seen: map[uint64]time.Time{}}
-	if s.log == nil {
-		s.log = slog.New(slog.DiscardHandler)
-	}
-	if s.now == nil {
-		s.now = time.Now
-	}
-	if s.threadTTL == 0 {
-		s.threadTTL = DefaultThreadTTL
-	}
-	if s.dormantTTL == 0 {
-		s.dormantTTL = DefaultDormantTTL
-	}
-	if s.maxBytes == 0 {
-		s.maxBytes = DefaultMaxBytes
-	}
+	s := newStore(&o)
 	db, t, err := openFile(path)
 	if fe := (*bolttable.FormatError)(nil); errors.As(err, &fe) {
 		err = s.reset(path, fe)
@@ -114,6 +105,31 @@ func Open(path string, o Options) (*Store, error) {
 		return nil, errors.Join(err, db.Close())
 	}
 	return s, nil
+}
+
+// newStore is a Store configured by o, each zero option taking its default.
+func newStore(o *Options) *Store {
+	s := &Store{log: o.Logger, now: o.Now, threadTTL: o.ThreadTTL, dormantTTL: o.DormantTTL, maxBytes: o.MaxBytes, seen: map[uint64]time.Time{}}
+	if s.log == nil {
+		s.log = slog.New(slog.DiscardHandler)
+	}
+	if s.now == nil {
+		s.now = time.Now
+	}
+	if s.threadTTL == 0 {
+		s.threadTTL = DefaultThreadTTL
+	}
+	if s.dormantTTL == 0 {
+		s.dormantTTL = DefaultDormantTTL
+	}
+	if s.maxBytes == 0 {
+		s.maxBytes = DefaultMaxBytes
+	}
+	s.resvPolicy = reservationPolicy
+	if o.ReservationMaxTTL != 0 {
+		s.resvPolicy.max = o.ReservationMaxTTL
+	}
+	return s
 }
 
 func openFile(path string) (*bolttable.DB, *tables, error) {

@@ -2,6 +2,8 @@ package store
 
 import (
 	"encoding/binary"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/cplieger/bolttable"
@@ -13,10 +15,11 @@ const namespace = "grelot"
 // Table prefixes are stored bytes: changing one changes the namespace's
 // format digest, and the next start resets the store.
 const (
-	prefixIdentities byte = 1
-	prefixThreads    byte = 2
-	prefixMessages   byte = 3
-	prefixDeliveries byte = 4
+	prefixIdentities   byte = 1
+	prefixThreads      byte = 2
+	prefixMessages     byte = 3
+	prefixDeliveries   byte = 4
+	prefixReservations byte = 5
 )
 
 // Identity states.
@@ -42,7 +45,16 @@ const (
 
 // Delivery kinds that carry their text in the row, having no message.
 const (
-	kindIdentityExpiring = "identity_expiring"
+	kindIdentityExpiring    = "identity_expiring"
+	kindReservationGranted  = "reservation_granted"
+	kindReservationExpiring = "reservation_expiring"
+	kindReservationExpired  = "reservation_expired"
+)
+
+// Reservation states: a grant, or a request waiting in the queue.
+const (
+	reservationHeld   = "held"
+	reservationQueued = "queued"
 )
 
 // identityRow is one live or dormant identity, keyed by its id.
@@ -137,6 +149,21 @@ type deliveryRow struct {
 	Sender  uint64 `json:"sender,omitempty"`
 }
 
+// reservationRow is one grant or queue entry, keyed by its id. A queued
+// row has no lease: it keeps its TTL as a duration, counted from its
+// grant, and ends with its holder.
+type reservationRow struct {
+	Lease lease `json:"lease"`
+	// Since is when the row was queued or, once held, granted.
+	Since  time.Time     `json:"since"`
+	Path   string        `json:"path"`
+	Reason string        `json:"reason"`
+	State  string        `json:"state"`
+	Holder uint64        `json:"holder"`
+	ID     uint64        `json:"id"`
+	TTL    time.Duration `json:"ttl"`
+}
+
 type tables struct {
 	identities *leased[uint64, identityRow]
 	byName     *bolttable.Index[uint64, identityRow]
@@ -149,6 +176,10 @@ type tables struct {
 	messages   *leased[[]byte, messageRow]
 	bySender   *bolttable.Index[[]byte, messageRow]
 	deliveries *leased[[]byte, deliveryRow]
+	resv       *leased[uint64, reservationRow]
+	resvPath   *bolttable.Index[uint64, reservationRow]
+	resvHolder *bolttable.Index[uint64, reservationRow]
+	resvQueue  *bolttable.Index[uint64, reservationRow]
 	// leased lists every table above, in the order the sweep walks them.
 	leased []sweeper
 }
@@ -208,7 +239,12 @@ func newSchema() (*bolttable.Schema, *tables, error) {
 	if t.deliveries, err = defineLeased(deliveries, deliveryPolicy, func(v *deliveryRow) *lease { return &v.Lease }); err != nil {
 		return nil, nil, err
 	}
-	t.leased = []sweeper{t.identities, t.threads, t.messages, t.deliveries}
+	if err := defineReservations(ns, &t); err != nil {
+		return nil, nil, err
+	}
+	// Identities go first: an identity's expiry hands off its grants
+	// itself, before the reservation sweep would expire them one by one.
+	t.leased = []sweeper{t.identities, t.resv, t.threads, t.messages, t.deliveries}
 	return s, &t, nil
 }
 
@@ -255,17 +291,74 @@ func defineIdentityIndexes(ids *bolttable.Table[uint64, identityRow], t *tables)
 	return err
 }
 
+// defineReservations declares the reservations table, its lease and its
+// lookups by path, which overlap checks and fan-out read, by holder, and
+// the queue in enqueue order. Ids grow, so a queued row's id is its place
+// in the queue.
+func defineReservations(ns *bolttable.Namespace, t *tables) error {
+	resv, err := bolttable.Define(ns, prefixReservations, "reservations",
+		bolttable.Uint64Key{}, bolttable.JSON[reservationRow](1), bolttable.TableOptions{Silent: true})
+	if err != nil {
+		return err
+	}
+	if t.resv, err = defineLeased(resv, reservationPolicy, func(v *reservationRow) *lease { return &v.Lease }); err != nil {
+		return err
+	}
+	many := bolttable.IndexOptions{Version: 1}
+	if t.resvPath, err = bolttable.DefineIndex(resv, "reservations.path", many,
+		func(_ uint64, v *reservationRow) []bolttable.Entry { return keyEntries(v.Path) }); err != nil {
+		return err
+	}
+	if t.resvHolder, err = bolttable.DefineIndex(resv, "reservations.holder", many,
+		func(_ uint64, v *reservationRow) []bolttable.Entry { return []bolttable.Entry{{Key: be64(v.Holder)}} }); err != nil {
+		return err
+	}
+	t.resvQueue, err = bolttable.DefineIndex(resv, "reservations.queue", many,
+		func(id uint64, v *reservationRow) []bolttable.Entry {
+			if v.State != reservationQueued {
+				return nil
+			}
+			return []bolttable.Entry{{Key: be64(id)}}
+		})
+	return err
+}
+
 // scanExact calls fn for each row whose entry in a non-unique index is
 // exactly key. A Range prefix alone also matches longer keys, such as a
 // subpath's; an exact key's entries sort before them, so the scan stops
 // at the first longer one.
-func scanExact(r *bolttable.ReadTx, ix *bolttable.Index[uint64, identityRow], key string, fn func(id uint64) (bool, error)) error {
+func scanExact[V any](r *bolttable.ReadTx, ix *bolttable.Index[uint64, V], key string, fn func(id uint64) (bool, error)) error {
 	return ix.Scan(r, bolttable.Range{Prefix: []byte(key)}, func(ikey []byte, id uint64, _ []byte) (bool, error) {
 		if string(ikey) != key {
 			return false, nil
 		}
 		return fn(id)
 	})
+}
+
+// overlapIDs lists, in id order, the rows of a path index with a path at,
+// above or under p.
+func overlapIDs[V any](r *bolttable.ReadTx, ix *bolttable.Index[uint64, V], p string) ([]uint64, error) {
+	set := map[uint64]bool{}
+	add := func(id uint64) (bool, error) {
+		set[id] = true
+		return true, nil
+	}
+	above := ancestors(p)
+	for _, a := range above[:len(above)-1] {
+		if err := scanExact(r, ix, a, add); err != nil {
+			return nil, err
+		}
+	}
+	// The prefix also matches a name-prefix sibling such as p-old, which
+	// under drops.
+	err := ix.Scan(r, bolttable.Range{Prefix: []byte(p)}, func(ikey []byte, id uint64, _ []byte) (bool, error) {
+		if under(string(ikey), p) {
+			set[id] = true
+		}
+		return true, nil
+	})
+	return slices.Sorted(maps.Keys(set)), err
 }
 
 // keyEntries is one index entry per non-empty key.

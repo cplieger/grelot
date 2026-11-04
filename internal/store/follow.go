@@ -46,15 +46,20 @@ func (s *Store) Follow(ctx context.Context, session, path string) (Identity, err
 
 // Unfollow takes path out of session's identity's follows and returns the
 // identity; a path it does not follow changes nothing. A thread at or
-// under a work path cannot be muted, since the work path delivers it.
-// Refusals: KindInvalid for a bad path; KindGone for a session with no
-// live identity; KindConflict under a work path.
+// under a work path or a held reservation cannot be muted, since that
+// delivers it. Refusals: KindInvalid for a bad path; KindGone for a
+// session with no live identity; KindConflict under a work path or a held
+// reservation.
 func (s *Store) Unfollow(ctx context.Context, session, path string) (Identity, error) {
 	if _, err := checkPaths([]string{path}); err != nil {
 		return Identity{}, err
 	}
 	var out Identity
 	err := s.update(ctx, func(w *wtx) error {
+		held, err := w.heldOverlapping(path)
+		if err != nil {
+			return err
+		}
 		me, err := w.liveBySession(session)
 		if err != nil {
 			return err
@@ -62,6 +67,11 @@ func (s *Store) Unfollow(ctx context.Context, session, path string) (Identity, e
 		if i := slices.IndexFunc(me.Paths, func(p string) bool { return under(path, p) }); i >= 0 {
 			return refuse(KindConflict, fmt.Sprintf(
 				"%s is under your work path %s, which delivers it whatever you follow: narrow your paths with grelot set --paths to stop hearing it", path, me.Paths[i],
+			))
+		}
+		if i := slices.IndexFunc(held, func(r reservationRow) bool { return r.Holder == me.ID && under(path, r.Path) }); i >= 0 {
+			return refuse(KindConflict, fmt.Sprintf(
+				"%s is under your reservation %d on %s, which delivers it whatever you follow: release %d first", path, held[i].ID, held[i].Path, held[i].ID,
 			))
 		}
 		me.Follows = slices.DeleteFunc(me.Follows, func(f string) bool { return f == path })

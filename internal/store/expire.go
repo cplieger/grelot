@@ -15,6 +15,8 @@ func (s *Store) wireLeases() {
 	t.threads.onExpire = expireThread
 	t.messages.onExpire = func(w *wtx, k []byte, _ *messageRow) error { return deleteRow(w, t.messages, k) }
 	t.deliveries.onExpire = func(w *wtx, k []byte, _ *deliveryRow) error { return deleteRow(w, t.deliveries, k) }
+	t.resv.onWarn = warnReservation
+	t.resv.onExpire = expireReservation
 }
 
 func deleteRow[K, V any](w *wtx, l *leased[K, V], k K) error {

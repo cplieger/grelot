@@ -46,7 +46,7 @@ type Entry struct {
 
 // Counts are deliveries by kind. Cards are quiet; every other kind wakes.
 type Counts struct {
-	Direct, Path, Announce, Identity, Cards int
+	Direct, Path, Announce, Identity, Reservation, Cards int
 }
 
 func (c *Counts) add(kind string) {
@@ -59,13 +59,15 @@ func (c *Counts) add(kind string) {
 		c.Announce++
 	case kindIdentityExpiring:
 		c.Identity++
+	case kindReservationGranted, kindReservationExpiring, kindReservationExpired:
+		c.Reservation++
 	case kindJoin, kindLeft:
 		c.Cards++
 	}
 }
 
 // Wake counts the deliveries that wake an agent.
-func (c Counts) Wake() int { return c.Direct + c.Path + c.Announce + c.Identity }
+func (c Counts) Wake() int { return c.Direct + c.Path + c.Announce + c.Identity + c.Reservation }
 
 func isWake(kind string) bool { return kind != kindJoin && kind != kindLeft }
 

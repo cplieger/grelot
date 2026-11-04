@@ -1,0 +1,468 @@
+package store
+
+import (
+	"context"
+	"fmt"
+	"math"
+	"slices"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/cplieger/bolttable"
+)
+
+const maxReason = 280
+
+// Reserving is a reserve request from Session's identity. With Queue a
+// conflicting request joins the queue instead of being refused.
+type Reserving struct {
+	Session string
+	Path    string
+	Reason  string
+	TTL     time.Duration
+	Queue   bool
+}
+
+// Reservation is a grant or a queue entry as a caller sees it. A queued
+// one has no Expires: its TTL counts from its grant.
+type Reservation struct {
+	Expires time.Time
+	// Since is when it was queued or, once held, granted.
+	Since  time.Time
+	Path   string
+	Reason string
+	State  string
+	Holder string
+	Host   string
+	// Relation is the holder's relation to the caller at Path.
+	Relation string
+	ID       uint64
+	TTL      time.Duration
+}
+
+// Reserved is what a reserve answers. Behind is the held grant or the
+// queue head a queued request waits behind.
+type Reserved struct {
+	Behind      *Reservation
+	Reservation Reservation
+}
+
+// ReservationQuery filters Reservations. Path keeps the rows at, above or
+// under it; Mine keeps the caller's own.
+type ReservationQuery struct {
+	Path string
+	Mine bool
+}
+
+// Reserve grants r.Path to the session's identity for r.TTL, or queues the
+// request when r.Queue is set and it conflicts. A request conflicts with
+// another identity's grant that overlaps it and with any queued request
+// that overlaps it, the identity's own included, so a newcomer never
+// takes a subpath while an older request waits for the parent; the
+// identity's own grants never conflict. Refusals: KindInvalid for a bad
+// path, reason or ttl; KindGone for a session with no live identity;
+// KindConflict naming the holder or the queue head.
+func (s *Store) Reserve(ctx context.Context, r *Reserving) (Reserved, error) {
+	if err := checkReserving(r); err != nil {
+		return Reserved{}, err
+	}
+	if _, err := s.resvPolicy.grant(s.now(), r.TTL, time.Time{}); err != nil {
+		return Reserved{}, err
+	}
+	var out Reserved
+	var conflict *Error
+	err := s.update(ctx, func(w *wtx) error {
+		var rerr error
+		out, conflict, rerr = w.reserve(r)
+		return rerr
+	})
+	if err == nil && conflict != nil {
+		return Reserved{}, conflict
+	}
+	return out, err
+}
+
+func checkReserving(r *Reserving) error {
+	if _, err := checkPaths([]string{r.Path}); err != nil {
+		return err
+	}
+	if n := utf8.RuneCountInString(r.Reason); n == 0 || n > maxReason || !utf8.ValidString(r.Reason) || strings.ContainsFunc(r.Reason, isControl) {
+		return refuse(KindInvalid, fmt.Sprintf("a reason is required: pass --reason <text>, 1 to %d characters on one line", maxReason))
+	}
+	return nil
+}
+
+// reserve answers a conflict as a refusal the transaction still commits:
+// the 409 names the holder the eager expiry left, so that hand-off must
+// stand.
+func (w *wtx) reserve(r *Reserving) (Reserved, *Error, error) {
+	if err := w.settleReservations(r.Path); err != nil {
+		return Reserved{}, nil, err
+	}
+	me, err := w.liveBySession(r.Session)
+	if err != nil {
+		return Reserved{}, nil, err
+	}
+	me.Ended, me.LastSeen = false, w.now
+	if perr := w.s.t.identities.table.Put(w.tx, me.ID, &me); perr != nil {
+		return Reserved{}, nil, perr
+	}
+	blocker, err := w.blocker(&reservationRow{Holder: me.ID, Path: r.Path, ID: math.MaxUint64})
+	if err != nil {
+		return Reserved{}, nil, err
+	}
+	if blocker != nil && !r.Queue {
+		refusal, cerr := w.conflict(&me, r.Path, blocker)
+		return Reserved{}, refusal, cerr
+	}
+	id, err := w.s.t.resv.table.NextID(w.tx)
+	if err != nil {
+		return Reserved{}, nil, err
+	}
+	row := reservationRow{ID: id, Holder: me.ID, Path: r.Path, Reason: r.Reason, TTL: r.TTL, Since: w.now, State: reservationQueued}
+	verb := "reservation queued"
+	if blocker == nil {
+		row.State, verb = reservationHeld, "reservation granted"
+		if row.Lease, err = w.s.resvPolicy.grant(w.now, r.TTL, time.Time{}); err != nil {
+			return Reserved{}, nil, err
+		}
+	}
+	if err := w.s.t.resv.table.Put(w.tx, id, &row); err != nil {
+		return Reserved{}, nil, err
+	}
+	w.s.log.Info(verb, "id", id, "name", me.Name, "path", r.Path)
+	out := Reserved{Reservation: w.s.reservationView(w.r, &me, &row)}
+	if blocker != nil {
+		b := w.s.reservationView(w.r, &me, blocker)
+		out.Behind = &b
+	}
+	return out, nil, nil
+}
+
+// blocker is the row that holds q back, or nil: another identity's grant
+// overlapping q first, else the oldest request queued before q that
+// overlaps it, whoever queued it.
+func (w *wtx) blocker(q *reservationRow) (*reservationRow, error) {
+	rows, err := w.reservationsOverlapping(q.Path)
+	if err != nil {
+		return nil, err
+	}
+	var head *reservationRow
+	for i := range rows {
+		o := &rows[i]
+		switch {
+		case o.State == reservationHeld && o.Holder != q.Holder:
+			return o, nil
+		case o.State == reservationQueued && o.ID < q.ID && (head == nil || o.ID < head.ID):
+			head = o
+		}
+	}
+	return head, nil
+}
+
+// conflict is the 409 naming what holds path back: the holder and its
+// expiry, or the queue head, whose wait ends with its identity's lease.
+func (w *wtx) conflict(me *identityRow, path string, b *reservationRow) (*Error, error) {
+	h, _, err := w.s.t.identities.table.Get(w.r, b.Holder)
+	if err != nil {
+		return nil, err
+	}
+	rel := party{where: me.Where, id: me.ID}.relationTo(party{where: h.Where, id: h.ID}, b.Path)
+	if b.State == reservationHeld {
+		return &Error{Kind: KindConflict, Why: "reserved", Msg: fmt.Sprintf(
+			"%s overlaps %s, reserved by %s (%s · %s) until %s for %q: add --queue to be granted it when it frees",
+			path, b.Path, h.Name, h.Host, rel, fmtTime(b.Lease.Expires), b.Reason,
+		)}, nil
+	}
+	return &Error{Kind: KindConflict, Why: "queued", Msg: fmt.Sprintf(
+		"%s overlaps %s, queued first by %s (%s · %s) since %s for %q, waiting until %s at the latest: add --queue to wait behind it",
+		path, b.Path, h.Name, h.Host, rel, fmtTime(b.Since), b.Reason, fmtTime(h.Lease.Expires),
+	)}, nil
+}
+
+// RenewReservation resets the session's grant id to expire ttl from now,
+// re-arming its warning. Refusals: KindInvalid for a bad ttl or a queued
+// entry; KindGone for a session with no live identity; KindNotFound for an
+// id that is not one of its rows, an expired or released one included.
+func (s *Store) RenewReservation(ctx context.Context, session string, id uint64, ttl time.Duration) (Reservation, error) {
+	var out Reservation
+	err := s.update(ctx, func(w *wtx) error {
+		me, row, err := w.ownReservation(session, id)
+		if err != nil {
+			return err
+		}
+		if row.State != reservationHeld {
+			return refuse(KindInvalid, fmt.Sprintf("reservation %d is queued: its ttl counts from its grant", id))
+		}
+		if row.Lease, err = s.resvPolicy.grant(w.now, ttl, time.Time{}); err != nil {
+			return err
+		}
+		row.TTL = ttl
+		if err := s.t.resv.table.Put(w.tx, id, &row); err != nil {
+			return err
+		}
+		s.log.Info("reservation renewed", "id", id, "name", me.Name, "path", row.Path)
+		out = s.reservationView(w.r, &me, &row)
+		return nil
+	})
+	return out, err
+}
+
+// Release frees the session's grant id or cancels its queue entry id, and
+// hands the freed paths to the queue in the same transaction. Refusals:
+// KindGone for a session with no live identity; KindNotFound for an id
+// that is not one of its rows, an expired or released one included.
+func (s *Store) Release(ctx context.Context, session string, id uint64) (Reservation, error) {
+	var out Reservation
+	err := s.update(ctx, func(w *wtx) error {
+		me, row, err := w.ownReservation(session, id)
+		if err != nil {
+			return err
+		}
+		verb := "reservation released"
+		if row.State == reservationQueued {
+			verb = "reservation cancelled"
+		}
+		s.log.Info(verb, "id", id, "name", me.Name, "path", row.Path)
+		out = s.reservationView(w.r, &me, &row)
+		return w.freeAndHandOff([]reservationRow{row})
+	})
+	return out, err
+}
+
+// ownReservation settles row id, then reads the session's live identity
+// and stores its request, so a hand-off the caller runs next writes its
+// events onto the latest copy of the row.
+func (w *wtx) ownReservation(session string, id uint64) (identityRow, reservationRow, error) {
+	row, found, err := w.s.t.resv.settle(w, id)
+	if err != nil {
+		return identityRow{}, reservationRow{}, err
+	}
+	me, err := w.liveBySession(session)
+	if err != nil {
+		return identityRow{}, reservationRow{}, err
+	}
+	if !found || row.Holder != me.ID {
+		return identityRow{}, reservationRow{}, refuse(KindNotFound, fmt.Sprintf(
+			"no reservation %d of yours: it expired or was released; grelot reservations --mine lists yours", id,
+		))
+	}
+	me.Ended, me.LastSeen = false, w.now
+	err = w.s.t.identities.table.Put(w.tx, me.ID, &me)
+	return me, row, err
+}
+
+// Reservations lists the unexpired grants and the queue entries, in id
+// order, as the session's identity sees them; a session with no live
+// identity sees every relation as unknown. Refusals: KindInvalid for a bad
+// path.
+func (s *Store) Reservations(ctx context.Context, session string, q ReservationQuery) ([]Reservation, error) {
+	if q.Path != "" {
+		if _, err := checkPaths([]string{q.Path}); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := s.Seen(ctx, session); err != nil && !isKind(err, KindGone) {
+		return nil, err
+	}
+	var out []Reservation
+	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
+		now := s.now()
+		var me identityRow
+		if v, found, err := s.lookupIdentity(r, s.t.bySession, session); err != nil {
+			return err
+		} else if found && v.State == stateLive {
+			me = v
+		}
+		if q.Mine && me.ID == 0 {
+			return nil
+		}
+		return s.scanReservations(r, q, me.ID, func(v *reservationRow) {
+			if !v.Lease.due(now) {
+				out = append(out, s.reservationView(r, &me, v))
+			}
+		})
+	})
+	return out, err
+}
+
+func (s *Store) scanReservations(r *bolttable.ReadTx, q ReservationQuery, holder uint64, fn func(*reservationRow)) error {
+	visit := func(_ []byte, id uint64, _ []byte) (bool, error) {
+		v, found, err := s.t.resv.table.Get(r, id)
+		if err == nil && found && (q.Path == "" || overlaps(v.Path, q.Path)) {
+			fn(&v)
+		}
+		return err == nil, err
+	}
+	if q.Mine {
+		return s.t.resvHolder.Scan(r, bolttable.Range{Prefix: be64(holder)}, visit)
+	}
+	return s.t.resv.table.Scan(r, bolttable.Range{}, func(id uint64, _ *reservationRow) (bool, error) {
+		return visit(nil, id, nil)
+	})
+}
+
+// reservationView is v as me sees it; a zero me reads every relation as
+// unknown.
+func (s *Store) reservationView(r *bolttable.ReadTx, me *identityRow, v *reservationRow) Reservation {
+	out := Reservation{
+		Expires: v.Lease.Expires, Since: v.Since, Path: v.Path, Reason: v.Reason,
+		State: v.State, ID: v.ID, TTL: v.TTL,
+	}
+	h, found, err := s.t.identities.table.Get(r, v.Holder)
+	if err != nil || !found {
+		out.Relation = "unknown"
+		return out
+	}
+	out.Holder, out.Host = h.Name, h.Host
+	out.Relation = party{where: me.Where, id: me.ID}.relationTo(party{where: h.Where, id: h.ID}, v.Path)
+	return out
+}
+
+// freeAndHandOff is the one way a grant frees or a queue entry ends. It
+// deletes every row in rows first, then walks the queue once, in order,
+// granting each request that overlaps no other identity's grant and no
+// older request still queued. Deleting the whole set before the walk is
+// what keeps a retiring identity's own queue entries from being granted
+// back to it.
+func (w *wtx) freeAndHandOff(rows []reservationRow) error {
+	for i := range rows {
+		if _, err := w.s.t.resv.table.Delete(w.tx, rows[i].ID); err != nil {
+			return err
+		}
+	}
+	queue, err := w.queued()
+	if err != nil {
+		return err
+	}
+	for i := range queue {
+		q := &queue[i]
+		ok, err := w.grantable(q)
+		if err != nil {
+			return err
+		}
+		if ok {
+			if err := w.handOver(q); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// grantable reports whether queue entry q may be granted now: nothing
+// holds it back, and its holder is live. A holder past its lease is owed
+// its own expiry, which ends q; until then q keeps its place.
+func (w *wtx) grantable(q *reservationRow) (bool, error) {
+	b, err := w.blocker(q)
+	if err != nil || b != nil {
+		return false, err
+	}
+	h, found, err := w.s.t.identities.table.Get(w.r, q.Holder)
+	return found && h.State == stateLive && !h.Lease.due(w.now), err
+}
+
+// handOver grants queue entry q from now for its stored duration, capped
+// at the store's current RESERVATION_MAX_TTL, and tells its holder.
+func (w *wtx) handOver(q *reservationRow) error {
+	ls, err := w.s.resvPolicy.grant(w.now, min(q.TTL, w.s.resvPolicy.max), time.Time{})
+	if err != nil {
+		return err
+	}
+	q.State, q.Since, q.Lease = reservationHeld, w.now, ls
+	if err := w.s.t.resv.table.Put(w.tx, q.ID, q); err != nil {
+		return err
+	}
+	w.s.log.Info("reservation handed over", "id", q.ID, "holder", q.Holder, "path", q.Path)
+	return w.deliverEvent(q.Holder, kindReservationGranted, fmt.Sprintf(
+		"you now hold reservation %d on %s until %s (%s from its grant, as you queued it) for %q: run `grelot release %d` when you are done",
+		q.ID, q.Path, fmtTime(q.Lease.Expires), fmtDur(q.Lease.Expires.Sub(w.now)), q.Reason, q.ID,
+	))
+}
+
+// queued lists the queue entries in enqueue order.
+func (w *wtx) queued() ([]reservationRow, error) {
+	var out []reservationRow
+	err := w.s.t.resvQueue.Scan(w.r, bolttable.Range{}, func(_ []byte, id uint64, _ []byte) (bool, error) {
+		v, found, err := w.s.t.resv.table.Get(w.r, id)
+		if found {
+			out = append(out, v)
+		}
+		return err == nil, err
+	})
+	return out, err
+}
+
+// reservationsOverlapping reads the rows at, above or under p.
+func (w *wtx) reservationsOverlapping(p string) ([]reservationRow, error) {
+	ids, err := overlapIDs(w.r, w.s.t.resvPath, p)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]reservationRow, 0, len(ids))
+	for _, id := range ids {
+		v, found, err := w.s.t.resv.table.Get(w.r, id)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			out = append(out, v)
+		}
+	}
+	return out, nil
+}
+
+// settleReservations runs the due expiry of every grant overlapping p, so
+// a write touching p finds the queue already served.
+func (w *wtx) settleReservations(p string) error {
+	ids, err := overlapIDs(w.r, w.s.t.resvPath, p)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if _, _, err := w.s.t.resv.settle(w, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// heldOverlapping settles and returns the grants at, above or under p.
+func (w *wtx) heldOverlapping(p string) ([]reservationRow, error) {
+	if err := w.settleReservations(p); err != nil {
+		return nil, err
+	}
+	rows, err := w.reservationsOverlapping(p)
+	return slices.DeleteFunc(rows, func(r reservationRow) bool { return r.State != reservationHeld }), err
+}
+
+// warnReservation writes reservation_expiring once, ahead of the expiry by
+// the policy's lead.
+func warnReservation(w *wtx, _ uint64, v *reservationRow) error {
+	left := int(math.Ceil(v.Lease.Expires.Sub(w.now).Minutes()))
+	return w.deliverEvent(v.Holder, kindReservationExpiring, fmt.Sprintf(
+		"your reservation %d on %s expires in %d min (at %s); if you still need it, run `grelot renew %d --ttl <d>`, otherwise `grelot release %d`",
+		v.ID, v.Path, left, fmtTime(v.Lease.Expires), v.ID, v.ID,
+	))
+}
+
+// expireReservation tells the holder its grant expired and hands the path
+// to the queue. A row still owed its warning reached its expiry with no
+// sweep in between, which only a server that was down leaves behind.
+func expireReservation(w *wtx, _ uint64, v *reservationRow) error {
+	text := fmt.Sprintf("your reservation %d on %s expired at %s and is free now; reserve it again if you still need it",
+		v.ID, v.Path, fmtTime(v.Lease.Expires))
+	if !v.Lease.WarnAt.IsZero() {
+		text = fmt.Sprintf("your reservation %d on %s expired at %s while the server was down, so no warning went out first; it is free now, reserve it again if you still need it",
+			v.ID, v.Path, fmtTime(v.Lease.Expires))
+	}
+	w.s.log.Info("reservation expired", "id", v.ID, "holder", v.Holder, "path", v.Path)
+	if err := w.deliverEvent(v.Holder, kindReservationExpired, text); err != nil {
+		return err
+	}
+	return w.freeAndHandOff([]reservationRow{*v})
+}
+
+// overlaps reports whether either path contains the other.
+func overlaps(a, b string) bool { return under(a, b) || under(b, a) }
