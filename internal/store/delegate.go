@@ -118,7 +118,7 @@ func (w *wtx) handleFree(me *identityRow, handle, label string) error {
 	if _, held, err := w.identityBy(w.s.t.byName, handle); err != nil || held {
 		return orConflict(err, fmt.Sprintf("%s is held by a live or dormant identity: choose another label", handle))
 	}
-	links, err := w.s.linksOf(w.r, me.ID)
+	links, err := w.unexpiredLinks(me.ID)
 	if err != nil {
 		return err
 	}
@@ -128,7 +128,7 @@ func (w *wtx) handleFree(me *identityRow, handle, label string) error {
 	case len(links) >= maxLinks:
 		return refuse(KindConflict, fmt.Sprintf("you hold %d unused delegate links, the most allowed: grelot delegate revoke one first", maxLinks))
 	}
-	n, err := w.s.delegateCount(w.r, me.ID)
+	n, err := w.liveDelegateCount(me.ID)
 	if err == nil && n >= maxDelegates {
 		err = refuse(KindConflict, fmt.Sprintf("you have %d live delegates, the most allowed: grelot delegate revoke one first", maxDelegates))
 	}
@@ -230,7 +230,7 @@ func (w *wtx) registerDelegate(r *Registration) (Registered, error) {
 	if nerr := w.nameFree(handle); nerr != nil {
 		return Registered{}, nerr
 	}
-	if n, cerr := w.s.delegateCount(w.r, parent.ID); cerr != nil || n >= maxDelegates {
+	if n, cerr := w.liveDelegateCount(parent.ID); cerr != nil || n >= maxDelegates {
 		return Registered{}, orConflict(cerr, fmt.Sprintf("@%s has %d live delegates, the most allowed: ask it to revoke one", parent.Name, maxDelegates))
 	}
 	ls, err := identityPolicy.grant(w.now, link.TTL, parent.Lease.Expires)
@@ -368,14 +368,86 @@ func (s *Store) delegatesOf(r *bolttable.ReadTx, parent uint64) ([]uint64, error
 	return out, err
 }
 
-func (s *Store) delegateCount(r *bolttable.ReadTx, parent uint64) (int, error) {
-	ids, err := s.delegatesOf(r, parent)
-	return len(ids), err
+// capDelegates moves each delegate of parent whose lease passes parent's
+// new expiry back to it, its warning re-armed for the earlier end.
+func (w *wtx) capDelegates(parent *identityRow) error {
+	ids, err := w.s.delegatesOf(w.r, parent.ID)
+	if err != nil {
+		return err
+	}
+	end := parent.Lease.Expires
+	for _, id := range ids {
+		d, found, err := w.s.t.identities.settle(w, id)
+		if err != nil {
+			return err
+		}
+		if !found || !d.Lease.Expires.After(end) {
+			continue
+		}
+		// d's expiry never passes now + its ttl, so this grant ends at end.
+		if d.Lease, err = identityPolicy.grant(w.now, d.TTL, end); err != nil {
+			return err
+		}
+		if err := w.s.t.identities.table.Put(w.tx, id, &d); err != nil {
+			return err
+		}
+	}
+	return nil
 }
+
+// unexpiredLinks settles parent's unused links and returns those left.
+func (w *wtx) unexpiredLinks(parent uint64) ([]linkRow, error) {
+	links, err := w.s.linksOf(w.r, parent)
+	if err != nil {
+		return nil, err
+	}
+	out := links[:0]
+	for i := range links {
+		l, found, err := w.s.t.links.settle(w, pairKey(parent, links[i].ID))
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			out = append(out, l)
+		}
+	}
+	return out, nil
+}
+
+// liveDelegateCount settles parent's delegates and counts those left.
+func (w *wtx) liveDelegateCount(parent uint64) (int, error) {
+	ids, err := w.s.delegatesOf(w.r, parent)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, id := range ids {
+		_, found, err := w.s.t.identities.settle(w, id)
+		if err != nil {
+			return 0, err
+		}
+		if found {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// endWhy is the why of a "delegate ended" line.
+type endWhy string
+
+const (
+	endParent     endWhy = "parent"
+	endSessionEnd endWhy = "session_end"
+	endRevoke     endWhy = "revoke"
+	endBye        endWhy = "bye"
+	endSubagent   endWhy = "subagent_stop"
+	endExpired    endWhy = "expired"
+)
 
 // endDelegate deletes delegate d's row: a delegate never goes dormant, and
 // its parent holds every message it received.
-func (w *wtx) endDelegate(d *identityRow, why string) error {
+func (w *wtx) endDelegate(d *identityRow, why endWhy) error {
 	if err := w.leaveWatches(d); err != nil {
 		return err
 	}
@@ -383,12 +455,12 @@ func (w *wtx) endDelegate(d *identityRow, why string) error {
 		return err
 	}
 	w.s.forgetSeen(d.ID)
-	w.s.log.Info("delegate ended", "handle", d.Name, "id", d.ID, "why", why)
+	w.s.log.Info("delegate ended", "handle", d.Name, "id", d.ID, "why", string(why))
 	return nil
 }
 
 // endDelegates ends every delegate of parent.
-func (w *wtx) endDelegates(parent uint64, why string) error {
+func (w *wtx) endDelegates(parent uint64, why endWhy) error {
 	ids, err := w.s.delegatesOf(w.r, parent)
 	if err != nil {
 		return err

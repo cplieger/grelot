@@ -104,8 +104,7 @@ func checkMessage(p *Posting) error {
 }
 
 func (w *wtx) post(p *Posting) (Posted, error) {
-	// Settled before the sender is read: a hand-off can write to the
-	// sender's row, and storing an older copy after it would reuse a seq.
+	// Settled first so the route reads the holders an eager hand-off left.
 	if p.To.Path != "" {
 		if err := w.settleReservations(p.To.Path); err != nil {
 			return Posted{}, err

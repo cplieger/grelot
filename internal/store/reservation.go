@@ -235,9 +235,8 @@ func (s *Store) Release(ctx context.Context, c Caller, id uint64) (Reservation, 
 	return out, err
 }
 
-// ownReservation settles row id, then reads c's live identity
-// and stores its request, so a hand-off the caller runs next writes its
-// events onto the latest copy of the row.
+// ownReservation settles row id and returns it with c's live identity,
+// whose request it stores; a row that is not c's is KindNotFound.
 func (w *wtx) ownReservation(c Caller, id uint64) (identityRow, reservationRow, error) {
 	row, found, err := w.s.t.resv.settle(w, id)
 	if err != nil {
@@ -386,7 +385,7 @@ func (w *wtx) grantable(q *reservationRow) (bool, error) {
 }
 
 // handOver grants queue entry q from now for its stored duration, capped
-// at the store's current RESERVATION_MAX_TTL, and tells its holder.
+// at the store's current RESERVATION_MAX_TTL, and owes its holder the news.
 func (w *wtx) handOver(q *reservationRow) error {
 	ls, err := w.s.resvPolicy.grant(w.now, min(q.TTL, w.s.resvPolicy.max), time.Time{})
 	if err != nil {
@@ -397,10 +396,11 @@ func (w *wtx) handOver(q *reservationRow) error {
 		return err
 	}
 	w.s.log.Info("reservation handed over", "id", q.ID, "holder", q.Holder, "path", q.Path)
-	return w.deliverEvent(q.Holder, kindReservationGranted, fmt.Sprintf(
+	w.oweEvent(q.Holder, kindReservationGranted, fmt.Sprintf(
 		"you now hold reservation %d on %s until %s (%s from its grant, as you queued it) for %q: run `grelot release %d` when you are done",
 		q.ID, q.Path, fmtTime(q.Lease.Expires), fmtDur(q.Lease.Expires.Sub(w.now)), q.Reason, q.ID,
 	))
+	return nil
 }
 
 // queued lists the queue entries in enqueue order.
@@ -459,14 +459,15 @@ func (w *wtx) heldOverlapping(p string) ([]reservationRow, error) {
 	return slices.DeleteFunc(rows, func(r reservationRow) bool { return r.State != reservationHeld }), err
 }
 
-// warnReservation writes reservation_expiring once, ahead of the expiry by
+// warnReservation owes reservation_expiring once, ahead of the expiry by
 // the policy's lead.
 func warnReservation(w *wtx, _ uint64, v *reservationRow) error {
 	left := int(math.Ceil(v.Lease.Expires.Sub(w.now).Minutes()))
-	return w.deliverEvent(v.Holder, kindReservationExpiring, fmt.Sprintf(
+	w.oweEvent(v.Holder, kindReservationExpiring, fmt.Sprintf(
 		"your reservation %d on %s expires in %d min (at %s); if you still need it, run `grelot renew %d --ttl <d>`, otherwise `grelot release %d`",
 		v.ID, v.Path, left, fmtTime(v.Lease.Expires), v.ID, v.ID,
 	))
+	return nil
 }
 
 // expireReservation tells the holder its grant expired and hands the path
@@ -480,9 +481,7 @@ func expireReservation(w *wtx, _ uint64, v *reservationRow) error {
 			v.ID, v.Path, fmtTime(v.Lease.Expires))
 	}
 	w.s.log.Info("reservation expired", "id", v.ID, "holder", v.Holder, "path", v.Path)
-	if err := w.deliverEvent(v.Holder, kindReservationExpired, text); err != nil {
-		return err
-	}
+	w.oweEvent(v.Holder, kindReservationExpired, text)
 	return w.freeAndHandOff([]reservationRow{*v})
 }
 

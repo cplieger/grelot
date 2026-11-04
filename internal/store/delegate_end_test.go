@@ -17,7 +17,7 @@ func TestDelegate_parentSessionEndEndsTheDelegatesAndKeepsTheParent(t *testing.T
 		if identityExists(t, s, d.ID) {
 			t.Errorf("delegate %s kept after its parent's SessionEnd, want it deleted", d.Name)
 		}
-		if got := endedWhy(sink, d.Name); len(got) != 1 || got[0] != "parent_session_ended" {
+		if got := endedWhy(sink, d.Name); len(got) != 1 || got[0] != "session_end" {
 			t.Errorf("delegate ended lines for %s %v, want one parent_session_ended", d.Name, got)
 		}
 	}
@@ -38,7 +38,7 @@ func TestDelegate_revoke(t *testing.T) {
 		if identityExists(t, s, d.ID) {
 			t.Error("revoked delegate's row kept, want it deleted, never dormant")
 		}
-		if why := endedWhy(sink, d.Name); len(why) != 1 || why[0] != "revoked" {
+		if why := endedWhy(sink, d.Name); len(why) != 1 || why[0] != "revoke" {
 			t.Errorf("delegate ended lines %v, want one revoked", why)
 		}
 		got, err = s.Revoke(t.Context(), self("parent"), "next")
@@ -225,6 +225,78 @@ func TestDelegate_renewal(t *testing.T) {
 		_, err := s.Set(t.Context(), as(sess("parent"), d.Name), Change{TTL: 14 * time.Minute})
 		wantRefusal(t, err, KindInvalid, "", "15m")
 	})
+}
+
+func TestDelegate_aParentsShorterLeaseCapsItsDelegates(t *testing.T) {
+	t.Run("a renewal", func(t *testing.T) {
+		s, clk, _ := openIdentityStore(t)
+		p, d := delegateOf(t, s, "parent", "review")
+		w := envA()
+		renewed, err := s.Set(t.Context(), self("parent"), Change{TTL: time.Hour, Where: &w})
+		if err != nil {
+			t.Fatal(err)
+		}
+		row := getIdentity(t, s, d.ID)
+		if !row.Lease.Expires.Equal(renewed.Expires) {
+			t.Errorf("delegate expires %v, want the parent's %v", row.Lease.Expires, renewed.Expires)
+		}
+		if want := renewed.Expires.Add(-30 * time.Minute); !row.Lease.WarnAt.Equal(want) {
+			t.Errorf("delegate warn_at %v, want min(30 min, ttl/2) before the new expiry, %v", row.Lease.WarnAt, want)
+		}
+		clk.advance(30*time.Minute - time.Second)
+		mustSweep(t, s)
+		if got := eventsOf(t, s, d.ID, kindIdentityExpiring); len(got) != 0 {
+			t.Errorf("warned a second early: %+v", got)
+		}
+		clk.advance(time.Second)
+		mustSweep(t, s)
+		if got := eventsOf(t, s, d.ID, kindIdentityExpiring); len(got) != 1 {
+			t.Errorf("delegate got %d identity_expiring, want 1", len(got))
+		}
+		if got := eventsOf(t, s, p.ID, kindIdentityExpiring); len(got) != 1 {
+			t.Errorf("parent got %d identity_expiring, want 1", len(got))
+		}
+	})
+	t.Run("a longer renewal moves nothing", func(t *testing.T) {
+		s, _, _ := openIdentityStore(t)
+		_, d := delegateOf(t, s, "parent", "review")
+		before := getIdentity(t, s, d.ID).Lease
+		w := envA()
+		if _, err := s.Set(t.Context(), self("parent"), Change{TTL: 24 * time.Hour, Where: &w}); err != nil {
+			t.Fatal(err)
+		}
+		if got := getIdentity(t, s, d.ID).Lease; got != before {
+			t.Errorf("delegate lease %+v, want it unchanged, %+v", got, before)
+		}
+	})
+	t.Run("a take-over's lease", func(t *testing.T) {
+		s, clk, _ := openIdentityStore(t)
+		_, d := delegateOf(t, s, "parent", "review")
+		r := registration(sessB, "parent", envA(), repoSubflux)
+		r.TakeOver, r.TTL = true, 20*time.Minute
+		moved := mustRegister(t, s, r)
+		row := getIdentity(t, s, d.ID)
+		if !row.Lease.Expires.Equal(moved.Expires) {
+			t.Errorf("delegate expires %v, want the parent's %v", row.Lease.Expires, moved.Expires)
+		}
+		if !row.Lease.WarnAt.Equal(clk.now()) {
+			t.Errorf("delegate warn_at %v, want now, since its lead passes the new expiry", row.Lease.WarnAt)
+		}
+	})
+}
+
+func TestDelegate_expiryWarningNamesTheRenewalAsItsHandle(t *testing.T) {
+	s, clk, _ := openIdentityStore(t)
+	_, d := delegateOf(t, s, "parent", "review")
+	clk.advance(90 * time.Minute)
+	mustSweep(t, s)
+	got := eventsOf(t, s, d.ID, kindIdentityExpiring)
+	if len(got) != 1 {
+		t.Fatalf("%d identity_expiring, want 1", len(got))
+	}
+	if want := "run `grelot as parent/review renew --ttl 2h`"; !strings.Contains(got[0].Text, want) {
+		t.Errorf("text %q lacks %q", got[0].Text, want)
+	}
 }
 
 func TestDelegate_standingWaitIsRefused(t *testing.T) {

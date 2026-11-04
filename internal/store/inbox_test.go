@@ -166,7 +166,7 @@ func TestInbox_limit(t *testing.T) {
 func TestInbox_anEventCarriesItsTextAndNoSender(t *testing.T) {
 	s, _ := openClockStore(t)
 	me := regAt(t, s, "bravo", "/workspace/bravo")
-	putRows(t, s, func(w *wtx) error { return w.deliverEvent(me.ID, kindIdentityExpiring, "your identity bravo expires") })
+	putRows(t, s, func(w *wtx) error { return w.writeEvent(me.ID, kindIdentityExpiring, "your identity bravo expires") })
 	e := mustInbox(t, s, sess("bravo"), 0).Entries[0]
 	if e.Kind != kindIdentityExpiring || e.Text != "your identity bravo expires" || e.From != "" ||
 		e.Relation != "" || e.Message != 0 || !e.Wake {

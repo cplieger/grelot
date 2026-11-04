@@ -76,7 +76,7 @@ func (w *wtx) revokeDelegates(parent uint64, label string) ([]string, error) {
 		if _, l, _ := strings.Cut(d.Name, "/"); !found || l != label {
 			continue
 		}
-		if eerr := w.endDelegate(&d, "revoked"); eerr != nil {
+		if eerr := w.endDelegate(&d, endRevoke); eerr != nil {
 			return nil, eerr
 		}
 		handles = append(handles, d.Name)
@@ -87,7 +87,7 @@ func (w *wtx) revokeDelegates(parent uint64, label string) ([]string, error) {
 // revokeLink deletes me's unused link of label, reporting whether it had
 // one.
 func (w *wtx) revokeLink(me *identityRow, label string) (bool, error) {
-	links, err := w.s.linksOf(w.r, me.ID)
+	links, err := w.unexpiredLinks(me.ID)
 	if err != nil {
 		return false, err
 	}
@@ -147,7 +147,7 @@ func (s *Store) SubagentStop(ctx context.Context, session, agent string) error {
 			return err
 		}
 		if own.Parent != 0 {
-			return w.endDelegate(&own, "subagent_stop")
+			return w.endDelegate(&own, endSubagent)
 		}
 		if agent == "" {
 			return nil
@@ -160,6 +160,6 @@ func (s *Store) SubagentStop(ctx context.Context, session, agent string) error {
 		if err != nil || !found {
 			return err
 		}
-		return w.endDelegate(&d, "subagent_stop")
+		return w.endDelegate(&d, endSubagent)
 	})
 }

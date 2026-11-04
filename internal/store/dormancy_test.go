@@ -27,7 +27,7 @@ func deliverEvents(t *testing.T, s *Store, id uint64, n int) {
 	t.Helper()
 	putRows(t, s, func(w *wtx) error {
 		for range n {
-			if err := w.deliverEvent(id, kindIdentityExpiring, "event"); err != nil {
+			if err := w.writeEvent(id, kindIdentityExpiring, "event"); err != nil {
 				return err
 			}
 		}

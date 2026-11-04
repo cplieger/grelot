@@ -35,7 +35,7 @@ func (w *wtx) flushOwed() error {
 		case len(w.events) > 0:
 			e := w.events[0]
 			w.events = w.events[1:]
-			if err := w.deliverEvent(e.to, e.kind, e.text); err != nil {
+			if err := w.writeEvent(e.to, e.kind, e.text); err != nil {
 				return err
 			}
 		case len(w.cards) > 0:

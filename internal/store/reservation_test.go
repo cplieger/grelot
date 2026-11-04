@@ -650,6 +650,60 @@ func TestPost_bySenderAHandOffGrantsKeepsEverySeq(t *testing.T) {
 	}
 }
 
+// expiredHolderFixture registers waiter on pathWeb and, behind it in id
+// order, holder on pathAPI under a 15-minute lease holding /workspace/sse,
+// with waiter queued for it; then it lets holder's lease run out unswept.
+func expiredHolderFixture(t *testing.T) (s *Store, waiter Identity) {
+	t.Helper()
+	s, clk, _ := openIdentityStore(t)
+	waiter = regAt(t, s, "waiter", pathWeb)
+	r := registration(sess("holder"), "holder", envA(), pathAPI)
+	r.TTL = 15 * time.Minute
+	mustRegister(t, s, r)
+	mustReserve(t, s, reserving("holder", "/workspace/sse", time.Hour))
+	mustQueue(t, s, reserving("waiter", "/workspace/sse", time.Hour))
+	clk.advance(15 * time.Minute)
+	return s, waiter
+}
+
+// wantGrantedOnceInSeqOrder fails unless identity id holds exactly one
+// reservation_granted and its deliveries run 1 to its seq with no gap.
+func wantGrantedOnceInSeqOrder(t *testing.T, s *Store, id uint64) {
+	t.Helper()
+	if got := eventsOf(t, s, id, kindReservationGranted); len(got) != 1 {
+		t.Errorf("%d reservation_granted, want 1; deliveries %+v", len(got), allDeliveriesTo(t, s, id))
+	}
+	ds := allDeliveriesTo(t, s, id)
+	for i, d := range ds {
+		if d.Seq != uint64(i+1) {
+			t.Errorf("delivery %d (%s) has seq %d, want %d", i, d.Kind, d.Seq, i+1)
+		}
+	}
+	if row := getIdentity(t, s, id); row.Seq != uint64(len(ds)) {
+		t.Errorf("seq %d, want %d", row.Seq, len(ds))
+	}
+}
+
+func TestJoinCard_toAWaiterBesideAnUnsweptExpiryKeepsItsGrant(t *testing.T) {
+	s, waiter := expiredHolderFixture(t)
+	regAt(t, s, "newcomer", pathMarotte)
+	wantGrantedOnceInSeqOrder(t, s, waiter.ID)
+	if got := eventsOf(t, s, waiter.ID, kindJoin); len(got) != 1 {
+		t.Errorf("%d join cards, want 1", len(got))
+	}
+}
+
+func TestPost_directToAnExpiredHolderKeepsTheWaitersGrant(t *testing.T) {
+	s, waiter := expiredHolderFixture(t)
+	regAt(t, s, "other", repoGrelot)
+	mustPost(t, s, posting(sess("waiter"), Target{Agent: "holder"}))
+	direct(t, s, "other", "waiter", 1)
+	wantGrantedOnceInSeqOrder(t, s, waiter.ID)
+	if got := eventsOf(t, s, waiter.ID, kindDirect); len(got) != 1 {
+		t.Errorf("%d direct messages, want 1", len(got))
+	}
+}
+
 func TestUnfollow_passesOnceTheReservationExpired(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
 	regAt(t, s, "holder", repoSubflux)

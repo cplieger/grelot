@@ -152,6 +152,9 @@ func (w *wtx) register(r *Registration, provider string) (Registered, error) {
 	}
 	w.queueCards(kindJoin, &row, added)
 	if moved {
+		if err := w.capDelegates(&row); err != nil {
+			return Registered{}, err
+		}
 		w.s.log.Info("identity moved", "name", row.Name, "id", row.ID, "provider", provider)
 	}
 	return Registered{Identity: w.s.view(&row), Moved: moved}, nil
@@ -283,7 +286,10 @@ func (w *wtx) applyChange(row *identityRow, c Change) (string, error) {
 		return "", err
 	}
 	row.TTL, row.Lease = c.TTL, ls
-	if row.Parent != 0 && w.now.Add(c.TTL).After(ls.Expires) {
+	if row.Parent == 0 {
+		return "", w.capDelegates(row)
+	}
+	if w.now.Add(c.TTL).After(ls.Expires) {
 		return fmt.Sprintf("your lease stops at your parent's expiry, %s: @%s renews first", fmtTime(ls.Expires), parent.Name), nil
 	}
 	return "", nil
@@ -348,7 +354,7 @@ func (s *Store) EndSession(ctx context.Context, session string) error {
 		if err != nil {
 			return err
 		}
-		if err := w.endDelegates(row.ID, "parent_session_ended"); err != nil {
+		if err := w.endDelegates(row.ID, endSessionEnd); err != nil {
 			return err
 		}
 		row.Ended = true
@@ -373,7 +379,7 @@ func (s *Store) Retire(ctx context.Context, c Caller) error {
 			return err
 		}
 		if row.Parent != 0 {
-			return w.endDelegate(&row, "bye")
+			return w.endDelegate(&row, endBye)
 		}
 		if err := w.leaveWatches(&row); err != nil {
 			return err
@@ -381,7 +387,7 @@ func (s *Store) Retire(ctx context.Context, c Caller) error {
 		if err := w.freeHolder(row.ID); err != nil {
 			return err
 		}
-		if err := w.endDelegates(row.ID, "parent_retired"); err != nil {
+		if err := w.endDelegates(row.ID, endParent); err != nil {
 			return err
 		}
 		w.queueCards(kindLeft, &row, row.Paths)

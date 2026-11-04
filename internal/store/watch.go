@@ -226,17 +226,3 @@ func expireWatch(w *wtx, k uint64, v *watchRow) error {
 	w.oweEvent(v.Sender, kindReceiptsDue, text)
 	return nil
 }
-
-// owedEvent is a server event a transaction writes once its request is
-// done.
-type owedEvent struct {
-	kind, text string
-	to         uint64
-}
-
-// oweEvent defers an event to flushOwed: a caller may hold a copy of the
-// recipient's row (a parent ending its delegates completes its own
-// watches), and storing that copy after the event would reuse its seq.
-func (w *wtx) oweEvent(to uint64, kind, text string) {
-	w.events = append(w.events, owedEvent{to: to, kind: kind, text: text})
-}

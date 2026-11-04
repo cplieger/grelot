@@ -344,6 +344,52 @@ func TestDelegate_caps(t *testing.T) {
 	})
 }
 
+func TestDelegate_capsCountNothingPastItsLeaseBeforeTheSweep(t *testing.T) {
+	hourGrant := func(label string) Grant {
+		g := grantFrom("parent", label)
+		g.TTL = time.Hour
+		return g
+	}
+	t.Run("an expired link of the label", func(t *testing.T) {
+		s, clk, _ := openIdentityStore(t)
+		regAt(t, s, "parent", repoSubflux)
+		mustGrant(t, s, hourGrant("review"))
+		clk.advance(time.Hour)
+		mustGrant(t, s, hourGrant("review"))
+	})
+	t.Run("32 expired links", func(t *testing.T) {
+		s, clk, _ := openIdentityStore(t)
+		regAt(t, s, "parent", repoSubflux)
+		for i := range 32 {
+			mustGrant(t, s, hourGrant(fmt.Sprintf("w%02d", i)))
+		}
+		clk.advance(time.Hour)
+		mustGrant(t, s, hourGrant("w32"))
+	})
+	t.Run("32 delegates past their lease, at the grant", func(t *testing.T) {
+		s, clk, _ := openIdentityStore(t)
+		regAt(t, s, "parent", repoSubflux)
+		for i := range 32 {
+			mustRegisterDelegate(t, s, sess("parent"), mustGrant(t, s, hourGrant(fmt.Sprintf("w%02d", i))).Link)
+		}
+		clk.advance(time.Hour)
+		mustGrant(t, s, hourGrant("w32"))
+	})
+	t.Run("32 delegates past their lease, at the registration", func(t *testing.T) {
+		s, clk, _ := openIdentityStore(t)
+		regAt(t, s, "parent", repoSubflux)
+		spare := grantFrom("parent", "spare")
+		link := mustGrant(t, s, spare).Link
+		for i := range 32 {
+			mustRegisterDelegate(t, s, sess("parent"), mustGrant(t, s, hourGrant(fmt.Sprintf("w%02d", i))).Link)
+		}
+		clk.advance(time.Hour)
+		if d := mustRegisterDelegate(t, s, sess("parent"), link); d.Name != "parent/spare" {
+			t.Errorf("registered %q, want parent/spare", d.Name)
+		}
+	})
+}
+
 func TestDelegate_asIsAcceptedOnlyFromTheParentsSessionOrItsOwn(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	regAt(t, s, "stranger", repoGrelot)
@@ -410,7 +456,7 @@ func TestDelegate_endsWithItsParent(t *testing.T) {
 		if identityExists(t, s, d.ID) || identityExists(t, s, p.ID) {
 			t.Error("parent or delegate row kept, want both deleted")
 		}
-		if got := endedWhy(sink, d.Name); len(got) != 1 || got[0] != "parent_retired" {
+		if got := endedWhy(sink, d.Name); len(got) != 1 || got[0] != "parent" {
 			t.Errorf("delegate ended lines %v, want one parent_retired", got)
 		}
 		if n := countRows(t, s, s.t.links.table); n != 0 {
@@ -429,7 +475,7 @@ func TestDelegate_endsWithItsParent(t *testing.T) {
 		mustGrant(t, s, grantFrom("parent", "unused"))
 		clk.advance(time.Hour)
 		mustSweep(t, s)
-		if got := endedWhy(sink, d.Name); len(got) != 1 || got[0] != "parent_expired" {
+		if got := endedWhy(sink, d.Name); len(got) != 1 || got[0] != "parent" {
 			t.Errorf("delegate ended lines %v, want one parent_expired", got)
 		}
 		if row, found := findIdentity(t, s, p.ID); !found || row.State != stateDormant {
