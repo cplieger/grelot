@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/cplieger/bolttable"
 )
 
 // testNow is the fixed clock every store test starts from.
@@ -60,6 +62,67 @@ func attr(r slog.Record, key string) string {
 		return true
 	})
 	return v
+}
+
+// clock is a settable test clock, safe across goroutines.
+type clock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+func (c *clock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.t
+}
+
+func (c *clock) set(t time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = t
+}
+
+func (c *clock) advance(d time.Duration) { c.set(c.now().Add(d)) }
+
+// openClockStore opens a store in a fresh directory on a clock the test
+// moves, starting at testNow.
+func openClockStore(t *testing.T) (*Store, *clock) {
+	t.Helper()
+	clk := &clock{t: testNow}
+	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), Options{
+		Logger: slog.New(newLogSink()),
+		Now:    clk.now,
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	return s, clk
+}
+
+func mustSweep(t *testing.T, s *Store) {
+	t.Helper()
+	if _, err := s.Sweep(t.Context()); err != nil {
+		t.Fatalf("Sweep: %v", err)
+	}
+}
+
+// getIdentity reads identity row id, failing the test when it is absent.
+func getIdentity(t *testing.T, s *Store, id uint64) identityRow {
+	t.Helper()
+	var row identityRow
+	var found bool
+	if err := s.db.View(t.Context(), func(r *bolttable.ReadTx) error {
+		var err error
+		row, found, err = s.t.identities.table.Get(r, id)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatalf("identity %d not found", id)
+	}
+	return row
 }
 
 // openTestStore opens a store in a fresh directory with the fixed clock and

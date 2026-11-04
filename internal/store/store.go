@@ -3,6 +3,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -22,18 +23,32 @@ const (
 	msgStoreCorrupt = "store corrupt"
 )
 
-// Options configures Open. A nil Logger discards; a nil Now is time.Now.
+// Default lifetimes, used where Options leaves one zero.
+const (
+	DefaultThreadTTL  = 72 * time.Hour
+	DefaultDormantTTL = 72 * time.Hour
+)
+
+// Options configures Open. A nil Logger discards; a nil Now is time.Now;
+// a zero TTL takes its default.
 type Options struct {
 	Logger *slog.Logger
 	Now    func() time.Time
+	// ThreadTTL is how long a path or direct thread, a post and an event
+	// live after they are written.
+	ThreadTTL time.Duration
+	// DormantTTL is how long an expired identity stays revivable.
+	DormantTTL time.Duration
 }
 
 // Store is an open grelot store.
 type Store struct {
-	db  *bolttable.DB
-	t   *tables
-	log *slog.Logger
-	now func() time.Time
+	db         *bolttable.DB
+	t          *tables
+	log        *slog.Logger
+	now        func() time.Time
+	threadTTL  time.Duration
+	dormantTTL time.Duration
 }
 
 // Open opens or creates the store file at path. A file another process
@@ -43,12 +58,18 @@ type Store struct {
 // <path>.corrupt-<UTC time as 20060102T150405Z> and replaced by an empty
 // store, with an ERROR.
 func Open(path string, o Options) (*Store, error) {
-	s := &Store{log: o.Logger, now: o.Now}
+	s := &Store{log: o.Logger, now: o.Now, threadTTL: o.ThreadTTL, dormantTTL: o.DormantTTL}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
 	}
 	if s.now == nil {
 		s.now = time.Now
+	}
+	if s.threadTTL == 0 {
+		s.threadTTL = DefaultThreadTTL
+	}
+	if s.dormantTTL == 0 {
+		s.dormantTTL = DefaultDormantTTL
 	}
 	db, t, err := openFile(path)
 	if fe := (*bolttable.FormatError)(nil); errors.As(err, &fe) {
@@ -70,6 +91,7 @@ func Open(path string, o Options) (*Store, error) {
 		return nil, err
 	}
 	s.db, s.t = db, t
+	s.wireLeases()
 	return s, nil
 }
 
@@ -129,3 +151,45 @@ func (s *Store) moveAside(path string, cause error) error {
 
 // Close closes the file, waiting for open transactions.
 func (s *Store) Close() error { return s.db.Close() }
+
+// wtx is one write transaction with the time it runs at.
+type wtx struct {
+	now time.Time
+	s   *Store
+	tx  *bolttable.Tx
+	r   *bolttable.ReadTx
+}
+
+// update runs fn in one write transaction, at one instant of the clock.
+func (s *Store) update(ctx context.Context, fn func(*wtx) error) error {
+	return s.db.Update(ctx, func(tx *bolttable.Tx) error {
+		return fn(&wtx{s: s, tx: tx, r: tx.Read(), now: s.now()})
+	})
+}
+
+// sweepBatch bounds the rows one sweep transaction handles, so a backlog
+// never holds the write lock for long.
+const sweepBatch = 256
+
+// Sweep runs every due warning and expiry in batches, one transaction
+// each, until none is due, and reports how many rows it handled.
+func (s *Store) Sweep(ctx context.Context) (int, error) {
+	total := 0
+	for {
+		n := 0
+		err := s.update(ctx, func(w *wtx) error {
+			for _, l := range s.t.leased {
+				got, err := l.sweep(w, sweepBatch-n)
+				n += got
+				if err != nil || n >= sweepBatch {
+					return err
+				}
+			}
+			return nil
+		})
+		total += n
+		if err != nil || n < sweepBatch {
+			return total, err
+		}
+	}
+}

@@ -39,7 +39,7 @@ func TestOpen_keepsRowsAcrossARestart(t *testing.T) {
 		t.Fatalf("Open: %v", err)
 	}
 	if err := s.db.Update(t.Context(), func(tx *bolttable.Tx) error {
-		return s.t.identities.Put(tx, 7, &identityRow{ID: 7, Name: "kept"})
+		return s.t.identities.table.Put(tx, 7, &identityRow{ID: 7, Name: "kept"})
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestOpen_keepsRowsAcrossARestart(t *testing.T) {
 	var got identityRow
 	var found bool
 	if err := s2.db.View(t.Context(), func(r *bolttable.ReadTx) error {
-		got, found, err = s2.t.identities.Get(r, 7)
+		got, found, err = s2.t.identities.table.Get(r, 7)
 		return err
 	}); err != nil {
 		t.Fatal(err)
