@@ -6,12 +6,12 @@ import (
 	"slices"
 )
 
-// Follow adds the live path thread at path to session's identity's
+// Follow adds the live path thread at path to c's identity's
 // follows and returns the identity; following it again changes nothing.
 // Refusals: KindInvalid for a bad path; KindGone for a session with no
 // live identity; KindNotFound for no live thread there; KindConflict at
 // the follow cap.
-func (s *Store) Follow(ctx context.Context, session, path string) (Identity, error) {
+func (s *Store) Follow(ctx context.Context, c Caller, path string) (Identity, error) {
 	if _, err := checkPaths([]string{path}); err != nil {
 		return Identity{}, err
 	}
@@ -21,7 +21,7 @@ func (s *Store) Follow(ctx context.Context, session, path string) (Identity, err
 		if err != nil {
 			return err
 		}
-		me, err := w.liveBySession(session)
+		me, err := w.liveAs(c)
 		if err != nil {
 			return err
 		}
@@ -44,13 +44,13 @@ func (s *Store) Follow(ctx context.Context, session, path string) (Identity, err
 	return out, err
 }
 
-// Unfollow takes path out of session's identity's follows and returns the
+// Unfollow takes path out of c's identity's follows and returns the
 // identity; a path it does not follow changes nothing. A thread at or
 // under a work path or a held reservation cannot be muted, since that
 // delivers it. Refusals: KindInvalid for a bad path; KindGone for a
 // session with no live identity; KindConflict under a work path or a held
 // reservation.
-func (s *Store) Unfollow(ctx context.Context, session, path string) (Identity, error) {
+func (s *Store) Unfollow(ctx context.Context, c Caller, path string) (Identity, error) {
 	if _, err := checkPaths([]string{path}); err != nil {
 		return Identity{}, err
 	}
@@ -60,7 +60,7 @@ func (s *Store) Unfollow(ctx context.Context, session, path string) (Identity, e
 		if err != nil {
 			return err
 		}
-		me, err := w.liveBySession(session)
+		me, err := w.liveAs(c)
 		if err != nil {
 			return err
 		}

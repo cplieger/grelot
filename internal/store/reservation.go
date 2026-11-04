@@ -14,14 +14,14 @@ import (
 
 const maxReason = 280
 
-// Reserving is a reserve request from Session's identity. With Queue a
+// Reserving is a reserve request as Caller's identity. With Queue a
 // conflicting request joins the queue instead of being refused.
 type Reserving struct {
-	Session string
-	Path    string
-	Reason  string
-	TTL     time.Duration
-	Queue   bool
+	Path   string
+	Reason string
+	Caller Caller
+	TTL    time.Duration
+	Queue  bool
 }
 
 // Reservation is a grant or a queue entry as a caller sees it. A queued
@@ -55,7 +55,7 @@ type ReservationQuery struct {
 	Mine bool
 }
 
-// Reserve grants r.Path to the session's identity for r.TTL, or queues the
+// Reserve grants r.Path to r.Caller's identity for r.TTL, or queues the
 // request when r.Queue is set and it conflicts. A request conflicts with
 // another identity's grant that overlaps it and with any queued request
 // that overlaps it, the identity's own included, so a newcomer never
@@ -100,7 +100,7 @@ func (w *wtx) reserve(r *Reserving) (Reserved, *Error, error) {
 	if err := w.settleReservations(r.Path); err != nil {
 		return Reserved{}, nil, err
 	}
-	me, err := w.liveBySession(r.Session)
+	me, err := w.liveAs(r.Caller)
 	if err != nil {
 		return Reserved{}, nil, err
 	}
@@ -181,14 +181,14 @@ func (w *wtx) conflict(me *identityRow, path string, b *reservationRow) (*Error,
 	)}, nil
 }
 
-// RenewReservation resets the session's grant id to expire ttl from now,
+// RenewReservation resets c's grant id to expire ttl from now,
 // re-arming its warning. Refusals: KindInvalid for a bad ttl or a queued
 // entry; KindGone for a session with no live identity; KindNotFound for an
 // id that is not one of its rows, an expired or released one included.
-func (s *Store) RenewReservation(ctx context.Context, session string, id uint64, ttl time.Duration) (Reservation, error) {
+func (s *Store) RenewReservation(ctx context.Context, c Caller, id uint64, ttl time.Duration) (Reservation, error) {
 	var out Reservation
 	err := s.update(ctx, func(w *wtx) error {
-		me, row, err := w.ownReservation(session, id)
+		me, row, err := w.ownReservation(c, id)
 		if err != nil {
 			return err
 		}
@@ -209,14 +209,14 @@ func (s *Store) RenewReservation(ctx context.Context, session string, id uint64,
 	return out, err
 }
 
-// Release frees the session's grant id or cancels its queue entry id, and
+// Release frees c's grant id or cancels its queue entry id, and
 // hands the freed paths to the queue in the same transaction. Refusals:
 // KindGone for a session with no live identity; KindNotFound for an id
 // that is not one of its rows, an expired or released one included.
-func (s *Store) Release(ctx context.Context, session string, id uint64) (Reservation, error) {
+func (s *Store) Release(ctx context.Context, c Caller, id uint64) (Reservation, error) {
 	var out Reservation
 	err := s.update(ctx, func(w *wtx) error {
-		me, row, err := w.ownReservation(session, id)
+		me, row, err := w.ownReservation(c, id)
 		if err != nil {
 			return err
 		}
@@ -231,15 +231,15 @@ func (s *Store) Release(ctx context.Context, session string, id uint64) (Reserva
 	return out, err
 }
 
-// ownReservation settles row id, then reads the session's live identity
+// ownReservation settles row id, then reads c's live identity
 // and stores its request, so a hand-off the caller runs next writes its
 // events onto the latest copy of the row.
-func (w *wtx) ownReservation(session string, id uint64) (identityRow, reservationRow, error) {
+func (w *wtx) ownReservation(c Caller, id uint64) (identityRow, reservationRow, error) {
 	row, found, err := w.s.t.resv.settle(w, id)
 	if err != nil {
 		return identityRow{}, reservationRow{}, err
 	}
-	me, err := w.liveBySession(session)
+	me, err := w.liveAs(c)
 	if err != nil {
 		return identityRow{}, reservationRow{}, err
 	}
@@ -254,23 +254,23 @@ func (w *wtx) ownReservation(session string, id uint64) (identityRow, reservatio
 }
 
 // Reservations lists the unexpired grants and the queue entries, in id
-// order, as the session's identity sees them; a session with no live
+// order, as c's identity sees them; a session with no live
 // identity sees every relation as unknown. Refusals: KindInvalid for a bad
 // path.
-func (s *Store) Reservations(ctx context.Context, session string, q ReservationQuery) ([]Reservation, error) {
+func (s *Store) Reservations(ctx context.Context, c Caller, q ReservationQuery) ([]Reservation, error) {
 	if q.Path != "" {
 		if _, err := checkPaths([]string{q.Path}); err != nil {
 			return nil, err
 		}
 	}
-	if _, err := s.Seen(ctx, session); err != nil && !isKind(err, KindGone) {
+	if _, err := s.Seen(ctx, c); err != nil && !isKind(err, KindGone) {
 		return nil, err
 	}
 	var out []Reservation
 	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		var me identityRow
-		if v, found, err := s.lookupIdentity(r, s.t.bySession, session); err != nil {
+		if v, found, err := s.callerFor(r, c, now); err != nil {
 			return err
 		} else if found && v.State == stateLive {
 			me = v

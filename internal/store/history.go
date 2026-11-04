@@ -49,25 +49,25 @@ type History struct {
 	Identity Identity
 }
 
-// History reads session's own mailbox, its deliveries read and unread and,
+// History reads c's own mailbox, its deliveries read and unread and,
 // unless From names another identity or LastRead is set, its own posts in
 // the same threads, merged in time order. It moves no cursor. An own post
 // carries no Seq and the relation "you". Refusals: KindInvalid for a bad
 // limit, path or time window, From with FromMe, or With naming the caller;
 // KindNotFound for an unknown name; KindGone for a session with no live
 // identity.
-func (s *Store) History(ctx context.Context, session string, query *HistoryQuery) (History, error) {
+func (s *Store) History(ctx context.Context, c Caller, query *HistoryQuery) (History, error) {
 	q := *query
 	if err := checkHistory(&q); err != nil {
 		return History{}, err
 	}
-	if _, err := s.Seen(ctx, session); err != nil {
+	if _, err := s.Seen(ctx, c); err != nil {
 		return History{}, err
 	}
 	var out History
 	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
-		me, err := s.liveFor(r, session, now)
+		me, err := s.liveFor(r, c, now)
 		if err != nil {
 			return err
 		}

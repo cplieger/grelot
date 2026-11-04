@@ -40,13 +40,13 @@ func TestPost_refusedOnlyPastNinetyPercentOfTheDefaultCeiling(t *testing.T) {
 
 	mustAck(t, s, sess("bravo"), 1)
 	w := envA()
-	if _, err := s.Set(t.Context(), sess("alpha"), Change{TTL: 2 * time.Hour, Where: &w}); err != nil {
+	if _, err := s.Set(t.Context(), Caller{Session: sess("alpha")}, Change{TTL: 2 * time.Hour, Where: &w}); err != nil {
 		t.Errorf("a renewal on a nearly full store: %v", err)
 	}
 	if _, err := s.Revive(t.Context(), new(revival(sessA, "", envA()))); err != nil {
 		t.Errorf("a revival on a nearly full store: %v", err)
 	}
-	if err := s.Retire(t.Context(), sess("bravo")); err != nil {
+	if err := s.Retire(t.Context(), Caller{Session: sess("bravo")}); err != nil {
 		t.Errorf("a retirement on a nearly full store: %v", err)
 	}
 }

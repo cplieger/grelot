@@ -14,10 +14,13 @@ const (
 	KindNotFound
 	// KindConflict collides with another identity's state (409).
 	KindConflict
-	// KindGone is a session whose identity has gone or is dormant (410).
+	// KindGone is an identity, delegate or link that has gone, or a
+	// dormant identity (410).
 	KindGone
 	// KindFull is a post refused because the store is nearly full (507).
 	KindFull
+	// KindForbidden is a request outside what the caller may do (403).
+	KindForbidden
 )
 
 // Error is a refusal the caller sees. Msg names the fix; Why is a fixed

@@ -19,14 +19,14 @@ const (
 )
 
 func reserving(name, path string, ttl time.Duration) Reserving {
-	return Reserving{Session: sess(name), Path: path, Reason: "reason of " + name, TTL: ttl}
+	return Reserving{Caller: Caller{Session: sess(name)}, Path: path, Reason: "reason of " + name, TTL: ttl}
 }
 
 func mustReserve(t *testing.T, s *Store, r Reserving) Reserved {
 	t.Helper()
 	got, err := s.Reserve(t.Context(), &r)
 	if err != nil {
-		t.Fatalf("Reserve(%s, %s): %v", r.Session, r.Path, err)
+		t.Fatalf("Reserve(%s, %s): %v", r.Caller.Session, r.Path, err)
 	}
 	return got
 }
@@ -36,14 +36,14 @@ func mustQueue(t *testing.T, s *Store, r Reserving) Reserved {
 	r.Queue = true
 	got := mustReserve(t, s, r)
 	if got.Reservation.State != reservationQueued {
-		t.Fatalf("Reserve(%s, %s, queue) is %s, want queued", r.Session, r.Path, got.Reservation.State)
+		t.Fatalf("Reserve(%s, %s, queue) is %s, want queued", r.Caller.Session, r.Path, got.Reservation.State)
 	}
 	return got
 }
 
 func mustRelease(t *testing.T, s *Store, name string, id uint64) {
 	t.Helper()
-	if _, err := s.Release(t.Context(), sess(name), id); err != nil {
+	if _, err := s.Release(t.Context(), Caller{Session: sess(name)}, id); err != nil {
 		t.Fatalf("Release(%s, %d): %v", name, id, err)
 	}
 }
@@ -267,7 +267,7 @@ func TestRelease_cancellingTheOnlyBlockerGrantsTheRequestBehindIt(t *testing.T) 
 	parent := mustQueue(t, s, reserving("parent", pathMarotte, time.Hour))
 	api := mustQueue(t, s, reserving("api", pathAPI, time.Hour))
 
-	got, err := s.Release(t.Context(), sess("parent"), parent.Reservation.ID)
+	got, err := s.Release(t.Context(), Caller{Session: sess("parent")}, parent.Reservation.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,13 +317,13 @@ func TestRelease_aStaleIDCannotTouchALaterGrant(t *testing.T) {
 	if later.Reservation.ID == old.Reservation.ID {
 		t.Fatal("the later grant reused the old id")
 	}
-	_, err := s.Release(t.Context(), sess("holder"), old.Reservation.ID)
+	_, err := s.Release(t.Context(), Caller{Session: sess("holder")}, old.Reservation.ID)
 	wantRefusal(t, err, KindNotFound, "", "no reservation")
-	_, err = s.RenewReservation(t.Context(), sess("holder"), old.Reservation.ID, 8*time.Hour)
+	_, err = s.RenewReservation(t.Context(), Caller{Session: sess("holder")}, old.Reservation.ID, 8*time.Hour)
 	wantRefusal(t, err, KindNotFound, "", "no reservation")
-	_, err = s.Release(t.Context(), sess("other"), later.Reservation.ID)
+	_, err = s.Release(t.Context(), Caller{Session: sess("other")}, later.Reservation.ID)
 	wantRefusal(t, err, KindNotFound, "", "no reservation")
-	_, err = s.RenewReservation(t.Context(), sess("other"), later.Reservation.ID, 8*time.Hour)
+	_, err = s.RenewReservation(t.Context(), Caller{Session: sess("other")}, later.Reservation.ID, 8*time.Hour)
 	wantRefusal(t, err, KindNotFound, "", "no reservation")
 	row := wantState(t, s, later.Reservation.ID, reservationHeld)
 	if !row.Lease.Expires.Equal(testNow.Add(time.Hour)) {
@@ -337,7 +337,7 @@ func TestRenewReservation_refusesAQueueEntry(t *testing.T) {
 	regAt(t, s, "waiter")
 	mustReserve(t, s, reserving("holder", pathMarotte, time.Hour))
 	q := mustQueue(t, s, reserving("waiter", pathMarotte, time.Hour))
-	_, err := s.RenewReservation(t.Context(), sess("waiter"), q.Reservation.ID, 2*time.Hour)
+	_, err := s.RenewReservation(t.Context(), Caller{Session: sess("waiter")}, q.Reservation.ID, 2*time.Hour)
 	wantRefusal(t, err, KindInvalid, "", "queued")
 }
 
@@ -363,7 +363,7 @@ func TestReservationWarning_onceAndRenewRearms(t *testing.T) {
 			t.Errorf("warning %q lacks %q", ev[0].Text, part)
 		}
 	}
-	got, err := s.RenewReservation(t.Context(), sess("holder"), id, time.Hour)
+	got, err := s.RenewReservation(t.Context(), Caller{Session: sess("holder")}, id, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -524,11 +524,11 @@ func TestUnfollow_refusedUnderAHeldReservation(t *testing.T) {
 	mustFollow(t, s, sess("holder"), pathWeb)
 	res := mustReserve(t, s, reserving("holder", pathMarotte, time.Hour))
 
-	_, err := s.Unfollow(t.Context(), sess("holder"), pathWeb)
+	_, err := s.Unfollow(t.Context(), Caller{Session: sess("holder")}, pathWeb)
 	id := strconv.FormatUint(res.Reservation.ID, 10)
 	wantRefusal(t, err, KindConflict, "", "release "+id+" first", pathMarotte)
 	mustRelease(t, s, "holder", res.Reservation.ID)
-	got, err := s.Unfollow(t.Context(), sess("holder"), pathWeb)
+	got, err := s.Unfollow(t.Context(), Caller{Session: sess("holder")}, pathWeb)
 	if err != nil || slices.Contains(got.Follows, pathWeb) {
 		t.Errorf("unfollow after the release: follows %v, err %v; want it gone", got.Follows, err)
 	}
@@ -569,7 +569,7 @@ func TestReservations_listsGrantsAndQueueEntries(t *testing.T) {
 	}
 	list := func(session string, q ReservationQuery) []Reservation {
 		t.Helper()
-		rs, err := s.Reservations(t.Context(), session, q)
+		rs, err := s.Reservations(t.Context(), Caller{Session: session}, q)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -658,7 +658,7 @@ func TestUnfollow_passesOnceTheReservationExpired(t *testing.T) {
 	mustFollow(t, s, sess("holder"), pathWeb)
 	mustReserve(t, s, reserving("holder", pathMarotte, 10*time.Minute))
 	clk.advance(10 * time.Minute)
-	if _, err := s.Unfollow(t.Context(), sess("holder"), pathWeb); err != nil {
+	if _, err := s.Unfollow(t.Context(), Caller{Session: sess("holder")}, pathWeb); err != nil {
 		t.Errorf("unfollow after the reservation expired: %v", err)
 	}
 }
@@ -691,7 +691,7 @@ func TestRetire_freesEveryOwnRowBeforeTheQueueWalk(t *testing.T) {
 	mustQueue(t, s, reserving("leaving", pathAPI, time.Hour))
 	third := mustQueue(t, s, reserving("third", pathAPI, time.Hour))
 
-	if err := s.Retire(t.Context(), sess("leaving")); err != nil {
+	if err := s.Retire(t.Context(), Caller{Session: sess("leaving")}); err != nil {
 		t.Fatal(err)
 	}
 	if rows := rowsHeldBy(t, s, leaving.ID); len(rows) != 0 {
@@ -710,7 +710,7 @@ func TestRetire_handsItsGrantToTheAgentQueuedBehindIt(t *testing.T) {
 	held := mustReserve(t, s, reserving("leaving", pathMarotte, time.Hour))
 	q := mustQueue(t, s, reserving("waiter", pathMarotte, 2*time.Hour))
 
-	if err := s.Retire(t.Context(), sess("leaving")); err != nil {
+	if err := s.Retire(t.Context(), Caller{Session: sess("leaving")}); err != nil {
 		t.Fatal(err)
 	}
 	if _, found := getReservation(t, s, held.Reservation.ID); found {
@@ -733,8 +733,8 @@ func TestIdentityExpiry_handsItsGrantsOffAndRevivalRestoresNone(t *testing.T) {
 	waiter := regAt(t, s, "waiter")
 	regAt(t, s, "other")
 	mustReserve(t, s, reserving("other", "/workspace/sse", time.Hour))
-	held := mustReserve(t, s, Reserving{Session: sessA, Path: pathMarotte, Reason: "build", TTL: time.Hour})
-	own := mustQueue(t, s, Reserving{Session: sessA, Path: "/workspace/sse", Reason: "after", TTL: time.Hour})
+	held := mustReserve(t, s, Reserving{Caller: Caller{Session: sessA}, Path: pathMarotte, Reason: "build", TTL: time.Hour})
+	own := mustQueue(t, s, Reserving{Caller: Caller{Session: sessA}, Path: "/workspace/sse", Reason: "after", TTL: time.Hour})
 	q := mustQueue(t, s, reserving("waiter", pathMarotte, time.Hour))
 
 	clk.advance(15 * time.Minute)
@@ -761,17 +761,17 @@ func TestIdentityExpiry_handsItsGrantsOffAndRevivalRestoresNone(t *testing.T) {
 func TestTakeOver_keepsReservationIDsWorkingFromTheNewSession(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	mustRegister(t, s, registration(sessA, "subflux-dev", envA()))
-	held := mustReserve(t, s, Reserving{Session: sessA, Path: pathMarotte, Reason: "build", TTL: time.Hour})
+	held := mustReserve(t, s, Reserving{Caller: Caller{Session: sessA}, Path: pathMarotte, Reason: "build", TTL: time.Hour})
 	r := registration(sessB, "subflux-dev", envA())
 	r.TakeOver = true
 	mustRegister(t, s, r)
 
-	if _, err := s.RenewReservation(t.Context(), sessB, held.Reservation.ID, 2*time.Hour); err != nil {
+	if _, err := s.RenewReservation(t.Context(), Caller{Session: sessB}, held.Reservation.ID, 2*time.Hour); err != nil {
 		t.Errorf("renew from the new session: %v", err)
 	}
-	_, err := s.Release(t.Context(), sessA, held.Reservation.ID)
+	_, err := s.Release(t.Context(), Caller{Session: sessA}, held.Reservation.ID)
 	wantRefusal(t, err, KindGone, "")
-	if _, err := s.Release(t.Context(), sessB, held.Reservation.ID); err != nil {
+	if _, err := s.Release(t.Context(), Caller{Session: sessB}, held.Reservation.ID); err != nil {
 		t.Errorf("release from the new session: %v", err)
 	}
 }

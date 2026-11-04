@@ -63,7 +63,7 @@ func TestRevive_sameSessionRestoresTheIdentity(t *testing.T) {
 	if row.Nudged != 0 || row.Nudges != 0 || !row.NudgedAt.IsZero() {
 		t.Errorf("nudged %d nudges %d at %v, want the nudge state reset", row.Nudged, row.Nudges, row.NudgedAt)
 	}
-	if _, err := s.Set(t.Context(), sessA, Change{Fields: Fields{Description: "back at it"}}); err != nil {
+	if _, err := s.Set(t.Context(), Caller{Session: sessA}, Change{Fields: Fields{Description: "back at it"}}); err != nil {
 		t.Errorf("Set after the revival: %v", err)
 	}
 }
@@ -164,10 +164,10 @@ func TestRevive_byNameMovesItWithinItsEnvironmentAndProvider(t *testing.T) {
 			if got.Identity.ID != old.ID || !got.Moved || got.Identity.State != stateLive {
 				t.Errorf("id %d moved %v state %q, want %d moved and live", got.Identity.ID, got.Moved, got.Identity.State, old.ID)
 			}
-			if me, err := s.Seen(t.Context(), sessB); err != nil || me.ID != old.ID {
+			if me, err := s.Seen(t.Context(), Caller{Session: sessB}); err != nil || me.ID != old.ID {
 				t.Errorf("Seen(sessB) = %d, %v; want the revived identity", me.ID, err)
 			}
-			_, err := s.Seen(t.Context(), sessA)
+			_, err := s.Seen(t.Context(), Caller{Session: sessA})
 			wantRefusal(t, err, KindGone, "none")
 			if n := len(sink.lines(slog.LevelInfo, "move refused")); n != 0 {
 				t.Errorf("%d move refused lines, want none", n)

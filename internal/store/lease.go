@@ -37,6 +37,7 @@ var (
 	threadPolicy   = leasePolicy{name: "threads"}
 	messagePolicy  = leasePolicy{name: "messages"}
 	deliveryPolicy = leasePolicy{name: "deliveries"}
+	linkPolicy     = leasePolicy{name: "links"}
 	// reservationPolicy's max is the default; Options.ReservationMaxTTL
 	// sets the store's own.
 	reservationPolicy = leasePolicy{name: "reservations", min: time.Minute, max: DefaultReservationMaxTTL, lead: leadOf(5 * time.Minute)}

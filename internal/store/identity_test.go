@@ -130,7 +130,7 @@ func TestRegister_fieldRule(t *testing.T) {
 			r.Where = &Where{Machine: dmi("1"), Environment: hex32("a")}
 			_, err := s.Register(t.Context(), &r)
 			wantRefusal(t, err, KindInvalid, "", tc.want)
-			if _, err := s.Seen(t.Context(), sessA); err == nil {
+			if _, err := s.Seen(t.Context(), Caller{Session: sessA}); err == nil {
 				t.Error("a refused register left an identity behind")
 			}
 		})
@@ -283,7 +283,7 @@ func TestTakeOver_refusedOutsideTheEnvironmentOrProvider(t *testing.T) {
 			if len(lines) != 1 || attr(lines[0], "why") != tc.why {
 				t.Errorf("move refused lines %v, want one with why %s", lines, tc.why)
 			}
-			if got, err := s.Seen(t.Context(), sessA); err != nil || got.ID != orig.ID {
+			if got, err := s.Seen(t.Context(), Caller{Session: sessA}); err != nil || got.ID != orig.ID {
 				t.Errorf("the holder's session lost its identity: %+v, %v", got, err)
 			}
 		})
@@ -332,7 +332,7 @@ func TestTakeOver_movesTheIdentityWithinItsEnvironment(t *testing.T) {
 			if want := clk.now().Add(2 * time.Hour); !row.Lease.Expires.Equal(want) || !row.RegisteredAt.Equal(testNow) {
 				t.Errorf("expires %v registered %v, want a new lease to %v and the first registration kept", row.Lease.Expires, row.RegisteredAt, want)
 			}
-			_, err = s.Seen(t.Context(), sessA)
+			_, err = s.Seen(t.Context(), Caller{Session: sessA})
 			wantRefusal(t, err, KindGone, "none")
 			if n := len(sink.lines(slog.LevelInfo, "identity moved")); n != 1 {
 				t.Errorf("%d identity moved lines, want 1", n)
@@ -418,16 +418,16 @@ func TestSet_renewMovesTheLeaseAndReArmsTheWarning(t *testing.T) {
 	mustRegister(t, s, r)
 	clk.advance(20 * time.Minute)
 	w := envA()
-	got, err := s.Set(t.Context(), sessA, Change{TTL: 2 * time.Hour, Where: &w})
+	got, err := s.Set(t.Context(), Caller{Session: sessA}, Change{TTL: 2 * time.Hour, Where: &w})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if want := clk.now().Add(2 * time.Hour); !got.Expires.Equal(want) || !got.WarnAt.Equal(want.Add(-30*time.Minute)) {
 		t.Errorf("expires %v warn %v, want %v and 30m before", got.Expires, got.WarnAt, want)
 	}
-	_, err = s.Set(t.Context(), sessA, Change{TTL: 2 * time.Hour})
+	_, err = s.Set(t.Context(), Caller{Session: sessA}, Change{TTL: 2 * time.Hour})
 	wantRefusal(t, err, KindInvalid, "", "where is required")
-	_, err = s.Set(t.Context(), sessA, Change{TTL: 10 * time.Minute, Where: &w})
+	_, err = s.Set(t.Context(), Caller{Session: sessA}, Change{TTL: 10 * time.Minute, Where: &w})
 	wantRefusal(t, err, KindInvalid, "", "--ttl")
 }
 
@@ -438,7 +438,7 @@ func TestSet_renewMergesTheSentCheckout(t *testing.T) {
 	where := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoSubflux, "c"), co(repoGrelot, "d")}}
 	id := mustRegister(t, s, registration(sessA, "subflux-dev", where, repoSubflux, repoGrelot))
 	sent := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoSubflux, "e")}}
-	if _, err := s.Set(t.Context(), sessA, Change{TTL: time.Hour, Where: &sent}); err != nil {
+	if _, err := s.Set(t.Context(), Caller{Session: sessA}, Change{TTL: time.Hour, Where: &sent}); err != nil {
 		t.Fatal(err)
 	}
 	got := getIdentity(t, s, id.ID).Where.Checkouts
@@ -451,11 +451,11 @@ func TestSet_newPathsNeedWhereAndReplaceTheCheckouts(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	where := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoSubflux, "c"), co(repoGrelot, "d")}}
 	id := mustRegister(t, s, registration(sessA, "subflux-dev", where, repoSubflux, repoGrelot))
-	_, err := s.Set(t.Context(), sessA, Change{Fields: Fields{Paths: []string{repoSubflux}}})
+	_, err := s.Set(t.Context(), Caller{Session: sessA}, Change{Fields: Fields{Paths: []string{repoSubflux}}})
 	wantRefusal(t, err, KindInvalid, "", "where is required")
 
 	sent := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoSubflux, "c")}}
-	got, err := s.Set(t.Context(), sessA, Change{Fields: Fields{Paths: []string{repoSubflux}}, Where: &sent})
+	got, err := s.Set(t.Context(), Caller{Session: sessA}, Change{Fields: Fields{Paths: []string{repoSubflux}}, Where: &sent})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -478,7 +478,7 @@ func TestSet_newPathsDropAStoredCheckoutTheClientDidNotSend(t *testing.T) {
 	where := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoSubflux, "c"), co(repoGrelot, "d")}}
 	id := mustRegister(t, s, registration(sessA, "subflux-dev", where, repoSubflux, repoGrelot))
 	sent := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoSubflux, "c")}}
-	if _, err := s.Set(t.Context(), sessA, Change{Fields: Fields{Paths: []string{repoSubflux, repoGrelot, "/workspace/sse"}}, Where: &sent}); err != nil {
+	if _, err := s.Set(t.Context(), Caller{Session: sessA}, Change{Fields: Fields{Paths: []string{repoSubflux, repoGrelot, "/workspace/sse"}}, Where: &sent}); err != nil {
 		t.Fatal(err)
 	}
 	if got := getIdentity(t, s, id.ID).Where.Checkouts; !slices.Equal(got, sent.Checkouts) {
@@ -490,21 +490,21 @@ func TestSet_renameAndRefusals(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
 	mustRegister(t, s, registration(sessB, "taken-name", envA()))
 	mustRegister(t, s, registration(sessA, "subflux-dev", envA()))
-	got, err := s.Set(t.Context(), sessA, Change{Fields: Fields{Name: "subflux-web", Description: "new work"}})
+	got, err := s.Set(t.Context(), Caller{Session: sessA}, Change{Fields: Fields{Name: "subflux-web", Description: "new work"}})
 	if err != nil || got.Name != "subflux-web" || got.Description != "new work" {
 		t.Errorf("rename: %+v, %v", got, err)
 	}
-	_, err = s.Set(t.Context(), sessA, Change{Fields: Fields{Name: "taken-name"}})
+	_, err = s.Set(t.Context(), Caller{Session: sessA}, Change{Fields: Fields{Name: "taken-name"}})
 	wantRefusal(t, err, KindConflict, "", "taken-name is held")
-	_, err = s.Set(t.Context(), sessA, Change{Fields: Fields{Name: "Bad"}})
+	_, err = s.Set(t.Context(), Caller{Session: sessA}, Change{Fields: Fields{Name: "Bad"}})
 	wantRefusal(t, err, KindInvalid, "", "lowercase")
-	_, err = s.Set(t.Context(), sessA, Change{})
+	_, err = s.Set(t.Context(), Caller{Session: sessA}, Change{})
 	wantRefusal(t, err, KindInvalid, "", "nothing to set")
 
-	_, err = s.Set(t.Context(), sessC, Change{Fields: Fields{Description: "x"}})
+	_, err = s.Set(t.Context(), Caller{Session: sessC}, Change{Fields: Fields{Description: "x"}})
 	wantRefusal(t, err, KindGone, "none", "grelot register")
 	clk.advance(6 * time.Hour)
-	_, err = s.Set(t.Context(), sessA, Change{Fields: Fields{Description: "x"}})
+	_, err = s.Set(t.Context(), Caller{Session: sessA}, Change{Fields: Fields{Description: "x"}})
 	wantRefusal(t, err, KindGone, "dormant", "grelot revive --ttl")
 }
 
@@ -540,7 +540,7 @@ func TestEndSession_aResumeRestoresNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	clk.advance(time.Minute)
-	got, err := s.Seen(t.Context(), sessA)
+	got, err := s.Seen(t.Context(), Caller{Session: sessA})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -548,7 +548,7 @@ func TestEndSession_aResumeRestoresNothing(t *testing.T) {
 		t.Errorf("ended %v expires %v, want ended cleared and the capped %v kept", got.Ended, got.Expires, testNow.Add(time.Hour))
 	}
 	w := envA()
-	if got, err = s.Set(t.Context(), sessA, Change{TTL: 6 * time.Hour, Where: &w}); err != nil || !got.Expires.Equal(clk.now().Add(6*time.Hour)) {
+	if got, err = s.Set(t.Context(), Caller{Session: sessA}, Change{TTL: 6 * time.Hour, Where: &w}); err != nil || !got.Expires.Equal(clk.now().Add(6*time.Hour)) {
 		t.Errorf("renew after resume: %v, %v", got.Expires, err)
 	}
 }
@@ -557,7 +557,7 @@ func TestSeen_lastSeenWrittenAtMostEveryFiveMinutes(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
 	id := mustRegister(t, s, registration(sessA, "subflux-dev", envA()))
 	clk.advance(2 * time.Minute)
-	got, err := s.Seen(t.Context(), sessA)
+	got, err := s.Seen(t.Context(), Caller{Session: sessA})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -568,7 +568,7 @@ func TestSeen_lastSeenWrittenAtMostEveryFiveMinutes(t *testing.T) {
 		t.Errorf("stored last seen %v after 2 minutes, want the unwritten %v", row.LastSeen, testNow)
 	}
 	clk.advance(3 * time.Minute)
-	if _, err := s.Seen(t.Context(), sessA); err != nil {
+	if _, err := s.Seen(t.Context(), Caller{Session: sessA}); err != nil {
 		t.Fatal(err)
 	}
 	if row := getIdentity(t, s, id.ID); !row.LastSeen.Equal(clk.now()) {
@@ -594,7 +594,7 @@ func TestEndSession_aRepeatedRegisterOrWhoClearsEndedAndKeepsTheCap(t *testing.T
 					t.Errorf("repeated register %+v, want the existing identity", got)
 				}
 			} else {
-				_, err = s.Who(t.Context(), sessA, WhoQuery{})
+				_, err = s.Who(t.Context(), Caller{Session: sessA}, WhoQuery{})
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -616,11 +616,11 @@ func TestSeen_forgetsAnIdentityOnceItIsGone(t *testing.T) {
 	b := mustRegister(t, s, registration(sessB, "agent-b", envA()))
 	clk.advance(time.Minute)
 	for _, session := range []string{sessA, sessB} {
-		if _, err := s.Seen(t.Context(), session); err != nil {
+		if _, err := s.Seen(t.Context(), Caller{Session: session}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := s.Retire(t.Context(), sessA); err != nil {
+	if err := s.Retire(t.Context(), Caller{Session: sessA}); err != nil {
 		t.Fatal(err)
 	}
 	if got := seenIDs(s); !slices.Equal(got, []uint64{b.ID}) {
@@ -641,7 +641,7 @@ func TestSweep_dropsARequestTimeNotedAfterTheRetirement(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
 	a := mustRegister(t, s, registration(sessA, "agent-a", envA()))
 	b := mustRegister(t, s, registration(sessB, "agent-b", envA()))
-	if err := s.Retire(t.Context(), sessA); err != nil {
+	if err := s.Retire(t.Context(), Caller{Session: sessA}); err != nil {
 		t.Fatal(err)
 	}
 	clk.advance(time.Minute)
@@ -662,7 +662,7 @@ func seenIDs(s *Store) []uint64 {
 
 func TestSeen_isGoneWithoutAnIdentity(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
-	_, err := s.Seen(t.Context(), sessA)
+	_, err := s.Seen(t.Context(), Caller{Session: sessA})
 	wantRefusal(t, err, KindGone, "none")
 }
 
@@ -687,7 +687,7 @@ func TestWho_listsLiveIdentitiesWithTheirRelation(t *testing.T) {
 
 	who := func(sess string, q WhoQuery) []string {
 		t.Helper()
-		ps, err := s.Who(t.Context(), sess, q)
+		ps, err := s.Who(t.Context(), Caller{Session: sess}, q)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -700,7 +700,7 @@ func TestWho_listsLiveIdentitiesWithTheirRelation(t *testing.T) {
 	if got, want := who(sessA, WhoQuery{Here: true}), []string{"agent-a you", "agent-b same environment"}; !slices.Equal(got, want) {
 		t.Errorf("who --here %v, want %v", got, want)
 	}
-	all, err := s.Who(t.Context(), sessA, WhoQuery{All: true})
+	all, err := s.Who(t.Context(), Caller{Session: sessA}, WhoQuery{All: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -731,7 +731,7 @@ func TestWho_showsAPeerOnlyItsRelation(t *testing.T) {
 	mustRegister(t, s, registration(sessA, "agent-a", envA()))
 	mustRegister(t, s, registration(sessB, "agent-b", envA()))
 	for _, caller := range []string{sessA, "kiro-cli:session-none"} {
-		ps, err := s.Who(t.Context(), caller, WhoQuery{})
+		ps, err := s.Who(t.Context(), Caller{Session: caller}, WhoQuery{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -761,7 +761,7 @@ func TestWho_aReadSeesAPurgeTheSweepHasNotRun(t *testing.T) {
 	r.TTL = 15 * time.Minute
 	mustRegister(t, s, r)
 	clk.advance(15*time.Minute + 72*time.Hour)
-	ps, err := s.Who(t.Context(), sessB, WhoQuery{All: true})
+	ps, err := s.Who(t.Context(), Caller{Session: sessB}, WhoQuery{All: true})
 	if err != nil {
 		t.Fatal(err)
 	}

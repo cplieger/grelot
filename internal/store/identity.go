@@ -71,9 +71,12 @@ type Identity struct {
 }
 
 // Registration is a register request from Session, "<provider>:<id>".
+// With Link it registers the delegate that link grants, and takes only
+// Fields.Description.
 type Registration struct {
 	Where    *Where
 	Session  string
+	Link     string
 	Host     string
 	OS       string
 	Arch     string
@@ -112,7 +115,11 @@ func (s *Store) Register(ctx context.Context, r *Registration) (Registered, erro
 	var out Registered
 	err = s.update(ctx, func(w *wtx) error {
 		var uerr error
-		out, uerr = w.register(r, provider)
+		if r.Link != "" {
+			out, uerr = w.registerDelegate(r)
+		} else {
+			out, uerr = w.register(r, provider)
+		}
 		return uerr
 	})
 	return out, err
@@ -207,17 +214,17 @@ func (w *wtx) registerRow(r *Registration, provider string) (row identityRow, ad
 	return row, added, held, nil
 }
 
-// Set applies c to session's live identity and returns it. Refusals:
-// KindGone for a session with no live identity, KindInvalid for a bad
-// change, KindConflict for a name another identity holds.
-func (s *Store) Set(ctx context.Context, session string, c Change) (Identity, error) {
+// Set applies ch to c's live identity and returns it. Refusals: KindGone
+// for a session with no live identity, KindInvalid for a bad change,
+// KindConflict for a name another identity holds.
+func (s *Store) Set(ctx context.Context, c Caller, ch Change) (Identity, error) {
 	var out Identity
 	err := s.update(ctx, func(w *wtx) error {
-		row, err := w.liveBySession(session)
+		row, err := w.liveAs(c)
 		if err != nil {
 			return err
 		}
-		if err := w.applyChange(&row, c); err != nil {
+		if err := w.applyChange(&row, ch); err != nil {
 			return err
 		}
 		row.Ended = false
@@ -298,7 +305,7 @@ func (w *wtx) nameFree(name string) error {
 // warning moving with it. Nothing restores the lease but a renewal.
 func (s *Store) EndSession(ctx context.Context, session string) error {
 	return s.update(ctx, func(w *wtx) error {
-		row, err := w.liveBySession(session)
+		row, err := w.liveAs(Caller{Session: session, Self: true})
 		if err != nil {
 			return err
 		}
@@ -311,20 +318,28 @@ func (s *Store) EndSession(ctx context.Context, session string) error {
 	})
 }
 
-// Retire deletes session's live identity, owing a left card for each of its
-// paths, frees its name and hands its reservations to their queues. Its
-// delivery rows stay until their own expiry. A session with no live
+// Retire deletes c's live identity, owing a left card for each of its
+// paths, frees its name, hands its reservations to their queues, and ends
+// its delegates and unused links; a delegate's retirement ends only it.
+// Its delivery rows stay until their own expiry. A session with no live
 // identity is KindGone.
-func (s *Store) Retire(ctx context.Context, session string) error {
+func (s *Store) Retire(ctx context.Context, c Caller) error {
 	return s.update(ctx, func(w *wtx) error {
-		row, err := w.liveBySession(session)
+		row, err := w.liveAs(c)
 		if err != nil {
 			return err
+		}
+		if row.Parent != 0 {
+			return w.endDelegate(&row, "bye")
 		}
 		if err := w.freeHolder(row.ID); err != nil {
 			return err
 		}
+		if err := w.endDelegates(row.ID, "parent_retired"); err != nil {
+			return err
+		}
 		w.queueCards(kindLeft, &row, row.Paths)
+		// The row's delete cascades to its unused links.
 		if err := deleteRow(w, s.t.identities, row.ID); err != nil {
 			return err
 		}
@@ -334,17 +349,17 @@ func (s *Store) Retire(ctx context.Context, session string) error {
 	})
 }
 
-// Seen records a request from session other than the standing wait and
+// Seen records a request as c other than the standing wait and
 // returns its identity, live or dormant. A live one has ended cleared and
 // last_seen refreshed, its row written only when ended was set or the
 // stored last_seen is lastSeenEvery old; a dormant one is never written.
 // A session with no identity is KindGone.
-func (s *Store) Seen(ctx context.Context, session string) (Identity, error) {
+func (s *Store) Seen(ctx context.Context, c Caller) (Identity, error) {
 	var row identityRow
 	var found bool
 	if err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
 		var err error
-		row, found, err = s.lookupIdentity(r, s.t.bySession, session)
+		row, found, err = s.callerFor(r, c, s.now())
 		return err
 	}); err != nil {
 		return Identity{}, err
@@ -362,7 +377,7 @@ func (s *Store) Seen(ctx context.Context, session string) (Identity, error) {
 	}
 	var out Identity
 	err := s.update(ctx, func(w *wtx) error {
-		row, found, err := w.identityBy(s.t.bySession, session)
+		row, found, err := w.callerRow(c)
 		if err != nil {
 			return err
 		}
@@ -417,10 +432,10 @@ type Peer struct {
 	Identity
 }
 
-// Who lists live identities, by name, as session's identity sees them; a
+// Who lists live identities, by name, as c's identity sees them; a
 // session with no live identity sees every relation as unknown.
-func (s *Store) Who(ctx context.Context, session string, q WhoQuery) ([]Peer, error) {
-	if _, err := s.Seen(ctx, session); err != nil && !isKind(err, KindGone) {
+func (s *Store) Who(ctx context.Context, c Caller, q WhoQuery) ([]Peer, error) {
+	if _, err := s.Seen(ctx, c); err != nil && !isKind(err, KindGone) {
 		return nil, err
 	}
 	text := strings.ToLower(q.Text)
@@ -428,7 +443,7 @@ func (s *Store) Who(ctx context.Context, session string, q WhoQuery) ([]Peer, er
 	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		var caller party
-		if me, found, err := s.lookupIdentity(r, s.t.bySession, session); err != nil {
+		if me, found, err := s.callerFor(r, c, now); err != nil {
 			return err
 		} else if found && me.State == stateLive {
 			caller = party{where: me.Where, id: me.ID}
@@ -474,12 +489,13 @@ func whoMatches(v *identityRow, text, path string) bool {
 }
 
 // settled is v as a read sees it before the sweeper reaches it: a live row
-// past its expiry reads dormant, a dormant one past its purge reads nil.
+// past its expiry reads dormant, a dormant one past its purge and a
+// delegate past its expiry read nil.
 func settled(v *identityRow, now time.Time, dormantTTL time.Duration) *identityRow {
 	if !v.Lease.due(now) {
 		return v
 	}
-	if v.State == stateDormant {
+	if v.State == stateDormant || v.Parent != 0 {
 		return nil
 	}
 	d := dormantRow(v, dormantTTL)
@@ -515,34 +531,6 @@ func (s *Store) lookupIdentity(r *bolttable.ReadTx, ix *bolttable.Index[uint64, 
 		return identityRow{}, false, nil
 	}
 	return *v, true, nil
-}
-
-// liveBySession is the live identity an identity route acts as.
-func (w *wtx) liveBySession(session string) (identityRow, error) {
-	row, found, err := w.identityBy(w.s.t.bySession, session)
-	switch {
-	case err != nil:
-		return identityRow{}, err
-	case !found:
-		return identityRow{}, noIdentity()
-	case row.State == stateDormant:
-		return identityRow{}, w.s.dormantIdentity(w.r, &row, w.now)
-	}
-	return row, nil
-}
-
-// liveFor is liveBySession for a read.
-func (s *Store) liveFor(r *bolttable.ReadTx, session string, now time.Time) (identityRow, error) {
-	row, found, err := s.lookupIdentity(r, s.t.bySession, session)
-	switch {
-	case err != nil:
-		return identityRow{}, err
-	case !found:
-		return identityRow{}, noIdentity()
-	case row.State == stateDormant:
-		return identityRow{}, s.dormantIdentity(r, &row, now)
-	}
-	return row, nil
 }
 
 func noIdentity() *Error {

@@ -17,6 +17,7 @@ func (s *Store) wireLeases() {
 	t.deliveries.onExpire = func(w *wtx, k []byte, _ *deliveryRow) error { return deleteRow(w, t.deliveries, k) }
 	t.resv.onWarn = warnReservation
 	t.resv.onExpire = expireReservation
+	t.links.onExpire = func(w *wtx, k []byte, _ *linkRow) error { return deleteRow(w, t.links, k) }
 }
 
 func deleteRow[K, V any](w *wtx, l *leased[K, V], k K) error {
@@ -25,16 +26,26 @@ func deleteRow[K, V any](w *wtx, l *leased[K, V], k K) error {
 }
 
 // expireIdentity makes a live identity dormant, owing a left card for each
-// of its paths and handing its reservations to their queues, and purges a
-// dormant one, which already left. A hand-off never writes to v's own row,
+// of its paths, handing its reservations to their queues and ending its
+// delegates and links; it purges a dormant one, which already left, and
+// ends a delegate. A hand-off never writes to v's own row,
 // since every row of v's is deleted before the queue walk, so storing v's
 // copy afterwards reuses no seq.
 func expireIdentity(w *wtx, k uint64, v *identityRow) error {
-	if v.State == stateDormant {
+	switch {
+	case v.Parent != 0:
+		return w.endDelegate(v, "expired")
+	case v.State == stateDormant:
 		w.s.forgetSeen(k)
 		return deleteRow(w, w.s.t.identities, k)
 	}
 	if err := w.freeHolder(k); err != nil {
+		return err
+	}
+	if err := w.endDelegates(k, "parent_expired"); err != nil {
+		return err
+	}
+	if err := w.deleteLinks(k); err != nil {
 		return err
 	}
 	w.queueCards(kindLeft, v, v.Paths)

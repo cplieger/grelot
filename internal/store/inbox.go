@@ -95,24 +95,24 @@ type Held struct {
 	Shown    uint64
 }
 
-// Inbox returns up to limit of session's unexpired deliveries past read,
+// Inbox returns up to limit of c's unexpired deliveries past read,
 // oldest first, and moves no cursor: the caller acks what it printed.
 // Refusals: KindInvalid for a limit outside 0 to MaxInboxLimit; KindGone
 // for a session with no live identity.
-func (s *Store) Inbox(ctx context.Context, session string, limit int) (Page, error) {
+func (s *Store) Inbox(ctx context.Context, c Caller, limit int) (Page, error) {
 	switch {
 	case limit == 0:
 		limit = DefaultInboxLimit
 	case limit < 0 || limit > MaxInboxLimit:
 		return Page{}, refuse(KindInvalid, fmt.Sprintf("the inbox limit must be 1 to %d", MaxInboxLimit))
 	}
-	if _, err := s.Seen(ctx, session); err != nil {
+	if _, err := s.Seen(ctx, c); err != nil {
 		return Page{}, err
 	}
 	var out Page
 	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
-		me, err := s.liveFor(r, session, now)
+		me, err := s.liveFor(r, c, now)
 		if err != nil {
 			return err
 		}
@@ -159,14 +159,14 @@ func fillMessage(e *Entry, me *identityRow, m *messageRow) {
 	e.Relation = party{where: me.Where, id: me.ID}.relationTo(party{where: m.Where, id: m.Sender}, m.Path)
 }
 
-// Ack moves session's read cursor to max(read, upto), never past its
+// Ack moves c's read cursor to max(read, upto), never past its
 // highest seq, stamps read_at on each delivery it passes and records the
 // range as last_page; a stale upto changes nothing. A session with no
 // live identity is KindGone.
-func (s *Store) Ack(ctx context.Context, session string, upto uint64) (Acked, error) {
+func (s *Store) Ack(ctx context.Context, c Caller, upto uint64) (Acked, error) {
 	var out Acked
 	err := s.update(ctx, func(w *wtx) error {
-		me, err := w.liveBySession(session)
+		me, err := w.liveAs(c)
 		if err != nil {
 			return err
 		}
@@ -212,19 +212,19 @@ func (w *wtx) stampRead(me *identityRow, to uint64) (uint64, error) {
 	return rows[0].Seq, nil
 }
 
-// Hold counts session's deliveries past max(read, shown) and, when one of
+// Hold counts c's deliveries past max(read, shown) and, when one of
 // them wakes, advances shown to the highest seq, so the next hold shows
 // only what commits after this one; cards alone advance nothing, and wait
 // for the next hold that shows a wake event. It never moves read, and
 // commits only when shown moves or seenDue asks for a write, since the
 // hooks hold on every tool call. A session with no live identity is
 // KindGone.
-func (s *Store) Hold(ctx context.Context, session string) (Held, error) {
+func (s *Store) Hold(ctx context.Context, c Caller) (Held, error) {
 	var out Held
 	write := false
 	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
-		me, err := s.liveFor(r, session, now)
+		me, err := s.liveFor(r, c, now)
 		if err != nil {
 			return err
 		}
@@ -241,7 +241,7 @@ func (s *Store) Hold(ctx context.Context, session string) (Held, error) {
 		return out, err
 	}
 	err = s.update(ctx, func(w *wtx) error {
-		me, lerr := w.liveBySession(session)
+		me, lerr := w.liveAs(c)
 		if lerr != nil {
 			return lerr
 		}

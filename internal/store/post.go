@@ -26,11 +26,11 @@ type Target struct {
 	Announce bool
 }
 
-// Posting is a post from Session's identity. Every identity field is
+// Posting is a post as Caller's identity. Every identity field is
 // required, NoChange keeping it; Where must come when the paths change.
 type Posting struct {
 	Where   *Where
-	Session string
+	Caller  Caller
 	Subject string
 	Body    string
 	To      Target
@@ -52,7 +52,7 @@ type Posted struct {
 	Other           int
 }
 
-// Post stores a message from p.Session's live identity, applies the
+// Post stores a message from p.Caller's live identity, applies the
 // identity fields it carries, and writes one delivery to each recipient,
 // dormant ones included. A post in a path thread follows it. Refusals:
 // KindInvalid for a bad target, message, field or where; KindGone for a
@@ -107,7 +107,7 @@ func (w *wtx) post(p *Posting) (Posted, error) {
 			return Posted{}, err
 		}
 	}
-	me, err := w.liveBySession(p.Session)
+	me, err := w.liveAs(p.Caller)
 	if err != nil {
 		return Posted{}, err
 	}

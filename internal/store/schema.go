@@ -20,6 +20,7 @@ const (
 	prefixMessages     byte = 3
 	prefixDeliveries   byte = 4
 	prefixReservations byte = 5
+	prefixLinks        byte = 6
 )
 
 // Identity states.
@@ -59,6 +60,8 @@ const (
 
 // identityRow is one live or dormant identity, keyed by its id.
 type identityRow struct {
+	// Scope is a delegate's, set with Parent.
+	Scope        *scope    `json:"scope,omitempty"`
 	Lease        lease     `json:"lease"`
 	RegisteredAt time.Time `json:"registered_at"`
 	// DormantSince is set while State is dormant.
@@ -87,9 +90,35 @@ type identityRow struct {
 	Nudged uint64        `json:"nudged"`
 	TTL    time.Duration `json:"ttl"`
 	Nudges int           `json:"nudges"`
+	// Parent is a delegate's parent identity, 0 on any other row.
+	Parent uint64 `json:"parent,omitempty"`
 	// Ended is the SessionEnd report, cleared by the session's next
 	// request other than the standing wait.
 	Ended bool `json:"ended,omitempty"`
+}
+
+// scope is what a delegate may post in and receive, fixed at the grant.
+// Agents are identity ids, resolved at the grant; a deny wins over an
+// allow.
+type scope struct {
+	AllowThreads []string `json:"allow_threads,omitempty"`
+	DenyThreads  []string `json:"deny_threads,omitempty"`
+	AllowAgents  []uint64 `json:"allow_agents,omitempty"`
+	DenyAgents   []uint64 `json:"deny_agents,omitempty"`
+	Announce     bool     `json:"announce,omitempty"`
+	DenyAnnounce bool     `json:"deny_announce,omitempty"`
+}
+
+// linkRow is one unused delegate link, keyed pairKey(parent, id). Only the
+// link's SHA-256 is stored; using it deletes the row.
+type linkRow struct {
+	Lease  lease         `json:"lease"`
+	Label  string        `json:"label"`
+	Hash   []byte        `json:"hash"`
+	Scope  scope         `json:"scope"`
+	Parent uint64        `json:"parent"`
+	ID     uint64        `json:"id"`
+	TTL    time.Duration `json:"ttl"`
 }
 
 // seqRange is an inclusive range of delivery seqs.
@@ -171,6 +200,7 @@ type tables struct {
 	byPath     *bolttable.Index[uint64, identityRow]
 	byFollow   *bolttable.Index[uint64, identityRow]
 	byProc     *bolttable.Index[uint64, identityRow]
+	byParent   *bolttable.Index[uint64, identityRow]
 	threads    *leased[uint64, threadRow]
 	threadKey  *bolttable.Index[uint64, threadRow]
 	messages   *leased[[]byte, messageRow]
@@ -180,6 +210,8 @@ type tables struct {
 	resvPath   *bolttable.Index[uint64, reservationRow]
 	resvHolder *bolttable.Index[uint64, reservationRow]
 	resvQueue  *bolttable.Index[uint64, reservationRow]
+	links      *leased[[]byte, linkRow]
+	linkHash   *bolttable.Index[[]byte, linkRow]
 	// leased lists every table above, in the order the sweep walks them.
 	leased []sweeper
 }
@@ -227,25 +259,39 @@ func newSchema() (*bolttable.Schema, *tables, error) {
 	if t.bySender, err = bolttable.DefineIndex(messages, "messages.sender", bolttable.IndexOptions{Version: 1}, senderEntries); err != nil {
 		return nil, nil, err
 	}
-	if t.identities, err = defineLeased(ids, identityPolicy, func(v *identityRow) *lease { return &v.Lease }); err != nil {
-		return nil, nil, err
-	}
-	if t.threads, err = defineLeased(threads, threadPolicy, func(v *threadRow) *lease { return &v.Lease }); err != nil {
-		return nil, nil, err
-	}
-	if t.messages, err = defineLeased(messages, messagePolicy, func(v *messageRow) *lease { return &v.Lease }); err != nil {
-		return nil, nil, err
-	}
-	if t.deliveries, err = defineLeased(deliveries, deliveryPolicy, func(v *deliveryRow) *lease { return &v.Lease }); err != nil {
+	if err := defineCoreLeases(&t, ids, threads, messages, deliveries); err != nil {
 		return nil, nil, err
 	}
 	if err := defineReservations(ns, &t); err != nil {
 		return nil, nil, err
 	}
-	// Identities go first: an identity's expiry hands off its grants
-	// itself, before the reservation sweep would expire them one by one.
-	t.leased = []sweeper{t.identities, t.resv, t.threads, t.messages, t.deliveries}
+	if err := defineLinks(ns, ids, &t); err != nil {
+		return nil, nil, err
+	}
+	// Identities go first: an identity's expiry hands off its grants and
+	// deletes its links itself, before their own sweeps would reach them
+	// one by one.
+	t.leased = []sweeper{t.identities, t.links, t.resv, t.threads, t.messages, t.deliveries}
 	return s, &t, nil
+}
+
+// defineCoreLeases declares the leases of identities, threads, messages
+// and deliveries.
+func defineCoreLeases(t *tables, ids *bolttable.Table[uint64, identityRow], threads *bolttable.Table[uint64, threadRow],
+	messages *bolttable.Table[[]byte, messageRow], deliveries *bolttable.Table[[]byte, deliveryRow],
+) error {
+	var err error
+	if t.identities, err = defineLeased(ids, identityPolicy, func(v *identityRow) *lease { return &v.Lease }); err != nil {
+		return err
+	}
+	if t.threads, err = defineLeased(threads, threadPolicy, func(v *threadRow) *lease { return &v.Lease }); err != nil {
+		return err
+	}
+	if t.messages, err = defineLeased(messages, messagePolicy, func(v *messageRow) *lease { return &v.Lease }); err != nil {
+		return err
+	}
+	t.deliveries, err = defineLeased(deliveries, deliveryPolicy, func(v *deliveryRow) *lease { return &v.Lease })
+	return err
 }
 
 // senderEntries keys a post by pairKey(sender, posted_at in Unix ns), so
@@ -286,8 +332,37 @@ func defineIdentityIndexes(ids *bolttable.Table[uint64, identityRow], t *tables)
 		func(_ uint64, v *identityRow) []bolttable.Entry { return keyEntries(v.Follows...) }); err != nil {
 		return err
 	}
-	t.byProc, err = bolttable.DefineIndex(ids, "identities.proc", many,
-		func(_ uint64, v *identityRow) []bolttable.Entry { return keyEntries(v.Proc) })
+	if t.byProc, err = bolttable.DefineIndex(ids, "identities.proc", many,
+		func(_ uint64, v *identityRow) []bolttable.Entry { return keyEntries(v.Proc) }); err != nil {
+		return err
+	}
+	t.byParent, err = bolttable.DefineIndex(ids, "identities.parent", many,
+		func(_ uint64, v *identityRow) []bolttable.Entry {
+			if v.Parent == 0 {
+				return nil
+			}
+			return []bolttable.Entry{{Key: be64(v.Parent)}}
+		})
+	return err
+}
+
+// defineLinks declares the unused delegate links, their lease and the
+// lookup by hash a registration reads. A deleted identity's links go by
+// cascade; an expiry keeps the row, so it deletes them itself.
+func defineLinks(ns *bolttable.Namespace, ids *bolttable.Table[uint64, identityRow], t *tables) error {
+	links, err := bolttable.Define(ns, prefixLinks, "links",
+		bolttable.BytesKey{}, bolttable.JSON[linkRow](1), bolttable.TableOptions{Silent: true})
+	if err != nil {
+		return err
+	}
+	if cerr := bolttable.CascadePrefix(ids, links, 1, be64); cerr != nil {
+		return cerr
+	}
+	if t.links, err = defineLeased(links, linkPolicy, func(v *linkRow) *lease { return &v.Lease }); err != nil {
+		return err
+	}
+	t.linkHash, err = bolttable.DefineIndex(links, "links.hash", bolttable.IndexOptions{Unique: true, Version: 1},
+		func(_ []byte, v *linkRow) []bolttable.Entry { return []bolttable.Entry{{Key: v.Hash}} })
 	return err
 }
 
