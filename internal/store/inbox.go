@@ -247,7 +247,7 @@ func (s *Store) Hold(ctx context.Context, c Caller) (Held, error) {
 		if err != nil {
 			return err
 		}
-		if out, err = s.held(r, &me, now); err != nil {
+		if out, _, err = s.held(r, &me, now); err != nil {
 			return err
 		}
 		if write = seenDue(&me, now) || out.Counts.Wake() > 0; !write {
@@ -260,35 +260,50 @@ func (s *Store) Hold(ctx context.Context, c Caller) (Held, error) {
 		return out, err
 	}
 	err = s.update(ctx, func(w *wtx) error {
-		me, lerr := w.liveAs(c)
-		if lerr != nil {
-			return lerr
-		}
-		if out, lerr = s.held(w.r, &me, w.now); lerr != nil {
-			return lerr
-		}
-		w.seen(&me)
-		if out.Identity, lerr = w.viewOf(&me); lerr != nil {
-			return lerr
-		}
-		return s.t.identities.table.Put(w.tx, me.ID, &me)
+		var herr error
+		out, herr = w.hold(c)
+		return herr
 	})
 	return out, err
 }
 
+// hold is Hold's write: it advances shown and, when no nudge is
+// outstanding, records what it showed as the nudge.
+func (w *wtx) hold(c Caller) (Held, error) {
+	me, err := w.liveAs(c)
+	if err != nil {
+		return Held{}, err
+	}
+	out, shown, err := w.s.held(w.r, &me, w.now)
+	if err != nil {
+		return out, err
+	}
+	w.seen(&me)
+	if shown.count > 0 && me.Parent == 0 && me.Read >= me.Nudged {
+		// What a hold shows inside the turn is the nudge, so no push or
+		// watcher sends it; the re-nudge still covers an unread one.
+		w.recordNudge(&me, &Nudge{Seq: shown.newest, Oldest: shown.oldest, Attempt: 1}, nudgeByHook)
+	}
+	if out.Identity, err = w.viewOf(&me); err != nil {
+		return out, err
+	}
+	return out, w.s.t.identities.table.Put(w.tx, me.ID, &me)
+}
+
 // held counts me's deliveries past max(read, shown) and, when one of them
-// wakes, advances me's shown to its highest seq.
-func (s *Store) held(r *bolttable.ReadTx, me *identityRow, now time.Time) (Held, error) {
-	var out Held
-	err := s.scanUnread(r, me.ID, max(me.Read, me.Shown), now, func(d *deliveryRow) error {
+// wakes, advances me's shown to its highest seq. shown is the wake
+// deliveries among them.
+func (s *Store) held(r *bolttable.ReadTx, me *identityRow, now time.Time) (out Held, shown wakeBatch, err error) {
+	err = s.scanUnread(r, me.ID, max(me.Read, me.Shown), now, func(d *deliveryRow) error {
 		out.Counts.add(d)
+		shown.add(d)
 		return nil
 	})
-	if out.Counts.Wake() > 0 {
+	if shown.count > 0 {
 		me.Shown = me.Seq
 	}
 	out.Shown = me.Shown
-	return out, err
+	return out, shown, err
 }
 
 // scanUnread calls fn, in seq order, for each of identity id's unexpired
