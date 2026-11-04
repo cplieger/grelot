@@ -282,14 +282,7 @@ func TestHold_writesTheRowOnlyWhenItMovesSomething(t *testing.T) {
 	regAt(t, s, "alpha", "/workspace/alpha")
 	bravo := regAt(t, s, "bravo", "/workspace/bravo")
 	before := getIdentity(t, s, bravo.ID)
-	commits := func() uint64 {
-		st, err := s.db.Stats(t.Context())
-		if err != nil {
-			t.Fatal(err)
-		}
-		return st.Commits
-	}
-	start := commits()
+	start := commitCount(t, s)
 
 	for range 2 {
 		clk.advance(time.Minute)
@@ -301,7 +294,7 @@ func TestHold_writesTheRowOnlyWhenItMovesSomething(t *testing.T) {
 			t.Errorf("hold reports last seen %v, want the request at %v", h.Identity.LastSeen, clk.now())
 		}
 	}
-	if n := commits() - start; n != 0 {
+	if n := commitCount(t, s) - start; n != 0 {
 		t.Errorf("two holds with nothing new committed %d times, want none", n)
 	}
 	if got := getIdentity(t, s, bravo.ID); !reflect.DeepEqual(got, before) {

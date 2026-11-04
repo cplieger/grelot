@@ -182,14 +182,7 @@ func TestSweep_runsInBoundedBatches(t *testing.T) {
 		}
 		return nil
 	})
-	commits := func() uint64 {
-		st, err := s.db.Stats(t.Context())
-		if err != nil {
-			t.Fatal(err)
-		}
-		return st.Commits
-	}
-	before := commits()
+	before := commitCount(t, s)
 	clk.set(testNow.Add(time.Second))
 	got, err := s.Sweep(t.Context())
 	if err != nil {
@@ -201,7 +194,7 @@ func TestSweep_runsInBoundedBatches(t *testing.T) {
 	if left := countRows(t, s, s.t.deliveries.table); left != 0 {
 		t.Errorf("%d deliveries left", left)
 	}
-	if c := commits() - before; c < 4 {
+	if c := commitCount(t, s) - before; c < 4 {
 		t.Errorf("%d commits for %d rows, want at least 4 batches of %d", c, n, sweepBatch)
 	}
 }

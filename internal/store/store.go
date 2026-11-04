@@ -200,24 +200,39 @@ func (s *Store) update(ctx context.Context, fn func(*wtx) error) error {
 const sweepBatch = 256
 
 // Sweep runs every due warning and expiry in batches, one transaction
-// each, until none is due, and reports how many rows it handled.
+// each, until none is due, and reports how many rows it handled. It also
+// forgets the request time of every identity whose row is gone.
 func (s *Store) Sweep(ctx context.Context) (int, error) {
 	total := 0
-	for {
+	for first := true; ; first = false {
 		n := 0
 		err := s.update(ctx, func(w *wtx) error {
-			for _, l := range s.t.leased {
-				got, err := l.sweep(w, sweepBatch-n)
-				n += got
-				if err != nil || n >= sweepBatch {
+			if first {
+				if err := w.pruneSeen(); err != nil {
 					return err
 				}
 			}
-			return nil
+			var err error
+			n, err = w.sweepDue()
+			return err
 		})
 		total += n
 		if err != nil || n < sweepBatch {
 			return total, err
 		}
 	}
+}
+
+// sweepDue runs up to sweepBatch due warnings and expiries across the
+// tables and reports how many it ran.
+func (w *wtx) sweepDue() (int, error) {
+	n := 0
+	for _, l := range w.s.t.leased {
+		got, err := l.sweep(w, sweepBatch-n)
+		n += got
+		if err != nil || n >= sweepBatch {
+			return n, err
+		}
+	}
+	return n, nil
 }

@@ -331,9 +331,10 @@ func (s *Store) Retire(ctx context.Context, session string) error {
 }
 
 // Seen records a request from session other than the standing wait and
-// returns its identity, live or dormant: it clears ended and refreshes
-// last_seen, writing the row only when ended was set or the stored
-// last_seen is lastSeenEvery old. A session with no identity is KindGone.
+// returns its identity, live or dormant. A live one has ended cleared and
+// last_seen refreshed, its row written only when ended was set or the
+// stored last_seen is lastSeenEvery old; a dormant one is never written.
+// A session with no identity is KindGone.
 func (s *Store) Seen(ctx context.Context, session string) (Identity, error) {
 	var row identityRow
 	var found bool
@@ -344,12 +345,16 @@ func (s *Store) Seen(ctx context.Context, session string) (Identity, error) {
 	}); err != nil {
 		return Identity{}, err
 	}
+	switch {
+	case !found:
+		return Identity{}, noIdentity()
+	case row.State == stateDormant:
+		return s.view(&row), nil
+	}
 	now := s.now()
-	if found && row.State == stateLive && !row.Lease.due(now) {
-		s.noteSeen(row.ID, now)
-		if !seenDue(&row, now) {
-			return s.view(&row), nil
-		}
+	s.noteSeen(row.ID, now)
+	if !seenDue(&row, now) {
+		return s.view(&row), nil
 	}
 	var out Identity
 	err := s.update(ctx, func(w *wtx) error {
@@ -802,6 +807,25 @@ func (s *Store) forgetSeen(id uint64) {
 	s.seenMu.Lock()
 	defer s.seenMu.Unlock()
 	delete(s.seen, id)
+}
+
+// pruneSeen drops every request time whose identity row is gone, which
+// catches a read that noted on a snapshot older than the delete. It must
+// run in a write transaction: a read one could predate a registration
+// that already noted its new id, and drop that live entry.
+func (w *wtx) pruneSeen() error {
+	w.s.seenMu.Lock()
+	defer w.s.seenMu.Unlock()
+	for id := range w.s.seen {
+		_, found, err := w.s.t.identities.table.Get(w.r, id)
+		if err != nil {
+			return err
+		}
+		if !found {
+			delete(w.s.seen, id)
+		}
+	}
+	return nil
 }
 
 func (s *Store) lastSeen(r *identityRow) time.Time {

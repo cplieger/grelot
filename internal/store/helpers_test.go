@@ -107,6 +107,16 @@ func mustSweep(t *testing.T, s *Store) {
 	}
 }
 
+// commitCount is how many write transactions the store has committed.
+func commitCount(t *testing.T, s *Store) uint64 {
+	t.Helper()
+	st, err := s.db.Stats(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return st.Commits
+}
+
 // getIdentity reads identity row id, failing the test when it is absent.
 func getIdentity(t *testing.T, s *Store, id uint64) identityRow {
 	t.Helper()

@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"log/slog"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -622,16 +623,41 @@ func TestSeen_forgetsAnIdentityOnceItIsGone(t *testing.T) {
 	if err := s.Retire(t.Context(), sessA); err != nil {
 		t.Fatal(err)
 	}
+	if got := seenIDs(s); !slices.Equal(got, []uint64{b.ID}) {
+		t.Errorf("request times kept for %v after the retirement, want only %d", got, b.ID)
+	}
 	clk.set(b.Expires)
 	mustSweep(t, s)
 	clk.set(b.Expires.Add(DefaultDormantTTL))
 	mustSweep(t, s)
-	s.seenMu.Lock()
-	n := len(s.seen)
-	s.seenMu.Unlock()
-	if n != 0 {
-		t.Errorf("%d request times kept after a retirement and a purge, want none", n)
+	if got := seenIDs(s); len(got) != 0 {
+		t.Errorf("request times kept for %v after a retirement and a purge, want none", got)
 	}
+}
+
+func TestSweep_dropsARequestTimeNotedAfterTheRetirement(t *testing.T) {
+	// a read can note its request after a retire on an older snapshot;
+	// ids are never reused, so the entry would stay for the process's life.
+	s, clk, _ := openIdentityStore(t)
+	a := mustRegister(t, s, registration(sessA, "agent-a", envA()))
+	b := mustRegister(t, s, registration(sessB, "agent-b", envA()))
+	if err := s.Retire(t.Context(), sessA); err != nil {
+		t.Fatal(err)
+	}
+	clk.advance(time.Minute)
+	s.noteSeen(a.ID, clk.now())
+	s.noteSeen(b.ID, clk.now())
+	mustSweep(t, s)
+	if got := seenIDs(s); !slices.Equal(got, []uint64{b.ID}) {
+		t.Errorf("request times kept for %v after the sweep, want only the live %d", got, b.ID)
+	}
+}
+
+// seenIDs lists the identities with a request time in memory, in order.
+func seenIDs(s *Store) []uint64 {
+	s.seenMu.Lock()
+	defer s.seenMu.Unlock()
+	return slices.Sorted(maps.Keys(s.seen))
 }
 
 func TestSeen_isGoneWithoutAnIdentity(t *testing.T) {
@@ -713,10 +739,15 @@ func TestWho_showsAPeerOnlyItsRelation(t *testing.T) {
 			t.Fatalf("who %v, want both", peerNames(ps))
 		}
 		for _, p := range ps {
-			self := caller == sessA && p.Name == "agent-a"
-			if self != (p.MachineKind == "dmi" && p.EnvironmentKnown) {
-				t.Errorf("caller %s sees %s with machine kind %q and environment known %v, want them only for itself",
-					caller, p.Name, p.MachineKind, p.EnvironmentKnown)
+			wantKind, wantKnown := "", false
+			if caller == sessA && p.Name == "agent-a" {
+				wantKind, wantKnown = "dmi", true
+			}
+			if p.MachineKind != wantKind {
+				t.Errorf("caller %s sees %s with machine kind %q, want %q", caller, p.Name, p.MachineKind, wantKind)
+			}
+			if p.EnvironmentKnown != wantKnown {
+				t.Errorf("caller %s sees %s with environment known %v, want %v", caller, p.Name, p.EnvironmentKnown, wantKnown)
 			}
 		}
 	}

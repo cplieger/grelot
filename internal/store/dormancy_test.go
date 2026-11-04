@@ -93,6 +93,72 @@ func TestDormant_itsSessionOnlyReadsItsStatus(t *testing.T) {
 	}
 }
 
+func TestDormant_readsCommitNothing(t *testing.T) {
+	// last_seen lives in memory and only a live row is ever written, so a
+	// read from a dormant or unregistered session is no bbolt commit.
+	s, clk, _ := openIdentityStore(t)
+	expireToDormant(t, s, clk, "subflux-dev")
+	clk.advance(10 * time.Minute)
+	ctx := t.Context()
+	start := commitCount(t, s)
+
+	_, err := s.Inbox(ctx, sessA, 0)
+	wantRefusal(t, err, KindGone, "dormant", "`grelot revive --ttl <d>` restores it")
+	_, err = s.History(ctx, sessA, &HistoryQuery{})
+	wantRefusal(t, err, KindGone, "dormant")
+	if _, err := s.Who(ctx, sessA, WhoQuery{}); err != nil {
+		t.Fatalf("who from the dormant session: %v", err)
+	}
+	if _, err := s.Who(ctx, "kiro-cli:nobody", WhoQuery{}); err != nil {
+		t.Fatalf("who from a session with no identity: %v", err)
+	}
+	if n := commitCount(t, s) - start; n != 0 {
+		t.Errorf("reads from sessions with no live identity committed %d times, want none", n)
+	}
+}
+
+func TestDormant_readsNeverWaitForTheWriter(t *testing.T) {
+	// a who or inbox from a session with no live identity has nothing to
+	// write, so it answers while a sweep or a post holds the write lock.
+	s, clk, _ := openIdentityStore(t)
+	expireToDormant(t, s, clk, "subflux-dev")
+	ctx := t.Context()
+	held, release, writer := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		writer <- s.update(ctx, func(*wtx) error { close(held); <-release; return nil })
+	}()
+	<-held
+
+	var errs []error
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, err := s.Inbox(ctx, sessA, 0)
+		errs = append(errs, err)
+		_, err = s.History(ctx, sessA, &HistoryQuery{})
+		errs = append(errs, err)
+		_, err = s.Who(ctx, sessA, WhoQuery{})
+		errs = append(errs, err)
+		_, err = s.Who(ctx, "kiro-cli:nobody", WhoQuery{})
+		errs = append(errs, err)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Error("reads from sessions with no live identity waited for the open write transaction")
+	}
+	close(release)
+	<-done
+	if err := <-writer; err != nil {
+		t.Fatal(err)
+	}
+	wantRefusal(t, errs[0], KindGone, "dormant")
+	wantRefusal(t, errs[1], KindGone, "dormant")
+	if errs[2] != nil || errs[3] != nil {
+		t.Errorf("who errors %v and %v, want none", errs[2], errs[3])
+	}
+}
+
 func TestPurge_afterDormantTTLFreesTheName(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
 	old := expireToDormant(t, s, clk, "subflux-dev")
