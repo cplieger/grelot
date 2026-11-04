@@ -316,7 +316,7 @@ func (s *Store) reservationView(r *bolttable.ReadTx, me *identityRow, v *reserva
 	}
 	h, found, err := s.t.identities.table.Get(r, v.Holder)
 	if err != nil || !found {
-		out.Relation = "unknown"
+		out.Relation = relationUnknown
 		return out
 	}
 	out.Holder, out.Host = h.Name, h.Host

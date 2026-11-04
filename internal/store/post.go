@@ -163,7 +163,7 @@ func (w *wtx) fanOut(me *identityRow, rt *route, msg *messageRow, out *Posted) e
 			continue
 		}
 		if err := w.deliver(&r, &deliveryRow{
-			Kind: rt.thread.Kind, Path: rt.recipients[id], Name: r.Name,
+			Kind: rt.thread.Kind, Path: rt.recipients[id], Name: r.Name, Parent: r.Parent,
 			Message: msg.ID, Thread: rt.thread.ID, Sender: me.ID, Lease: lease{Expires: msg.Lease.Expires},
 		}); err != nil {
 			return err

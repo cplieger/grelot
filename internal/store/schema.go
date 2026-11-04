@@ -175,8 +175,11 @@ type deliveryRow struct {
 	Name string `json:"name,omitempty"`
 	// Via is the handle of the delegate a parent's copy is for; a copy is
 	// quiet and is not a recipient of its message.
-	Via     string `json:"via,omitempty"`
-	Agent   uint64 `json:"agent"`
+	Via   string `json:"via,omitempty"`
+	Agent uint64 `json:"agent"`
+	// Parent is a delegate recipient's parent at fan-out, which receipts
+	// still need once the delegate's row is gone.
+	Parent  uint64 `json:"parent,omitempty"`
 	Seq     uint64 `json:"seq"`
 	Message uint64 `json:"message,omitempty"`
 	Thread  uint64 `json:"thread,omitempty"`
@@ -214,7 +217,10 @@ type tables struct {
 	threadKey  *bolttable.Index[uint64, threadRow]
 	messages   *leased[[]byte, messageRow]
 	bySender   *bolttable.Index[[]byte, messageRow]
+	messageID  *bolttable.Index[[]byte, messageRow]
 	deliveries *leased[[]byte, deliveryRow]
+	// byMessage lists a post's deliveries, its parents' copies included.
+	byMessage  *bolttable.Index[[]byte, deliveryRow]
 	resv       *leased[uint64, reservationRow]
 	resvPath   *bolttable.Index[uint64, reservationRow]
 	resvHolder *bolttable.Index[uint64, reservationRow]
@@ -265,7 +271,7 @@ func newSchema() (*bolttable.Schema, *tables, error) {
 		func(_ uint64, v *threadRow) []bolttable.Entry { return keyEntries(v.Key) }); err != nil {
 		return nil, nil, err
 	}
-	if t.bySender, err = bolttable.DefineIndex(messages, "messages.sender", bolttable.IndexOptions{Version: 1}, senderEntries); err != nil {
+	if err := defineMessageIndexes(&t, messages, deliveries); err != nil {
 		return nil, nil, err
 	}
 	if err := defineCoreLeases(&t, ids, threads, messages, deliveries); err != nil {
@@ -300,6 +306,27 @@ func defineCoreLeases(t *tables, ids *bolttable.Table[uint64, identityRow], thre
 		return err
 	}
 	t.deliveries, err = defineLeased(deliveries, deliveryPolicy, func(v *deliveryRow) *lease { return &v.Lease })
+	return err
+}
+
+// defineMessageIndexes declares the sender index history walks, the
+// lookup by message id, and the deliveries by message receipts walk.
+func defineMessageIndexes(t *tables, messages *bolttable.Table[[]byte, messageRow], deliveries *bolttable.Table[[]byte, deliveryRow]) error {
+	var err error
+	if t.bySender, err = bolttable.DefineIndex(messages, "messages.sender", bolttable.IndexOptions{Version: 1}, senderEntries); err != nil {
+		return err
+	}
+	if t.messageID, err = bolttable.DefineIndex(messages, "messages.id", bolttable.IndexOptions{Unique: true, Version: 1},
+		func(_ []byte, v *messageRow) []bolttable.Entry { return []bolttable.Entry{{Key: be64(v.ID)}} }); err != nil {
+		return err
+	}
+	t.byMessage, err = bolttable.DefineIndex(deliveries, "deliveries.message", bolttable.IndexOptions{Version: 1},
+		func(_ []byte, v *deliveryRow) []bolttable.Entry {
+			if !isPost(v.Kind) {
+				return nil
+			}
+			return []bolttable.Entry{{Key: be64(v.Message)}}
+		})
 	return err
 }
 

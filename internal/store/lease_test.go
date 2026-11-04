@@ -117,7 +117,7 @@ func TestSweep_expiresEachRowAtItsOwnTime(t *testing.T) {
 			if err := s.t.threads.table.Put(w.tx, id, &threadRow{ID: id, Key: "/t" + string(rune('a'+i)), Lease: lease{Expires: testNow.Add(d)}}); err != nil {
 				return err
 			}
-			if err := s.t.messages.table.Put(w.tx, pairKey(id, 1), &messageRow{Thread: id, ID: 1, Lease: lease{Expires: testNow.Add(d)}}); err != nil {
+			if err := s.t.messages.table.Put(w.tx, pairKey(id, id), &messageRow{Thread: id, ID: id, Lease: lease{Expires: testNow.Add(d)}}); err != nil {
 				return err
 			}
 			if err := s.t.deliveries.table.Put(w.tx, pairKey(9, id), &deliveryRow{Agent: 9, Seq: id, Lease: lease{Expires: testNow.Add(d)}}); err != nil {
