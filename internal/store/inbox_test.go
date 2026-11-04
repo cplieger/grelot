@@ -34,6 +34,9 @@ func mustAck(t *testing.T, s *Store, session string, upto uint64) Acked {
 	return a
 }
 
+// total counts every delivery in c, cards included.
+func total(c Counts) int { return c.Direct + c.Path + c.Announce + c.Identity + c.Cards }
+
 func subjects(es []Entry) []string {
 	out := make([]string, 0, len(es))
 	for _, e := range es {
@@ -53,20 +56,20 @@ func TestInbox_showsUnreadMailOnceItIsAcked(t *testing.T) {
 		t.Fatalf("subjects %q, want [1 2]", got)
 	}
 	e := page.Entries[0]
-	if e.Kind != kindDirect || e.Body != "body" || e.From != "alpha" || e.Host != "borgcube/marotte" ||
+	if e.Kind != kindDirect || e.Body != "body" || e.From != "alpha" || e.Host != "host-a/app" ||
 		e.OS != "linux" || e.Arch != "amd64" || e.Relation != "same environment" || !e.Wake || e.Message == 0 {
 		t.Errorf("entry %+v, want a wake direct message from alpha, same environment", e)
 	}
-	if page.Unread.Direct != 2 || page.Unread.Wake() != 2 || page.Unread.Total() != 2 {
+	if page.Unread.Direct != 2 || page.Unread.Wake() != 2 || total(page.Unread) != 2 {
 		t.Errorf("unread %+v, want 2 direct, both wake", page.Unread)
 	}
 
 	clk.advance(time.Minute)
 	acked := mustAck(t, s, sess("bravo"), page.Entries[1].Seq)
-	if acked.Read != page.Entries[1].Seq || acked.Left.Total() != 0 {
+	if acked.Read != page.Entries[1].Seq || total(acked.Left) != 0 {
 		t.Errorf("ack %+v, want read %d and nothing left", acked, page.Entries[1].Seq)
 	}
-	if again := mustInbox(t, s, sess("bravo"), 0); len(again.Entries) != 0 || again.Unread.Total() != 0 {
+	if again := mustInbox(t, s, sess("bravo"), 0); len(again.Entries) != 0 || total(again.Unread) != 0 {
 		t.Errorf("second inbox %+v, want nothing new", again)
 	}
 	row := getIdentity(t, s, bravo.ID)
@@ -93,7 +96,7 @@ func TestAck_neverRewindsAndStopsAtTheHighestSeq(t *testing.T) {
 		seqs = append(seqs, e.Seq)
 	}
 
-	if a := mustAck(t, s, sess("bravo"), seqs[1]); a.Read != seqs[1] || a.Left.Total() != 1 {
+	if a := mustAck(t, s, sess("bravo"), seqs[1]); a.Read != seqs[1] || total(a.Left) != 1 {
 		t.Errorf("ack to the second: %+v, want read %d, 1 left", a, seqs[1])
 	}
 	for _, stale := range []uint64{0, seqs[0]} {
@@ -116,11 +119,11 @@ func TestInbox_aPageSmallerThanTheUnreadAcksOnlyWhatItShowed(t *testing.T) {
 	direct(t, s, "alpha", "bravo", 3)
 
 	page := mustInbox(t, s, sess("bravo"), 2)
-	if got := subjects(page.Entries); len(got) != 2 || got[1] != "2" || page.Unread.Total() != 3 {
-		t.Fatalf("page %q with %d unread, want [1 2] of 3", got, page.Unread.Total())
+	if got := subjects(page.Entries); len(got) != 2 || got[1] != "2" || total(page.Unread) != 3 {
+		t.Fatalf("page %q with %d unread, want [1 2] of 3", got, total(page.Unread))
 	}
 	acked := mustAck(t, s, sess("bravo"), page.Entries[1].Seq)
-	if acked.Left.Total() != 1 || acked.Left.Direct != 1 {
+	if total(acked.Left) != 1 || acked.Left.Direct != 1 {
 		t.Errorf("left %+v, want the one direct message not shown", acked.Left)
 	}
 	if d := deliveriesTo(t, s, bravo.ID)[2]; !d.ReadAt.IsZero() {
@@ -145,8 +148,8 @@ func TestInbox_limit(t *testing.T) {
 	s, _ := openClockStore(t)
 	me := regAt(t, s, "bravo", "/workspace/bravo")
 	deliverEvents(t, s, me.ID, DefaultInboxLimit+5)
-	if p := mustInbox(t, s, sess("bravo"), 0); len(p.Entries) != DefaultInboxLimit || p.Unread.Total() != DefaultInboxLimit+5 {
-		t.Errorf("default page %d of %d, want %d of %d", len(p.Entries), p.Unread.Total(), DefaultInboxLimit, DefaultInboxLimit+5)
+	if p := mustInbox(t, s, sess("bravo"), 0); len(p.Entries) != DefaultInboxLimit || total(p.Unread) != DefaultInboxLimit+5 {
+		t.Errorf("default page %d of %d, want %d of %d", len(p.Entries), total(p.Unread), DefaultInboxLimit, DefaultInboxLimit+5)
 	}
 	if p := mustInbox(t, s, sess("bravo"), MaxInboxLimit); len(p.Entries) != DefaultInboxLimit+5 {
 		t.Errorf("page of %d at the largest limit, want every one", len(p.Entries))
@@ -181,7 +184,7 @@ func TestInbox_skipsAnExpiredDelivery(t *testing.T) {
 	deliverEvents(t, s, me.ID, 1)
 	clk.advance(time.Minute)
 	p := mustInbox(t, s, sess("bravo"), 0)
-	if len(p.Entries) != 1 || p.Entries[0].Seq != 2 || p.Unread.Total() != 1 {
+	if len(p.Entries) != 1 || p.Entries[0].Seq != 2 || total(p.Unread) != 1 {
 		t.Errorf("page %+v, want only seq 2: a delivery at its expiry is gone, swept or not", p)
 	}
 }
@@ -261,7 +264,7 @@ func TestHold_advancesShownOnlyOverAWakeEvent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if h.Counts.Total() != 0 || h.Shown != 2 {
+	if total(h.Counts) != 0 || h.Shown != 2 {
 		t.Errorf("second hold %+v, want nothing new", h)
 	}
 	row := getIdentity(t, s, bravo.ID)

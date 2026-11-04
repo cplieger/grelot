@@ -9,7 +9,7 @@ import (
 
 func revival(session, name string, w Where) Revival {
 	return Revival{
-		Session: session, Name: name, Host: "borgcube/web-terminal-kiro", OS: "linux", Arch: "arm64",
+		Session: session, Name: name, Host: "host-a/terminal", OS: "linux", Arch: "arm64",
 		Where: &w, TTL: 6 * time.Hour,
 	}
 }
@@ -53,7 +53,7 @@ func TestRevive_sameSessionRestoresTheIdentity(t *testing.T) {
 	if !id.RegisteredAt.Equal(testNow) || !slices.Equal(id.Follows, []string{"/workspace/docs"}) {
 		t.Errorf("registered %v follows %v, want both kept", id.RegisteredAt, id.Follows)
 	}
-	if id.Host != "borgcube/web-terminal-kiro" || id.Arch != "arm64" {
+	if id.Host != "host-a/terminal" || id.Arch != "arm64" {
 		t.Errorf("host %q arch %q, want the reviving session's labels", id.Host, id.Arch)
 	}
 	row := getIdentity(t, s, old.ID)

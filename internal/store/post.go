@@ -7,7 +7,6 @@ import (
 	"path"
 	"slices"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"github.com/cplieger/bolttable"
@@ -267,25 +266,20 @@ func (w *wtx) directRoute(me *identityRow, name string) (route, error) {
 }
 
 // storeMessage stores the post with the sender's labels and where as they
-// stand now, and moves a path or direct thread's expiry to the post's, so
-// a thread never expires before its last message.
+// stand now, and moves a path or direct thread's expiry to the post's.
+// The expiry only ever moves later: a shorter THREAD_TTL after a restart,
+// or a clock step back, would otherwise expire the thread, and with it an
+// older message whose deliveries are still unread.
 func (w *wtx) storeMessage(me *identityRow, th *threadRow, p *Posting) (messageRow, error) {
 	ttl := announceTTL
 	if th.Kind != kindAnnounce {
 		ttl = w.s.threadTTL
-		ls, err := threadPolicy.grant(w.now, ttl, time.Time{})
-		if err != nil {
-			return messageRow{}, err
-		}
-		th.Lease = ls
+		th.Lease = lease{Expires: later(th.Lease.Expires, w.now.Add(ttl))}
 	}
 	if err := w.s.t.threads.table.Put(w.tx, th.ID, th); err != nil {
 		return messageRow{}, err
 	}
-	ls, err := messagePolicy.grant(w.now, ttl, time.Time{})
-	if err != nil {
-		return messageRow{}, err
-	}
+	ls := serverLease(w.now, ttl)
 	id, err := w.s.t.messages.table.NextID(w.tx)
 	if err != nil {
 		return messageRow{}, err

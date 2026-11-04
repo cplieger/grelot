@@ -67,9 +67,6 @@ func (c *Counts) add(kind string) {
 // Wake counts the deliveries that wake an agent.
 func (c Counts) Wake() int { return c.Direct + c.Path + c.Announce + c.Identity }
 
-// Total counts every delivery.
-func (c Counts) Total() int { return c.Wake() + c.Cards }
-
 func isWake(kind string) bool { return kind != kindJoin && kind != kindLeft }
 
 // Page is an inbox fetch: the oldest unread deliveries, and Unread, every

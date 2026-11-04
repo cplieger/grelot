@@ -378,7 +378,7 @@ func TestPost_messageKeepsTheSendersWhereAsItStoodAtThePost(t *testing.T) {
 		if m.Where.Machine != atPost.Machine || m.Where.Environment != atPost.Environment || !slices.Equal(m.Where.Checkouts, atPost.Checkouts) {
 			t.Errorf("%s: stored where %+v, want the one sent with the post %+v", when, m.Where, atPost)
 		}
-		if m.Sender != a.ID || m.SenderName != "alpha" || m.Host != "borgcube/marotte" || m.OS != "linux" || m.Arch != "amd64" {
+		if m.Sender != a.ID || m.SenderName != "alpha" || m.Host != "host-a/app" || m.OS != "linux" || m.Arch != "amd64" {
 			t.Errorf("%s: sender %d %q %q %s/%s, want alpha's labels", when, m.Sender, m.SenderName, m.Host, m.OS, m.Arch)
 		}
 		if m.Subject != p.Subject || m.Body != p.Body || m.Kind != kindAnnounce || !m.PostedAt.Equal(testNow) {

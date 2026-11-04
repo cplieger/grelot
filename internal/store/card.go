@@ -5,7 +5,6 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/cplieger/bolttable"
 )
@@ -125,10 +124,7 @@ func (w *wtx) storeCard(c *card) (*messageRow, error) {
 	if err != nil {
 		return nil, err
 	}
-	ls, err := messagePolicy.grant(w.now, w.s.threadTTL, time.Time{})
-	if err != nil {
-		return nil, err
-	}
+	ls := serverLease(w.now, w.s.threadTTL)
 	id, err := w.s.t.messages.table.NextID(w.tx)
 	if err != nil {
 		return nil, err

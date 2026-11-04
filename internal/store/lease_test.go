@@ -68,30 +68,23 @@ func TestLease_capHoldsTheExpiryAndItsWarning(t *testing.T) {
 	}
 }
 
-func TestLease_unwarnedPoliciesSetNoWarning(t *testing.T) {
-	// threads, messages and deliveries carry no warning.
-	for _, p := range []leasePolicy{threadPolicy, messagePolicy, deliveryPolicy} {
-		l, err := p.grant(testNow, time.Hour, time.Time{})
-		if err != nil {
-			t.Fatalf("%s: %v", p.name, err)
-		}
-		if !l.WarnAt.IsZero() {
-			t.Errorf("%s: warn_at %v, want none", p.name, l.WarnAt)
-		}
-	}
-}
-
-func TestLease_oneImplementationForEveryTable(t *testing.T) {
-	// every table that expires registers one policy with the one
-	// lease implementation, and the sweeper walks each of them.
+func TestLease_postsCarryAnExpiryAndNoWarning(t *testing.T) {
+	// threads, messages and deliveries expire THREAD_TTL after the post
+	// and are never warned.
 	s, _ := openTestStore(t)
-	got := map[string]bool{}
-	for _, l := range s.t.leased {
-		got[l.policyName()] = true
+	regAt(t, s, "alpha", "/workspace/alpha")
+	b := regAt(t, s, "bravo", "/workspace/bravo")
+	p := say(t, s, "alpha", Target{Agent: "bravo"}, "hello")
+	th, _ := findThread(t, s, p.Thread)
+	m, _ := findMessage(t, s, p.Message)
+	ds := deliveriesTo(t, s, b.ID)
+	if len(ds) != 1 {
+		t.Fatalf("%d deliveries, want 1", len(ds))
 	}
-	for _, want := range []string{"identities", "threads", "messages", "deliveries"} {
-		if !got[want] {
-			t.Errorf("no lease registered for %s (have %v)", want, got)
+	want := testNow.Add(DefaultThreadTTL)
+	for name, got := range map[string]lease{"thread": th.Lease, "message": m.Lease, "delivery": ds[0].Lease} {
+		if !got.Expires.Equal(want) || !got.WarnAt.IsZero() {
+			t.Errorf("%s lease %+v, want expiry %v and no warning", name, got, want)
 		}
 	}
 }

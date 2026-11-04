@@ -256,6 +256,10 @@ func TestHistory_sinceAndUntil(t *testing.T) {
 		HistoryQuery{Since: testNow.Add(time.Minute), Until: testNow.Add(25 * time.Hour)}), "b1", "m2")
 	_, err := s.History(t.Context(), sess("bravo"), &HistoryQuery{Since: testNow.Add(time.Hour), Until: testNow})
 	wantRefusal(t, err, KindInvalid, "", "since", "until")
+	wantSubjects(t, "until alone, inside the default window", historySubjects(t, s, sess("bravo"),
+		HistoryQuery{Until: testNow.Add(25 * time.Hour)}), "m2")
+	_, err = s.History(t.Context(), sess("bravo"), &HistoryQuery{Until: testNow.Add(time.Hour)})
+	wantRefusal(t, err, KindInvalid, "", "--until", "default 24 h window", "--since")
 }
 
 func TestHistory_grepIgnoresCaseOverSubjectAndBody(t *testing.T) {

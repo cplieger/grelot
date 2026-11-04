@@ -37,7 +37,7 @@ func registration(session, name string, w Where, paths ...string) Registration {
 		paths = []string{repoSubflux}
 	}
 	return Registration{
-		Session: session, Host: "borgcube/marotte", OS: "linux", Arch: "amd64",
+		Session: session, Host: "host-a/app", OS: "linux", Arch: "amd64",
 		Where: &w, TTL: 6 * time.Hour,
 		Fields: Fields{Name: name, Description: "moving the run surface", Paths: paths},
 	}
@@ -219,15 +219,15 @@ func TestRegister_liveNameNamesItsHolder(t *testing.T) {
 			s, _, _ := openIdentityStore(t)
 			mustRegister(t, s, registration(sessA, "subflux-dev", envA()))
 			_, err := s.Register(t.Context(), new(registration(sessB, "subflux-dev", tc.caller)))
-			wantRefusal(t, err, KindConflict, "", "subflux-dev", "moving the run surface", "borgcube/marotte",
+			wantRefusal(t, err, KindConflict, "", "subflux-dev", "moving the run surface", "host-a/app",
 				tc.relation, "provider kiro-cli", "last seen 2026-11-04 05:39 UTC", "--take-over")
 		})
 	}
 }
 
 func TestTakeOver_refusedOutsideTheEnvironmentOrProvider(t *testing.T) {
-	// Decision 69's order and decisions 72 and 74's predicate; a
-	// matching host label never counts.
+	// refused for an empty environment, then another environment, then
+	// another provider; a matching host label never counts.
 	tests := []struct {
 		name, session  string
 		holder, caller Where
@@ -361,7 +361,7 @@ func TestRegister_dormantNameNamesTheRow(t *testing.T) {
 		_, err := s.Register(t.Context(), &r)
 		wantRefusal(t, err, KindConflict, "",
 			"subflux-dev is dormant until 2026-11-07 05:54 UTC; choose another or revive it from its own environment",
-			"borgcube/marotte", "same environment", "provider kiro-cli", "dormant since 2026-11-04 05:54 UTC",
+			"host-a/app", "same environment", "provider kiro-cli", "dormant since 2026-11-04 05:54 UTC",
 			repoSubflux+", "+repoGrelot, "moving the run surface",
 			"`grelot revive subflux-dev --ttl <d>` only if it is your own earlier session")
 	}
@@ -636,6 +636,30 @@ func TestWho_listsLiveIdentitiesWithTheirRelation(t *testing.T) {
 	}
 	if got := who("kiro-cli:nobody", WhoQuery{}); !slices.Equal(got, []string{"agent-a unknown", "agent-b unknown", "agent-c unknown"}) {
 		t.Errorf("who with no identity %v, want every relation unknown", got)
+	}
+}
+
+func TestWho_showsAPeerOnlyItsRelation(t *testing.T) {
+	// a peer's machine kind and whether it has an environment stay in
+	// the logs; the caller still sees its own.
+	s, _, _ := openIdentityStore(t)
+	mustRegister(t, s, registration(sessA, "agent-a", envA()))
+	mustRegister(t, s, registration(sessB, "agent-b", envA()))
+	for _, caller := range []string{sessA, "kiro-cli:session-none"} {
+		ps, err := s.Who(t.Context(), caller, WhoQuery{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(ps) != 2 {
+			t.Fatalf("who %v, want both", peerNames(ps))
+		}
+		for _, p := range ps {
+			self := caller == sessA && p.Name == "agent-a"
+			if self != (p.MachineKind == "dmi" && p.EnvironmentKnown) {
+				t.Errorf("caller %s sees %s with machine kind %q and environment known %v, want them only for itself",
+					caller, p.Name, p.MachineKind, p.EnvironmentKnown)
+			}
+		}
 	}
 }
 

@@ -128,12 +128,12 @@ type walk struct {
 // no row can match, such as With an identity me shares no thread with.
 func (s *Store) historyWalk(r *bolttable.ReadTx, me *identityRow, q *HistoryQuery, now time.Time) (w walk, ok bool, err error) {
 	w = walk{
-		s: s, me: me, now: now, since: q.Since, until: q.Until, grep: strings.ToLower(q.Grep), path: q.Path,
+		s: s, me: me, now: now, until: q.Until, grep: strings.ToLower(q.Grep), path: q.Path,
 		thread: q.Thread, limit: q.Limit, announce: q.Announce, full: q.Full, lastRead: q.LastRead,
 		threadPaths: map[uint64]string{},
 	}
-	if w.since.IsZero() && !q.LastRead {
-		w.since = now.Add(-DefaultHistoryWindow)
+	if w.since, err = historySince(q, now); err != nil {
+		return w, false, err
 	}
 	fromMe := q.FromMe || q.From == me.Name
 	if q.From != "" && !fromMe {
@@ -154,6 +154,20 @@ func (s *Store) historyWalk(r *bolttable.ReadTx, me *identityRow, q *HistoryQuer
 	w.deliveries = !fromMe
 	w.posts = !q.LastRead && w.sender == 0
 	return w, true, nil
+}
+
+// historySince is q's lower bound: Since, or the default window before
+// now unless q reads the last page. An Until before that default window
+// is refused, as an explicit inverted window is.
+func historySince(q *HistoryQuery, now time.Time) (time.Time, error) {
+	if !q.Since.IsZero() || q.LastRead {
+		return q.Since, nil
+	}
+	since := now.Add(-DefaultHistoryWindow)
+	if !q.Until.IsZero() && since.After(q.Until) {
+		return since, refuse(KindInvalid, "--until is before the default 24 h window: pass --since too")
+	}
+	return since, nil
 }
 
 // withThread narrows w to the direct thread with the identity named name.

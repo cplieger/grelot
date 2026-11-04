@@ -40,6 +40,52 @@ func TestDelivery_outlivesTheReadAndExpiresWithItsMessage(t *testing.T) {
 	wantSubjects(t, "history after the first expiry", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: testNow}), "second")
 }
 
+func TestThread_neverExpiresBeforeAnOlderMessage(t *testing.T) {
+	// a later post under a shorter THREAD_TTL must not pull the thread's
+	// expiry before an older message's, which would take that message
+	// while its delivery is still unread.
+	const shared = "/workspace/shared"
+	path := filepath.Join(t.TempDir(), "grelot.db")
+	clk := &clock{t: testNow}
+	s, err := Open(path, Options{Logger: slog.New(newLogSink()), Now: clk.now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := regAt(t, s, "alpha", "/workspace/alpha")
+	b := regAt(t, s, "bravo", shared)
+	keepAlive(t, s, a.ID, b.ID)
+	first := say(t, s, "alpha", Target{Path: shared}, "first")
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	clk.advance(time.Minute)
+	s, err = Open(path, Options{Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	say(t, s, "alpha", Target{Path: shared}, "second")
+
+	clk.set(testNow.Add(2 * time.Hour))
+	mustSweep(t, s)
+	if got := subjects(mustInbox(t, s, sess("bravo"), 0).Entries); len(got) != 1 || got[0] != "first" {
+		t.Errorf("inbox %q, want [first]: the second post expired, the first lives until its own expiry", got)
+	}
+	wantSubjects(t, "history --path", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: testNow, Path: shared}), "first")
+
+	clk.set(testNow.Add(DefaultThreadTTL - time.Nanosecond))
+	mustSweep(t, s)
+	if _, found := findThread(t, s, first.Thread); !found {
+		t.Fatal("the thread expired before its first message")
+	}
+	clk.set(testNow.Add(DefaultThreadTTL))
+	mustSweep(t, s)
+	if _, found := findThread(t, s, first.Thread); found {
+		t.Error("the thread outlived its last message")
+	}
+}
+
 func TestSweep_catchesUpAfterARestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grelot.db")
 	clk := &clock{t: testNow}

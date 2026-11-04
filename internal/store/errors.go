@@ -8,8 +8,6 @@ type Kind int
 const (
 	// KindInvalid is a request to fix and resend (400).
 	KindInvalid Kind = iota + 1
-	// KindForbidden is outside what the caller may do (403).
-	KindForbidden
 	// KindNotFound names something that is not there (404).
 	KindNotFound
 	// KindConflict collides with another identity's state (409).
@@ -21,7 +19,8 @@ const (
 )
 
 // Error is a refusal the caller sees. Msg names the fix; Why is a fixed
-// word for the log line, set only where a refusal has several causes.
+// word naming the cause where a refusal has several: the move refused log
+// line's why, or the 410 reason a watcher reads.
 type Error struct {
 	Msg  string
 	Why  string

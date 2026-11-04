@@ -379,7 +379,8 @@ type WhoQuery struct {
 }
 
 // Peer is an identity as a caller sees it, with its relation to the
-// caller. A dormant peer's Expires is its purge time.
+// caller. A dormant peer's Expires is its purge time. Only the caller's
+// own entry carries MachineKind and EnvironmentKnown.
 type Peer struct {
 	Relation string
 	Identity
@@ -399,19 +400,32 @@ func (s *Store) Who(ctx context.Context, session string, q WhoQuery) ([]Peer, er
 			caller = party{where: me.Where, id: me.ID}
 		}
 		return s.t.identities.table.Scan(r, bolttable.Range{}, func(_ uint64, v *identityRow) (bool, error) {
-			v = settled(v, now, s.dormantTTL)
-			if v == nil || (v.State == stateDormant && !q.All) || !whoMatches(v, text, q.Path) {
-				return true, nil
+			if v = settled(v, now, s.dormantTTL); v != nil && q.shows(v, text, caller.where) {
+				out = append(out, s.peer(caller, v))
 			}
-			if q.Here && !shareEnvironment(caller.where, v.Where) {
-				return true, nil
-			}
-			out = append(out, Peer{Identity: s.view(v), Relation: caller.relationTo(party{where: v.Where, id: v.ID}, "")})
 			return true, nil
 		})
 	})
 	slices.SortFunc(out, func(a, b Peer) int { return strings.Compare(a.Name, b.Name) })
 	return out, err
+}
+
+// peer is v as caller sees it.
+func (s *Store) peer(caller party, v *identityRow) Peer {
+	p := Peer{Identity: s.view(v), Relation: caller.relationTo(party{where: v.Where, id: v.ID}, "")}
+	if v.ID != caller.id {
+		p.MachineKind, p.EnvironmentKnown = "", false
+	}
+	return p
+}
+
+// shows reports whether q lists v for a caller at where; text is q.Text
+// lowercased.
+func (q WhoQuery) shows(v *identityRow, text string, where Where) bool {
+	if (v.State == stateDormant && !q.All) || (q.Here && !shareEnvironment(where, v.Where)) {
+		return false
+	}
+	return whoMatches(v, text, q.Path)
 }
 
 func whoMatches(v *identityRow, text, path string) bool {

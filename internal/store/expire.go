@@ -39,7 +39,7 @@ func expireIdentity(w *wtx, k uint64, v *identityRow) error {
 func dormantRow(v *identityRow, ttl time.Duration) identityRow {
 	d := *v
 	d.State, d.DormantSince = stateDormant, v.Lease.Expires
-	d.Lease = lease{Expires: v.Lease.Expires.Add(ttl)}
+	d.Lease = serverLease(v.Lease.Expires, ttl)
 	return d
 }
 
@@ -59,7 +59,7 @@ func (w *wtx) deliverEvent(id uint64, kind, text string) error {
 	if err != nil || !found {
 		return err
 	}
-	return w.deliver(&row, &deliveryRow{Kind: kind, Text: text, Lease: lease{Expires: w.now.Add(w.s.threadTTL)}})
+	return w.deliver(&row, &deliveryRow{Kind: kind, Text: text, Lease: serverLease(w.now, w.s.threadTTL)})
 }
 
 // deliver writes d to row's identity under its next seq and stores row

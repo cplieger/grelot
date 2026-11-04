@@ -19,8 +19,8 @@ type lease struct {
 
 func (l lease) due(now time.Time) bool { return !l.Expires.IsZero() && !l.Expires.After(now) }
 
-// leasePolicy is one table's lease rule. Zero bounds leave the TTL to the
-// server; a nil lead warns nothing.
+// leasePolicy is one table's lease rule. A table whose TTL the server sets
+// has zero bounds and takes serverLease; a nil lead warns nothing.
 type leasePolicy struct {
 	lead     func(ttl time.Duration) time.Duration
 	name     string
@@ -39,11 +39,14 @@ var (
 	deliveryPolicy = leasePolicy{name: "deliveries"}
 )
 
-// grant returns the lease of a row renewed at now for ttl, never past
-// limit when limit is set. A TTL outside the policy's bounds is a
-// KindInvalid refusal naming them.
+// serverLease is the unwarned lease of a row the server gives ttl at now.
+func serverLease(now time.Time, ttl time.Duration) lease { return lease{Expires: now.Add(ttl)} }
+
+// grant returns the lease of a row renewed at now for a declared ttl,
+// never past limit when limit is set. A TTL outside the policy's bounds is
+// a KindInvalid refusal naming them.
 func (p leasePolicy) grant(now time.Time, ttl time.Duration, limit time.Time) (lease, error) {
-	if p.max > 0 && (ttl < p.min || ttl > p.max) {
+	if ttl < p.min || ttl > p.max {
 		if ttl == 0 {
 			return lease{}, refuse(KindInvalid, fmt.Sprintf("a ttl is required: pass --ttl <d>, from %s to %s", fmtDur(p.min), fmtDur(p.max)))
 		}
@@ -79,12 +82,11 @@ func timeKey(t time.Time) []byte { return binary.BigEndian.AppendUint64(nil, uin
 
 // sweeper is one table's lease seen from the sweep, whatever its row type.
 type sweeper interface {
-	policyName() string
 	sweep(w *wtx, budget int) (int, error)
 }
 
 // leased is the one lease implementation: a table, its expires and warn_at
-// indexes, its policy, and the hooks the sweep and the eager path run.
+// indexes, and the hooks the sweep and the eager path run.
 type leased[K, V any] struct {
 	table    *bolttable.Table[K, V]
 	expires  *bolttable.Index[K, V]
@@ -92,13 +94,12 @@ type leased[K, V any] struct {
 	lease    func(*V) *lease
 	onWarn   func(w *wtx, k K, v *V) error
 	onExpire func(w *wtx, k K, v *V) error
-	policy   leasePolicy
 }
 
 var _ sweeper = (*leased[uint64, threadRow])(nil)
 
 func defineLeased[K, V any](t *bolttable.Table[K, V], p leasePolicy, get func(*V) *lease) (*leased[K, V], error) {
-	l := &leased[K, V]{table: t, policy: p, lease: get}
+	l := &leased[K, V]{table: t, lease: get}
 	var err error
 	l.expires, err = bolttable.DefineIndex(t, p.name+".expires", bolttable.IndexOptions{Version: 1},
 		func(_ K, v *V) []bolttable.Entry { return timeEntry(get(v).Expires) })
@@ -121,8 +122,6 @@ func timeEntry(t time.Time) []bolttable.Entry {
 	}
 	return []bolttable.Entry{{Key: timeKey(t)}}
 }
-
-func (l *leased[K, V]) policyName() string { return l.policy.name }
 
 // sweep expires, then warns, at most budget due rows, and reports how many
 // it handled. Expiring first means a row past both times is never warned.
