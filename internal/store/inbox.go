@@ -14,10 +14,11 @@ const (
 	MaxInboxLimit     = 100
 )
 
-// Entry is one delivery as its reader sees it. A post or card carries its
-// message and sender; an event carries only Text. Relation is computed at
-// the read from the message's sender snapshot and the reader's where, so
-// it outlives the sender.
+// Entry is one delivery, or in history one of the reader's own posts, as
+// its reader sees it. A post or card carries its message and sender; an
+// event carries only Text. Relation is computed at the read from the
+// message's sender snapshot and the reader's where, so it outlives the
+// sender.
 type Entry struct {
 	PostedAt time.Time
 	Written  time.Time
@@ -39,6 +40,8 @@ type Entry struct {
 	Message    uint64
 	Thread     uint64
 	Wake       bool
+	// Truncated is a history entry whose Body was cut to its first line.
+	Truncated bool
 }
 
 // Counts are deliveries by kind. Cards are quiet; every other kind wakes.
@@ -146,10 +149,15 @@ func (s *Store) entry(r *bolttable.ReadTx, me *identityRow, d *deliveryRow) (Ent
 		// its last message, so an unexpired delivery always has one.
 		return e, fmt.Errorf("store: delivery %d of identity %d names message %d, which is gone", d.Seq, d.Agent, d.Message)
 	}
+	fillMessage(&e, me, &m)
+	return e, nil
+}
+
+// fillMessage sets e's message fields from m as me reads it.
+func fillMessage(e *Entry, me *identityRow, m *messageRow) {
 	e.PostedAt, e.Subject, e.Body, e.ThreadPath = m.PostedAt, m.Subject, m.Body, m.Path
 	e.From, e.Host, e.OS, e.Arch = m.SenderName, m.Host, m.OS, m.Arch
 	e.Relation = party{where: me.Where, id: me.ID}.relationTo(party{where: m.Where, id: m.Sender}, m.Path)
-	return e, nil
 }
 
 // Ack moves session's read cursor to max(read, upto), never past its

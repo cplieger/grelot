@@ -147,6 +147,7 @@ type tables struct {
 	threads    *leased[uint64, threadRow]
 	threadKey  *bolttable.Index[uint64, threadRow]
 	messages   *leased[[]byte, messageRow]
+	bySender   *bolttable.Index[[]byte, messageRow]
 	deliveries *leased[[]byte, deliveryRow]
 	// leased lists every table above, in the order the sweep walks them.
 	leased []sweeper
@@ -192,6 +193,9 @@ func newSchema() (*bolttable.Schema, *tables, error) {
 		func(_ uint64, v *threadRow) []bolttable.Entry { return keyEntries(v.Key) }); err != nil {
 		return nil, nil, err
 	}
+	if t.bySender, err = bolttable.DefineIndex(messages, "messages.sender", bolttable.IndexOptions{Version: 1}, senderEntries); err != nil {
+		return nil, nil, err
+	}
 	if t.identities, err = defineLeased(ids, identityPolicy, func(v *identityRow) *lease { return &v.Lease }); err != nil {
 		return nil, nil, err
 	}
@@ -206,6 +210,21 @@ func newSchema() (*bolttable.Schema, *tables, error) {
 	}
 	t.leased = []sweeper{t.identities, t.threads, t.messages, t.deliveries}
 	return s, &t, nil
+}
+
+// senderEntries keys a post by pairKey(sender, posted_at in Unix ns), so
+// a reverse scan under be64(sender) walks the sender's posts newest
+// first. Cards are left out: their sender is the identity a card is about.
+func senderEntries(_ []byte, v *messageRow) []bolttable.Entry {
+	if !isPost(v.Kind) {
+		return nil
+	}
+	return []bolttable.Entry{{Key: pairKey(v.Sender, uint64(v.PostedAt.UnixNano()))}}
+}
+
+// isPost reports whether a message or delivery kind is an agent's post.
+func isPost(kind string) bool {
+	return kind == kindAnnounce || kind == kindPath || kind == kindDirect
 }
 
 // defineIdentityIndexes declares the name and session lookups, which a

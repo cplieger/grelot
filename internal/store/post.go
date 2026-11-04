@@ -245,7 +245,7 @@ func (w *wtx) directRoute(me *identityRow, name string) (route, error) {
 	case err != nil:
 		return route{}, err
 	case !found:
-		return route{}, refuse(KindNotFound, fmt.Sprintf("no identity %s: grelot who --all lists them", name))
+		return route{}, unknownIdentity(name)
 	case peer.ID == me.ID:
 		return route{}, refuse(KindInvalid, "a direct post goes to another identity, not yourself")
 	}
