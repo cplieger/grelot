@@ -26,6 +26,7 @@ func deleteRow[K, V any](w *wtx, l *leased[K, V], k K) error {
 // of its paths, and purges a dormant one, which already left.
 func expireIdentity(w *wtx, k uint64, v *identityRow) error {
 	if v.State == stateDormant {
+		w.s.forgetSeen(k)
 		return deleteRow(w, w.s.t.identities, k)
 	}
 	w.queueCards(kindLeft, v, v.Paths)

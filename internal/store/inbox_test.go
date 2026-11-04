@@ -1,6 +1,7 @@
 package store
 
 import (
+	"reflect"
 	"testing"
 	"time"
 )
@@ -273,6 +274,85 @@ func TestHold_advancesShownOnlyOverAWakeEvent(t *testing.T) {
 	}
 	if p := mustInbox(t, s, sess("bravo"), 0); len(p.Entries) != 2 {
 		t.Errorf("inbox after the holds shows %d, want both: shown is not delivery", len(p.Entries))
+	}
+}
+
+func TestHold_writesTheRowOnlyWhenItMovesSomething(t *testing.T) {
+	s, clk := openClockStore(t)
+	regAt(t, s, "alpha", "/workspace/alpha")
+	bravo := regAt(t, s, "bravo", "/workspace/bravo")
+	before := getIdentity(t, s, bravo.ID)
+	commits := func() uint64 {
+		st, err := s.db.Stats(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return st.Commits
+	}
+	start := commits()
+
+	for range 2 {
+		clk.advance(time.Minute)
+		h, err := s.Hold(t.Context(), sess("bravo"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !h.Identity.LastSeen.Equal(clk.now()) {
+			t.Errorf("hold reports last seen %v, want the request at %v", h.Identity.LastSeen, clk.now())
+		}
+	}
+	if n := commits() - start; n != 0 {
+		t.Errorf("two holds with nothing new committed %d times, want none", n)
+	}
+	if got := getIdentity(t, s, bravo.ID); !reflect.DeepEqual(got, before) {
+		t.Errorf("two holds with nothing new rewrote the row:\n got %+v\nwant %+v", got, before)
+	}
+
+	clk.advance(time.Minute)
+	direct(t, s, "alpha", "bravo", 1)
+	if _, err := s.Hold(t.Context(), sess("bravo")); err != nil {
+		t.Fatal(err)
+	}
+	if row := getIdentity(t, s, bravo.ID); row.Shown != 1 || !row.LastSeen.Equal(testNow) {
+		t.Errorf("shown %d last seen %v, want shown 1 and last seen still %v", row.Shown, row.LastSeen, testNow)
+	}
+
+	clk.set(testNow.Add(5 * time.Minute))
+	if _, err := s.Hold(t.Context(), sess("bravo")); err != nil {
+		t.Fatal(err)
+	}
+	if row := getIdentity(t, s, bravo.ID); !row.LastSeen.Equal(clk.now()) {
+		t.Errorf("stored last seen %v after 5 minutes, want %v", row.LastSeen, clk.now())
+	}
+}
+
+func TestReads_neverMoveTheLease(t *testing.T) {
+	s, clk := openClockStore(t)
+	regAt(t, s, "alpha", "/workspace/alpha")
+	bravo := regAt(t, s, "bravo", "/workspace/bravo")
+	mustPost(t, s, posting(sess("alpha"), Target{Path: "/workspace/alpha"}))
+	direct(t, s, "alpha", "bravo", 1)
+	want := getIdentity(t, s, bravo.ID).Lease
+	ctx, me := t.Context(), sess("bravo")
+	calls := []struct {
+		name string
+		call func() error
+	}{
+		{"inbox", func() error { _, err := s.Inbox(ctx, me, 0); return err }},
+		{"ack", func() error { _, err := s.Ack(ctx, me, 1); return err }},
+		{"hold", func() error { _, err := s.Hold(ctx, me); return err }},
+		{"history", func() error { _, err := s.History(ctx, me, &HistoryQuery{}); return err }},
+		{"follow", func() error { _, err := s.Follow(ctx, me, "/workspace/alpha"); return err }},
+		{"unfollow", func() error { _, err := s.Unfollow(ctx, me, "/workspace/alpha"); return err }},
+	}
+	for _, c := range calls {
+		clk.advance(10 * time.Minute)
+		if err := c.call(); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if got := getIdentity(t, s, bravo.ID).Lease; !got.Expires.Equal(want.Expires) || !got.WarnAt.Equal(want.WarnAt) {
+			t.Errorf("%s moved the lease to %+v, want the registration's %+v", c.name, got, want)
+		}
 	}
 }
 

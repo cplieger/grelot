@@ -124,6 +124,11 @@ func (w *wtx) register(r *Registration, provider string) (Registered, error) {
 		return Registered{}, err
 	}
 	if ownFound && own.State == stateLive {
+		if w.seen(&own) {
+			if perr := w.s.t.identities.table.Put(w.tx, own.ID, &own); perr != nil {
+				return Registered{}, perr
+			}
+		}
 		return Registered{Identity: w.s.view(&own), Existing: true}, nil
 	}
 	row, added, moved, err := w.registerRow(r, provider)
@@ -319,6 +324,7 @@ func (s *Store) Retire(ctx context.Context, session string) error {
 		if err := deleteRow(w, s.t.identities, row.ID); err != nil {
 			return err
 		}
+		s.forgetSeen(row.ID)
 		s.log.Info("identity retired", "name", row.Name, "id", row.ID, "provider", row.Provider)
 		return nil
 	})
@@ -341,7 +347,7 @@ func (s *Store) Seen(ctx context.Context, session string) (Identity, error) {
 	now := s.now()
 	if found && row.State == stateLive && !row.Lease.due(now) {
 		s.noteSeen(row.ID, now)
-		if !row.Ended && now.Sub(row.LastSeen) < lastSeenEvery {
+		if !seenDue(&row, now) {
 			return s.view(&row), nil
 		}
 	}
@@ -354,9 +360,7 @@ func (s *Store) Seen(ctx context.Context, session string) (Identity, error) {
 		if !found {
 			return noIdentity()
 		}
-		if row.State == stateLive {
-			row.Ended = false
-			row.LastSeen = w.now
+		if row.State == stateLive && w.seen(&row) {
 			if err := s.t.identities.table.Put(w.tx, row.ID, &row); err != nil {
 				return err
 			}
@@ -365,6 +369,24 @@ func (s *Store) Seen(ctx context.Context, session string) (Identity, error) {
 		return nil
 	})
 	return out, err
+}
+
+// seen records a request from row's own session in memory and, when
+// seenDue, clears ended and refreshes last_seen, reporting whether row
+// must be written.
+func (w *wtx) seen(row *identityRow) bool {
+	w.s.noteSeen(row.ID, w.now)
+	if !seenDue(row, w.now) {
+		return false
+	}
+	row.Ended, row.LastSeen = false, w.now
+	return true
+}
+
+// seenDue reports whether a request at now must write row: ended is set or
+// the stored last_seen is lastSeenEvery old.
+func seenDue(row *identityRow, now time.Time) bool {
+	return row.Ended || now.Sub(row.LastSeen) >= lastSeenEvery
 }
 
 // WhoQuery filters Who. Path keeps identities with a work path at, above
@@ -389,6 +411,9 @@ type Peer struct {
 // Who lists live identities, by name, as session's identity sees them; a
 // session with no live identity sees every relation as unknown.
 func (s *Store) Who(ctx context.Context, session string, q WhoQuery) ([]Peer, error) {
+	if _, err := s.Seen(ctx, session); err != nil && !isKind(err, KindGone) {
+		return nil, err
+	}
 	text := strings.ToLower(q.Text)
 	var out []Peer
 	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
@@ -769,6 +794,14 @@ func (s *Store) noteSeen(id uint64, t time.Time) {
 	if t.After(s.seen[id]) {
 		s.seen[id] = t
 	}
+}
+
+// forgetSeen drops id's request time once its row is deleted; ids are never
+// reused, so a kept entry would stay for the life of the process.
+func (s *Store) forgetSeen(id uint64) {
+	s.seenMu.Lock()
+	defer s.seenMu.Unlock()
+	delete(s.seen, id)
 }
 
 func (s *Store) lastSeen(r *identityRow) time.Time {

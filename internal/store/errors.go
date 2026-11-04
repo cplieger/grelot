@@ -1,5 +1,7 @@
 package store
 
+import "errors"
+
 // Kind sorts a refusal by what the caller must do about it; the HTTP layer
 // maps each to its status.
 type Kind int
@@ -30,3 +32,8 @@ type Error struct {
 func (e *Error) Error() string { return e.Msg }
 
 func refuse(k Kind, msg string) *Error { return &Error{Kind: k, Msg: msg} }
+
+func isKind(err error, k Kind) bool {
+	var e *Error
+	return errors.As(err, &e) && e.Kind == k
+}

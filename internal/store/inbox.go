@@ -213,28 +213,58 @@ func (w *wtx) stampRead(me *identityRow, to uint64) (uint64, error) {
 // Hold counts session's deliveries past max(read, shown) and, when one of
 // them wakes, advances shown to the highest seq, so the next hold shows
 // only what commits after this one; cards alone advance nothing, and wait
-// for the next hold that shows a wake event. It never moves read. A
-// session with no live identity is KindGone.
+// for the next hold that shows a wake event. It never moves read, and
+// commits only when shown moves or seenDue asks for a write, since the
+// hooks hold on every tool call. A session with no live identity is
+// KindGone.
 func (s *Store) Hold(ctx context.Context, session string) (Held, error) {
 	var out Held
-	err := s.update(ctx, func(w *wtx) error {
-		me, err := w.liveBySession(session)
+	write := false
+	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
+		now := s.now()
+		me, err := s.liveFor(r, session, now)
 		if err != nil {
 			return err
 		}
-		if err := s.scanUnread(w.r, me.ID, max(me.Read, me.Shown), w.now, func(d *deliveryRow) error {
-			out.Counts.add(d.Kind)
-			return nil
-		}); err != nil {
+		if out, err = s.held(r, &me, now); err != nil {
 			return err
 		}
-		if out.Counts.Wake() > 0 {
-			me.Shown = me.Seq
+		if write = seenDue(&me, now) || out.Counts.Wake() > 0; !write {
+			s.noteSeen(me.ID, now)
+			out.Identity = s.view(&me)
 		}
-		me.Ended, me.LastSeen = false, w.now
-		out.Identity, out.Shown = s.view(&me), me.Shown
+		return nil
+	})
+	if err != nil || !write {
+		return out, err
+	}
+	err = s.update(ctx, func(w *wtx) error {
+		me, lerr := w.liveBySession(session)
+		if lerr != nil {
+			return lerr
+		}
+		if out, lerr = s.held(w.r, &me, w.now); lerr != nil {
+			return lerr
+		}
+		w.seen(&me)
+		out.Identity = s.view(&me)
 		return s.t.identities.table.Put(w.tx, me.ID, &me)
 	})
+	return out, err
+}
+
+// held counts me's deliveries past max(read, shown) and, when one of them
+// wakes, advances me's shown to its highest seq.
+func (s *Store) held(r *bolttable.ReadTx, me *identityRow, now time.Time) (Held, error) {
+	var out Held
+	err := s.scanUnread(r, me.ID, max(me.Read, me.Shown), now, func(d *deliveryRow) error {
+		out.Counts.add(d.Kind)
+		return nil
+	})
+	if out.Counts.Wake() > 0 {
+		me.Shown = me.Seq
+	}
+	out.Shown = me.Shown
 	return out, err
 }
 

@@ -575,6 +575,65 @@ func TestSeen_lastSeenWrittenAtMostEveryFiveMinutes(t *testing.T) {
 	}
 }
 
+func TestEndSession_aRepeatedRegisterOrWhoClearsEndedAndKeepsTheCap(t *testing.T) {
+	for _, call := range []string{"register", "who"} {
+		t.Run(call, func(t *testing.T) {
+			s, clk, _ := openIdentityStore(t)
+			r := registration(sessA, "subflux-dev", envA())
+			me := mustRegister(t, s, r)
+			if err := s.EndSession(t.Context(), sessA); err != nil {
+				t.Fatal(err)
+			}
+			clk.advance(time.Minute)
+			var err error
+			if call == "register" {
+				var got Registered
+				got, err = s.Register(t.Context(), &r)
+				if !got.Existing {
+					t.Errorf("repeated register %+v, want the existing identity", got)
+				}
+			} else {
+				_, err = s.Who(t.Context(), sessA, WhoQuery{})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			row := getIdentity(t, s, me.ID)
+			if row.Ended {
+				t.Error("ended still set, want it cleared")
+			}
+			if !row.Lease.Expires.Equal(testNow.Add(time.Hour)) {
+				t.Errorf("expires %v, want the capped %v kept", row.Lease.Expires, testNow.Add(time.Hour))
+			}
+		})
+	}
+}
+
+func TestSeen_forgetsAnIdentityOnceItIsGone(t *testing.T) {
+	s, clk, _ := openIdentityStore(t)
+	mustRegister(t, s, registration(sessA, "agent-a", envA()))
+	b := mustRegister(t, s, registration(sessB, "agent-b", envA()))
+	clk.advance(time.Minute)
+	for _, session := range []string{sessA, sessB} {
+		if _, err := s.Seen(t.Context(), session); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Retire(t.Context(), sessA); err != nil {
+		t.Fatal(err)
+	}
+	clk.set(b.Expires)
+	mustSweep(t, s)
+	clk.set(b.Expires.Add(DefaultDormantTTL))
+	mustSweep(t, s)
+	s.seenMu.Lock()
+	n := len(s.seen)
+	s.seenMu.Unlock()
+	if n != 0 {
+		t.Errorf("%d request times kept after a retirement and a purge, want none", n)
+	}
+}
+
 func TestSeen_isGoneWithoutAnIdentity(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	_, err := s.Seen(t.Context(), sessA)
