@@ -38,7 +38,7 @@ var (
 func checkWhere(w *Where, paths []string) error {
 	if w == nil {
 		return refuse(KindInvalid,
-			"where is required: send {machine, environment, checkouts}, as grelot register, revive and renew do")
+			"where is required: send {machine, environment, checkouts} with a register, revive or renew, and with a set or post that changes paths")
 	}
 	if w.Machine != "" && !machinePattern.MatchString(w.Machine) {
 		return refuse(KindInvalid,

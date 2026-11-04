@@ -117,6 +117,10 @@ func writeOtherFormat(t *testing.T, path string) {
 	}
 }
 
+// freshRows is what an empty store holds after Open: the announcement
+// thread, created at first start.
+const freshRows = 1
+
 func rowCount(ctx context.Context, t *testing.T, s *Store) int {
 	t.Helper()
 	st, err := s.db.Stats(ctx)
@@ -142,8 +146,8 @@ func TestOpen_formatMismatchResetsAndWarns(t *testing.T) {
 		t.Fatalf("Open: %v", err)
 	}
 
-	if n := rowCount(t.Context(), t, s); n != 0 {
-		t.Errorf("rows after the reset = %d, want 0", n)
+	if n := rowCount(t.Context(), t, s); n != freshRows {
+		t.Errorf("rows after the reset = %d, want %d", n, freshRows)
 	}
 	warns := sink.lines(slog.LevelWarn, msgStoreReset)
 	if len(warns) != 1 {
@@ -212,8 +216,8 @@ func TestOpen_corruptFileIsMovedAsideAndTheStoreStartsEmpty(t *testing.T) {
 			if !bytes.Equal(got, data) {
 				t.Error("the moved-aside file differs from the corrupt one")
 			}
-			if n := rowCount(t.Context(), t, s); n != 0 {
-				t.Errorf("rows in the fresh store = %d, want 0", n)
+			if n := rowCount(t.Context(), t, s); n != freshRows {
+				t.Errorf("rows in the fresh store = %d, want %d", n, freshRows)
 			}
 			errs := sink.lines(slog.LevelError, msgStoreCorrupt)
 			if len(errs) != 1 {

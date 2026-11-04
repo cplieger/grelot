@@ -226,24 +226,34 @@ func (w *wtx) applyChange(row *identityRow, c Change) error {
 	if c.TTL == 0 && c.Where == nil && c.Fields.Name == "" && c.Fields.Description == "" && len(c.Fields.Paths) == 0 {
 		return refuse(KindInvalid, "nothing to set: pass --name, --paths, --desc or --ttl")
 	}
-	fc, err := resolveFields(row, c.Fields, fieldsSome)
+	if err := w.applyFields(row, c.Fields, c.Where, fieldsSome, c.TTL > 0); err != nil {
+		return err
+	}
+	if c.TTL > 0 {
+		ls, err := identityPolicy.grant(w.now, c.TTL, time.Time{})
+		if err != nil {
+			return err
+		}
+		row.TTL, row.Lease = c.TTL, ls
+	}
+	return nil
+}
+
+// applyFields applies a set's or a post's identity fields and where to
+// row. Where is checked when it is sent, when the paths change, and on a
+// renewal, which must send it.
+func (w *wtx) applyFields(row *identityRow, f Fields, sent *Where, mode fieldMode, renew bool) error {
+	fc, err := resolveFields(row, f, mode)
 	if err == nil && fc.name != row.Name {
 		err = w.nameFree(fc.name)
 	}
-	if err == nil && (fc.pathsChanged || c.TTL > 0 || c.Where != nil) {
-		err = checkWhere(c.Where, fc.paths)
+	if err == nil && (fc.pathsChanged || renew || sent != nil) {
+		err = checkWhere(sent, fc.paths)
 	}
 	if err != nil {
 		return err
 	}
-	if c.TTL > 0 {
-		ls, gerr := identityPolicy.grant(w.now, c.TTL, time.Time{})
-		if gerr != nil {
-			return gerr
-		}
-		row.TTL, row.Lease = c.TTL, ls
-	}
-	applyWhere(row, c.Where, fc.pathsChanged, fc.paths)
+	applyWhere(row, sent, fc.pathsChanged, fc.paths)
 	row.Name, row.Paths, row.Description = fc.name, fc.paths, fc.description
 	return nil
 }

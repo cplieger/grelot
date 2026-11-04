@@ -53,17 +53,21 @@ func warnIdentity(w *wtx, k uint64, v *identityRow) error {
 // deliverEvent writes a server event to identity id under its next seq,
 // living THREAD_TTL from now.
 func (w *wtx) deliverEvent(id uint64, kind, text string) error {
-	idt := w.s.t.identities.table
-	row, found, err := idt.Get(w.r, id)
+	row, found, err := w.s.t.identities.table.Get(w.r, id)
 	if err != nil || !found {
 		return err
 	}
+	return w.deliver(&row, &deliveryRow{Kind: kind, Text: text, Lease: lease{Expires: w.now.Add(w.s.threadTTL)}})
+}
+
+// deliver writes d to row's identity under its next seq and stores row
+// with that seq. row must be this transaction's latest copy: storing an
+// older one afterwards would reuse the seq.
+func (w *wtx) deliver(row *identityRow, d *deliveryRow) error {
 	row.Seq++
-	if err := idt.Put(w.tx, id, &row); err != nil {
+	d.Agent, d.Seq, d.Written = row.ID, row.Seq, w.now
+	if err := w.s.t.identities.table.Put(w.tx, row.ID, row); err != nil {
 		return err
 	}
-	return w.s.t.deliveries.table.Put(w.tx, pairKey(id, row.Seq), &deliveryRow{
-		Agent: id, Seq: row.Seq, Kind: kind, Text: text, Written: w.now,
-		Lease: lease{Expires: w.now.Add(w.s.threadTTL)},
-	})
+	return w.s.t.deliveries.table.Put(w.tx, pairKey(row.ID, row.Seq), d)
 }

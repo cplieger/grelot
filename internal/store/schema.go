@@ -25,6 +25,14 @@ const (
 	stateDormant = "dormant"
 )
 
+// Thread kinds, which are also the kinds of the deliveries their posts
+// write.
+const (
+	kindAnnounce = "announce"
+	kindPath     = "path"
+	kindDirect   = "direct"
+)
+
 // Delivery kinds that carry their text in the row, having no message.
 const (
 	kindIdentityExpiring = "identity_expiring"
@@ -74,27 +82,52 @@ type seqRange struct {
 // threadRow is one announcement, path or direct thread, keyed by its id.
 type threadRow struct {
 	Lease lease  `json:"lease"`
-	Key   string `json:"key"`
-	ID    uint64 `json:"id"`
+	Kind  string `json:"kind"`
+	// Key is unique: announceKey, the path, or directKey of the pair.
+	Key string `json:"key"`
+	// Path is a path thread's path.
+	Path string `json:"path,omitempty"`
+	ID   uint64 `json:"id"`
 }
 
-// messageRow is one post, keyed pairKey(thread, msg).
+// messageRow is one post, keyed pairKey(thread, msg). It keeps the
+// sender's labels and where as they stood at the post, so a reader's
+// relation to the sender outlives the sender's row.
 type messageRow struct {
-	Lease  lease  `json:"lease"`
-	Body   string `json:"body"`
-	Thread uint64 `json:"thread"`
-	ID     uint64 `json:"id"`
+	PostedAt   time.Time `json:"posted_at"`
+	Lease      lease     `json:"lease"`
+	Kind       string    `json:"kind"`
+	Path       string    `json:"path,omitempty"`
+	Subject    string    `json:"subject"`
+	Body       string    `json:"body"`
+	SenderName string    `json:"sender_name"`
+	Host       string    `json:"host"`
+	OS         string    `json:"os"`
+	Arch       string    `json:"arch"`
+	Where      Where     `json:"where"`
+	Thread     uint64    `json:"thread"`
+	ID         uint64    `json:"id"`
+	Sender     uint64    `json:"sender"`
 }
 
 // deliveryRow is one recipient's copy of a message or event, keyed
 // pairKey(agent, seq).
 type deliveryRow struct {
 	Written time.Time `json:"written"`
+	ReadAt  time.Time `json:"read_at,omitzero"`
 	Lease   lease     `json:"lease"`
 	Kind    string    `json:"kind"`
 	Text    string    `json:"text,omitempty"`
-	Agent   uint64    `json:"agent"`
-	Seq     uint64    `json:"seq"`
+	// Path is the work path or follow that matched a path-thread post,
+	// the most specific one.
+	Path string `json:"path,omitempty"`
+	// Name is the recipient's name at fan-out.
+	Name    string `json:"name,omitempty"`
+	Agent   uint64 `json:"agent"`
+	Seq     uint64 `json:"seq"`
+	Message uint64 `json:"message,omitempty"`
+	Thread  uint64 `json:"thread,omitempty"`
+	Sender  uint64 `json:"sender,omitempty"`
 }
 
 type tables struct {
@@ -105,6 +138,7 @@ type tables struct {
 	byFollow   *bolttable.Index[uint64, identityRow]
 	byProc     *bolttable.Index[uint64, identityRow]
 	threads    *leased[uint64, threadRow]
+	threadKey  *bolttable.Index[uint64, threadRow]
 	messages   *leased[[]byte, messageRow]
 	deliveries *leased[[]byte, deliveryRow]
 	// leased lists every table above, in the order the sweep walks them.
@@ -146,6 +180,10 @@ func newSchema() (*bolttable.Schema, *tables, error) {
 	}
 	if ierr := defineIdentityIndexes(ids, &t); ierr != nil {
 		return nil, nil, ierr
+	}
+	if t.threadKey, err = bolttable.DefineIndex(threads, "threads.key", bolttable.IndexOptions{Unique: true, Version: 1},
+		func(_ uint64, v *threadRow) []bolttable.Entry { return keyEntries(v.Key) }); err != nil {
+		return nil, nil, err
 	}
 	if t.identities, err = defineLeased(ids, identityPolicy, func(v *identityRow) *lease { return &v.Lease }); err != nil {
 		return nil, nil, err

@@ -96,6 +96,9 @@ func Open(path string, o Options) (*Store, error) {
 	}
 	s.db, s.t = db, t
 	s.wireLeases()
+	if err := s.ensureAnnounce(context.Background()); err != nil {
+		return nil, errors.Join(err, db.Close())
+	}
 	return s, nil
 }
 
