@@ -62,7 +62,8 @@ type ReservationQuery struct {
 // takes a subpath while an older request waits for the parent; the
 // identity's own grants never conflict. Refusals: KindInvalid for a bad
 // path, reason or ttl; KindGone for a session with no live identity;
-// KindConflict naming the holder or the queue head.
+// KindForbidden for a delegate; KindConflict naming the holder or the
+// queue head.
 func (s *Store) Reserve(ctx context.Context, r *Reserving) (Reserved, error) {
 	if err := checkReserving(r); err != nil {
 		return Reserved{}, err
@@ -103,6 +104,9 @@ func (w *wtx) reserve(r *Reserving) (Reserved, *Error, error) {
 	me, err := w.liveAs(r.Caller)
 	if err != nil {
 		return Reserved{}, nil, err
+	}
+	if me.Parent != 0 {
+		return Reserved{}, nil, refuse(KindForbidden, "a delegate cannot reserve or queue: ask your parent to reserve the path")
 	}
 	me.Ended, me.LastSeen = false, w.now
 	if perr := w.s.t.identities.table.Put(w.tx, me.ID, &me); perr != nil {

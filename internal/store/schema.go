@@ -170,7 +170,10 @@ type deliveryRow struct {
 	// the most specific one.
 	Path string `json:"path,omitempty"`
 	// Name is the recipient's name at fan-out.
-	Name    string `json:"name,omitempty"`
+	Name string `json:"name,omitempty"`
+	// Via is the handle of the delegate a parent's copy is for; a copy is
+	// quiet and is not a recipient of its message.
+	Via     string `json:"via,omitempty"`
 	Agent   uint64 `json:"agent"`
 	Seq     uint64 `json:"seq"`
 	Message uint64 `json:"message,omitempty"`
@@ -201,6 +204,8 @@ type tables struct {
 	byFollow   *bolttable.Index[uint64, identityRow]
 	byProc     *bolttable.Index[uint64, identityRow]
 	byParent   *bolttable.Index[uint64, identityRow]
+	// byAllow indexes a delegate's allowed path threads.
+	byAllow    *bolttable.Index[uint64, identityRow]
 	threads    *leased[uint64, threadRow]
 	threadKey  *bolttable.Index[uint64, threadRow]
 	messages   *leased[[]byte, messageRow]
@@ -310,8 +315,9 @@ func isPost(kind string) bool {
 }
 
 // defineIdentityIndexes declares the name and session lookups, which a
-// dormant row keeps, the work-path and follow indexes fan-out reads, and
-// the proc index the take-over hint reads.
+// dormant row keeps, the work-path, follow and allowed-thread indexes
+// fan-out reads, the proc index the take-over hint reads, and the parent
+// index.
 func defineIdentityIndexes(ids *bolttable.Table[uint64, identityRow], t *tables) error {
 	unique := bolttable.IndexOptions{Unique: true, Version: 1}
 	many := bolttable.IndexOptions{Version: 1}
@@ -334,6 +340,15 @@ func defineIdentityIndexes(ids *bolttable.Table[uint64, identityRow], t *tables)
 	}
 	if t.byProc, err = bolttable.DefineIndex(ids, "identities.proc", many,
 		func(_ uint64, v *identityRow) []bolttable.Entry { return keyEntries(v.Proc) }); err != nil {
+		return err
+	}
+	if t.byAllow, err = bolttable.DefineIndex(ids, "identities.allow", many,
+		func(_ uint64, v *identityRow) []bolttable.Entry {
+			if v.Scope == nil {
+				return nil
+			}
+			return keyEntries(v.Scope.AllowThreads...)
+		}); err != nil {
 		return err
 	}
 	t.byParent, err = bolttable.DefineIndex(ids, "identities.parent", many,

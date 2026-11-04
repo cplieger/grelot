@@ -9,8 +9,8 @@ import (
 // Follow adds the live path thread at path to c's identity's
 // follows and returns the identity; following it again changes nothing.
 // Refusals: KindInvalid for a bad path; KindGone for a session with no
-// live identity; KindNotFound for no live thread there; KindConflict at
-// the follow cap.
+// live identity; KindForbidden for a delegate; KindNotFound for no live
+// thread there; KindConflict at the follow cap.
 func (s *Store) Follow(ctx context.Context, c Caller, path string) (Identity, error) {
 	if _, err := checkPaths([]string{path}); err != nil {
 		return Identity{}, err
@@ -26,6 +26,8 @@ func (s *Store) Follow(ctx context.Context, c Caller, path string) (Identity, er
 			return err
 		}
 		switch {
+		case me.Parent != 0:
+			return refuse(KindForbidden, "a delegate follows nothing: its scope decides what it receives")
 		case !live:
 			return refuse(KindNotFound, fmt.Sprintf("no thread at %s; post there to start one", path))
 		case slices.Contains(me.Follows, path):
@@ -79,8 +81,9 @@ func (s *Store) Unfollow(ctx context.Context, c Caller, path string) (Identity, 
 		if err := s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {
 			return err
 		}
-		out = s.view(&me)
-		return nil
+		var verr error
+		out, verr = w.viewOf(&me)
+		return verr
 	})
 	return out, err
 }

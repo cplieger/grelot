@@ -470,6 +470,28 @@ func TestDelegate_endsWithItsParent(t *testing.T) {
 		_, err = s.Set(t.Context(), as(sess("parent"), d.Name), Change{Fields: Fields{Description: "x"}})
 		wantRefusal(t, err, KindGone, "delegate_ended", "")
 	})
+	t.Run("expiry seen from the delegate's own session", func(t *testing.T) {
+		s, clk, _ := openIdentityStore(t)
+		r := registration(sess("parent"), "parent", envA(), repoSubflux)
+		r.TTL = time.Hour
+		mustRegister(t, s, r)
+		g := grantFrom("parent", "codex")
+		g.TTL = 3 * time.Hour
+		own := "codex:thread-1"
+		d := mustRegisterDelegate(t, s, own, mustGrant(t, s, g).Link)
+		outliveParent(t, s, d.ID)
+		clk.advance(59 * time.Minute)
+		if _, err := s.Seen(t.Context(), Caller{Session: own}); err != nil {
+			t.Fatal(err)
+		}
+		clk.advance(time.Minute)
+		_, err := s.Inbox(t.Context(), Caller{Session: own}, 0)
+		wantRefusal(t, err, KindGone, "delegate_ended", "")
+		p := posting(own, Target{Agent: "parent"})
+		p.Fields = Fields{Description: NoChange}
+		_, err = s.Post(t.Context(), &p)
+		wantRefusal(t, err, KindGone, "delegate_ended", "")
+	})
 }
 
 func TestDelegate_ownLeaseDeletesItNeverDormant(t *testing.T) {

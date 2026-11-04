@@ -136,7 +136,8 @@ func (w *wtx) register(r *Registration, provider string) (Registered, error) {
 				return Registered{}, perr
 			}
 		}
-		return Registered{Identity: w.s.view(&own), Existing: true}, nil
+		v, verr := w.viewOf(&own)
+		return Registered{Identity: v, Existing: true}, verr
 	}
 	row, added, moved, err := w.registerRow(r, provider)
 	if err != nil {
@@ -232,8 +233,9 @@ func (s *Store) Set(ctx context.Context, c Caller, ch Change) (Identity, error) 
 		if err := s.t.identities.table.Put(w.tx, row.ID, &row); err != nil {
 			return err
 		}
-		out = s.view(&row)
-		return nil
+		var verr error
+		out, verr = w.viewOf(&row)
+		return verr
 	})
 	return out, err
 }
@@ -257,8 +259,12 @@ func (w *wtx) applyChange(row *identityRow, c Change) error {
 
 // applyFields applies a set's or a post's identity fields and where to
 // row, owing a join card for each path it adds. Where is checked when it
-// is sent, when the paths change, and on a renewal, which must send it.
+// is sent, when the paths change, and on a renewal, which must send it. A
+// delegate's where is its parent's, so one it sends is ignored.
 func (w *wtx) applyFields(row *identityRow, f Fields, sent *Where, mode fieldMode, renew bool) error {
+	if row.Parent != 0 {
+		return applyDelegateFields(row, f, mode)
+	}
 	fc, err := resolveFields(row, f, mode)
 	if err == nil && fc.name != row.Name {
 		err = w.nameFree(fc.name)
@@ -389,8 +395,9 @@ func (s *Store) Seen(ctx context.Context, c Caller) (Identity, error) {
 				return err
 			}
 		}
-		out = s.view(&row)
-		return nil
+		var verr error
+		out, verr = w.viewOf(&row)
+		return verr
 	})
 	return out, err
 }
@@ -429,11 +436,14 @@ type WhoQuery struct {
 // own entry carries MachineKind and EnvironmentKnown.
 type Peer struct {
 	Relation string
+	// Delegates are a parent's live delegates, which Who lists only here.
+	Delegates []Peer
 	Identity
 }
 
-// Who lists live identities, by name, as c's identity sees them; a
-// session with no live identity sees every relation as unknown.
+// Who lists live identities, by name, as c's identity sees them, each
+// live parent's delegates nested under it and nowhere else; q filters the
+// parents. A session with no live identity sees every relation as unknown.
 func (s *Store) Who(ctx context.Context, c Caller, q WhoQuery) ([]Peer, error) {
 	if _, err := s.Seen(ctx, c); err != nil && !isKind(err, KindGone) {
 		return nil, err
@@ -448,15 +458,40 @@ func (s *Store) Who(ctx context.Context, c Caller, q WhoQuery) ([]Peer, error) {
 		} else if found && me.State == stateLive {
 			caller = party{where: me.Where, id: me.ID}
 		}
-		return s.t.identities.table.Scan(r, bolttable.Range{}, func(_ uint64, v *identityRow) (bool, error) {
-			if v = settled(v, now, s.dormantTTL); v != nil && q.shows(v, text, caller.where) {
-				out = append(out, s.peer(caller, v))
+		var shown []identityRow
+		delegates := map[uint64][]identityRow{}
+		err := s.t.identities.table.Scan(r, bolttable.Range{}, func(_ uint64, v *identityRow) (bool, error) {
+			switch v = settled(v, now, s.dormantTTL); {
+			case v == nil:
+			case v.Parent != 0:
+				delegates[v.Parent] = append(delegates[v.Parent], *v)
+			case q.shows(v, text, caller.where):
+				shown = append(shown, *v)
 			}
 			return true, nil
 		})
+		for i := range shown {
+			out = append(out, s.parentPeer(caller, &shown[i], delegates[shown[i].ID]))
+		}
+		return err
 	})
 	slices.SortFunc(out, func(a, b Peer) int { return strings.Compare(a.Name, b.Name) })
 	return out, err
+}
+
+// parentPeer is v as caller sees it, with its delegates, which a dormant
+// v no longer has, judged by v's where.
+func (s *Store) parentPeer(caller party, v *identityRow, delegates []identityRow) Peer {
+	p := s.peer(caller, v)
+	if v.State != stateLive {
+		return p
+	}
+	for i := range delegates {
+		delegates[i].Where = v.Where
+		p.Delegates = append(p.Delegates, s.peer(caller, &delegates[i]))
+	}
+	slices.SortFunc(p.Delegates, func(a, b Peer) int { return strings.Compare(a.Name, b.Name) })
+	return p
 }
 
 // peer is v as caller sees it.

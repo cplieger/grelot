@@ -54,11 +54,14 @@ type Posted struct {
 
 // Post stores a message from p.Caller's live identity, applies the
 // identity fields it carries, and writes one delivery to each recipient,
-// dormant ones included. A post in a path thread follows it. Refusals:
-// KindInvalid for a bad target, message, field or where; KindGone for a
-// session with no live identity; KindNotFound for an unknown @name;
-// KindConflict for a rename to a held name; KindFull when the last Measure
-// found the bytes in use past 90 % of Options.MaxBytes.
+// dormant ones included, and a quiet copy to each delegate's parent that
+// would not otherwise see it. A post in a path thread follows it, except
+// a delegate's. Refusals: KindInvalid for a bad target, message, field or
+// where; KindGone for a session with no live identity; KindForbidden for a
+// delegate's post outside its scope or a direct post to a delegate from
+// outside its scope; KindNotFound for an unknown @name; KindConflict for
+// a rename to a held name; KindFull when the last Measure found the bytes
+// in use past 90 % of Options.MaxBytes.
 func (s *Store) Post(ctx context.Context, p *Posting) (Posted, error) {
 	if err := checkMessage(p); err != nil {
 		return Posted{}, err
@@ -122,11 +125,19 @@ func (w *wtx) post(p *Posting) (Posted, error) {
 	if perr := w.s.t.identities.table.Put(w.tx, me.ID, &me); perr != nil {
 		return Posted{}, perr
 	}
-	msg, err := w.storeMessage(&me, &rt.thread, p)
+	where, err := w.s.whereOf(w.r, &me)
 	if err != nil {
 		return Posted{}, err
 	}
-	out := Posted{Notices: rt.notices, Message: msg.ID, Thread: rt.thread.ID, Identity: w.s.view(&me)}
+	msg, err := w.storeMessage(&me, where, &rt.thread, p)
+	if err != nil {
+		return Posted{}, err
+	}
+	v, err := w.viewOf(&me)
+	if err != nil {
+		return Posted{}, err
+	}
+	out := Posted{Notices: rt.notices, Message: msg.ID, Thread: rt.thread.ID, Identity: v}
 	if err := w.fanOut(&me, &rt, &msg, &out); err != nil {
 		return Posted{}, err
 	}
@@ -134,9 +145,12 @@ func (w *wtx) post(p *Posting) (Posted, error) {
 }
 
 // fanOut writes msg's delivery to each recipient but the sender, in id
-// order, and counts them into out by whether they share me's environment.
-// A recipient whose purge is due is purged here and gets none.
+// order, and counts them into out by whether they share the sender's
+// environment, then the copies a delegate's parent is owed. A recipient
+// whose purge is due is purged here and gets none.
 func (w *wtx) fanOut(me *identityRow, rt *route, msg *messageRow, out *Posted) error {
+	cp := copies{}
+	cp.owe(me, me.ID)
 	for _, id := range slices.Sorted(maps.Keys(rt.recipients)) {
 		if id == me.ID {
 			continue
@@ -155,13 +169,18 @@ func (w *wtx) fanOut(me *identityRow, rt *route, msg *messageRow, out *Posted) e
 			return err
 		}
 		out.Delivered++
-		if shareEnvironment(me.Where, r.Where) {
+		cp.owe(&r, me.ID)
+		where, werr := w.s.whereOf(w.r, &r)
+		if werr != nil {
+			return werr
+		}
+		if shareEnvironment(msg.Where, where) {
 			out.SameEnvironment++
 		} else {
 			out.Other++
 		}
 	}
-	return nil
+	return w.writeCopies(cp, rt, msg)
 }
 
 // route is where a post goes: its thread, each recipient with the path
@@ -172,18 +191,27 @@ type route struct {
 	thread     threadRow
 }
 
+// route refuses a delegate's post outside its scope, and directRoute
+// also a direct post to a delegate from outside its scope.
 func (w *wtx) route(me *identityRow, to Target) (route, error) {
 	switch {
 	case to.Announce:
+		if me.Parent != 0 && !me.Scope.allowsAnnounce() {
+			return route{}, w.s.scopeRefusal(w.r, me)
+		}
 		return w.announceRoute()
 	case to.Path != "":
+		if me.Parent != 0 && !me.Scope.allowsPath(to.Path) {
+			return route{}, w.s.scopeRefusal(w.r, me)
+		}
 		return w.pathRoute(me, to.Path)
 	default:
 		return w.directRoute(me, to.Agent)
 	}
 }
 
-// announceRoute reaches every identity, live and dormant.
+// announceRoute reaches every identity, live and dormant, but a delegate
+// whose scope leaves the announcements out.
 func (w *wtx) announceRoute() (route, error) {
 	th, _, err := w.thread(announceKey)
 	if err != nil {
@@ -191,19 +219,22 @@ func (w *wtx) announceRoute() (route, error) {
 	}
 	th.Kind = kindAnnounce
 	rt := route{thread: th, recipients: map[uint64]string{}}
-	err = w.s.t.identities.table.Scan(w.r, bolttable.Range{}, func(id uint64, _ *identityRow) (bool, error) {
-		rt.recipients[id] = ""
+	err = w.s.t.identities.table.Scan(w.r, bolttable.Range{}, func(id uint64, v *identityRow) (bool, error) {
+		if v.Parent == 0 || v.Scope.allowsAnnounce() {
+			rt.recipients[id] = ""
+		}
 		return true, nil
 	})
 	return rt, err
 }
 
 // pathRoute reaches the identities with a work path or a held reservation
-// at p or above it, and p's followers. Posts go down the tree only, so a
-// work path under p does not match. Walking p's ancestors shortest first
-// leaves each recipient labelled with its most specific match; a follow is
-// of p itself, the most specific of all. The sender follows p unless it is
-// at the cap.
+// at p or above it, the delegates whose scope allows p, and p's followers.
+// Posts go down the tree only, so a work path under p does not match.
+// Walking p's ancestors shortest first leaves each recipient labelled with
+// its most specific match; a follow is of p itself, the most specific of
+// all. The sender follows p unless it is at the cap or a delegate, whose
+// scope already delivers p.
 func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 	th, _, err := w.thread(p)
 	if err != nil {
@@ -212,19 +243,7 @@ func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 	th.Kind, th.Path = kindPath, p
 	rt := route{thread: th, recipients: map[uint64]string{}}
 	for _, a := range ancestors(p) {
-		if err := scanExact(w.r, w.s.t.byPath, a, func(id uint64) (bool, error) {
-			rt.recipients[id] = a
-			return true, nil
-		}); err != nil {
-			return route{}, err
-		}
-		if err := scanExact(w.r, w.s.t.resvPath, a, func(id uint64) (bool, error) {
-			v, found, err := w.s.t.resv.table.Get(w.r, id)
-			if found && v.State == reservationHeld {
-				rt.recipients[v.Holder] = a
-			}
-			return err == nil, err
-		}); err != nil {
+		if err := w.matchAt(&rt, a, p); err != nil {
 			return route{}, err
 		}
 	}
@@ -235,7 +254,7 @@ func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 		return route{}, err
 	}
 	switch {
-	case slices.Contains(me.Follows, p):
+	case me.Parent != 0, slices.Contains(me.Follows, p):
 	case len(me.Follows) >= maxFollows:
 		rt.notices = append(rt.notices, fmt.Sprintf(
 			"you follow %d threads, the most allowed, so this post did not follow %s: grelot unfollow one to follow it", maxFollows, p,
@@ -244,6 +263,34 @@ func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 		me.Follows = append(me.Follows, p)
 	}
 	return rt, nil
+}
+
+// matchAt labels with a the recipients of a post at p that a matches: a
+// work path, a held reservation, or a delegate's allowed thread whose
+// scope does not deny p.
+func (w *wtx) matchAt(rt *route, a, p string) error {
+	if err := scanExact(w.r, w.s.t.byPath, a, func(id uint64) (bool, error) {
+		rt.recipients[id] = a
+		return true, nil
+	}); err != nil {
+		return err
+	}
+	if err := scanExact(w.r, w.s.t.resvPath, a, func(id uint64) (bool, error) {
+		v, found, err := w.s.t.resv.table.Get(w.r, id)
+		if found && v.State == reservationHeld {
+			rt.recipients[v.Holder] = a
+		}
+		return err == nil, err
+	}); err != nil {
+		return err
+	}
+	return scanExact(w.r, w.s.t.byAllow, a, func(id uint64) (bool, error) {
+		v, found, err := w.s.t.identities.table.Get(w.r, id)
+		if found && v.Scope.allowsPath(p) {
+			rt.recipients[id] = a
+		}
+		return err == nil, err
+	})
 }
 
 // ancestors lists p and every path above it, shortest first.
@@ -268,6 +315,10 @@ func (w *wtx) directRoute(me *identityRow, name string) (route, error) {
 		return route{}, unknownIdentity(name)
 	case peer.ID == me.ID:
 		return route{}, refuse(KindInvalid, "a direct post goes to another identity, not yourself")
+	case me.Parent != 0 && !allowsAgent(me, &peer):
+		return route{}, w.s.scopeRefusal(w.r, me)
+	case peer.Parent != 0 && !allowsAgent(&peer, me):
+		return route{}, w.s.scopeRefusal(w.r, &peer)
 	}
 	th, _, err := w.thread(directKey(me.ID, peer.ID))
 	if err != nil {
@@ -283,11 +334,11 @@ func (w *wtx) directRoute(me *identityRow, name string) (route, error) {
 }
 
 // storeMessage stores the post with the sender's labels and where as they
-// stand now, and moves a path or direct thread's expiry to the post's.
+// stand now, where being whereOf the sender, and moves a path or direct thread's expiry to the post's.
 // The expiry only ever moves later: a shorter THREAD_TTL after a restart,
 // or a clock step back, would otherwise expire the thread, and with it an
 // older message whose deliveries are still unread.
-func (w *wtx) storeMessage(me *identityRow, th *threadRow, p *Posting) (messageRow, error) {
+func (w *wtx) storeMessage(me *identityRow, where Where, th *threadRow, p *Posting) (messageRow, error) {
 	ttl := announceTTL
 	if th.Kind != kindAnnounce {
 		ttl = w.s.threadTTL
@@ -303,7 +354,7 @@ func (w *wtx) storeMessage(me *identityRow, th *threadRow, p *Posting) (messageR
 	}
 	m := messageRow{
 		ID: id, Thread: th.ID, Kind: th.Kind, Path: th.Path, PostedAt: w.now, Lease: ls,
-		Sender: me.ID, SenderName: me.Name, Host: me.Host, OS: me.OS, Arch: me.Arch, Where: cloneWhere(me.Where),
+		Sender: me.ID, SenderName: me.Name, Host: me.Host, OS: me.OS, Arch: me.Arch, Where: cloneWhere(where),
 		Subject: p.Subject, Body: p.Body,
 	}
 	if err := w.s.t.messages.table.Put(w.tx, pairKey(th.ID, id), &m); err != nil {

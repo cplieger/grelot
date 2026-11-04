@@ -254,7 +254,8 @@ func (w *wtx) registerDelegate(r *Registration) (Registered, error) {
 		return Registered{}, err
 	}
 	w.s.log.Info("delegate registered", "handle", handle, "id", id, "parent", parent.ID, "own_session", session != "")
-	return Registered{Identity: w.s.view(&row)}, nil
+	v, verr := w.viewOf(&row)
+	return Registered{Identity: v}, verr
 }
 
 // checkDelegateFields refuses what a delegate's registration cannot set:

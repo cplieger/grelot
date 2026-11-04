@@ -36,21 +36,28 @@ type Entry struct {
 	OS         string
 	Arch       string
 	Relation   string
-	Seq        uint64
-	Message    uint64
-	Thread     uint64
-	Wake       bool
+	// Via is the delegate handle of a parent's copy.
+	Via     string
+	Seq     uint64
+	Message uint64
+	Thread  uint64
+	Wake    bool
 	// Truncated is a history entry whose Body was cut to its first line.
 	Truncated bool
 }
 
-// Counts are deliveries by kind. Cards are quiet; every other kind wakes.
+// Counts are deliveries by kind. Cards and a delegate's copies are quiet;
+// every other kind wakes.
 type Counts struct {
-	Direct, Path, Announce, Identity, Reservation, Cards int
+	Direct, Path, Announce, Identity, Reservation, Cards, Copies int
 }
 
-func (c *Counts) add(kind string) {
-	switch kind {
+func (c *Counts) add(d *deliveryRow) {
+	if d.Via != "" {
+		c.Copies++
+		return
+	}
+	switch d.Kind {
 	case kindDirect:
 		c.Direct++
 	case kindPath:
@@ -69,7 +76,7 @@ func (c *Counts) add(kind string) {
 // Wake counts the deliveries that wake an agent.
 func (c Counts) Wake() int { return c.Direct + c.Path + c.Announce + c.Identity + c.Reservation }
 
-func isWake(kind string) bool { return kind != kindJoin && kind != kindLeft }
+func (d *deliveryRow) wakes() bool { return d.Via == "" && d.Kind != kindJoin && d.Kind != kindLeft }
 
 // Page is an inbox fetch: the oldest unread deliveries, and Unread, every
 // delivery past read, the page's included.
@@ -118,7 +125,7 @@ func (s *Store) Inbox(ctx context.Context, c Caller, limit int) (Page, error) {
 		}
 		out.Identity = s.view(&me)
 		return s.scanUnread(r, me.ID, me.Read, now, func(d *deliveryRow) error {
-			out.Unread.add(d.Kind)
+			out.Unread.add(d)
 			if len(out.Entries) == limit {
 				return nil
 			}
@@ -134,7 +141,7 @@ func (s *Store) Inbox(ctx context.Context, c Caller, limit int) (Page, error) {
 func (s *Store) entry(r *bolttable.ReadTx, me *identityRow, d *deliveryRow) (Entry, error) {
 	e := Entry{
 		Written: d.Written, ReadAt: d.ReadAt, Kind: d.Kind, Text: d.Text, Matched: d.Path,
-		Seq: d.Seq, Message: d.Message, Thread: d.Thread, Wake: isWake(d.Kind),
+		Seq: d.Seq, Message: d.Message, Thread: d.Thread, Via: d.Via, Wake: d.wakes(),
 	}
 	if d.Message == 0 {
 		return e, nil
@@ -181,9 +188,13 @@ func (s *Store) Ack(ctx context.Context, c Caller, upto uint64) (Acked, error) {
 		if err := s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {
 			return err
 		}
-		out = Acked{Identity: s.view(&me), Read: me.Read}
+		v, verr := w.viewOf(&me)
+		if verr != nil {
+			return verr
+		}
+		out = Acked{Identity: v, Read: me.Read}
 		return s.scanUnread(w.r, me.ID, me.Read, w.now, func(d *deliveryRow) error {
-			out.Left.add(d.Kind)
+			out.Left.add(d)
 			return nil
 		})
 	})
@@ -249,7 +260,9 @@ func (s *Store) Hold(ctx context.Context, c Caller) (Held, error) {
 			return lerr
 		}
 		w.seen(&me)
-		out.Identity = s.view(&me)
+		if out.Identity, lerr = w.viewOf(&me); lerr != nil {
+			return lerr
+		}
 		return s.t.identities.table.Put(w.tx, me.ID, &me)
 	})
 	return out, err
@@ -260,7 +273,7 @@ func (s *Store) Hold(ctx context.Context, c Caller) (Held, error) {
 func (s *Store) held(r *bolttable.ReadTx, me *identityRow, now time.Time) (Held, error) {
 	var out Held
 	err := s.scanUnread(r, me.ID, max(me.Read, me.Shown), now, func(d *deliveryRow) error {
-		out.Counts.add(d.Kind)
+		out.Counts.add(d)
 		return nil
 	})
 	if out.Counts.Wake() > 0 {
