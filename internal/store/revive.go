@@ -130,19 +130,6 @@ func (w *wtx) reviveTarget(r *Revival, provider string, own *identityRow, ownFou
 	return row, true, nil
 }
 
-// unread counts identity id's unexpired deliveries past read.
-func (s *Store) unread(r *bolttable.ReadTx, id, read uint64, now time.Time) (int, error) {
-	n := 0
-	err := s.t.deliveries.table.Scan(r, bolttable.Range{Prefix: be64(id), From: pairKey(id, read+1)},
-		func(_ []byte, v *deliveryRow) (bool, error) {
-			if !v.Lease.due(now) {
-				n++
-			}
-			return true, nil
-		})
-	return n, err
-}
-
 // TakeOverHint finds the identity a new session may be the continuation
 // of: one registered by another session under proc, live or dormant, that
 // shares the caller's environment and has the session's provider, ranked

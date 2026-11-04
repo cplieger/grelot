@@ -478,7 +478,21 @@ func (w *wtx) liveBySession(session string) (identityRow, error) {
 	case !found:
 		return identityRow{}, noIdentity()
 	case row.State == stateDormant:
-		return identityRow{}, dormantIdentity(&row)
+		return identityRow{}, w.s.dormantIdentity(w.r, &row, w.now)
+	}
+	return row, nil
+}
+
+// liveFor is liveBySession for a read.
+func (s *Store) liveFor(r *bolttable.ReadTx, session string, now time.Time) (identityRow, error) {
+	row, found, err := s.lookupIdentity(r, s.t.bySession, session)
+	switch {
+	case err != nil:
+		return identityRow{}, err
+	case !found:
+		return identityRow{}, noIdentity()
+	case row.State == stateDormant:
+		return identityRow{}, s.dormantIdentity(r, &row, now)
 	}
 	return row, nil
 }
@@ -490,10 +504,17 @@ func noIdentity() *Error {
 	}
 }
 
-func dormantIdentity(row *identityRow) *Error {
+// dormantIdentity is the revive offer a dormant identity's session gets
+// from every route that acts as the identity.
+func (s *Store) dormantIdentity(r *bolttable.ReadTx, row *identityRow, now time.Time) error {
+	n, err := s.unread(r, row.ID, row.Read, now)
+	if err != nil {
+		return err
+	}
 	return &Error{
 		Kind: KindGone, Why: "dormant",
-		Msg: fmt.Sprintf("your identity %s is dormant since %s; `grelot revive --ttl <d>` restores it", row.Name, fmtTime(row.DormantSince)),
+		Msg: fmt.Sprintf("your identity %s expired %d h ago with %d unread; `grelot revive --ttl <d>` restores it",
+			row.Name, int(now.Sub(row.DormantSince).Hours()), n),
 	}
 }
 
