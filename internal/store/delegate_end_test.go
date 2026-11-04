@@ -18,7 +18,7 @@ func TestDelegate_parentSessionEndEndsTheDelegatesAndKeepsTheParent(t *testing.T
 			t.Errorf("delegate %s kept after its parent's SessionEnd, want it deleted", d.Name)
 		}
 		if got := endedWhy(sink, d.Name); len(got) != 1 || got[0] != "session_end" {
-			t.Errorf("delegate ended lines for %s %v, want one parent_session_ended", d.Name, got)
+			t.Errorf("delegate ended lines for %s %v, want one session_end", d.Name, got)
 		}
 	}
 	if row, found := findIdentity(t, s, p.ID); !found || row.State != stateLive || !row.Ended {
@@ -39,7 +39,7 @@ func TestDelegate_revoke(t *testing.T) {
 			t.Error("revoked delegate's row kept, want it deleted, never dormant")
 		}
 		if why := endedWhy(sink, d.Name); len(why) != 1 || why[0] != "revoke" {
-			t.Errorf("delegate ended lines %v, want one revoked", why)
+			t.Errorf("delegate ended lines %v, want one revoke", why)
 		}
 		got, err = s.Revoke(t.Context(), self("parent"), "next")
 		if err != nil || len(got.Handles) != 0 || !got.Link {

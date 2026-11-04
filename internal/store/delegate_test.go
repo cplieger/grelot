@@ -457,7 +457,7 @@ func TestDelegate_endsWithItsParent(t *testing.T) {
 			t.Error("parent or delegate row kept, want both deleted")
 		}
 		if got := endedWhy(sink, d.Name); len(got) != 1 || got[0] != "parent" {
-			t.Errorf("delegate ended lines %v, want one parent_retired", got)
+			t.Errorf("delegate ended lines %v, want one parent", got)
 		}
 		if n := countRows(t, s, s.t.links.table); n != 0 {
 			t.Errorf("%d links kept, want the unused one deleted", n)
@@ -476,7 +476,7 @@ func TestDelegate_endsWithItsParent(t *testing.T) {
 		clk.advance(time.Hour)
 		mustSweep(t, s)
 		if got := endedWhy(sink, d.Name); len(got) != 1 || got[0] != "parent" {
-			t.Errorf("delegate ended lines %v, want one parent_expired", got)
+			t.Errorf("delegate ended lines %v, want one parent", got)
 		}
 		if row, found := findIdentity(t, s, p.ID); !found || row.State != stateDormant {
 			t.Errorf("parent found %v state %q, want dormant", found, row.State)
