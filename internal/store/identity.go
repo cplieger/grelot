@@ -61,7 +61,10 @@ type Identity struct {
 	Provider     string
 	// MachineKind is the kind of the identity's machine value, "" when
 	// unknown.
-	MachineKind      string
+	MachineKind string
+	// Notice is a line for the caller about this answer: a delegate's
+	// renewal capped at its parent's expiry.
+	Notice           string
 	Paths            []string
 	Follows          []string
 	ID               uint64
@@ -72,7 +75,8 @@ type Identity struct {
 
 // Registration is a register request from Session, "<provider>:<id>".
 // With Link it registers the delegate that link grants, and takes only
-// Fields.Description.
+// Fields.Description. Self is the Grelot-Self header, which a session
+// holding delegates needs to get its own identity back.
 type Registration struct {
 	Where    *Where
 	Session  string
@@ -84,6 +88,7 @@ type Registration struct {
 	Fields   Fields
 	TTL      time.Duration
 	TakeOver bool
+	Self     bool
 }
 
 // Registered is what a register answers.
@@ -131,13 +136,7 @@ func (w *wtx) register(r *Registration, provider string) (Registered, error) {
 		return Registered{}, err
 	}
 	if ownFound && own.State == stateLive {
-		if w.seen(&own) {
-			if perr := w.s.t.identities.table.Put(w.tx, own.ID, &own); perr != nil {
-				return Registered{}, perr
-			}
-		}
-		v, verr := w.viewOf(&own)
-		return Registered{Identity: v, Existing: true}, verr
+		return w.existing(&own, r.Self)
 	}
 	row, added, moved, err := w.registerRow(r, provider)
 	if err != nil {
@@ -156,6 +155,23 @@ func (w *wtx) register(r *Registration, provider string) (Registered, error) {
 		w.s.log.Info("identity moved", "name", row.Name, "id", row.ID, "provider", provider)
 	}
 	return Registered{Identity: w.s.view(&row), Moved: moved}, nil
+}
+
+// existing answers a register from the session of the live identity own,
+// unchanged but for its request time, past the delegate gate.
+func (w *wtx) existing(own *identityRow, self bool) (Registered, error) {
+	if !self {
+		if err := w.s.gateRefusal(w.r, own, w.now); err != nil {
+			return Registered{}, err
+		}
+	}
+	if w.seen(own) {
+		if err := w.s.t.identities.table.Put(w.tx, own.ID, own); err != nil {
+			return Registered{}, err
+		}
+	}
+	v, err := w.viewOf(own)
+	return Registered{Identity: v, Existing: true}, err
 }
 
 // detach unbinds a dormant row from its session, so another identity can
@@ -225,7 +241,8 @@ func (s *Store) Set(ctx context.Context, c Caller, ch Change) (Identity, error) 
 		if err != nil {
 			return err
 		}
-		if err := w.applyChange(&row, ch); err != nil {
+		notice, err := w.applyChange(&row, ch)
+		if err != nil {
 			return err
 		}
 		row.Ended = false
@@ -235,26 +252,41 @@ func (s *Store) Set(ctx context.Context, c Caller, ch Change) (Identity, error) 
 		}
 		var verr error
 		out, verr = w.viewOf(&row)
+		out.Notice = notice
 		return verr
 	})
 	return out, err
 }
 
-func (w *wtx) applyChange(row *identityRow, c Change) error {
+// applyChange applies c to row and returns the notice a delegate's renewal
+// capped at its parent's expiry owes.
+func (w *wtx) applyChange(row *identityRow, c Change) (string, error) {
 	if c.TTL == 0 && c.Where == nil && c.Fields.Name == "" && c.Fields.Description == "" && len(c.Fields.Paths) == 0 {
-		return refuse(KindInvalid, "nothing to set: pass --name, --paths, --desc or --ttl")
+		return "", refuse(KindInvalid, "nothing to set: pass --name, --paths, --desc or --ttl")
 	}
 	if err := w.applyFields(row, c.Fields, c.Where, fieldsSome, c.TTL > 0); err != nil {
-		return err
+		return "", err
 	}
-	if c.TTL > 0 {
-		ls, err := identityPolicy.grant(w.now, c.TTL, time.Time{})
-		if err != nil {
-			return err
+	if c.TTL == 0 {
+		return "", nil
+	}
+	var parent identityRow
+	if row.Parent != 0 {
+		var err error
+		// callerRow settled the parent live before this runs.
+		if parent, _, err = w.s.t.identities.table.Get(w.r, row.Parent); err != nil {
+			return "", err
 		}
-		row.TTL, row.Lease = c.TTL, ls
 	}
-	return nil
+	ls, err := identityPolicy.grant(w.now, c.TTL, parent.Lease.Expires)
+	if err != nil {
+		return "", err
+	}
+	row.TTL, row.Lease = c.TTL, ls
+	if row.Parent != 0 && w.now.Add(c.TTL).After(ls.Expires) {
+		return fmt.Sprintf("your lease stops at your parent's expiry, %s: @%s renews first", fmtTime(ls.Expires), parent.Name), nil
+	}
+	return "", nil
 }
 
 // applyFields applies a set's or a post's identity fields and where to
@@ -307,12 +339,16 @@ func (w *wtx) nameFree(name string) error {
 }
 
 // EndSession records the SessionEnd report on session's own live identity:
-// it is marked ended, and its expiry becomes min(current, now + 1 h), its
-// warning moving with it. Nothing restores the lease but a renewal.
+// it is marked ended, its delegates end, and its expiry becomes
+// min(current, now + 1 h), its warning moving with it. Nothing restores
+// the lease but a renewal.
 func (s *Store) EndSession(ctx context.Context, session string) error {
 	return s.update(ctx, func(w *wtx) error {
 		row, err := w.liveAs(Caller{Session: session, Self: true})
 		if err != nil {
+			return err
+		}
+		if err := w.endDelegates(row.ID, "parent_session_ended"); err != nil {
 			return err
 		}
 		row.Ended = true
@@ -400,6 +436,26 @@ func (s *Store) Seen(ctx context.Context, c Caller) (Identity, error) {
 		return verr
 	})
 	return out, err
+}
+
+// Watcher returns the identity a standing wait from c holds for, and
+// writes nothing: a standing wait never clears ended. Refusals: KindGone
+// with Why dormant or none, as on every route; KindInvalid for a
+// delegate, which is pull only.
+func (s *Store) Watcher(ctx context.Context, c Caller) (Identity, error) {
+	var row identityRow
+	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
+		var err error
+		row, err = s.liveFor(r, c, s.now())
+		return err
+	})
+	switch {
+	case err != nil:
+		return Identity{}, err
+	case row.Parent != 0:
+		return Identity{}, refuse(KindInvalid, "a delegate is pull only; use grelot wait")
+	}
+	return s.view(&row), nil
 }
 
 // seen records a request from row's own session in memory and, when

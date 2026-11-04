@@ -1,0 +1,252 @@
+package store
+
+import (
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestDelegate_parentSessionEndEndsTheDelegatesAndKeepsTheParent(t *testing.T) {
+	s, _, sink := openIdentityStore(t)
+	p, shared := delegateOf(t, s, "parent", "review")
+	own := mustRegisterDelegate(t, s, "codex:thread-1", mustGrant(t, s, grantFrom("parent", "codex")).Link)
+	if err := s.EndSession(t.Context(), sess("parent")); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []Identity{shared, own} {
+		if identityExists(t, s, d.ID) {
+			t.Errorf("delegate %s kept after its parent's SessionEnd, want it deleted", d.Name)
+		}
+		if got := endedWhy(sink, d.Name); len(got) != 1 || got[0] != "parent_session_ended" {
+			t.Errorf("delegate ended lines for %s %v, want one parent_session_ended", d.Name, got)
+		}
+	}
+	if row, found := findIdentity(t, s, p.ID); !found || row.State != stateLive || !row.Ended {
+		t.Errorf("parent found %v state %q ended %v, want it live and ended", found, row.State, row.Ended)
+	}
+}
+
+func TestDelegate_revoke(t *testing.T) {
+	t.Run("ends the delegate and the unused link of its label", func(t *testing.T) {
+		s, _, sink := openIdentityStore(t)
+		p, d := delegateOf(t, s, "parent", "review")
+		link := mustGrant(t, s, Grant{Caller: self("parent"), Label: "next", TTL: time.Hour}).Link
+		got, err := s.Revoke(t.Context(), self("parent"), "review")
+		if err != nil || len(got.Handles) != 1 || got.Handles[0] != d.Name || got.Link {
+			t.Fatalf("Revoke(review): %+v, %v; want the delegate %s and no link", got, err, d.Name)
+		}
+		if identityExists(t, s, d.ID) {
+			t.Error("revoked delegate's row kept, want it deleted, never dormant")
+		}
+		if why := endedWhy(sink, d.Name); len(why) != 1 || why[0] != "revoked" {
+			t.Errorf("delegate ended lines %v, want one revoked", why)
+		}
+		got, err = s.Revoke(t.Context(), self("parent"), "next")
+		if err != nil || len(got.Handles) != 0 || !got.Link {
+			t.Fatalf("Revoke(next): %+v, %v; want only the unused link", got, err)
+		}
+		_, err = s.Register(t.Context(), new(delegateReg(sess("parent"), link)))
+		wantRefusal(t, err, KindGone, "link_gone", "")
+		if !identityExists(t, s, p.ID) {
+			t.Error("parent deleted by a revoke")
+		}
+	})
+	t.Run("a label with a delegate and an unused link", func(t *testing.T) {
+		s, _, _ := openIdentityStore(t)
+		_, d := delegateOf(t, s, "parent", "review")
+		if _, err := s.Set(t.Context(), self("parent"), Change{Fields: Fields{Name: "renamed"}}); err != nil {
+			t.Fatal(err)
+		}
+		link := mustGrant(t, s, Grant{Caller: self("parent"), Label: "review", TTL: time.Hour}).Link
+		got, err := s.Revoke(t.Context(), self("parent"), "review")
+		if err != nil || len(got.Handles) != 1 || got.Handles[0] != d.Name || !got.Link {
+			t.Fatalf("Revoke(review): %+v, %v; want %s and the unused link", got, err, d.Name)
+		}
+		_, err = s.Register(t.Context(), new(delegateReg(sess("parent"), link)))
+		wantRefusal(t, err, KindGone, "link_gone", "")
+	})
+	t.Run("a label with neither", func(t *testing.T) {
+		s, _, _ := openIdentityStore(t)
+		regAt(t, s, "parent", repoSubflux)
+		_, err := s.Revoke(t.Context(), self("parent"), "review")
+		wantRefusal(t, err, KindNotFound, "", "review")
+	})
+	t.Run("from a delegate", func(t *testing.T) {
+		s, _, _ := openIdentityStore(t)
+		_, d := delegateOf(t, s, "parent", "review")
+		_, err := s.Revoke(t.Context(), as(sess("parent"), d.Name), "review")
+		wantRefusal(t, err, KindForbidden, "", "")
+	})
+}
+
+func TestDelegate_bind(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	regAt(t, s, "stranger", repoGrelot)
+	_, d := delegateOf(t, s, "parent", "review")
+	other := mustRegisterDelegate(t, s, sess("parent"), mustGrant(t, s, grantFrom("parent", "other")).Link)
+	if err := s.Bind(t.Context(), as(sess("parent"), d.Name), "agent-1"); err != nil {
+		t.Fatal(err)
+	}
+	if row, _ := findIdentity(t, s, d.ID); row.Agent != "agent-1" {
+		t.Errorf("stored agent %q, want agent-1", row.Agent)
+	}
+	t.Run("a second binding of the delegate", func(t *testing.T) {
+		wantRefusal(t, s.Bind(t.Context(), as(sess("parent"), d.Name), "agent-2"), KindConflict, "", d.Name)
+	})
+	t.Run("a second binding of the agent id", func(t *testing.T) {
+		wantRefusal(t, s.Bind(t.Context(), as(sess("parent"), other.Name), "agent-1"), KindConflict, "", "agent-1")
+	})
+	t.Run("no handle", func(t *testing.T) {
+		wantRefusal(t, s.Bind(t.Context(), self("parent"), "agent-3"), KindInvalid, "", "")
+	})
+	t.Run("no agent id", func(t *testing.T) {
+		wantRefusal(t, s.Bind(t.Context(), as(sess("parent"), other.Name), ""), KindInvalid, "", "")
+	})
+	t.Run("another session", func(t *testing.T) {
+		wantRefusal(t, s.Bind(t.Context(), as(sess("stranger"), other.Name), "agent-3"), KindForbidden, "", "")
+	})
+}
+
+func TestDelegate_subagentStop(t *testing.T) {
+	t.Run("a bound agent id ends its delegate", func(t *testing.T) {
+		s, _, sink := openIdentityStore(t)
+		p, d := delegateOf(t, s, "parent", "review")
+		if err := s.Bind(t.Context(), as(sess("parent"), d.Name), "agent-1"); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.SubagentStop(t.Context(), sess("parent"), "agent-1"); err != nil {
+			t.Fatal(err)
+		}
+		if identityExists(t, s, d.ID) {
+			t.Error("delegate kept after its SubagentStop, want it deleted")
+		}
+		if why := endedWhy(sink, d.Name); len(why) != 1 || why[0] != "subagent_stop" {
+			t.Errorf("delegate ended lines %v, want one subagent_stop", why)
+		}
+		if row, found := findIdentity(t, s, p.ID); !found || row.State != stateLive {
+			t.Errorf("parent found %v state %q, want it live", found, row.State)
+		}
+	})
+	t.Run("the session's own delegate", func(t *testing.T) {
+		s, _, _ := openIdentityStore(t)
+		regAt(t, s, "parent", repoSubflux)
+		d := mustRegisterDelegate(t, s, "codex:thread-1", mustGrant(t, s, grantFrom("parent", "codex")).Link)
+		if err := s.SubagentStop(t.Context(), "codex:thread-1", "agent-9"); err != nil {
+			t.Fatal(err)
+		}
+		if identityExists(t, s, d.ID) {
+			t.Error("delegate kept after its own session's SubagentStop")
+		}
+	})
+	t.Run("an unbound agent id, from a session holding a link", func(t *testing.T) {
+		s, sink, _, _ := gateFixture(t)
+		d := mustRegisterDelegate(t, s, sess("parent"), mustGrant(t, s, grantFrom("parent", "bound")).Link)
+		lines := len(*sink.records)
+		if err := s.SubagentStop(t.Context(), sess("parent"), "prompt-suggestion"); err != nil {
+			t.Errorf("SubagentStop for an unbound id: %v, want no refusal", err)
+		}
+		if n := len(*sink.records) - lines; n != 0 {
+			t.Errorf("%d log lines, want none for an unbound id", n)
+		}
+		if !identityExists(t, s, d.ID) {
+			t.Error("the session's unbound delegate ended")
+		}
+	})
+}
+
+func TestDelegate_idleForAnHourSurvivesToItsLease(t *testing.T) {
+	s, clk, _ := openIdentityStore(t)
+	regAt(t, s, "parent", repoSubflux)
+	g := grantFrom("parent", "review")
+	g.TTL = 3 * time.Hour
+	d := mustRegisterDelegate(t, s, sess("parent"), mustGrant(t, s, g).Link)
+	clk.advance(time.Hour + time.Minute)
+	mustSweep(t, s)
+	if !identityExists(t, s, d.ID) {
+		t.Fatal("delegate ended after an hour with no request, want it kept to its lease")
+	}
+	mustPost(t, s, asPost("parent", d.Name, Target{Agent: "parent"}))
+	if _, err := s.Inbox(t.Context(), as(sess("parent"), d.Name), 0); err != nil {
+		t.Fatal(err)
+	}
+	if row, _ := findIdentity(t, s, d.ID); !row.Lease.Expires.Equal(d.Expires) {
+		t.Errorf("expires %v after a post and an inbox read, want %v unmoved", row.Lease.Expires, d.Expires)
+	}
+	clk.set(d.Expires)
+	mustSweep(t, s)
+	if identityExists(t, s, d.ID) {
+		t.Error("delegate kept past its lease")
+	}
+}
+
+func TestDelegate_renewal(t *testing.T) {
+	setup := func(t *testing.T) (*Store, *clock, Identity, Identity) {
+		t.Helper()
+		s, clk, _ := openIdentityStore(t)
+		p := regAt(t, s, "parent", repoSubflux)
+		g := grantFrom("parent", "review")
+		g.TTL = time.Hour
+		d := mustRegisterDelegate(t, s, sess("parent"), mustGrant(t, s, g).Link)
+		clk.advance(30 * time.Minute)
+		return s, clk, p, d
+	}
+	t.Run("by its parent through as", func(t *testing.T) {
+		s, clk, _, d := setup(t)
+		got, err := s.Set(t.Context(), as(sess("parent"), d.Name), Change{TTL: 2 * time.Hour})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := clk.now().Add(2 * time.Hour); !got.Expires.Equal(want) || got.Notice != "" {
+			t.Errorf("expires %v notice %q, want now + 2 h, %v, and no notice", got.Expires, got.Notice, want)
+		}
+		if want := got.Expires.Add(-30 * time.Minute); !got.WarnAt.Equal(want) {
+			t.Errorf("warn_at %v, want min(30 min, ttl/2) before expiry, %v", got.WarnAt, want)
+		}
+	})
+	t.Run("by itself, capped at its parent's expiry", func(t *testing.T) {
+		s, _, p, _ := setup(t)
+		own := mustRegisterDelegate(t, s, "codex:thread-1", mustGrant(t, s, grantFrom("parent", "codex")).Link)
+		got, err := s.Set(t.Context(), Caller{Session: "codex:thread-1"}, Change{TTL: 24 * time.Hour})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !got.Expires.Equal(p.Expires) {
+			t.Errorf("expires %v, want capped at the parent's %v", got.Expires, p.Expires)
+		}
+		if !strings.Contains(got.Notice, "@parent renews first") {
+			t.Errorf("notice %q, want it to say the parent renews first", got.Notice)
+		}
+		if got.ID != own.ID {
+			t.Errorf("renewed %d, want the delegate %d", got.ID, own.ID)
+		}
+	})
+	t.Run("outside the bounds", func(t *testing.T) {
+		s, _, _, d := setup(t)
+		_, err := s.Set(t.Context(), as(sess("parent"), d.Name), Change{TTL: 14 * time.Minute})
+		wantRefusal(t, err, KindInvalid, "", "15m")
+	})
+}
+
+func TestDelegate_standingWaitIsRefused(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	p, d := delegateOf(t, s, "parent", "review")
+	mustRegisterDelegate(t, s, "codex:thread-1", mustGrant(t, s, grantFrom("parent", "codex")).Link)
+	for name, c := range map[string]Caller{"as its handle": as(sess("parent"), d.Name), "from its own session": {Session: "codex:thread-1"}} {
+		t.Run(name, func(t *testing.T) {
+			_, err := s.Watcher(t.Context(), c)
+			wantRefusal(t, err, KindInvalid, "", "a delegate is pull only; use grelot wait")
+		})
+	}
+	t.Run("the parent's wait holds, and leaves ended set", func(t *testing.T) {
+		if err := s.EndSession(t.Context(), sess("parent")); err != nil {
+			t.Fatal(err)
+		}
+		got, err := s.Watcher(t.Context(), self("parent"))
+		if err != nil || got.ID != p.ID || !got.Ended {
+			t.Errorf("Watcher(parent): %d ended %v, %v; want %d with ended still set", got.ID, got.Ended, err, p.ID)
+		}
+		if row, _ := findIdentity(t, s, p.ID); !row.Ended {
+			t.Error("a standing wait cleared ended")
+		}
+	})
+}

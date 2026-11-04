@@ -77,8 +77,10 @@ type identityRow struct {
 	Arch         string    `json:"arch"`
 	Provider     string    `json:"provider"`
 	// Session is empty on a dormant row a fresh registration detached.
-	Session  string   `json:"session,omitempty"`
-	Proc     string   `json:"proc,omitempty"`
+	Session string `json:"session,omitempty"`
+	Proc    string `json:"proc,omitempty"`
+	// Agent is the host's subagent id a delegate is bound to, set once.
+	Agent    string   `json:"agent,omitempty"`
 	Paths    []string `json:"paths"`
 	Follows  []string `json:"follows,omitempty"`
 	LastPage seqRange `json:"last_page"`
@@ -204,6 +206,8 @@ type tables struct {
 	byFollow   *bolttable.Index[uint64, identityRow]
 	byProc     *bolttable.Index[uint64, identityRow]
 	byParent   *bolttable.Index[uint64, identityRow]
+	// byAgent finds a bound delegate by agentKey(parent, agent).
+	byAgent *bolttable.Index[uint64, identityRow]
 	// byAllow indexes a delegate's allowed path threads.
 	byAllow    *bolttable.Index[uint64, identityRow]
 	threads    *leased[uint64, threadRow]
@@ -317,7 +321,7 @@ func isPost(kind string) bool {
 // defineIdentityIndexes declares the name and session lookups, which a
 // dormant row keeps, the work-path, follow and allowed-thread indexes
 // fan-out reads, the proc index the take-over hint reads, and the parent
-// index.
+// and bound-agent indexes.
 func defineIdentityIndexes(ids *bolttable.Table[uint64, identityRow], t *tables) error {
 	unique := bolttable.IndexOptions{Unique: true, Version: 1}
 	many := bolttable.IndexOptions{Version: 1}
@@ -351,15 +355,28 @@ func defineIdentityIndexes(ids *bolttable.Table[uint64, identityRow], t *tables)
 		}); err != nil {
 		return err
 	}
-	t.byParent, err = bolttable.DefineIndex(ids, "identities.parent", many,
+	if t.byParent, err = bolttable.DefineIndex(ids, "identities.parent", many,
 		func(_ uint64, v *identityRow) []bolttable.Entry {
 			if v.Parent == 0 {
 				return nil
 			}
 			return []bolttable.Entry{{Key: be64(v.Parent)}}
+		}); err != nil {
+		return err
+	}
+	t.byAgent, err = bolttable.DefineIndex(ids, "identities.agent", unique,
+		func(_ uint64, v *identityRow) []bolttable.Entry {
+			if v.Parent == 0 || v.Agent == "" {
+				return nil
+			}
+			return []bolttable.Entry{{Key: agentKey(v.Parent, v.Agent)}}
 		})
 	return err
 }
+
+// agentKey is the byAgent key of the delegate of parent bound to agent:
+// subagent ids are the host's, unique only within one parent's session.
+func agentKey(parent uint64, agent string) []byte { return append(be64(parent), agent...) }
 
 // defineLinks declares the unused delegate links, their lease and the
 // lookup by hash a registration reads. A deleted identity's links go by
