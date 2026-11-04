@@ -49,7 +49,7 @@ type Entry struct {
 // Counts are deliveries by kind. Cards and a delegate's copies are quiet;
 // every other kind wakes.
 type Counts struct {
-	Direct, Path, Announce, Identity, Reservation, Cards, Copies int
+	Direct, Path, Announce, Identity, Reservation, Receipts, Cards, Copies int
 }
 
 func (c *Counts) add(d *deliveryRow) {
@@ -68,13 +68,17 @@ func (c *Counts) add(d *deliveryRow) {
 		c.Identity++
 	case kindReservationGranted, kindReservationExpiring, kindReservationExpired:
 		c.Reservation++
+	case kindReceiptsComplete, kindReceiptsDue:
+		c.Receipts++
 	case kindJoin, kindLeft:
 		c.Cards++
 	}
 }
 
 // Wake counts the deliveries that wake an agent.
-func (c Counts) Wake() int { return c.Direct + c.Path + c.Announce + c.Identity + c.Reservation }
+func (c Counts) Wake() int {
+	return c.Direct + c.Path + c.Announce + c.Identity + c.Reservation + c.Receipts
+}
 
 func (d *deliveryRow) wakes() bool { return d.Via == "" && d.Kind != kindJoin && d.Kind != kindLeft }
 
@@ -202,7 +206,8 @@ func (s *Store) Ack(ctx context.Context, c Caller, upto uint64) (Acked, error) {
 }
 
 // stampRead sets read_at on me's unexpired deliveries past read up to to,
-// and returns the first one's seq, or read+1 when every one has expired.
+// takes me out of each receipt watch they name, and returns the first
+// one's seq, or read+1 when every one has expired.
 func (w *wtx) stampRead(me *identityRow, to uint64) (uint64, error) {
 	var rows []deliveryRow
 	err := w.s.scanUnread(w.r, me.ID, me.Read, w.now, func(d *deliveryRow) error {
@@ -217,6 +222,9 @@ func (w *wtx) stampRead(me *identityRow, to uint64) (uint64, error) {
 	for i := range rows {
 		rows[i].ReadAt = w.now
 		if err := w.s.t.deliveries.table.Put(w.tx, pairKey(me.ID, rows[i].Seq), &rows[i]); err != nil {
+			return 0, err
+		}
+		if err := w.leaveWatch(rows[i].Watch, me, exitRead); err != nil {
 			return 0, err
 		}
 	}

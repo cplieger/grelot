@@ -376,6 +376,9 @@ func (s *Store) delegateCount(r *bolttable.ReadTx, parent uint64) (int, error) {
 // endDelegate deletes delegate d's row: a delegate never goes dormant, and
 // its parent holds every message it received.
 func (w *wtx) endDelegate(d *identityRow, why string) error {
+	if err := w.leaveWatches(d); err != nil {
+		return err
+	}
 	if _, err := w.s.t.identities.table.Delete(w.tx, d.ID); err != nil {
 		return err
 	}

@@ -1,6 +1,6 @@
-// Package store holds grelot's state in one bolttable file: identities,
-// threads, messages and their deliveries, reservations, and the leases
-// that expire them.
+// Package store holds grelot's state in one bolttable file: identities
+// and their delegate links, threads, messages and their deliveries,
+// reservations, receipt watches, and the leases that expire them.
 package store
 
 import (
@@ -195,19 +195,20 @@ type wtx struct {
 	s   *Store
 	tx  *bolttable.Tx
 	r   *bolttable.ReadTx
-	// cards are the cards owed so far, written once fn is done.
-	cards []card
+	// cards and events are owed so far, written once fn is done.
+	cards  []card
+	events []owedEvent
 }
 
 // update runs fn in one write transaction, at one instant of the clock,
-// then writes the cards it owes.
+// then writes the cards and events it owes.
 func (s *Store) update(ctx context.Context, fn func(*wtx) error) error {
 	return s.db.Update(ctx, func(tx *bolttable.Tx) error {
 		w := &wtx{s: s, tx: tx, r: tx.Read(), now: s.now()}
 		if err := fn(w); err != nil {
 			return err
 		}
-		return w.flushCards()
+		return w.flushOwed()
 	})
 }
 

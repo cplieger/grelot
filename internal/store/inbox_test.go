@@ -37,7 +37,7 @@ func mustAck(t *testing.T, s *Store, session string, upto uint64) Acked {
 
 // total counts every delivery in c, cards included.
 func total(c Counts) int {
-	return c.Direct + c.Path + c.Announce + c.Identity + c.Reservation + c.Cards
+	return c.Direct + c.Path + c.Announce + c.Identity + c.Reservation + c.Receipts + c.Cards
 }
 
 func subjects(es []Entry) []string {

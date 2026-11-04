@@ -29,12 +29,13 @@ type Target struct {
 // Posting is a post as Caller's identity. Every identity field is
 // required, NoChange keeping it; Where must come when the paths change.
 type Posting struct {
-	Where   *Where
-	Caller  Caller
-	Subject string
-	Body    string
-	To      Target
-	Fields  Fields
+	Where      *Where
+	Caller     Caller
+	Subject    string
+	Body       string
+	To         Target
+	Fields     Fields
+	NotifyRead NotifyRead
 }
 
 // Posted is what a post answers.
@@ -99,7 +100,7 @@ func checkMessage(p *Posting) error {
 	if len(p.Body) > maxBody || !utf8.ValidString(p.Body) {
 		return refuse(KindInvalid, "the body must be UTF-8 text of at most 64 KiB")
 	}
-	return nil
+	return p.NotifyRead.check()
 }
 
 func (w *wtx) post(p *Posting) (Posted, error) {
@@ -138,7 +139,14 @@ func (w *wtx) post(p *Posting) (Posted, error) {
 		return Posted{}, err
 	}
 	out := Posted{Notices: rt.notices, Message: msg.ID, Thread: rt.thread.ID, Identity: v}
-	if err := w.fanOut(&me, &rt, &msg, &out); err != nil {
+	wt, err := w.newWatch(p.NotifyRead, &msg)
+	if err != nil {
+		return Posted{}, err
+	}
+	if err := w.fanOut(&me, &rt, &msg, &out, wt); err != nil {
+		return Posted{}, err
+	}
+	if err := w.putWatch(wt, &out); err != nil {
 		return Posted{}, err
 	}
 	return out, nil
@@ -147,8 +155,9 @@ func (w *wtx) post(p *Posting) (Posted, error) {
 // fanOut writes msg's delivery to each recipient but the sender, in id
 // order, and counts them into out by whether they share the sender's
 // environment, then the copies a delegate's parent is owed. A recipient
-// whose purge is due is purged here and gets none.
-func (w *wtx) fanOut(me *identityRow, rt *route, msg *messageRow, out *Posted) error {
+// whose purge is due is purged here and gets none. A recipient wt waits
+// for has its row name wt.
+func (w *wtx) fanOut(me *identityRow, rt *route, msg *messageRow, out *Posted, wt *watching) error {
 	cp := copies{}
 	cp.owe(me, me.ID)
 	for _, id := range slices.Sorted(maps.Keys(rt.recipients)) {
@@ -163,7 +172,7 @@ func (w *wtx) fanOut(me *identityRow, rt *route, msg *messageRow, out *Posted) e
 			continue
 		}
 		if err := w.deliver(&r, &deliveryRow{
-			Kind: rt.thread.Kind, Path: rt.recipients[id], Name: r.Name, Parent: r.Parent,
+			Kind: rt.thread.Kind, Path: rt.recipients[id], Name: r.Name, Parent: r.Parent, Watch: wt.add(&r),
 			Message: msg.ID, Thread: rt.thread.ID, Sender: me.ID, Lease: lease{Expires: msg.Lease.Expires},
 		}); err != nil {
 			return err

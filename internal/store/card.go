@@ -15,7 +15,7 @@ type card struct {
 }
 
 // queueCards owes a card of kind for each of paths about row. The cards
-// are written when the transaction's request is done (flushCards), so a
+// are written when the transaction's request is done (flushOwed), so a
 // card that an eager expiry owes mid-request never changes a row the
 // request still holds a copy of.
 func (w *wtx) queueCards(kind string, row *identityRow, paths []string) {
@@ -27,17 +27,27 @@ func (w *wtx) queueCards(kind string, row *identityRow, paths []string) {
 	}
 }
 
-// flushCards writes every owed card. Settling a recipient can owe more
-// cards, which the loop writes too.
-func (w *wtx) flushCards() error {
-	for len(w.cards) > 0 {
-		c := w.cards[0]
-		w.cards = w.cards[1:]
-		if err := w.writeCard(&c); err != nil {
-			return err
+// flushOwed writes every owed event and card. Settling a card's recipient
+// can owe more of either, which the loop writes too.
+func (w *wtx) flushOwed() error {
+	for {
+		switch {
+		case len(w.events) > 0:
+			e := w.events[0]
+			w.events = w.events[1:]
+			if err := w.deliverEvent(e.to, e.kind, e.text); err != nil {
+				return err
+			}
+		case len(w.cards) > 0:
+			c := w.cards[0]
+			w.cards = w.cards[1:]
+			if err := w.writeCard(&c); err != nil {
+				return err
+			}
+		default:
+			return nil
 		}
 	}
-	return nil
 }
 
 // writeCard stores c in the cards thread and delivers it to each live

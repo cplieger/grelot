@@ -21,6 +21,7 @@ const (
 	prefixDeliveries   byte = 4
 	prefixReservations byte = 5
 	prefixLinks        byte = 6
+	prefixWatches      byte = 7
 )
 
 // Identity states.
@@ -50,6 +51,8 @@ const (
 	kindReservationGranted  = "reservation_granted"
 	kindReservationExpiring = "reservation_expiring"
 	kindReservationExpired  = "reservation_expired"
+	kindReceiptsComplete    = "receipts_complete"
+	kindReceiptsDue         = "receipts_due"
 )
 
 // Reservation states: a grant, or a request waiting in the queue.
@@ -177,6 +180,8 @@ type deliveryRow struct {
 	// quiet and is not a recipient of its message.
 	Via   string `json:"via,omitempty"`
 	Agent uint64 `json:"agent"`
+	// Watch is the receipt watch waiting for this recipient's read, if any.
+	Watch uint64 `json:"watch,omitempty"`
 	// Parent is a delegate recipient's parent at fan-out, which receipts
 	// still need once the delegate's row is gone.
 	Parent  uint64 `json:"parent,omitempty"`
@@ -199,6 +204,29 @@ type reservationRow struct {
 	Holder uint64        `json:"holder"`
 	ID     uint64        `json:"id"`
 	TTL    time.Duration `json:"ttl"`
+}
+
+// watchRow is one receipt watch, keyed by its id: the recipients of a
+// post still to read it, and how many have read or retired since.
+type watchRow struct {
+	Lease   lease          `json:"lease"`
+	Subject string         `json:"subject"`
+	Pending []watchPending `json:"pending"`
+	Message uint64         `json:"message"`
+	Sender  uint64         `json:"sender"`
+	ID      uint64         `json:"id"`
+	Total   int            `json:"total"`
+	Read    int            `json:"read"`
+	Retired int            `json:"retired"`
+	// By is a --by watch, whose expiry writes receipts_due.
+	By bool `json:"by,omitempty"`
+}
+
+// watchPending is a recipient a watch still waits for, named as at the
+// fan-out.
+type watchPending struct {
+	Name string `json:"name"`
+	ID   uint64 `json:"id"`
 }
 
 type tables struct {
@@ -227,6 +255,8 @@ type tables struct {
 	resvQueue  *bolttable.Index[uint64, reservationRow]
 	links      *leased[[]byte, linkRow]
 	linkHash   *bolttable.Index[[]byte, linkRow]
+	watches    *leased[uint64, watchRow]
+	watchBy    *bolttable.Index[uint64, watchRow]
 	// leased lists every table above, in the order the sweep walks them.
 	leased []sweeper
 }
@@ -283,10 +313,13 @@ func newSchema() (*bolttable.Schema, *tables, error) {
 	if err := defineLinks(ns, ids, &t); err != nil {
 		return nil, nil, err
 	}
+	if err := defineWatches(ns, &t); err != nil {
+		return nil, nil, err
+	}
 	// Identities go first: an identity's expiry hands off its grants and
 	// deletes its links itself, before their own sweeps would reach them
 	// one by one.
-	t.leased = []sweeper{t.identities, t.links, t.resv, t.threads, t.messages, t.deliveries}
+	t.leased = []sweeper{t.identities, t.links, t.resv, t.watches, t.threads, t.messages, t.deliveries}
 	return s, &t, nil
 }
 
@@ -422,6 +455,22 @@ func defineLinks(ns *bolttable.Namespace, ids *bolttable.Table[uint64, identityR
 	}
 	t.linkHash, err = bolttable.DefineIndex(links, "links.hash", bolttable.IndexOptions{Unique: true, Version: 1},
 		func(_ []byte, v *linkRow) []bolttable.Entry { return []bolttable.Entry{{Key: v.Hash}} })
+	return err
+}
+
+// defineWatches declares the receipt watches, their lease and the lookup
+// by sender its retirement or purge reads.
+func defineWatches(ns *bolttable.Namespace, t *tables) error {
+	watches, err := bolttable.Define(ns, prefixWatches, "receipt_watches",
+		bolttable.Uint64Key{}, bolttable.JSON[watchRow](1), bolttable.TableOptions{Silent: true})
+	if err != nil {
+		return err
+	}
+	if t.watches, err = defineLeased(watches, watchPolicy, func(v *watchRow) *lease { return &v.Lease }); err != nil {
+		return err
+	}
+	t.watchBy, err = bolttable.DefineIndex(watches, "receipt_watches.sender", bolttable.IndexOptions{Version: 1},
+		func(_ uint64, v *watchRow) []bolttable.Entry { return []bolttable.Entry{{Key: be64(v.Sender)}} })
 	return err
 }
 

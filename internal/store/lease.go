@@ -38,6 +38,7 @@ var (
 	messagePolicy  = leasePolicy{name: "messages"}
 	deliveryPolicy = leasePolicy{name: "deliveries"}
 	linkPolicy     = leasePolicy{name: "links"}
+	watchPolicy    = leasePolicy{name: "receipt_watches"}
 	// reservationPolicy's max is the default; Options.ReservationMaxTTL
 	// sets the store's own.
 	reservationPolicy = leasePolicy{name: "reservations", min: time.Minute, max: DefaultReservationMaxTTL, lead: leadOf(5 * time.Minute)}

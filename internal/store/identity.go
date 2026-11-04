@@ -363,8 +363,9 @@ func (s *Store) EndSession(ctx context.Context, session string) error {
 // Retire deletes c's live identity, owing a left card for each of its
 // paths, frees its name, hands its reservations to their queues, and ends
 // its delegates and unused links; a delegate's retirement ends only it.
-// Its delivery rows stay until their own expiry. A session with no live
-// identity is KindGone.
+// It ends the receipt watches it sent and leaves, counted retired, those
+// waiting for it. Its delivery rows stay until their own expiry. A
+// session with no live identity is KindGone.
 func (s *Store) Retire(ctx context.Context, c Caller) error {
 	return s.update(ctx, func(w *wtx) error {
 		row, err := w.liveAs(c)
@@ -373,6 +374,9 @@ func (s *Store) Retire(ctx context.Context, c Caller) error {
 		}
 		if row.Parent != 0 {
 			return w.endDelegate(&row, "bye")
+		}
+		if err := w.leaveWatches(&row); err != nil {
+			return err
 		}
 		if err := w.freeHolder(row.ID); err != nil {
 			return err
