@@ -103,6 +103,7 @@ type tables struct {
 	bySession  *bolttable.Index[uint64, identityRow]
 	byPath     *bolttable.Index[uint64, identityRow]
 	byFollow   *bolttable.Index[uint64, identityRow]
+	byProc     *bolttable.Index[uint64, identityRow]
 	threads    *leased[uint64, threadRow]
 	messages   *leased[[]byte, messageRow]
 	deliveries *leased[[]byte, deliveryRow]
@@ -163,7 +164,8 @@ func newSchema() (*bolttable.Schema, *tables, error) {
 }
 
 // defineIdentityIndexes declares the name and session lookups, which a
-// dormant row keeps, and the work-path and follow indexes fan-out reads.
+// dormant row keeps, the work-path and follow indexes fan-out reads, and
+// the proc index the take-over hint reads.
 func defineIdentityIndexes(ids *bolttable.Table[uint64, identityRow], t *tables) error {
 	unique := bolttable.IndexOptions{Unique: true, Version: 1}
 	many := bolttable.IndexOptions{Version: 1}
@@ -180,9 +182,26 @@ func defineIdentityIndexes(ids *bolttable.Table[uint64, identityRow], t *tables)
 		func(_ uint64, v *identityRow) []bolttable.Entry { return keyEntries(v.Paths...) }); err != nil {
 		return err
 	}
-	t.byFollow, err = bolttable.DefineIndex(ids, "identities.follows", many,
-		func(_ uint64, v *identityRow) []bolttable.Entry { return keyEntries(v.Follows...) })
+	if t.byFollow, err = bolttable.DefineIndex(ids, "identities.follows", many,
+		func(_ uint64, v *identityRow) []bolttable.Entry { return keyEntries(v.Follows...) }); err != nil {
+		return err
+	}
+	t.byProc, err = bolttable.DefineIndex(ids, "identities.proc", many,
+		func(_ uint64, v *identityRow) []bolttable.Entry { return keyEntries(v.Proc) })
 	return err
+}
+
+// scanExact calls fn for each row whose entry in a non-unique index is
+// exactly key. A Range prefix alone also matches longer keys, such as a
+// subpath's; an exact key's entries sort before them, so the scan stops
+// at the first longer one.
+func scanExact(r *bolttable.ReadTx, ix *bolttable.Index[uint64, identityRow], key string, fn func(id uint64) (bool, error)) error {
+	return ix.Scan(r, bolttable.Range{Prefix: []byte(key)}, func(ikey []byte, id uint64, _ []byte) (bool, error) {
+		if string(ikey) != key {
+			return false, nil
+		}
+		return fn(id)
+	})
 }
 
 // keyEntries is one index entry per non-empty key.

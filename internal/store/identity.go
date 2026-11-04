@@ -131,9 +131,8 @@ func (w *wtx) register(r *Registration, provider string) (Registered, error) {
 		return Registered{}, err
 	}
 	if ownFound && own.ID != row.ID {
-		own.Session = ""
-		if perr := w.s.t.identities.table.Put(w.tx, own.ID, &own); perr != nil {
-			return Registered{}, perr
+		if err := w.detach(&own); err != nil {
+			return Registered{}, err
 		}
 	}
 	if err := w.s.t.identities.table.Put(w.tx, row.ID, &row); err != nil {
@@ -143,6 +142,13 @@ func (w *wtx) register(r *Registration, provider string) (Registered, error) {
 		w.s.log.Info("identity moved", "name", row.Name, "id", row.ID, "provider", provider)
 	}
 	return Registered{Identity: w.s.view(&row), Moved: moved}, nil
+}
+
+// detach unbinds a dormant row from its session, so another identity can
+// bind to that session; the row stays revivable by name.
+func (w *wtx) detach(row *identityRow) error {
+	row.Session = ""
+	return w.s.t.identities.table.Put(w.tx, row.ID, row)
 }
 
 // registerRow validates r and returns the row it registers: a new one, or
@@ -172,7 +178,7 @@ func (w *wtx) registerRow(r *Registration, provider string) (identityRow, bool, 
 	case held && !r.TakeOver:
 		return identityRow{}, false, w.s.liveNameRefusal(&row, *r.Where)
 	case held:
-		if err := w.s.moveRefusal("take-over", &row, *r.Where, provider); err != nil {
+		if err := w.s.moveRefusal(verbTakeOver, &row, *r.Where, provider); err != nil {
 			return identityRow{}, false, err
 		}
 	default:
@@ -475,17 +481,25 @@ func (s *Store) dormantNameRefusal(holder *identityRow, caller Where) *Error {
 	))
 }
 
+// The two requests that move an identity to another session.
+const (
+	verbTakeOver = "take-over"
+	verbRevive   = "revive"
+)
+
 // moveRefusal checks a move of target to the caller's session in the order
 // of the take-over: an empty caller environment, an environment not shared,
-// another provider. Each refusal is logged as move refused with its why.
+// another provider. A revive answers an environment not shared as not
+// found, since it may only find its own environment's rows.
 func (s *Store) moveRefusal(verb string, target *identityRow, caller Where, provider string) *Error {
 	var e *Error
 	switch {
 	case caller.Environment == "":
-		e = &Error{
-			Kind: KindConflict, Why: "no_environment",
-			Msg: "this session has no environment id; register a fresh identity",
-		}
+		return s.refuseMove(verb, target.Name, noEnvironment())
+	case !shareEnvironment(caller, target.Where) && verb == verbRevive:
+		e = &Error{Kind: KindNotFound, Why: "other_environment", Msg: fmt.Sprintf(
+			"no dormant identity %s in this environment (%s)", target.Name, relation(caller, target.Where, ""),
+		)}
 	case !shareEnvironment(caller, target.Where):
 		e = &Error{Kind: KindConflict, Why: "other_environment", Msg: fmt.Sprintf(
 			"%s is not in this environment (%s); a %s moves an identity only within its own environment and provider: choose another name",
@@ -499,7 +513,19 @@ func (s *Store) moveRefusal(verb string, target *identityRow, caller Where, prov
 	default:
 		return nil
 	}
-	s.log.Info("move refused", "verb", verb, "name", target.Name, "why", e.Why)
+	return s.refuseMove(verb, target.Name, e)
+}
+
+func noEnvironment() *Error {
+	return &Error{
+		Kind: KindConflict, Why: "no_environment",
+		Msg: "this session has no environment id; register a fresh identity",
+	}
+}
+
+// refuseMove logs a refused move as move refused with its why.
+func (s *Store) refuseMove(verb, name string, e *Error) *Error {
+	s.log.Info("move refused", "verb", verb, "name", name, "why", e.Why)
 	return e
 }
 
