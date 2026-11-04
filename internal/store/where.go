@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cplieger/pathinside"
+	"github.com/cplieger/pathinside/v2"
 )
 
 // Where is the client's report of where an identity runs: keyed hashes of
@@ -75,7 +75,7 @@ func isCanonicalPath(p string) bool {
 }
 
 // under reports whether path p is root or lies below it.
-func under(p, root string) bool { return pathinside.Inside(root, p) }
+func under(p, root string) bool { return pathinside.Root(root).Contains(p) }
 
 // mergeCheckouts is the checkout rule of a revive or renew, which sends an
 // entry only for the clone holding the working directory: sent replaces
