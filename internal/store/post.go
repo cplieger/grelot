@@ -58,10 +58,14 @@ type Posted struct {
 // dormant ones included. A post in a path thread follows it. Refusals:
 // KindInvalid for a bad target, message, field or where; KindGone for a
 // session with no live identity; KindNotFound for an unknown @name;
-// KindConflict for a rename to a held name.
+// KindConflict for a rename to a held name; KindFull when the last Measure
+// found the bytes in use past 90 % of Options.MaxBytes.
 func (s *Store) Post(ctx context.Context, p *Posting) (Posted, error) {
 	if err := checkMessage(p); err != nil {
 		return Posted{}, err
+	}
+	if s.nearlyFull() {
+		return Posted{}, refuse(KindFull, "store nearly full: posts resume as older mail expires")
 	}
 	var out Posted
 	err := s.update(ctx, func(w *wtx) error {

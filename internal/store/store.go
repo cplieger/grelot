@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cplieger/bolttable"
@@ -28,6 +29,7 @@ const (
 const (
 	DefaultThreadTTL  = 72 * time.Hour
 	DefaultDormantTTL = 72 * time.Hour
+	DefaultMaxBytes   = 512 << 20
 )
 
 // Options configures Open. A nil Logger discards; a nil Now is time.Now;
@@ -40,6 +42,9 @@ type Options struct {
 	ThreadTTL time.Duration
 	// DormantTTL is how long an expired identity stays revivable.
 	DormantTTL time.Duration
+	// MaxBytes is the ceiling on the bytes in use; posts are refused past
+	// 90 % of it.
+	MaxBytes int64
 }
 
 // Store is an open grelot store.
@@ -52,17 +57,20 @@ type Store struct {
 	seen       map[uint64]time.Time
 	threadTTL  time.Duration
 	dormantTTL time.Duration
-	seenMu     sync.Mutex
+	maxBytes   int64
+	// inUse is the last Measure's bytes in use, which posts check.
+	inUse  atomic.Int64
+	seenMu sync.Mutex
 }
 
-// Open opens or creates the store file at path. A file another process
-// holds fails with ErrLocked; any other failure but the two below also
-// fails. Either way the file is left untouched. A file of another format is
-// reset to empty, with a WARN. A file bbolt reports as invalid is renamed
-// <path>.corrupt-<UTC time as 20060102T150405Z> and replaced by an empty
-// store, with an ERROR.
+// Open opens or creates the store file at path and measures it. A file
+// another process holds fails with ErrLocked; any other failure but the two
+// below also fails. Either way the file is left untouched. A file of
+// another format is reset to empty, with a WARN. A file bbolt reports as
+// invalid is renamed <path>.corrupt-<UTC time as 20060102T150405Z> and
+// replaced by an empty store, with an ERROR.
 func Open(path string, o Options) (*Store, error) {
-	s := &Store{log: o.Logger, now: o.Now, threadTTL: o.ThreadTTL, dormantTTL: o.DormantTTL, seen: map[uint64]time.Time{}}
+	s := &Store{log: o.Logger, now: o.Now, threadTTL: o.ThreadTTL, dormantTTL: o.DormantTTL, maxBytes: o.MaxBytes, seen: map[uint64]time.Time{}}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
 	}
@@ -74,6 +82,9 @@ func Open(path string, o Options) (*Store, error) {
 	}
 	if s.dormantTTL == 0 {
 		s.dormantTTL = DefaultDormantTTL
+	}
+	if s.maxBytes == 0 {
+		s.maxBytes = DefaultMaxBytes
 	}
 	db, t, err := openFile(path)
 	if fe := (*bolttable.FormatError)(nil); errors.As(err, &fe) {
@@ -97,6 +108,9 @@ func Open(path string, o Options) (*Store, error) {
 	s.db, s.t = db, t
 	s.wireLeases()
 	if err := s.ensureServerThreads(context.Background()); err != nil {
+		return nil, errors.Join(err, db.Close())
+	}
+	if _, err := s.Measure(context.Background()); err != nil {
 		return nil, errors.Join(err, db.Close())
 	}
 	return s, nil
