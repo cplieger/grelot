@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cplieger/pathinside"
+	"github.com/cplieger/pathinside/v2"
 )
 
 // Where is the client's report of where an identity runs: keyed hashes of
