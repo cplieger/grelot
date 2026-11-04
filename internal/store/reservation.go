@@ -351,6 +351,24 @@ func (w *wtx) freeAndHandOff(rows []reservationRow) error {
 	return nil
 }
 
+// freeHolder passes every grant and queue entry of identity holder to one
+// freeAndHandOff, for its retirement or expiry.
+func (w *wtx) freeHolder(holder uint64) error {
+	var rows []reservationRow
+	err := w.s.t.resvHolder.Scan(w.r, bolttable.Range{Prefix: be64(holder)}, func(_ []byte, id uint64, _ []byte) (bool, error) {
+		v, found, err := w.s.t.resv.table.Get(w.r, id)
+		if found {
+			rows = append(rows, v)
+		}
+		return err == nil, err
+	})
+	if err != nil || len(rows) == 0 {
+		return err
+	}
+	w.s.log.Info("reservations freed", "holder", holder, "count", len(rows))
+	return w.freeAndHandOff(rows)
+}
+
 // grantable reports whether queue entry q may be granted now: nothing
 // holds it back, and its holder is live. A holder past its lease is owed
 // its own expiry, which ends q; until then q keeps its place.

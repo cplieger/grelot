@@ -25,11 +25,17 @@ func deleteRow[K, V any](w *wtx, l *leased[K, V], k K) error {
 }
 
 // expireIdentity makes a live identity dormant, owing a left card for each
-// of its paths, and purges a dormant one, which already left.
+// of its paths and handing its reservations to their queues, and purges a
+// dormant one, which already left. A hand-off never writes to v's own row,
+// since every row of v's is deleted before the queue walk, so storing v's
+// copy afterwards reuses no seq.
 func expireIdentity(w *wtx, k uint64, v *identityRow) error {
 	if v.State == stateDormant {
 		w.s.forgetSeen(k)
 		return deleteRow(w, w.s.t.identities, k)
+	}
+	if err := w.freeHolder(k); err != nil {
+		return err
 	}
 	w.queueCards(kindLeft, v, v.Paths)
 	d := dormantRow(v, w.s.dormantTTL)

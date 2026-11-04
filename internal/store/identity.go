@@ -312,12 +312,16 @@ func (s *Store) EndSession(ctx context.Context, session string) error {
 }
 
 // Retire deletes session's live identity, owing a left card for each of its
-// paths, and frees its name. Its delivery rows stay until their own expiry.
-// A session with no live identity is KindGone.
+// paths, frees its name and hands its reservations to their queues. Its
+// delivery rows stay until their own expiry. A session with no live
+// identity is KindGone.
 func (s *Store) Retire(ctx context.Context, session string) error {
 	return s.update(ctx, func(w *wtx) error {
 		row, err := w.liveBySession(session)
 		if err != nil {
+			return err
+		}
+		if err := w.freeHolder(row.ID); err != nil {
 			return err
 		}
 		w.queueCards(kindLeft, &row, row.Paths)

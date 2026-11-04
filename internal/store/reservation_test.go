@@ -662,3 +662,116 @@ func TestUnfollow_passesOnceTheReservationExpired(t *testing.T) {
 		t.Errorf("unfollow after the reservation expired: %v", err)
 	}
 }
+
+// rowsHeldBy lists every grant and queue entry of identity holder.
+func rowsHeldBy(t *testing.T, s *Store, holder uint64) []reservationRow {
+	t.Helper()
+	var out []reservationRow
+	if err := s.db.View(t.Context(), func(r *bolttable.ReadTx) error {
+		return s.t.resv.table.Scan(r, bolttable.Range{}, func(_ uint64, v *reservationRow) (bool, error) {
+			if v.Holder == holder {
+				out = append(out, *v)
+			}
+			return true, nil
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func TestRetire_freesEveryOwnRowBeforeTheQueueWalk(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	regAt(t, s, "holder")
+	leaving := regAt(t, s, "leaving")
+	regAt(t, s, "third")
+	mustReserve(t, s, reserving("holder", pathWeb, time.Hour))
+	mustQueue(t, s, reserving("leaving", pathMarotte, time.Hour))
+	// Held back only by leaving's own older entry on the parent.
+	mustQueue(t, s, reserving("leaving", pathAPI, time.Hour))
+	third := mustQueue(t, s, reserving("third", pathAPI, time.Hour))
+
+	if err := s.Retire(t.Context(), sess("leaving")); err != nil {
+		t.Fatal(err)
+	}
+	if rows := rowsHeldBy(t, s, leaving.ID); len(rows) != 0 {
+		t.Errorf("the retired identity still has %+v, want none granted back to it", rows)
+	}
+	if ev := eventsOf(t, s, leaving.ID, kindReservationGranted); len(ev) != 0 {
+		t.Errorf("the retired identity got %+v, want no grant back to it", ev)
+	}
+	wantState(t, s, third.Reservation.ID, reservationHeld)
+}
+
+func TestRetire_handsItsGrantToTheAgentQueuedBehindIt(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	regAt(t, s, "leaving")
+	waiter := regAt(t, s, "waiter")
+	held := mustReserve(t, s, reserving("leaving", pathMarotte, time.Hour))
+	q := mustQueue(t, s, reserving("waiter", pathMarotte, 2*time.Hour))
+
+	if err := s.Retire(t.Context(), sess("leaving")); err != nil {
+		t.Fatal(err)
+	}
+	if _, found := getReservation(t, s, held.Reservation.ID); found {
+		t.Error("the retired identity's grant is still there")
+	}
+	row := wantState(t, s, q.Reservation.ID, reservationHeld)
+	if want := testNow.Add(2 * time.Hour); !row.Lease.Expires.Equal(want) {
+		t.Errorf("handed-off grant expires %v, want %v", row.Lease.Expires, want)
+	}
+	if n := len(eventsOf(t, s, waiter.ID, kindReservationGranted)); n != 1 {
+		t.Errorf("%d reservation_granted for the waiter, want 1", n)
+	}
+}
+
+func TestIdentityExpiry_handsItsGrantsOffAndRevivalRestoresNone(t *testing.T) {
+	s, clk, _ := openIdentityStore(t)
+	r := registration(sessA, "leaving", envA())
+	r.TTL = 15 * time.Minute
+	leaving := mustRegister(t, s, r)
+	waiter := regAt(t, s, "waiter")
+	regAt(t, s, "other")
+	mustReserve(t, s, reserving("other", "/workspace/sse", time.Hour))
+	held := mustReserve(t, s, Reserving{Session: sessA, Path: pathMarotte, Reason: "build", TTL: time.Hour})
+	own := mustQueue(t, s, Reserving{Session: sessA, Path: "/workspace/sse", Reason: "after", TTL: time.Hour})
+	q := mustQueue(t, s, reserving("waiter", pathMarotte, time.Hour))
+
+	clk.advance(15 * time.Minute)
+	mustSweep(t, s)
+	if row := getIdentity(t, s, leaving.ID); row.State != stateDormant {
+		t.Fatalf("state %q, want dormant", row.State)
+	}
+	for _, id := range []uint64{held.Reservation.ID, own.Reservation.ID} {
+		if _, found := getReservation(t, s, id); found {
+			t.Errorf("reservation %d of the expired identity is still there", id)
+		}
+	}
+	wantState(t, s, q.Reservation.ID, reservationHeld)
+	if n := len(eventsOf(t, s, waiter.ID, kindReservationGranted)); n != 1 {
+		t.Errorf("%d reservation_granted for the waiter, want 1", n)
+	}
+
+	mustRevive(t, s, revival(sessA, "", envA()))
+	if rows := rowsHeldBy(t, s, leaving.ID); len(rows) != 0 {
+		t.Errorf("the revived identity holds %+v, want no reservation restored", rows)
+	}
+}
+
+func TestTakeOver_keepsReservationIDsWorkingFromTheNewSession(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	mustRegister(t, s, registration(sessA, "subflux-dev", envA()))
+	held := mustReserve(t, s, Reserving{Session: sessA, Path: pathMarotte, Reason: "build", TTL: time.Hour})
+	r := registration(sessB, "subflux-dev", envA())
+	r.TakeOver = true
+	mustRegister(t, s, r)
+
+	if _, err := s.RenewReservation(t.Context(), sessB, held.Reservation.ID, 2*time.Hour); err != nil {
+		t.Errorf("renew from the new session: %v", err)
+	}
+	_, err := s.Release(t.Context(), sessA, held.Reservation.ID)
+	wantRefusal(t, err, KindGone, "")
+	if _, err := s.Release(t.Context(), sessB, held.Reservation.ID); err != nil {
+		t.Errorf("release from the new session: %v", err)
+	}
+}
