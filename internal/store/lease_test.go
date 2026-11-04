@@ -286,20 +286,25 @@ func TestSettle_runsADueExpiryBeforeTheWriteReadsTheRow(t *testing.T) {
 	// a write touching a row runs its due on_expire first, in the
 	// same transaction, without waiting for the sweeper.
 	s, clk := openClockStore(t)
+	var id uint64
 	putRows(t, s, func(w *wtx) error {
-		return s.t.threads.table.Put(w.tx, 1, &threadRow{ID: 1, Key: "/x", Lease: lease{Expires: testNow.Add(time.Minute)}})
+		var err error
+		if id, err = s.t.threads.table.NextID(w.tx); err != nil {
+			return err
+		}
+		return s.t.threads.table.Put(w.tx, id, &threadRow{ID: id, Key: "/x", Lease: lease{Expires: testNow.Add(time.Minute)}})
 	})
 	clk.set(testNow.Add(time.Minute))
 	var found bool
 	putRows(t, s, func(w *wtx) error {
 		var err error
-		_, found, err = s.t.threads.settle(w, 1)
+		_, found, err = s.t.threads.settle(w, id)
 		return err
 	})
 	if found {
 		t.Error("settle returned a thread past its expiry")
 	}
-	if n := countRows(t, s, s.t.threads.table); n != 0 {
-		t.Errorf("%d threads left after settle", n)
+	if _, ok := findThread(t, s, id); ok {
+		t.Error("the thread is still stored after settle")
 	}
 }

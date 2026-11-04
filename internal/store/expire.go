@@ -12,7 +12,7 @@ func (s *Store) wireLeases() {
 	t := s.t
 	t.identities.onWarn = warnIdentity
 	t.identities.onExpire = expireIdentity
-	t.threads.onExpire = func(w *wtx, k uint64, _ *threadRow) error { return deleteRow(w, t.threads, k) }
+	t.threads.onExpire = expireThread
 	t.messages.onExpire = func(w *wtx, k []byte, _ *messageRow) error { return deleteRow(w, t.messages, k) }
 	t.deliveries.onExpire = func(w *wtx, k []byte, _ *deliveryRow) error { return deleteRow(w, t.deliveries, k) }
 }
@@ -22,11 +22,13 @@ func deleteRow[K, V any](w *wtx, l *leased[K, V], k K) error {
 	return err
 }
 
-// expireIdentity makes a live identity dormant and purges a dormant one.
+// expireIdentity makes a live identity dormant, owing a left card for each
+// of its paths, and purges a dormant one, which already left.
 func expireIdentity(w *wtx, k uint64, v *identityRow) error {
 	if v.State == stateDormant {
 		return deleteRow(w, w.s.t.identities, k)
 	}
+	w.queueCards(kindLeft, v, v.Paths)
 	d := dormantRow(v, w.s.dormantTTL)
 	return w.s.t.identities.table.Put(w.tx, k, &d)
 }

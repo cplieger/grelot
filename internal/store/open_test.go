@@ -117,9 +117,9 @@ func writeOtherFormat(t *testing.T, path string) {
 	}
 }
 
-// freshRows is what an empty store holds after Open: the announcement
-// thread, created at first start.
-const freshRows = 1
+// freshRows is what an empty store holds after Open: the announcement and
+// cards threads, created at first start.
+const freshRows = 2
 
 func rowCount(ctx context.Context, t *testing.T, s *Store) int {
 	t.Helper()

@@ -94,6 +94,8 @@ func (w *wtx) revive(r *Revival, provider string) (Revived, error) {
 	if perr := w.s.t.identities.table.Put(w.tx, row.ID, &row); perr != nil {
 		return Revived{}, perr
 	}
+	// The left card told the others it had gone.
+	w.queueCards(kindJoin, &row, row.Paths)
 	unread, err := w.s.unread(w.r, row.ID, row.Read, w.now)
 	if err != nil {
 		return Revived{}, err

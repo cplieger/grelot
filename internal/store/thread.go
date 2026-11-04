@@ -3,12 +3,16 @@ package store
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 )
 
-// announceKey is the announcement thread's key. A path key starts with /
-// and a direct key with direct:, so no key of one kind meets another's.
-const announceKey = "announce"
+// The two singleton threads' keys. A path key starts with / and a direct
+// key with direct:, so no key of one kind meets another's.
+const (
+	announceKey = "announce"
+	cardsKey    = "cards"
+)
 
 // announceTTL is how long an announcement lives; the thread never expires.
 const announceTTL = 7 * 24 * time.Hour
@@ -19,17 +23,55 @@ func directKey(a, b uint64) string {
 	return fmt.Sprintf("direct:%d:%d", min(a, b), max(a, b))
 }
 
-// ensureAnnounce creates the announcement thread at the store's first
-// start.
-func (s *Store) ensureAnnounce(ctx context.Context) error {
+// ensureServerThreads creates the announcement and cards threads at the
+// store's first start.
+func (s *Store) ensureServerThreads(ctx context.Context) error {
 	return s.update(ctx, func(w *wtx) error {
-		th, found, err := w.thread(announceKey)
-		if err != nil || found {
+		for _, st := range [...]struct{ key, kind string }{{announceKey, kindAnnounce}, {cardsKey, kindCards}} {
+			th, found, err := w.thread(st.key)
+			if err != nil {
+				return err
+			}
+			if found {
+				continue
+			}
+			th.Kind = st.kind
+			if err := s.t.threads.table.Put(w.tx, th.ID, &th); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// expireThread deletes a thread, its messages with it, and first takes a
+// path thread out of its followers' follows, so a thread recreated at the
+// path starts with none. A cascade deletes whole rows, so it cannot do
+// that rewrite.
+func expireThread(w *wtx, k uint64, v *threadRow) error {
+	if v.Kind == kindPath {
+		var followers []uint64
+		if err := scanExact(w.r, w.s.t.byFollow, v.Path, func(id uint64) (bool, error) {
+			followers = append(followers, id)
+			return true, nil
+		}); err != nil {
 			return err
 		}
-		th.Kind = kindAnnounce
-		return s.t.threads.table.Put(w.tx, th.ID, &th)
-	})
+		for _, id := range followers {
+			row, found, err := w.s.t.identities.table.Get(w.r, id)
+			if err != nil {
+				return err
+			}
+			if !found {
+				continue
+			}
+			row.Follows = slices.DeleteFunc(row.Follows, func(f string) bool { return f == v.Path })
+			if err := w.s.t.identities.table.Put(w.tx, id, &row); err != nil {
+				return err
+			}
+		}
+	}
+	return deleteRow(w, w.s.t.threads, k)
 }
 
 // thread reads the live thread under key for a write, running its due

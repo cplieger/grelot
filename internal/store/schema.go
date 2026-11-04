@@ -31,6 +31,13 @@ const (
 	kindAnnounce = "announce"
 	kindPath     = "path"
 	kindDirect   = "direct"
+	kindCards    = "cards"
+)
+
+// Card kinds: the cards thread's messages and their deliveries.
+const (
+	kindJoin = "join"
+	kindLeft = "left"
 )
 
 // Delivery kinds that carry their text in the row, having no message.

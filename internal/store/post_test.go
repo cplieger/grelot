@@ -37,8 +37,21 @@ func regAt(t *testing.T, s *Store, name string, paths ...string) Identity {
 	return mustRegister(t, s, registration(sess(name), name, envA(), paths...))
 }
 
-// deliveriesTo lists identity id's delivery rows in seq order.
+// deliveriesTo lists identity id's delivery rows in seq order, leaving out
+// the join and left cards that registrations beside it write.
 func deliveriesTo(t *testing.T, s *Store, id uint64) []deliveryRow {
+	t.Helper()
+	var out []deliveryRow
+	for _, d := range allDeliveriesTo(t, s, id) {
+		if d.Kind != kindJoin && d.Kind != kindLeft {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// allDeliveriesTo lists identity id's delivery rows in seq order.
+func allDeliveriesTo(t *testing.T, s *Store, id uint64) []deliveryRow {
 	t.Helper()
 	var out []deliveryRow
 	if err := s.db.View(t.Context(), func(r *bolttable.ReadTx) error {
@@ -83,29 +96,30 @@ func findThread(t *testing.T, s *Store, id uint64) (threadRow, bool) {
 	return out, found
 }
 
-func TestOpen_createsTheAnnouncementThreadOnce(t *testing.T) {
+func TestOpen_createsTheServerThreadsOnce(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grelot.db")
 	for range 2 {
 		s, err := Open(path, Options{Now: func() time.Time { return testNow }})
 		if err != nil {
 			t.Fatal(err)
 		}
-		var announce []threadRow
+		byKind := map[string][]threadRow{}
 		if err := s.db.View(t.Context(), func(r *bolttable.ReadTx) error {
 			return s.t.threads.table.Scan(r, bolttable.Range{}, func(_ uint64, v *threadRow) (bool, error) {
-				if v.Kind == kindAnnounce {
-					announce = append(announce, *v)
-				}
+				byKind[v.Kind] = append(byKind[v.Kind], *v)
 				return true, nil
 			})
 		}); err != nil {
 			t.Fatal(err)
 		}
-		if len(announce) != 1 {
-			t.Fatalf("%d announcement threads, want 1", len(announce))
-		}
-		if !announce[0].Lease.Expires.IsZero() {
-			t.Errorf("announcement thread expires %v, want never", announce[0].Lease.Expires)
+		for _, kind := range []string{kindAnnounce, kindCards} {
+			ths := byKind[kind]
+			if len(ths) != 1 {
+				t.Fatalf("%d %s threads, want 1", len(ths), kind)
+			}
+			if !ths[0].Lease.Expires.IsZero() {
+				t.Errorf("%s thread expires %v, want never", kind, ths[0].Lease.Expires)
+			}
 		}
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
@@ -556,9 +570,10 @@ func TestPost_messageLimits(t *testing.T) {
 
 func TestPost_seqIsPerRecipientAfterItsEvents(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
-	regAt(t, s, "alpha")
-	b := regAt(t, s, "bravo")
-	c := regAt(t, s, "charlie")
+	// Paths apart, so no join card takes a seq.
+	regAt(t, s, "alpha", "/workspace/a")
+	b := regAt(t, s, "bravo", "/workspace/b")
+	c := regAt(t, s, "charlie", "/workspace/c")
 	deliverEvents(t, s, b.ID, 1)
 	mustPost(t, s, posting(sess("alpha"), Target{Announce: true}))
 	seqs := func(id uint64) []uint64 {

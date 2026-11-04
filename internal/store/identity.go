@@ -126,7 +126,7 @@ func (w *wtx) register(r *Registration, provider string) (Registered, error) {
 	if ownFound && own.State == stateLive {
 		return Registered{Identity: w.s.view(&own), Existing: true}, nil
 	}
-	row, moved, err := w.registerRow(r, provider)
+	row, added, moved, err := w.registerRow(r, provider)
 	if err != nil {
 		return Registered{}, err
 	}
@@ -138,6 +138,7 @@ func (w *wtx) register(r *Registration, provider string) (Registered, error) {
 	if err := w.s.t.identities.table.Put(w.tx, row.ID, &row); err != nil {
 		return Registered{}, err
 	}
+	w.queueCards(kindJoin, &row, added)
 	if moved {
 		w.s.log.Info("identity moved", "name", row.Name, "id", row.ID, "provider", provider)
 	}
@@ -151,9 +152,11 @@ func (w *wtx) detach(row *identityRow) error {
 	return w.s.t.identities.table.Put(w.tx, row.ID, row)
 }
 
-// registerRow validates r and returns the row it registers: a new one, or
-// the live identity of r's name when a take-over may move it.
-func (w *wtx) registerRow(r *Registration, provider string) (identityRow, bool, error) {
+// registerRow validates r and returns the row it registers, a new one or
+// the live identity of r's name when a take-over may move it, and the
+// paths it adds, each owed a join card: a take-over adds only paths the
+// moved identity did not have.
+func (w *wtx) registerRow(r *Registration, provider string) (row identityRow, added []string, moved bool, err error) {
 	fc, err := resolveFields(nil, r.Fields, fieldsNew)
 	if err == nil {
 		err = checkLabels(r.Host, r.OS, r.Arch, r.Proc)
@@ -162,32 +165,33 @@ func (w *wtx) registerRow(r *Registration, provider string) (identityRow, bool, 
 		err = checkWhere(r.Where, fc.paths)
 	}
 	if err != nil {
-		return identityRow{}, false, err
+		return identityRow{}, nil, false, err
 	}
 	ls, err := identityPolicy.grant(w.now, r.TTL, time.Time{})
 	if err != nil {
-		return identityRow{}, false, err
+		return identityRow{}, nil, false, err
 	}
 	row, held, err := w.identityBy(w.s.t.byName, fc.name)
 	if err != nil {
-		return identityRow{}, false, err
+		return identityRow{}, nil, false, err
 	}
 	switch {
 	case held && row.State == stateDormant:
-		return identityRow{}, false, w.s.dormantNameRefusal(&row, *r.Where)
+		return identityRow{}, nil, false, w.s.dormantNameRefusal(&row, *r.Where)
 	case held && !r.TakeOver:
-		return identityRow{}, false, w.s.liveNameRefusal(&row, *r.Where)
+		return identityRow{}, nil, false, w.s.liveNameRefusal(&row, *r.Where)
 	case held:
 		if err := w.s.moveRefusal(verbTakeOver, &row, *r.Where, provider); err != nil {
-			return identityRow{}, false, err
+			return identityRow{}, nil, false, err
 		}
 	default:
 		id, err := w.s.t.identities.table.NextID(w.tx)
 		if err != nil {
-			return identityRow{}, false, err
+			return identityRow{}, nil, false, err
 		}
 		row = identityRow{ID: id, RegisteredAt: w.now, State: stateLive}
 	}
+	added = slices.DeleteFunc(slices.Clone(fc.paths), func(p string) bool { return slices.Contains(row.Paths, p) })
 	row.Name, row.Paths, row.Description = fc.name, fc.paths, fc.description
 	row.Host, row.OS, row.Arch, row.Proc = r.Host, r.OS, r.Arch, r.Proc
 	row.Session, row.Provider = r.Session, provider
@@ -195,7 +199,7 @@ func (w *wtx) registerRow(r *Registration, provider string) (identityRow, bool, 
 	row.TTL, row.Lease = r.TTL, ls
 	row.Ended = false
 	row.LastSeen = w.now
-	return row, held, nil
+	return row, added, held, nil
 }
 
 // Set applies c to session's live identity and returns it. Refusals:
@@ -240,8 +244,8 @@ func (w *wtx) applyChange(row *identityRow, c Change) error {
 }
 
 // applyFields applies a set's or a post's identity fields and where to
-// row. Where is checked when it is sent, when the paths change, and on a
-// renewal, which must send it.
+// row, owing a join card for each path it adds. Where is checked when it
+// is sent, when the paths change, and on a renewal, which must send it.
 func (w *wtx) applyFields(row *identityRow, f Fields, sent *Where, mode fieldMode, renew bool) error {
 	fc, err := resolveFields(row, f, mode)
 	if err == nil && fc.name != row.Name {
@@ -255,6 +259,7 @@ func (w *wtx) applyFields(row *identityRow, f Fields, sent *Where, mode fieldMod
 	}
 	applyWhere(row, sent, fc.pathsChanged, fc.paths)
 	row.Name, row.Paths, row.Description = fc.name, fc.paths, fc.description
+	w.queueCards(kindJoin, row, fc.added)
 	return nil
 }
 
@@ -298,6 +303,24 @@ func (s *Store) EndSession(ctx context.Context, session string) error {
 			row.Lease.WarnAt = later(w.now, limit.Add(-identityPolicy.lead(row.TTL)))
 		}
 		return s.t.identities.table.Put(w.tx, row.ID, &row)
+	})
+}
+
+// Retire deletes session's live identity, owing a left card for each of its
+// paths, and frees its name. Its delivery rows stay until their own expiry.
+// A session with no live identity is KindGone.
+func (s *Store) Retire(ctx context.Context, session string) error {
+	return s.update(ctx, func(w *wtx) error {
+		row, err := w.liveBySession(session)
+		if err != nil {
+			return err
+		}
+		w.queueCards(kindLeft, &row, row.Paths)
+		if err := deleteRow(w, s.t.identities, row.ID); err != nil {
+			return err
+		}
+		s.log.Info("identity retired", "name", row.Name, "id", row.ID, "provider", row.Provider)
+		return nil
 	})
 }
 

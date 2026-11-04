@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// editIdentity rewrites identity row id in place, for state the verbs
-// that set it (follows, acks, nudges) do not exist for yet.
+// editIdentity rewrites identity row id in place, for state no verb sets
+// yet (acks, nudges) or that takes many requests to reach (32 follows).
 func editIdentity(t *testing.T, s *Store, id uint64, edit func(*identityRow)) {
 	t.Helper()
 	putRows(t, s, func(w *wtx) error {

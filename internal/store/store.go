@@ -96,7 +96,7 @@ func Open(path string, o Options) (*Store, error) {
 	}
 	s.db, s.t = db, t
 	s.wireLeases()
-	if err := s.ensureAnnounce(context.Background()); err != nil {
+	if err := s.ensureServerThreads(context.Background()); err != nil {
 		return nil, errors.Join(err, db.Close())
 	}
 	return s, nil
@@ -165,12 +165,19 @@ type wtx struct {
 	s   *Store
 	tx  *bolttable.Tx
 	r   *bolttable.ReadTx
+	// cards are the cards owed so far, written once fn is done.
+	cards []card
 }
 
-// update runs fn in one write transaction, at one instant of the clock.
+// update runs fn in one write transaction, at one instant of the clock,
+// then writes the cards it owes.
 func (s *Store) update(ctx context.Context, fn func(*wtx) error) error {
 	return s.db.Update(ctx, func(tx *bolttable.Tx) error {
-		return fn(&wtx{s: s, tx: tx, r: tx.Read(), now: s.now()})
+		w := &wtx{s: s, tx: tx, r: tx.Read(), now: s.now()}
+		if err := fn(w); err != nil {
+			return err
+		}
+		return w.flushCards()
 	})
 }
 
