@@ -202,14 +202,18 @@ func dueKeys[K, V any](w *wtx, ix *bolttable.Index[K, V], limit int) ([]K, error
 
 // settle reads row k for a write, first running its due on_expire in the
 // same transaction, so a write never acts on a row the sweeper has not
-// reached yet. found reports whether a row is there afterwards.
+// reached yet. found reports whether a row is there afterwards. A row can
+// be due twice over (an identity past both its expiry and its purge), so
+// it loops; every on_expire must delete the row or move its expiry later,
+// or this never returns.
 func (l *leased[K, V]) settle(w *wtx, k K) (v V, found bool, err error) {
-	v, found, err = l.table.Get(w.r, k)
-	if err != nil || !found || !l.lease(&v).due(w.now) {
-		return v, found, err
+	for {
+		v, found, err = l.table.Get(w.r, k)
+		if err != nil || !found || !l.lease(&v).due(w.now) {
+			return v, found, err
+		}
+		if err := l.onExpire(w, k, &v); err != nil {
+			return v, false, err
+		}
 	}
-	if err := l.onExpire(w, k, &v); err != nil {
-		return v, false, err
-	}
-	return l.table.Get(w.r, k)
 }

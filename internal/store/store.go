@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/cplieger/bolttable"
@@ -43,12 +44,15 @@ type Options struct {
 
 // Store is an open grelot store.
 type Store struct {
-	db         *bolttable.DB
-	t          *tables
-	log        *slog.Logger
-	now        func() time.Time
+	db  *bolttable.DB
+	t   *tables
+	log *slog.Logger
+	now func() time.Time
+	// seen is each identity's newest request time; seenMu guards it.
+	seen       map[uint64]time.Time
 	threadTTL  time.Duration
 	dormantTTL time.Duration
+	seenMu     sync.Mutex
 }
 
 // Open opens or creates the store file at path. A file another process
@@ -58,7 +62,7 @@ type Store struct {
 // <path>.corrupt-<UTC time as 20060102T150405Z> and replaced by an empty
 // store, with an ERROR.
 func Open(path string, o Options) (*Store, error) {
-	s := &Store{log: o.Logger, now: o.Now, threadTTL: o.ThreadTTL, dormantTTL: o.DormantTTL}
+	s := &Store{log: o.Logger, now: o.Now, threadTTL: o.ThreadTTL, dormantTTL: o.DormantTTL, seen: map[uint64]time.Time{}}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
 	}

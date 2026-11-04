@@ -3,6 +3,7 @@ package store
 import (
 	"fmt"
 	"math"
+	"time"
 )
 
 // wireLeases sets each table's on_warn and on_expire, which need the
@@ -21,16 +22,23 @@ func deleteRow[K, V any](w *wtx, l *leased[K, V], k K) error {
 	return err
 }
 
-// expireIdentity makes a live identity dormant for DormantTTL, unwarned,
-// and purges a dormant one.
+// expireIdentity makes a live identity dormant and purges a dormant one.
 func expireIdentity(w *wtx, k uint64, v *identityRow) error {
 	if v.State == stateDormant {
 		return deleteRow(w, w.s.t.identities, k)
 	}
-	v.State = stateDormant
-	v.DormantSince = w.now
-	v.Lease = lease{Expires: w.now.Add(w.s.dormantTTL)}
-	return w.s.t.identities.table.Put(w.tx, k, v)
+	d := dormantRow(v, w.s.dormantTTL)
+	return w.s.t.identities.table.Put(w.tx, k, &d)
+}
+
+// dormantRow is v once its lease ran out: dormant since its expiry, under
+// an unwarned lease until ttl after it. Counting from the expiry, not from
+// the sweep, keeps a late sweep from lengthening the dormancy reads show.
+func dormantRow(v *identityRow, ttl time.Duration) identityRow {
+	d := *v
+	d.State, d.DormantSince = stateDormant, v.Lease.Expires
+	d.Lease = lease{Expires: v.Lease.Expires.Add(ttl)}
+	return d
 }
 
 // warnIdentity writes identity_expiring. The text carries the expiry time
@@ -38,7 +46,7 @@ func expireIdentity(w *wtx, k uint64, v *identityRow) error {
 func warnIdentity(w *wtx, k uint64, v *identityRow) error {
 	left := int(math.Ceil(v.Lease.Expires.Sub(w.now).Minutes()))
 	text := fmt.Sprintf("your identity %s expires in %d min (at %s); if you are still working on %s, run `grelot renew --ttl %s`, otherwise do nothing",
-		v.Name, left, v.Lease.Expires.UTC().Format("2006-01-02 15:04 UTC"), v.Description, fmtDur(v.TTL))
+		v.Name, left, fmtTime(v.Lease.Expires), v.Description, fmtDur(v.TTL))
 	return w.deliverEvent(k, kindIdentityExpiring, text)
 }
 
