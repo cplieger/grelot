@@ -1,0 +1,76 @@
+package store
+
+import (
+	"context"
+	"fmt"
+	"slices"
+)
+
+// Follow adds the live path thread at path to session's identity's
+// follows and returns the identity; following it again changes nothing.
+// Refusals: KindInvalid for a bad path; KindGone for a session with no
+// live identity; KindNotFound for no live thread there; KindConflict at
+// the follow cap.
+func (s *Store) Follow(ctx context.Context, session, path string) (Identity, error) {
+	if _, err := checkPaths([]string{path}); err != nil {
+		return Identity{}, err
+	}
+	var out Identity
+	err := s.update(ctx, func(w *wtx) error {
+		_, live, err := w.thread(path)
+		if err != nil {
+			return err
+		}
+		me, err := w.liveBySession(session)
+		if err != nil {
+			return err
+		}
+		switch {
+		case !live:
+			return refuse(KindNotFound, fmt.Sprintf("no thread at %s; post there to start one", path))
+		case slices.Contains(me.Follows, path):
+		case len(me.Follows) >= maxFollows:
+			return refuse(KindConflict, fmt.Sprintf("you follow %d threads, the most allowed: grelot unfollow one first", maxFollows))
+		default:
+			me.Follows = append(me.Follows, path)
+		}
+		me.Ended, me.LastSeen = false, w.now
+		if err := s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {
+			return err
+		}
+		out = s.view(&me)
+		return nil
+	})
+	return out, err
+}
+
+// Unfollow takes path out of session's identity's follows and returns the
+// identity; a path it does not follow changes nothing. A thread at or
+// under a work path cannot be muted, since the work path delivers it.
+// Refusals: KindInvalid for a bad path; KindGone for a session with no
+// live identity; KindConflict under a work path.
+func (s *Store) Unfollow(ctx context.Context, session, path string) (Identity, error) {
+	if _, err := checkPaths([]string{path}); err != nil {
+		return Identity{}, err
+	}
+	var out Identity
+	err := s.update(ctx, func(w *wtx) error {
+		me, err := w.liveBySession(session)
+		if err != nil {
+			return err
+		}
+		if i := slices.IndexFunc(me.Paths, func(p string) bool { return under(path, p) }); i >= 0 {
+			return refuse(KindConflict, fmt.Sprintf(
+				"%s is under your work path %s, which delivers it whatever you follow: narrow your paths with grelot set --paths to stop hearing it", path, me.Paths[i],
+			))
+		}
+		me.Follows = slices.DeleteFunc(me.Follows, func(f string) bool { return f == path })
+		me.Ended, me.LastSeen = false, w.now
+		if err := s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {
+			return err
+		}
+		out = s.view(&me)
+		return nil
+	})
+	return out, err
+}

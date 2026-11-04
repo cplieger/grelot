@@ -1,0 +1,238 @@
+// Package store holds grelot's state in one bolttable file: identities,
+// threads, messages and their deliveries, and the leases that expire them.
+package store
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io/fs"
+	"log/slog"
+	"os"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/cplieger/bolttable"
+	bolterrors "go.etcd.io/bbolt/errors"
+)
+
+// ErrLocked reports that another process holds the store file.
+var ErrLocked = errors.New("store: file held by another process")
+
+const (
+	msgStoreReset   = "store reset"
+	msgStoreCorrupt = "store corrupt"
+)
+
+// Default lifetimes, used where Options leaves one zero.
+const (
+	DefaultThreadTTL  = 72 * time.Hour
+	DefaultDormantTTL = 72 * time.Hour
+	DefaultMaxBytes   = 512 << 20
+)
+
+// Options configures Open. A nil Logger discards; a nil Now is time.Now;
+// a zero TTL takes its default.
+type Options struct {
+	Logger *slog.Logger
+	Now    func() time.Time
+	// ThreadTTL is how long a path or direct thread, a post and an event
+	// live after they are written.
+	ThreadTTL time.Duration
+	// DormantTTL is how long an expired identity stays revivable.
+	DormantTTL time.Duration
+	// MaxBytes is the ceiling on the bytes in use; posts are refused past
+	// 90 % of it.
+	MaxBytes int64
+}
+
+// Store is an open grelot store.
+type Store struct {
+	db  *bolttable.DB
+	t   *tables
+	log *slog.Logger
+	now func() time.Time
+	// seen is each identity's newest request time; seenMu guards it.
+	seen       map[uint64]time.Time
+	threadTTL  time.Duration
+	dormantTTL time.Duration
+	maxBytes   int64
+	// inUse is the last Measure's bytes in use, which posts check.
+	inUse  atomic.Int64
+	seenMu sync.Mutex
+}
+
+// Open opens or creates the store file at path and measures it. A file
+// another process holds fails with ErrLocked; any other failure but the two
+// below also fails. Either way the file is left untouched. A file of
+// another format is reset to empty, with a WARN. A file bbolt reports as
+// invalid is renamed <path>.corrupt-<UTC time as 20060102T150405Z> and
+// replaced by an empty store, with an ERROR.
+func Open(path string, o Options) (*Store, error) {
+	s := &Store{log: o.Logger, now: o.Now, threadTTL: o.ThreadTTL, dormantTTL: o.DormantTTL, maxBytes: o.MaxBytes, seen: map[uint64]time.Time{}}
+	if s.log == nil {
+		s.log = slog.New(slog.DiscardHandler)
+	}
+	if s.now == nil {
+		s.now = time.Now
+	}
+	if s.threadTTL == 0 {
+		s.threadTTL = DefaultThreadTTL
+	}
+	if s.dormantTTL == 0 {
+		s.dormantTTL = DefaultDormantTTL
+	}
+	if s.maxBytes == 0 {
+		s.maxBytes = DefaultMaxBytes
+	}
+	db, t, err := openFile(path)
+	if fe := (*bolttable.FormatError)(nil); errors.As(err, &fe) {
+		err = s.reset(path, fe)
+		if err == nil {
+			db, t, err = openFile(path)
+		}
+	}
+	if isCorrupt(err) {
+		err = s.moveAside(path, err)
+		if err == nil {
+			db, t, err = openFile(path)
+		}
+	}
+	if errors.Is(err, bolterrors.ErrTimeout) {
+		return nil, fmt.Errorf("%w: %w", ErrLocked, err)
+	}
+	if err != nil {
+		return nil, err
+	}
+	s.db, s.t = db, t
+	s.wireLeases()
+	if err := s.ensureServerThreads(context.Background()); err != nil {
+		return nil, errors.Join(err, db.Close())
+	}
+	if _, err := s.Measure(context.Background()); err != nil {
+		return nil, errors.Join(err, db.Close())
+	}
+	return s, nil
+}
+
+func openFile(path string) (*bolttable.DB, *tables, error) {
+	schema, t, err := newSchema()
+	if err != nil {
+		return nil, nil, err
+	}
+	db, err := bolttable.Open(path, schema, bolttable.Options{})
+	return db, t, err
+}
+
+// reset empties every namespace fe lists. The store's rows all expire
+// within days and agents register again, so a format change keeps nothing.
+func (s *Store) reset(path string, fe *bolttable.FormatError) error {
+	names := make([]string, 0, len(fe.Namespaces))
+	for _, n := range fe.Namespaces {
+		names = append(names, n.Name)
+	}
+	schema, _, err := newSchema()
+	if err != nil {
+		return err
+	}
+	if err := bolttable.ResetNamespaces(path, schema, names); err != nil {
+		return err
+	}
+	s.log.Warn(msgStoreReset, "path", path, "namespaces", names)
+	return nil
+}
+
+// isCorrupt reports bbolt's own verdict on a file that is not a database
+// it can open; bolttable passes these errors through wrapped.
+func isCorrupt(err error) bool {
+	return errors.Is(err, bolterrors.ErrInvalid) ||
+		errors.Is(err, bolterrors.ErrChecksum) ||
+		errors.Is(err, bolterrors.ErrVersionMismatch)
+}
+
+// moveAside renames a corrupt file out of the way, so the store starts
+// empty: its data is short-lived, and serving beats keeping a broken file
+// in place. It never overwrites an earlier corrupt copy, and leaves alone
+// anything but a regular file, which bbolt also reports as invalid.
+func (s *Store) moveAside(path string, cause error) error {
+	if fi, err := os.Lstat(path); err != nil || !fi.Mode().IsRegular() {
+		return cause
+	}
+	dst := path + ".corrupt-" + s.now().UTC().Format("20060102T150405Z")
+	if _, err := os.Lstat(dst); !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("store: %s is corrupt (%w) and %s exists", path, cause, dst)
+	}
+	if err := os.Rename(path, dst); err != nil {
+		return fmt.Errorf("store: move aside %s: %w", path, err)
+	}
+	s.log.Error(msgStoreCorrupt, "path", path, "moved_to", dst, "error", cause.Error())
+	return nil
+}
+
+// Close closes the file, waiting for open transactions.
+func (s *Store) Close() error { return s.db.Close() }
+
+// wtx is one write transaction with the time it runs at.
+type wtx struct {
+	now time.Time
+	s   *Store
+	tx  *bolttable.Tx
+	r   *bolttable.ReadTx
+	// cards are the cards owed so far, written once fn is done.
+	cards []card
+}
+
+// update runs fn in one write transaction, at one instant of the clock,
+// then writes the cards it owes.
+func (s *Store) update(ctx context.Context, fn func(*wtx) error) error {
+	return s.db.Update(ctx, func(tx *bolttable.Tx) error {
+		w := &wtx{s: s, tx: tx, r: tx.Read(), now: s.now()}
+		if err := fn(w); err != nil {
+			return err
+		}
+		return w.flushCards()
+	})
+}
+
+// sweepBatch bounds the rows one sweep transaction handles, so a backlog
+// never holds the write lock for long.
+const sweepBatch = 256
+
+// Sweep runs every due warning and expiry in batches, one transaction
+// each, until none is due, and reports how many rows it handled. It also
+// forgets the request time of every identity whose row is gone.
+func (s *Store) Sweep(ctx context.Context) (int, error) {
+	total := 0
+	for first := true; ; first = false {
+		n := 0
+		err := s.update(ctx, func(w *wtx) error {
+			if first {
+				if err := w.pruneSeen(); err != nil {
+					return err
+				}
+			}
+			var err error
+			n, err = w.sweepDue()
+			return err
+		})
+		total += n
+		if err != nil || n < sweepBatch {
+			return total, err
+		}
+	}
+}
+
+// sweepDue runs up to sweepBatch due warnings and expiries across the
+// tables and reports how many it ran.
+func (w *wtx) sweepDue() (int, error) {
+	n := 0
+	for _, l := range w.s.t.leased {
+		got, err := l.sweep(w, sweepBatch-n)
+		n += got
+		if err != nil || n >= sweepBatch {
+			return n, err
+		}
+	}
+	return n, nil
+}
