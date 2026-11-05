@@ -187,7 +187,7 @@ func TestHookPrompt_unregisteredAndDormant(t *testing.T) {
 	})
 }
 
-// The turn-start line stays under 30 words in every state (Ruling 18).
+// The turn-start line stays under 30 words in every state.
 func TestHookPrompt_underThirtyWords(t *testing.T) {
 	ts := newServer(t)
 	file := hookTurnFile + "doors:\n  - {name: tray, layer: 2, transport: stdout, start: grelot watch --door tray}\n"
@@ -278,7 +278,7 @@ func meServer(t *testing.T, unread string, signalRead bool) *testServer {
 }
 
 // The stale-signal block follows the server's answer to the signal, never
-// the unread counts (design section 7: blocked once read reaches the seq).
+// the unread counts: a signal is blocked once read reaches its seq.
 func TestHookPrompt_staleSignalBlock(t *testing.T) {
 	line := signal(5, 1)
 	stale := "signal 5 is stale"
@@ -398,8 +398,8 @@ func (a *agent) pointAt(url string) {
 	writeClientConfig(a.t, a.env.ConfigDir, fmt.Sprintf("server: %s\ntoken: test-token\nhost: box\n", url))
 }
 
-// A role under once spends its one print only on the server's answer
-// (probes O3-4: suppressed after its first successful print).
+// A role under once is suppressed only after its first successful print,
+// so an outage does not spend it.
 func TestHook_onceSpendsOnlyAnAnswer(t *testing.T) {
 	const noCheck = "could not check this session's identity (the server cannot be reached)"
 	onceFile := strings.NewReplacer(
@@ -429,7 +429,7 @@ func TestHook_onceSpendsOnlyAnAnswer(t *testing.T) {
 
 // A prompt the server did not answer prints neither the hourly reminder
 // nor the same-agent note, so the next answered prompt still carries
-// them (build-notes Ruling 18: at most once an hour; probes O3-6).
+// them. The reminder still fires at most once an hour.
 func TestHookPrompt_aFailedCheckSpendsNoMark(t *testing.T) {
 	const reminder = "still true? `grelot set --desc` if not"
 	ts := newServer(t)
@@ -655,7 +655,7 @@ func TestHookStop_noticesAndChildren(t *testing.T) {
 
 // A fault the hook cannot get past, a client config it cannot read or a 2xx
 // answer that is not JSON, fails open like an outage: one line naming the
-// fault, and nothing held (build-notes Ruling 17).
+// fault, and nothing held.
 func TestHook_failsOpenOnAFaultItCannotRead(t *testing.T) {
 	garbled := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// testKey is the key file content the design's vectors use: the 16 bytes
+// testKey is the key file content the test vectors use: the 16 bytes
 // 00 01 ... 0f in hex.
 const testKey = "000102030405060708090a0b0c0d0e0f" // gitleaks:allow
 

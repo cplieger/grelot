@@ -42,7 +42,7 @@ const clientTimeout = 2 * time.Minute
 
 // API sends one command's requests to the server as one caller. Session is
 // <provider>:<host session id>, empty for a command that acts as no one;
-// As and Self are the delegate headers of design section 3.
+// As and Self are the delegate headers, Grelot-As and Grelot-Self.
 type API struct {
 	http      *http.Client
 	server    string

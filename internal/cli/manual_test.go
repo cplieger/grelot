@@ -8,8 +8,7 @@ import (
 	"testing"
 )
 
-// maxManualWords is build-notes Ruling 15's size guard, the cap of a skill
-// reference; it rises only on the user's word.
+// maxManualWords is the manual's size guard, the cap of a skill reference.
 const maxManualWords = 6000
 
 func TestManual_underTheWordCap(t *testing.T) {
@@ -23,8 +22,8 @@ func TestManual_opensWithTheGuidanceThenTheCommands(t *testing.T) {
 	if !ok {
 		t.Fatal("the manual has no Commands part")
 	}
-	// What design section 13's skill held, as Ruling 15 lists it, and
-	// Rulings 13, 14, 17 and 18's lines.
+	// The guidance an agent needs before its first command: registration,
+	// the wake, posting, paths, who, delegates and the hooks' lines.
 	for _, want := range []string{
 		"grelot register <repo>-<role>", "--ttl", "grelot renew --ttl", "grelot revive --ttl",
 		"wake: down", "start the watcher", "grelot inbox` at the start and end of each task",
@@ -72,8 +71,8 @@ func TestManual_everyCommandHasOneSectionWithAnExample(t *testing.T) {
 	}
 }
 
-// nextStep is what a refusal must name (build-notes Ruling 15): a grelot
-// command, a flag, or the one shell command a config file's mode needs.
+// nextStep is what a refusal must name: a grelot command, a flag, or the
+// one shell command a config file's mode needs.
 var nextStep = regexp.MustCompile(`grelot (--self |--provider \S+ )?(as \S+ )?(` +
 	`register|revive|me|set|renew|bye|who|path|help|post|inbox|history|receipts|threads|follow|unfollow|` +
 	`reserve|release|reservations|delegate|as|watch|wait|provider check)\b|--[a-z][a-z-]+|chmod 600`)

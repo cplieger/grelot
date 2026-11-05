@@ -15,8 +15,8 @@ import (
 	"github.com/cplieger/grelot/internal/where"
 )
 
-// toolbeltRemote's hash under the key "grelot remote", computed with
-// openssl from Ruling 14's definition.
+// toolbeltRemoteHash is the first 16 bytes of HMAC-SHA256 keyed "grelot
+// remote" over the normalized remote, computed with openssl.
 const (
 	toolbeltRemote     = "git@github.com:cplieger/toolbelt.git"
 	toolbeltRemoteHash = "3b9c6e0d9248a2015132854ae815633b"
