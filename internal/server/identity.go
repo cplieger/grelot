@@ -331,9 +331,15 @@ func (s *Server) patchMe(r *http.Request, c store.Caller) (status int, body any,
 
 // deleteMe is DELETE /v1/me, grelot bye.
 func (s *Server) deleteMe(r *http.Request, c store.Caller) (status int, body any, err error) {
-	if err := s.store.Retire(r.Context(), c); err != nil {
+	ctx := r.Context()
+	st, err := s.store.Status(ctx, c)
+	if err != nil {
 		return 0, nil, err
 	}
+	if err := s.store.Retire(ctx, c); err != nil {
+		return 0, nil, err
+	}
+	s.rewait(st.Identity.ID)
 	return http.StatusOK, map[string]bool{"retired": true}, nil
 }
 

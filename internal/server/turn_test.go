@@ -167,28 +167,33 @@ func TestHold_closesTheTurnUnlessItBlocksWithoutLast(t *testing.T) {
 	}
 }
 
-func TestHold_theDownNoticeBlocksOncePerEpisode(t *testing.T) {
+func TestHold_theDownNoticeIsToldOncePerEpisodeWithoutBlocking(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h := newBubbleHarness(t)
 		h.mustRegisterAlone(sessA, "reader")
-		if r := h.stopHold(sessA, false); r.body["block"] != false || r.body["wake"] != wakeDown {
-			t.Errorf("a hold before any standing wait = %s, want wake down and no block", r.raw)
+		id := h.idOf(sessA)
+		if r := h.stopHold(sessA, false); r.body["down"] != false || r.body["wake"] != wakeDown {
+			t.Errorf("a hold before any standing wait = %s, want wake down and no down notice", r.raw)
 		}
 		h.watch(sessA, time.Second)
 		time.Sleep(onlineFor)
-		if r := h.stopHold(sessA, false); r.body["block"] != true || r.body["down"] != true {
-			t.Errorf("the first hold once the watcher is gone = %s, want a down block", r.raw)
+		h.prompt(sessA, "turn=start")
+		if r := h.stopHold(sessA, false); r.body["down"] != true || r.body["block"] != false {
+			t.Errorf("the first hold once the watcher is gone = %s, want the down notice and no block", r.raw)
 		}
-		if r := h.stopHold(sessA, false); r.body["block"] != false {
-			t.Errorf("a second hold in the same down episode = %s, want no block", r.raw)
+		if _, open := h.srv.presence.turnOpen(id, time.Now()); open {
+			t.Error("the turn is still open after the hold that told the down notice")
+		}
+		if r := h.stopHold(sessA, false); r.body["down"] != false || r.body["block"] != false {
+			t.Errorf("a second hold in the same down episode = %s, want neither down nor block", r.raw)
 		}
 		h.watch(sessA, time.Second)
-		if r := h.stopHold(sessA, false); r.body["block"] != false || r.body["wake"] != wakeWatcher {
-			t.Errorf("a hold while the watcher is online = %s, want wake watcher and no block", r.raw)
+		if r := h.stopHold(sessA, false); r.body["down"] != false || r.body["wake"] != wakeWatcher {
+			t.Errorf("a hold while the watcher is online = %s, want wake watcher and no down notice", r.raw)
 		}
 		time.Sleep(onlineFor)
-		if r := h.stopHold(sessA, false); r.body["block"] != true || r.body["down"] != true {
-			t.Errorf("the first hold of the next down episode = %s, want a down block", r.raw)
+		if r := h.stopHold(sessA, false); r.body["down"] != true || r.body["block"] != false {
+			t.Errorf("the first hold of the next down episode = %s, want the down notice and no block", r.raw)
 		}
 	})
 }
@@ -298,6 +303,58 @@ func TestLifecycle_turnEndClosesTheTurnAndTheDueNudgeGoesOutAtOnce(t *testing.T)
 		wantNudge(t, <-wait, seq, 1, 1)
 		if d := time.Since(start); d != 0 {
 			t.Errorf("the nudge went out %v after turn_end, want at once", d)
+		}
+	})
+}
+
+func TestLifecycle_turnEndInsideTheAckGraceSendsTheNudgeAtOnce(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h := newBubbleHarness(t)
+		h.mustRegisterAlone(sessA, "reader")
+		h.mustRegisterAlone(sessB, "writer")
+		h.stopHold(sessA, false)
+		h.prompt(sessA, "turn=start")
+		watch := h.watchAsync(sessA, 55*time.Second)
+		wait := h.inTurn(sessA, 55*time.Second)
+		synctest.Wait()
+		h.mustPost(sessB, map[string]any{"agent": "reader"}, "reply")
+		page := entriesOf(t, <-wait)
+		synctest.Wait()
+		start := time.Now()
+		if r := h.self(sessA, http.MethodPost, "/v1/lifecycle", map[string]any{"event": eventTurnEnd}); r.status != http.StatusOK {
+			t.Fatalf("turn_end: %d %s", r.status, r.raw)
+		}
+		wantNudge(t, <-watch, page[0]["seq"].(float64), 1, 1)
+		if d := time.Since(start); d != 0 {
+			t.Errorf("the nudge went out %v after turn_end, want at once", d)
+		}
+	})
+}
+
+func TestInTurnWait_closingWithNoMailWakesAStandingWaitItDeferred(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h := newBubbleHarness(t)
+		h.mustRegisterAlone(sessA, "reader")
+		h.mustRegisterAlone(sessB, "writer")
+		id := h.idOf(sessA)
+		// An in-turn wait whose client left before it saw the post: open
+		// while the standing wait looks, then closed having returned none.
+		h.srv.presence.inTurnOpened(id)
+		watch := h.watchAsync(sessA, 55*time.Second)
+		synctest.Wait()
+		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
+		seq := h.newestWake(sessA)
+		synctest.Wait()
+		select {
+		case r := <-watch:
+			t.Fatalf("the standing wait returned %d %s while the in-turn wait was open, want it deferred", r.status, r.raw)
+		default:
+		}
+		start := time.Now()
+		h.srv.inTurnEnded(id, 0)
+		wantNudge(t, <-watch, seq, 1, 1)
+		if d := time.Since(start); d != 0 {
+			t.Errorf("the nudge went out %v after the in-turn wait closed, want at once", d)
 		}
 	})
 }

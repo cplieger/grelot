@@ -182,6 +182,6 @@ func (s *Server) hold(ctx context.Context, wake <-chan struct{}, until time.Time
 }
 
 // rewait makes id's standing waits look again after a change no commit
-// wakes them for: its session's end or its move to another session, which
-// they then answer with a 410.
+// wakes them for: its session's end, its retirement or its move to another
+// session, which they then answer with a 410.
 func (s *Server) rewait(id uint64) { s.hub.Woke([]uint64{id}) }

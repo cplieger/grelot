@@ -19,8 +19,8 @@ type holdRequest struct {
 
 // holdResponse is a stop hold's answer. Counts are the deliveries past
 // read and the shown cursor as it stood; Block says the hook holds the
-// turn, for the wake mail counted or, with Down, once per down episode for
-// the watcher's start line.
+// turn for the wake mail counted; Down is set once per down episode, with
+// no wake mail to show.
 type holdResponse struct {
 	Wake   string     `json:"wake"`
 	Counts countsJSON `json:"counts"`
@@ -57,7 +57,7 @@ func (s *Server) eventHold(r *http.Request, c store.Caller) (status int, body an
 		out.Block = true
 		s.log.Info("hook shown", "via", holdStop, "name", held.Identity.Name, "count", held.Counts.Total())
 	case out.Wake == wakeDown && s.presence.tellDown(id):
-		out.Block, out.Down = true, true
+		out.Down = true
 	}
 	if out.Block && !req.Last {
 		s.presence.turnSet(id, s.now())
@@ -118,11 +118,8 @@ func (s *Server) inTurnWait(ctx context.Context, c store.Caller, limit int, wait
 		return page, err
 	}
 	id := page.Identity.ID
-	// Its close wakes no standing wait: the ack of what it returned wakes
-	// them, and with nothing returned none is due unless the client left,
-	// which a standing wait's own deadline bounds.
 	s.presence.inTurnOpened(id)
-	defer func() { s.presence.inTurnClosed(id, newestWake(page.Entries), s.now()) }()
+	defer func() { s.inTurnEnded(id, newestWake(page.Entries)) }()
 	deadline := s.now().Add(wait)
 	for {
 		wake, release := s.hub.take(id)
@@ -140,6 +137,14 @@ func (s *Server) inTurnWait(ctx context.Context, c store.Caller, limit int, wait
 			return page, err
 		}
 	}
+}
+
+// inTurnEnded records an in-turn wait of id ending, having returned wake
+// mail up to served (0 for none), and wakes id's standing waits: one that
+// looked while the wait was open deferred its first nudge with no end.
+func (s *Server) inTurnEnded(id, served uint64) {
+	s.presence.inTurnClosed(id, served, s.now())
+	s.hub.Woke([]uint64{id})
 }
 
 // newestWake is the seq of the newest wake entry of es, 0 for none.

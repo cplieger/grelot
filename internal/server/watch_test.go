@@ -354,15 +354,23 @@ func TestWait_410ReasonWords(t *testing.T) {
 			t.Errorf("got %d %s, want 410 dormant", r.status, r.raw)
 		}
 	})
-	t.Run("none after bye", func(t *testing.T) {
-		h := newHarness(t)
-		h.mustRegisterAlone(sessA, "reader")
-		if r := h.self(sessA, http.MethodDelete, "/v1/me", nil); r.status != http.StatusOK {
-			t.Fatalf("bye: %d %s", r.status, r.raw)
-		}
-		if r := h.watch(sessA, 55*time.Second); r.status != http.StatusGone || r.str("code") != "none" {
-			t.Errorf("got %d %s, want 410 none", r.status, r.raw)
-		}
+	t.Run("none after bye, at once for a wait already open", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			h := newBubbleHarness(t)
+			h.mustRegisterAlone(sessA, "reader")
+			wait := h.watchAsync(sessA, 55*time.Second)
+			synctest.Wait()
+			start := time.Now()
+			if r := h.self(sessA, http.MethodDelete, "/v1/me", nil); r.status != http.StatusOK {
+				t.Fatalf("bye: %d %s", r.status, r.raw)
+			}
+			if r := <-wait; r.status != http.StatusGone || r.str("code") != "none" || time.Since(start) != 0 {
+				t.Errorf("the open wait = %d %s after %v, want 410 none at once", r.status, r.raw, time.Since(start))
+			}
+			if r := h.watch(sessA, 55*time.Second); r.status != http.StatusGone || r.str("code") != "none" {
+				t.Errorf("a new wait = %d %s, want 410 none", r.status, r.raw)
+			}
+		})
 	})
 	t.Run("none after a take-over, at once for a wait already open", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {

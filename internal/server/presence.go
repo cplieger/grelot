@@ -158,8 +158,11 @@ func (p *presence) sawStop(id uint64) { p.update(id, func(m *mark) { m.stopSeen 
 // turnSet opens id's turn, or extends it, until turnLapse after now.
 func (p *presence) turnSet(id uint64, now time.Time) { p.update(id, func(m *mark) { m.turnAt = now }) }
 
-// turnClosed ends id's turn.
-func (p *presence) turnClosed(id uint64) { p.update(id, func(m *mark) { m.turnAt = time.Time{} }) }
+// turnClosed ends id's turn and the ack grace of mail an in-turn wait
+// returned in it, so a first nudge for that mail is due at once.
+func (p *presence) turnClosed(id uint64) {
+	p.update(id, func(m *mark) { m.turnAt, m.served, m.servedAt = time.Time{}, 0, time.Time{} })
+}
 
 // turnOpen reports whether id's turn is open at now, and until when it
 // lapses. A turn is open only for an identity whose stop hook was seen.
