@@ -254,11 +254,12 @@ func (s *Server) me(r *http.Request, c store.Caller) (status int, body any, err 
 // openTurn opens the turn of c's live identity for a prompt before Seen
 // writes: Seen clearing ended wakes the identity at its commit, and a
 // first nudge that wake finds with the turn still shut goes out into it.
+// A prompt the delegate gate refuses opens nothing and is refused here.
 func (s *Server) openTurn(r *http.Request, c store.Caller, turn turnStart) error {
 	if !turn.start {
 		return nil
 	}
-	st, err := s.store.Status(r.Context(), c)
+	id, err := s.store.Acting(r.Context(), c)
 	var se *store.Error
 	switch {
 	case errors.As(err, &se) && se.Kind == store.KindGone:
@@ -266,7 +267,7 @@ func (s *Server) openTurn(r *http.Request, c store.Caller, turn turnStart) error
 	case err != nil:
 		return err
 	}
-	turn.open(s, &st.Identity)
+	turn.open(s, &id)
 	return nil
 }
 

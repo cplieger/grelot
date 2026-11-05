@@ -39,3 +39,17 @@ func (s *Store) Status(ctx context.Context, c Caller) (Status, error) {
 	})
 	return out, err
 }
+
+// Acting returns the live identity c acts as and writes nothing. Unlike
+// Status it applies the delegate gate, so it refuses what a write as c
+// would: KindConflict (Why delegate_gate), and KindGone with Why none or
+// dormant.
+func (s *Store) Acting(ctx context.Context, c Caller) (Identity, error) {
+	var out Identity
+	err := s.read(ctx, func(r *bolttable.ReadTx) error {
+		me, err := s.liveFor(r, c, s.now())
+		out = s.view(&me)
+		return err
+	})
+	return out, err
+}

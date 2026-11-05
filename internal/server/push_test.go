@@ -523,6 +523,28 @@ func TestPush_aResumedSessionsPromptDefersTheMailThatWaitedToItsTurnEnd(t *testi
 	}
 }
 
+func TestPush_aPromptTheDelegateGateRefusesOpensNoTurn(t *testing.T) {
+	t.Setenv(doorTokenEnv, doorSecret)
+	rcv := newPushReceiver(t)
+	synctest.Test(t, func(t *testing.T) {
+		h := newPushHarness(t, rcv.kiroDoor()...)
+		h.mustRegisterAlone(sessA, "reader")
+		h.mustRegisterAlone(sessB, "writer")
+		h.stopHold(sessA, false)
+		if _, err := h.store.Delegate(t.Context(), &store.Grant{Caller: store.Caller{Session: sessA}, Label: "tests", TTL: time.Hour}); err != nil {
+			t.Fatal(err)
+		}
+		if r := h.as(sessA, http.MethodGet, "/v1/me?turn=start", nil); r.status != http.StatusConflict || r.str("code") != "delegate_gate" {
+			t.Fatalf("prompt naming neither handle nor self: %d %s, want 409 delegate_gate", r.status, r.raw)
+		}
+		h.directPost(sessB, "reader")
+		synctest.Wait()
+		if got, want := rcv.keys(t), []string{pushKey(h.idOf(sessA), 0, 1)}; !equalStrings(got, want) {
+			t.Errorf("keys after the refused prompt and new mail = %v, want %v at once", got, want)
+		}
+	})
+}
+
 func TestPush_aRevivalWithMailWaitingIsPushedAtOnce(t *testing.T) {
 	t.Setenv(doorTokenEnv, doorSecret)
 	rcv := newPushReceiver(t)
