@@ -483,6 +483,46 @@ func TestPush_aResumedSessionIsPushedTheMailThatWaited(t *testing.T) {
 	}
 }
 
+func TestPush_aResumedSessionsPromptDefersTheMailThatWaitedToItsTurnEnd(t *testing.T) {
+	t.Setenv(doorTokenEnv, doorSecret)
+	for name, tc := range map[string]struct {
+		end              func(h *harness)
+		hookNudges, push int
+	}{
+		"stop hold": {end: func(h *harness) {
+			if r := h.stopHold(sessA, false); r.body["block"] != true {
+				t.Fatalf("hold = %s, want it to block on the mail", r.raw)
+			}
+		}, hookNudges: 1},
+		"lapse": {end: func(*harness) { time.Sleep(turnLapse) }, push: 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rcv := newPushReceiver(t)
+			synctest.Test(t, func(t *testing.T) {
+				h := newPushHarness(t, rcv.kiroDoor()...)
+				h.mustRegisterAlone(sessA, "reader")
+				h.mustRegisterAlone(sessB, "writer")
+				h.stopHold(sessA, false)
+				h.self(sessA, http.MethodPost, "/v1/lifecycle", map[string]any{"event": eventSessionEnd})
+				h.directPost(sessB, "reader")
+				h.prompt(sessA, "turn=start")
+				synctest.Wait()
+				if n := len(rcv.requests()); n != 0 {
+					t.Fatalf("%d pushes into the resumed session's open turn, want none", n)
+				}
+				tc.end(h)
+				synctest.Wait()
+				if n := h.nudgesVia("hook"); n != tc.hookNudges {
+					t.Errorf("%d nudges via hook at the turn's end, want %d", n, tc.hookNudges)
+				}
+				if n := len(rcv.requests()); n != tc.push {
+					t.Errorf("%d pushes at the turn's end, want %d", n, tc.push)
+				}
+			})
+		})
+	}
+}
+
 func TestPush_aRevivalWithMailWaitingIsPushedAtOnce(t *testing.T) {
 	t.Setenv(doorTokenEnv, doorSecret)
 	rcv := newPushReceiver(t)

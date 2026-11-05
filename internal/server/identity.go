@@ -226,6 +226,9 @@ func (s *Server) me(r *http.Request, c store.Caller) (status int, body any, err 
 		return 0, nil, err
 	}
 	out := meResponse{Version: s.version, PathRoot: s.cfg.PathRoot, State: stateNone}
+	if oerr := s.openTurn(r, c, turn); oerr != nil {
+		return 0, nil, oerr
+	}
 	id, err := s.store.Seen(r.Context(), c)
 	var se *store.Error
 	switch {
@@ -240,11 +243,29 @@ func (s *Server) me(r *http.Request, c store.Caller) (status int, body any, err 
 	if id.State != stateLive {
 		return http.StatusOK, out, nil
 	}
-	turn.open(s, &id)
 	if err := s.meLive(r, c, &out, id.ID); err != nil {
 		return 0, nil, err
 	}
 	return http.StatusOK, out, nil
+}
+
+// openTurn opens the turn of c's live identity for a prompt before Seen
+// writes: Seen clearing ended wakes the identity at its commit, and a
+// first nudge that wake finds with the turn still shut goes out into it.
+func (s *Server) openTurn(r *http.Request, c store.Caller, turn turnStart) error {
+	if !turn.start {
+		return nil
+	}
+	st, err := s.store.Status(r.Context(), c)
+	var se *store.Error
+	switch {
+	case errors.As(err, &se) && se.Kind == store.KindGone:
+		return nil
+	case err != nil:
+		return err
+	}
+	turn.open(s, &st.Identity)
+	return nil
 }
 
 // meLive fills out with what a live identity's status adds.
