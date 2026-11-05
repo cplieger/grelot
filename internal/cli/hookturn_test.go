@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -571,6 +572,59 @@ func TestHookStop_noticesAndChildren(t *testing.T) {
 			}
 		}
 	})
+}
+
+// A fault the hook cannot get past, a client config it cannot read or a 2xx
+// answer that is not JSON, fails open like an outage: one line naming the
+// fault, and nothing held (build-notes Ruling 17).
+func TestHook_failsOpenOnAFaultItCannotRead(t *testing.T) {
+	garbled := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, "<html>sign in to the proxy</html>")
+	}))
+	t.Cleanup(garbled.Close)
+	roles := []struct {
+		role, route string
+		notice      bool
+	}{
+		{role: "session_start", route: "GET /v1/me"},
+		{role: "prompt", route: "GET /v1/me"},
+		{role: "stop", route: "POST /v1/events/hold", notice: true},
+	}
+	for _, r := range roles {
+		t.Run(r.role, func(t *testing.T) {
+			check := func(t *testing.T, a *agent, names string) {
+				t.Helper()
+				code, out, _ := a.hook(r.role, `{"session_id":"s-1","prompt":"x"}`)
+				line := strings.TrimSuffix(out, "\n")
+				if r.notice {
+					var n struct {
+						SystemMessage string `json:"systemMessage"`
+					}
+					if err := json.Unmarshal([]byte(line), &n); err != nil {
+						t.Fatalf("stdout %q, want the line as the notice", out)
+					}
+					line = n.SystemMessage
+				}
+				if code != 0 || strings.Count(out, "\n") != 1 || !strings.HasPrefix(line, "grelot: could not check this session's identity (") ||
+					!strings.HasSuffix(line, "); nothing is held") || !strings.Contains(line, names) || strings.Contains(line, "cannot be reached") {
+					t.Errorf("exit %d, stdout %q; want 0 and one could-not-check line naming %q", code, out, names)
+				}
+			}
+			t.Run("no client config", func(t *testing.T) {
+				a := hooked(t, newAgent(t, &testServer{URL: garbled.URL}, "s-1", ""), "alpha", hookTurnFile)
+				file := client.ConfigFile(a.env.ConfigDir)
+				if err := os.Remove(file); err != nil {
+					t.Fatal(err)
+				}
+				check(t, a, file)
+			})
+			t.Run("a 2xx that is not JSON", func(t *testing.T) {
+				a := hooked(t, newAgent(t, &testServer{URL: garbled.URL}, "s-1", ""), "alpha", hookTurnFile)
+				check(t, a, r.route+" is not the JSON this client reads")
+			})
+		})
+	}
 }
 
 func TestHookLifecycle(t *testing.T) {

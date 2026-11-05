@@ -132,7 +132,7 @@ func (h *hookCall) sessionStart(ctx context.Context, role *provider.SessionStart
 	case hook.Replaced:
 		return nil
 	case hook.Child:
-		return h.emit(out, h.childStart(ctx, c, h.in.String(role.Stdin.AgentID) != ""))
+		return h.emit(out, h.childStart(ctx, c, h.in.String(role.Stdin.AgentID) != "", role.Budget))
 	}
 	key := h.onceKey(roleSessionStart, c)
 	if role.Once && h.marks.Has(hook.MarkOnce, key) {
@@ -153,7 +153,7 @@ func (h *hookCall) parentStart(ctx context.Context, role *provider.SessionStartR
 	h.self = true
 	api, err := h.client(true)
 	if err != nil {
-		return ""
+		return failLine(err, role.Budget)
 	}
 	q, header := h.startRequest(ctx, role.Source)
 	me, resp, err := hookMe(ctx, api, role.Budget, q, header)
@@ -212,7 +212,7 @@ func (h *hookCall) startText(me *client.Me, status string) string {
 // or the handle line of a delegate a subagent's own session holds. A
 // subagent sharing its parent's session asks nothing, since the answer
 // would be the parent's, and a step's session never holds an identity.
-func (h *hookCall) childStart(ctx context.Context, c hook.Class, subagent bool) string {
+func (h *hookCall) childStart(ctx context.Context, c hook.Class, subagent bool, budget time.Duration) string {
 	if c.Fork {
 		return h.forkLine(c)
 	}
@@ -228,7 +228,7 @@ func (h *hookCall) childStart(ctx context.Context, c hook.Class, subagent bool) 
 		return ""
 	}
 	api.Session = h.prov.Name + ":" + c.Stdin
-	me, _, err := hookMe(ctx, api, 0, url.Values{}, http.Header{})
+	me, _, err := hookMe(ctx, api, budget, url.Values{}, http.Header{})
 	if err != nil || me.State != client.StateLive || me.Identity == nil || !strings.Contains(me.Identity.Name, "/") {
 		return ""
 	}
@@ -258,13 +258,14 @@ func hookMe(ctx context.Context, api *client.API, budget time.Duration, q url.Va
 
 // failLine is what a hook prints when the server did not say whether the
 // session has an identity: the 426's own line, or that grelot could not
-// check, so an outage never holds the agent.
+// check and why, so neither an outage nor a client fault holds the agent.
 func failLine(err error, budget time.Duration) string {
 	if budget == 0 {
 		budget = hookBudget
 	}
 	var why string
 	ae, isAPI := errors.AsType[*client.APIError](err)
+	_, unreachable := errors.AsType[*client.UnreachableError](err)
 	switch {
 	case isAPI && ae.HTTP == http.StatusUpgradeRequired:
 		return "grelot: " + ae.Msg + "\n"
@@ -272,8 +273,10 @@ func failLine(err error, budget time.Duration) string {
 		why = fmt.Sprintf("the server answered %d: %s", ae.HTTP, ae.Msg)
 	case errors.Is(err, context.DeadlineExceeded):
 		why = fmt.Sprintf("no answer within %s", budget)
-	default:
+	case unreachable:
 		why = "the server cannot be reached"
+	default:
+		why = safe(strings.TrimPrefix(err.Error(), "grelot: "))
 	}
 	return fmt.Sprintf(lineNoCheck, why) + "\n"
 }

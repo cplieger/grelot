@@ -171,7 +171,7 @@ func (h *hookCall) promptText(ctx context.Context, role *provider.PromptRole, se
 	h.self = true
 	api, err := h.client(true)
 	if err != nil {
-		return "", false
+		return failLine(err, role.Budget), false
 	}
 	me, _, err := hookMe(ctx, api, role.Budget, q, http.Header{})
 	if err != nil {
@@ -270,7 +270,7 @@ func (h *hookCall) stop(ctx context.Context, role *provider.StopRole) error {
 	h.self = true
 	api, err := h.client(true)
 	if err != nil {
-		return nil
+		return h.emit(role.Outputs.Notice, failLine(err, role.Budget))
 	}
 	if h.heldThisTurn(c) {
 		h.report(ctx, api, role.Budget, map[string]any{keyEvent: roleTurnEnd})

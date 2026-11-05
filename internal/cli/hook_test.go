@@ -358,6 +358,28 @@ func TestHookSessionStart_failsOpen(t *testing.T) {
 	}
 }
 
+// A subagent's own session asks within the role's budget too (design
+// section 5: a 3 s budget unless the role's is lower).
+func TestHookSessionStart_aSubagentAsksWithinTheRoleBudget(t *testing.T) {
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(5 * time.Second):
+		}
+	}))
+	t.Cleanup(slow.Close)
+	budgeted := strings.Replace(hookAlphaFile, "    event: Start\n", "    event: Start\n    budget: 300ms\n", 1)
+	a := hooked(t, newAgent(t, &testServer{URL: slow.URL}, "s-1", ""), "alpha", budgeted)
+	start := time.Now()
+	code, out, _ := a.hook("session_start", `{"session_id":"sub-1","agent_id":"x"}`)
+	if code != 0 || out != "" {
+		t.Errorf("exit %d, stdout %q; want 0 and nothing, since a child is never asked", code, out)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("took %s, want the 300ms budget to end it", d)
+	}
+}
+
 func TestHookSessionStart_anOldClientGetsThe426(t *testing.T) {
 	ts := newServer(t)
 	a := hooked(t, newAgent(t, ts, "s-1", ""))
