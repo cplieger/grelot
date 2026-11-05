@@ -214,3 +214,16 @@ func TestCheckoutID_windowsFold(t *testing.T) {
 		t.Errorf("linux fold changed the path to %q", got)
 	}
 }
+
+func TestRemote(t *testing.T) {
+	// printf '%s' <remote> | openssl dgst -sha256 -hmac 'grelot remote', cut to 32 hex.
+	tests := []struct{ remote, want string }{
+		{"github.com/cplieger/toolbelt", "3b9c6e0d9248a2015132854ae815633b"}, // gitleaks:allow
+		{"gitlab.example.com/team/docs", "c5a54b6f1567ce7ff3e9f56d584b1498"}, // gitleaks:allow
+	}
+	for _, tt := range tests {
+		if got := Remote(tt.remote); got != tt.want {
+			t.Errorf("Remote(%q) = %q, want %q", tt.remote, got, tt.want)
+		}
+	}
+}

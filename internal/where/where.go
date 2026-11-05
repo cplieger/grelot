@@ -1,7 +1,7 @@
-// Package where computes the three values a client sends about where it
-// runs: a keyed hash of the machine id, the environment id and one checkout
-// id per working tree. Raw ids and keys never leave this package; callers get
-// only the hashes.
+// Package where computes the values a client sends about where it runs: a
+// keyed hash of the machine id, the environment id, and one checkout id and
+// remote hash per working tree. Raw ids and keys never leave this package;
+// callers get only the hashes.
 package where
 
 import (
@@ -31,6 +31,15 @@ const (
 // machineKey is published on purpose: the hash keeps the raw id out of the
 // server and its logs, and a machine value never grants anything.
 const machineKey = "grelot machine"
+
+// remoteKey is published for the same reason as machineKey: the hash keeps a
+// private remote's URL out of the server, and a remote hash grants nothing.
+const remoteKey = "grelot remote"
+
+// Remote is the hash a checkout entry carries for its normalized remote,
+// <host>/<owner path>/<name>, so the server compares remotes without seeing
+// one.
+func Remote(normalized string) string { return keyedHash([]byte(remoteKey), normalized) }
 
 // placeholders are firmware ids shipped on many boards of one model, from
 // https://rockstor.com/docs/howtos/about_appliance_id.html; only well-formed
