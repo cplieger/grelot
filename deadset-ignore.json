@@ -1,42 +1,6 @@
 {
-  "description": "API that the server's push sender and the client's hooks and watcher call once they are built. Each entry goes in the change that adds its first caller.",
+  "description": "API that the server's push sender and the client's hooks and watcher call once they are built, and fields deadset-go cannot see json.Marshal read. Each staged entry goes in the change that adds its first caller.",
   "ignore": [
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#ByHand",
-      "path": "internal/provider/byhand.go",
-      "reason": "grelot watch --transport, a client verb not built yet, builds its door with it."
-    },
-    {
-      "code": "DS1103",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#NoSessionError",
-      "path": "internal/provider/detect.go",
-      "reason": "The client's hooks, not built yet, write nothing and exit 0 on it."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#Provider.SessionID",
-      "path": "internal/provider/detect.go",
-      "reason": "The client, not built yet, reads the host's session id with it."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#PromptRole.SignalPattern",
-      "path": "internal/provider/provider.go",
-      "reason": "The client's prompt hook, not built yet, finds the signal line with it."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#Set.Detect",
-      "path": "internal/provider/detect.go",
-      "reason": "The client, not built yet, picks the host's provider with it."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#Set.Names",
-      "path": "internal/provider/set.go",
-      "reason": "The client, not built yet, lists the provider files with it."
-    },
     {
       "code": "DS1004",
       "symbol": "go://github.com/cplieger/grelot/internal/provider#ServerDoors.For",
@@ -74,58 +38,10 @@
       "reason": "The server's push sender, not built yet, loads its doors with it."
     },
     {
-      "code": "DS1103",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#Set",
-      "path": "internal/provider/set.go",
-      "reason": "The client, not built yet, gets and detects its provider through it."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#LoadSet",
-      "path": "internal/provider/set.go",
-      "reason": "The client, not built yet, loads the shipped and user provider files with it."
-    },
-    {
       "code": "DS1004",
       "symbol": "go://github.com/cplieger/grelot/internal/provider#Door.RenderRequest",
       "path": "internal/provider/template.go",
       "reason": "internal/transport's http door calls it; the server's push sender, not built yet, is that package's first caller."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#Door.RenderArgv",
-      "path": "internal/provider/template.go",
-      "reason": "internal/transport's exec door calls it; the client's watcher, not built yet, is that package's first caller."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#Door.RenderLine",
-      "path": "internal/provider/template.go",
-      "reason": "internal/transport's stdout and exit doors call it; the client's watcher, not built yet, is that package's first caller."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#Door.RenderEnd",
-      "path": "internal/provider/template.go",
-      "reason": "internal/transport's stdout and exit doors call it; the client's watcher, not built yet, is that package's first caller."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#Door.RenderIdle",
-      "path": "internal/provider/template.go",
-      "reason": "internal/transport's stdout and exit doors call it; the client's watcher, not built yet, is that package's first caller."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#Output.Render",
-      "path": "internal/provider/template.go",
-      "reason": "The client's hooks, not built yet, print their outputs with it."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#Record.RenderGlob",
-      "path": "internal/provider/template.go",
-      "reason": "The client, not built yet, finds the host's session record with it."
     },
     {
       "code": "DS1004",
@@ -144,6 +60,414 @@
       "symbol": "go://github.com/cplieger/grelot/internal/store#NudgeByPush",
       "path": "internal/store/nudge.go",
       "reason": "The server's push sender, not built yet, records its sends with it."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reserveBody.Path",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reserveBody.Reason",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reserveBody.TTL",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reserveBody.Queue",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#grantBody.Label",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#grantBody.TTL",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#grantBody.AllowThreads",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#grantBody.AllowAgents",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#grantBody.DenyThreads",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#grantBody.DenyAgents",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.Where",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.Name",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.Description",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.Host",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.OS",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.Arch",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.Proc",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.TTL",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.Paths",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.TakeOver",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#delegateBody.Delegate",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#delegateBody.Description",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reviveBody.Name",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reviveBody.Host",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reviveBody.OS",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reviveBody.Arch",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reviveBody.Proc",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reviveBody.TTL",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reviveBody.Where",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#patchBody.Name",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#patchBody.Description",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#patchBody.TTL",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#patchBody.Paths",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postBody.To",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postBody.NotifyRead",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postBody.Where",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postBody.Subject",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postBody.Body",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postBody.By",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postBody.Identity",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postTo.Path",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postTo.Agent",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postIdentity.Name",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postIdentity.Description",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postIdentity.Paths",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/client#Checkout.ID",
+      "path": "internal/client/wire.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/client#Checkout.Remote",
+      "path": "internal/client/wire.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#NewHTTP",
+      "path": "internal/transport/http.go",
+      "reason": "internal/transport's http door, which the server's push sender, not built yet, calls first."
+    },
+    {
+      "code": "DS1103",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#HTTP",
+      "path": "internal/transport/http.go",
+      "reason": "internal/transport's http door, which the server's push sender, not built yet, calls first."
+    },
+    {
+      "code": "DS1103",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#HTTPResult",
+      "path": "internal/transport/http.go",
+      "reason": "internal/transport's http door, which the server's push sender, not built yet, calls first."
+    },
+    {
+      "code": "DS1002",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#retryFloor",
+      "path": "internal/transport/http.go",
+      "reason": "internal/transport's http door, which the server's push sender, not built yet, calls first."
+    },
+    {
+      "code": "DS1002",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#retryCeiling",
+      "path": "internal/transport/http.go",
+      "reason": "internal/transport's http door, which the server's push sender, not built yet, calls first."
+    },
+    {
+      "code": "DS1002",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#retryDefault",
+      "path": "internal/transport/http.go",
+      "reason": "internal/transport's http door, which the server's push sender, not built yet, calls first."
+    },
+    {
+      "code": "DS1002",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#httpTimeout",
+      "path": "internal/transport/http.go",
+      "reason": "internal/transport's http door, which the server's push sender, not built yet, calls first."
+    },
+    {
+      "code": "DS1002",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#retryAfter",
+      "path": "internal/transport/http.go",
+      "reason": "internal/transport's http door, which the server's push sender, not built yet, calls first."
+    },
+    {
+      "code": "DS1002",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#isDigits",
+      "path": "internal/transport/http.go",
+      "reason": "internal/transport's http door, which the server's push sender, not built yet, calls first."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#HTTP.Send",
+      "path": "internal/transport/http.go",
+      "reason": "internal/transport's http door, which the server's push sender, not built yet, calls first."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#HTTPResult.Err",
+      "path": "internal/transport/http.go",
+      "reason": "the server's push sender, not built yet, reads it from the http door's answer."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#HTTPResult.Outcome",
+      "path": "internal/transport/http.go",
+      "reason": "the server's push sender, not built yet, reads it from the http door's answer."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#HTTPResult.Status",
+      "path": "internal/transport/http.go",
+      "reason": "the server's push sender, not built yet, reads it from the http door's answer."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#HTTPResult.RetryAfter",
+      "path": "internal/transport/http.go",
+      "reason": "the server's push sender, not built yet, reads it from the http door's answer."
+    },
+    {
+      "code": "DS1005",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#TestHTTPCallerContextEnded",
+      "path": "internal/transport/http_test.go",
+      "reason": "tests the http door, which the server's push sender, not built yet, calls first."
+    },
+    {
+      "code": "DS1005",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#TestHTTPRefusesUnsendable",
+      "path": "internal/transport/http_test.go",
+      "reason": "tests the http door, which the server's push sender, not built yet, calls first."
+    },
+    {
+      "code": "DS1005",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#setHTTPTimeout",
+      "path": "internal/transport/http_test.go",
+      "reason": "tests the http door, which the server's push sender, not built yet, calls first."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#Outcome.String",
+      "path": "internal/transport/http.go",
+      "reason": "the server's push sender, not built yet, logs a door's outcome with it."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#EndDormant",
+      "path": "internal/transport/line.go",
+      "reason": "the server's standing wait, not built on these words yet, answers them as its end reasons."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#EndNone",
+      "path": "internal/transport/line.go",
+      "reason": "the server's standing wait, not built on these words yet, answers them as its end reasons."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#EndEnded",
+      "path": "internal/transport/line.go",
+      "reason": "the server's standing wait, not built on these words yet, answers them as its end reasons."
     }
   ]
 }
