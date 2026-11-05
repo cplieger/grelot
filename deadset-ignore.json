@@ -1,17 +1,11 @@
 {
-  "description": "API that the server's push sender and the client's hooks and watcher call once they are built. Each entry goes in the change that adds its first caller.",
+  "description": "API that the server's push sender and the client's hooks and watcher call once they are built, and fields deadset-go cannot see json.Marshal read. Each staged entry goes in the change that adds its first caller.",
   "ignore": [
     {
       "code": "DS1004",
       "symbol": "go://github.com/cplieger/grelot/internal/provider#ByHand",
       "path": "internal/provider/byhand.go",
       "reason": "grelot watch --transport, a client verb not built yet, builds its door with it."
-    },
-    {
-      "code": "DS1103",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#NoSessionError",
-      "path": "internal/provider/detect.go",
-      "reason": "The client's hooks, not built yet, write nothing and exit 0 on it."
     },
     {
       "code": "DS1004",
@@ -54,18 +48,6 @@
       "symbol": "go://github.com/cplieger/grelot/internal/provider#LoadServerDir",
       "path": "internal/provider/serverdir.go",
       "reason": "The server's push sender, not built yet, loads its doors with it."
-    },
-    {
-      "code": "DS1103",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#Set",
-      "path": "internal/provider/set.go",
-      "reason": "The client, not built yet, gets and detects its provider through it."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#LoadSet",
-      "path": "internal/provider/set.go",
-      "reason": "The client, not built yet, loads the shipped and user provider files with it."
     },
     {
       "code": "DS1004",
@@ -126,6 +108,318 @@
       "symbol": "go://github.com/cplieger/grelot/internal/store#NudgeByPush",
       "path": "internal/store/nudge.go",
       "reason": "The server's push sender, not built yet, records its sends with it."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reserveBody.Path",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reserveBody.Reason",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reserveBody.TTL",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reserveBody.Queue",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#grantBody.Label",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#grantBody.TTL",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#grantBody.AllowThreads",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#grantBody.AllowAgents",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#grantBody.DenyThreads",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#grantBody.DenyAgents",
+      "path": "internal/cli/grants.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.Where",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.Name",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.Description",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.Host",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.OS",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.Arch",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.Proc",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.TTL",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.Paths",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#registerBody.TakeOver",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#delegateBody.Delegate",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#delegateBody.Description",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reviveBody.Name",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reviveBody.Host",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reviveBody.OS",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reviveBody.Arch",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reviveBody.Proc",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reviveBody.TTL",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#reviveBody.Where",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#patchBody.Name",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#patchBody.Description",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#patchBody.TTL",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#patchBody.Paths",
+      "path": "internal/cli/identity.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postBody.To",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postBody.NotifyRead",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postBody.Where",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postBody.Subject",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postBody.Body",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postBody.By",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postBody.Identity",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postTo.Path",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postTo.Agent",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postIdentity.Name",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postIdentity.Description",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postIdentity.Paths",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/client#HeaderEnvironment",
+      "path": "internal/client/api.go",
+      "reason": "The session_start hook, not built yet, sends the environment id to GET /v1/me in this header for the take-over hint."
+    },
+    {
+      "code": "DS1103",
+      "symbol": "go://github.com/cplieger/grelot/internal/client#HeaderMachine",
+      "path": "internal/client/api.go",
+      "reason": "The session_start hook, not built yet, sends the machine id to GET /v1/me in this header for the take-over hint."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/client#APIError.HTTP",
+      "path": "internal/client/api.go",
+      "reason": "The hooks, not built yet, tell a 426, a 410 and a 5xx apart with it."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/client#Where.Machine",
+      "path": "internal/client/wire.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/client#Where.Environment",
+      "path": "internal/client/wire.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/client#Checkout.ID",
+      "path": "internal/client/wire.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/client#Checkout.Remote",
+      "path": "internal/client/wire.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
     }
   ]
 }
