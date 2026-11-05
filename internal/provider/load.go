@@ -25,6 +25,9 @@ const (
 	keyEndExit = "end_exit"
 	keyHold    = "hold"
 	keyIdle    = "idle"
+	keyURL     = "url"
+
+	keyDedupeWindow = "dedupe_window"
 
 	problemRequired = "required"
 	problemEnvName  = "not an environment variable name"
@@ -65,7 +68,7 @@ var commonDoorKeys = []string{keyName, "layer", "transport", "start", "asset", "
 // doorKeys is the one list of transport keys; a key of another transport is
 // refused like an unknown one.
 var doorKeys = map[Transport]doorKey{
-	TransportHTTP:   {required: []string{"url", "body"}, optional: []string{"match", "headers", "dedupe_window", "gone"}},
+	TransportHTTP:   {required: []string{keyURL, "body"}, optional: []string{"match", "headers", keyDedupeWindow, "gone"}},
 	TransportExec:   {required: []string{"argv"}},
 	TransportStdout: {optional: []string{keyLine, keyHold, keyIdle, keyEnd, keyEndExit}},
 	TransportExit:   {optional: []string{keyLine, keyHold, keyIdle, keyEnd, keyEndExit}},
@@ -102,6 +105,12 @@ func Load(name string, data []byte) (*Provider, error) {
 		return nil, err
 	}
 	p.applyDefaults(raw.doors)
+	if err := p.compile(raw.doors); err != nil {
+		if le, ok := errors.AsType[*LoadError](err); ok {
+			le.Provider = name
+		}
+		return nil, err
+	}
 	slices.SortStableFunc(p.Doors, func(a, b Door) int { return a.Layer - b.Layer })
 	return p, nil
 }
@@ -204,7 +213,7 @@ func (r *Record) check() error {
 		return &LoadError{Key: "session.record.dir_env", Problem: problemEnvName}
 	}
 	if r.Glob == "" {
-		return &LoadError{Key: "session.record.glob", Problem: problemRequired}
+		return &LoadError{Key: keyRecordGlob, Problem: problemRequired}
 	}
 	for key, path := range map[string]string{"parent": r.Parent, "reason": r.Reason} {
 		if !stdinPathRE.MatchString(path) {
@@ -269,7 +278,7 @@ func (d *Door) check(set map[string]bool) error {
 
 func (d *Door) checkHTTP(set map[string]bool) error {
 	if d.URL == "" {
-		return &LoadError{Key: "url", Problem: problemNotEmpty}
+		return &LoadError{Key: keyURL, Problem: problemNotEmpty}
 	}
 	if d.Body == "" {
 		return &LoadError{Key: "body", Problem: problemNotEmpty}
@@ -282,8 +291,8 @@ func (d *Door) checkHTTP(set map[string]bool) error {
 			return &LoadError{Key: "headers", Problem: fmt.Sprintf("%q is not a header name", h)}
 		}
 	}
-	if set["dedupe_window"] && d.DedupeWindow < minDedupeWindow {
-		return &LoadError{Key: "dedupe_window", Problem: "must be at least 60s, the longest gap between two tries of one key"}
+	if set[keyDedupeWindow] && d.DedupeWindow < minDedupeWindow {
+		return &LoadError{Key: keyDedupeWindow, Problem: "must be at least 60s, the longest gap between two tries of one key"}
 	}
 	for i, status := range d.Gone {
 		if status < 400 || status > 499 || status == 401 || status == 403 {
@@ -460,6 +469,12 @@ func (p *Provider) applyDefaults(doorSets []map[string]bool) {
 	}
 }
 
+// roleOutput is one output a file spells, with its key below hooks.
+type roleOutput struct {
+	*Output
+	key string
+}
+
 func (d *Door) applyDefaults(provider string, set map[string]bool) {
 	switch d.Transport {
 	case TransportHTTP:
@@ -481,16 +496,16 @@ func (d *Door) applyDefaults(provider string, set map[string]bool) {
 
 // outputs lists every output the file spells, for defaults and checks that
 // apply to all of them.
-func (h *Hooks) outputs() []*Output {
-	var out []*Output
+func (h *Hooks) outputs() []roleOutput {
+	var out []roleOutput
 	if r := h.SessionStart; r != nil {
-		out = append(out, r.Outputs.Context)
+		out = append(out, roleOutput{r.Outputs.Context, "session_start.outputs.context"})
 	}
 	if r := h.Prompt; r != nil {
-		out = append(out, r.Outputs.Context, r.Outputs.Block)
+		out = append(out, roleOutput{r.Outputs.Context, "prompt.outputs.context"}, roleOutput{r.Outputs.Block, "prompt.outputs.block"})
 	}
 	if r := h.Stop; r != nil {
-		out = append(out, r.Outputs.Block, r.Outputs.Notice)
+		out = append(out, roleOutput{r.Outputs.Block, "stop.outputs.block"}, roleOutput{r.Outputs.Notice, "stop.outputs.notice"})
 	}
-	return slices.DeleteFunc(out, func(o *Output) bool { return o == nil })
+	return slices.DeleteFunc(out, func(o roleOutput) bool { return o.Output == nil })
 }

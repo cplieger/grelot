@@ -71,6 +71,7 @@ type Session struct {
 // Record locates a session's own record in the host's state directory, read
 // when a hook's stdin session differs from its environment's.
 type Record struct {
+	tmpl          *compiled
 	DirEnv        string   `yaml:"dir_env"`
 	DirDefault    string   `yaml:"dir_default"`
 	Glob          string   `yaml:"glob"`
@@ -83,6 +84,7 @@ type Record struct {
 // Door is one layer 1 or layer 2 wake. Which keys beyond the common ones a
 // door may carry depends on its transport (doorKeys).
 type Door struct {
+	tmpl         *doorTemplates
 	Headers      map[string]string `yaml:"headers"`
 	Match        Match             `yaml:"match"`
 	Name         string            `yaml:"name"`
@@ -145,6 +147,7 @@ type PromptStdin struct {
 
 // Output is how the host takes one output kind.
 type Output struct {
+	tmpl   *compiled
 	Text   string `yaml:"text"`
 	Stream Stream `yaml:"stream"`
 	Exit   int    `yaml:"exit"`
