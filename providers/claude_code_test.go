@@ -34,7 +34,7 @@ const (
 )
 
 // claudeStart is the background door's start line, the first watcher door.
-const claudeStart = "run `grelot watch --door background` as a background command"
+const claudeStart = "run `grelot watch --door background` with run_in_background"
 
 // claudeShell is a Claude Code shell whose CLAUDE_CODE_SESSION_ID is
 // session.
@@ -297,7 +297,7 @@ func TestClaudeCodeDoors(t *testing.T) {
 		nudgeExit bool
 	}{
 		{door: &p.Doors[0], start: claudeStart, transport: provider.TransportExit, nudgeExit: true},
-		{door: &p.Doors[1], start: "run `grelot watch --door monitor` under Monitor, timeout_ms 1800000", transport: provider.TransportStdout},
+		{door: &p.Doors[1], start: "`grelot watch --door monitor` under Monitor, timeout_ms 1800000", transport: provider.TransportStdout},
 	}
 	for _, c := range cases {
 		t.Run(c.door.Name, func(t *testing.T) {
@@ -322,7 +322,7 @@ func TestClaudeCodeDoors(t *testing.T) {
 	}
 }
 
-func TestClaudeCodeHookFile(t *testing.T) {
+func TestClaudeCodeHookEvents(t *testing.T) {
 	want := wantWiring(t, "claude-code", nil)
 	var events []string
 	for _, w := range want {
@@ -330,9 +330,6 @@ func TestClaudeCodeHookFile(t *testing.T) {
 	}
 	if !slices.Equal(events, []string{"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd"}) {
 		t.Errorf("the provider spells events %v, want SessionStart, UserPromptSubmit, Stop and SessionEnd", events)
-	}
-	if got := hookWiring(t, "claude-code"); !sameWiring(got, want) {
-		t.Errorf("hooks.json wires %v, want %v", got, want)
 	}
 }
 

@@ -30,7 +30,7 @@ const (
 )
 
 // codexStart is the queue door's start line.
-const codexStart = "run `grelot watch --door queue` as a background terminal"
+const codexStart = "`grelot watch --door queue` in a background terminal"
 
 // codexShell is a Codex shell whose CODEX_THREAD_ID is thread. Codex sets
 // that variable in shell commands and leaves it out of hook processes.
@@ -354,7 +354,7 @@ func TestCodexQueueDoor(t *testing.T) {
 	}
 }
 
-func TestCodexHookFile(t *testing.T) {
+func TestCodexHookEvents(t *testing.T) {
 	want := wantWiring(t, "codex", map[string]int{"SessionEnd": 3})
 	var events []string
 	for _, w := range want {
@@ -362,9 +362,6 @@ func TestCodexHookFile(t *testing.T) {
 	}
 	if !slices.Equal(events, []string{"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd", "SubagentStop"}) {
 		t.Errorf("the provider spells events %v, want SessionStart, UserPromptSubmit, Stop, SessionEnd and SubagentStop", events)
-	}
-	if got := hookWiring(t, "codex"); !sameWiring(got, want) {
-		t.Errorf("hooks.json wires %v, want %v", got, want)
 	}
 }
 

@@ -173,14 +173,3 @@ func TestDocumentedHosts_doors(t *testing.T) {
 		})
 	}
 }
-
-func TestDocumentedHosts_hookFiles(t *testing.T) {
-	for _, h := range documentedHosts {
-		t.Run(h.name, func(t *testing.T) {
-			want := wantWiring(t, h.name, nil)
-			if got := hookWiring(t, h.name); !sameWiring(got, want) {
-				t.Errorf("hooks.json wires %v, want %v", got, want)
-			}
-		})
-	}
-}

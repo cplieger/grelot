@@ -21,11 +21,12 @@ doors:
   - name: background
     layer: 2
     transport: exit
-    start: run `grelot watch --door background` as a background command
+    start: run `grelot watch --door background` with run_in_background
     notes: >-
       The watcher exits after each nudge, so the session starts it again in
-      the turn the nudge wakes. In a run with -p, background commands stop
-      at the run's time limit (10 minutes by default).
+      the turn the nudge wakes. In an unattended session (a run with -p, the
+      Agent SDK, CI), a background command stops at a time limit: 30 minutes
+      by default, 10 in a -p run given its prompt as text, 2 hours at most.
   # Each line a Monitor prints wakes the session, idle or busy, and the
   # watcher goes on. Every Monitor ends at its deadline, 30 minutes at most,
   # and the session gets one notice then, so an idle session spends one turn
@@ -33,7 +34,7 @@ doors:
   - name: monitor
     layer: 2
     transport: stdout
-    start: run `grelot watch --door monitor` under Monitor, timeout_ms 1800000
+    start: "`grelot watch --door monitor` under Monitor, timeout_ms 1800000"
     notes: >-
       The Monitor tool needs Git Bash on Windows. A Monitor stops at its
       deadline (5 minutes unless timeout_ms says up to 30), and the session

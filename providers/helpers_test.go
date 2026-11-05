@@ -337,7 +337,13 @@ type flatHook struct {
 // commands it runs per event, in event order then file order.
 func hookWiring(t *testing.T, name string) []wire {
 	t.Helper()
-	data := mustRead(t, filepath.Join(name, "hooks.json"))
+	return parseWiring(t, name, mustRead(t, filepath.Join(name, "hooks.json")))
+}
+
+// parseWiring reads data, the named provider's hook file, as hookWiring
+// does.
+func parseWiring(t *testing.T, name string, data []byte) []wire {
+	t.Helper()
 	var head map[string]json.RawMessage
 	if err := json.Unmarshal(data, &head); err != nil {
 		t.Fatalf("%s/hooks.json: %v", name, err)

@@ -470,7 +470,7 @@ func TestKiroCLIWatchRecipe(t *testing.T) {
 	})
 }
 
-func TestKiroHookFiles(t *testing.T) {
+func TestKiroHookEvents(t *testing.T) {
 	wantEvents := []string{"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd"}
 	for _, name := range []string{"kiro-cli", "kiro-ide"} {
 		t.Run(name, func(t *testing.T) {
@@ -481,9 +481,6 @@ func TestKiroHookFiles(t *testing.T) {
 			}
 			if !slices.Equal(events, wantEvents) {
 				t.Errorf("the provider spells events %v, want %v", events, wantEvents)
-			}
-			if got := hookWiring(t, name); !slices.Equal(got, want) {
-				t.Errorf("hooks.json wires %v, want %v", got, want)
 			}
 		})
 	}

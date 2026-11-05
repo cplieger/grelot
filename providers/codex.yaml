@@ -22,7 +22,7 @@ doors:
   - name: queue
     layer: 2
     transport: exec
-    start: run `grelot watch --door queue` as a background terminal
+    start: "`grelot watch --door queue` in a background terminal"
     asset: codex/grelot.rules
     argv: [codex, queue, --thread, "{{.Session}}", --message, "{{.Line}}"]
     notes: >-
