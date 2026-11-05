@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cplieger/grelot/internal/statefile"
 	"github.com/cplieger/grelot/internal/where"
 )
 
@@ -64,28 +65,7 @@ func (c *Clones) record(remote, toplevel string) {
 	if err != nil {
 		return
 	}
-	_ = replaceFile(c.file, data)
-}
-
-// replaceFile writes data beside file and renames it over, so a reader never
-// sees half a file.
-func replaceFile(file string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(file), ".clones-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	_, werr := tmp.Write(data)
-	if cerr := tmp.Close(); werr == nil {
-		werr = cerr
-	}
-	if werr != nil {
-		return werr
-	}
-	return os.Rename(tmp.Name(), file)
+	_ = statefile.Replace(c.file, data)
 }
 
 // Local is the local path, on this machine, of canonical, a path under the

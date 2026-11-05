@@ -15,27 +15,9 @@
     },
     {
       "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#Provider.SessionID",
-      "path": "internal/provider/detect.go",
-      "reason": "The client, not built yet, reads the host's session id with it."
-    },
-    {
-      "code": "DS1004",
       "symbol": "go://github.com/cplieger/grelot/internal/provider#PromptRole.SignalPattern",
       "path": "internal/provider/provider.go",
       "reason": "The client's prompt hook, not built yet, finds the signal line with it."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#Set.Detect",
-      "path": "internal/provider/detect.go",
-      "reason": "The client, not built yet, picks the host's provider with it."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#Set.Names",
-      "path": "internal/provider/set.go",
-      "reason": "The client, not built yet, lists the provider files with it."
     },
     {
       "code": "DS1004",
