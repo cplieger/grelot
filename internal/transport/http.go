@@ -24,20 +24,6 @@ const (
 	Gone
 )
 
-func (o Outcome) String() string {
-	switch o {
-	case Accepted:
-		return "accepted"
-	case RetryLater:
-		return "retry later"
-	case GiveUp:
-		return "give up"
-	case Gone:
-		return "gone"
-	}
-	return "unknown"
-}
-
 // The Retry-After clamp: the floor keeps a receiver from making the server
 // spin, and the ceiling is the dedupe window's 60 s floor, so every retry of a
 // key reaches a receiver that still holds it.

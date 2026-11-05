@@ -45,3 +45,18 @@ func fakeDoor(ctl, record string, args []string) int {
 		return 3
 	}
 }
+
+// String names an Outcome in test failure messages.
+func (o Outcome) String() string {
+	switch o {
+	case Accepted:
+		return "accepted"
+	case RetryLater:
+		return "retry later"
+	case GiveUp:
+		return "give up"
+	case Gone:
+		return "gone"
+	}
+	return "unknown"
+}
