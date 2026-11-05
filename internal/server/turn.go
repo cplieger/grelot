@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -110,7 +111,7 @@ func (t turnStart) open(s *Server, id *store.Identity) {
 
 // inTurnWait is GET /v1/inbox?wait=: it holds until a wake delivery is
 // past read, whatever the nudge state, then answers the page; at wait's
-// end it answers the page as it stands.
+// end or on Release it answers the page as it stands.
 func (s *Server) inTurnWait(ctx context.Context, c store.Caller, limit int, wait time.Duration) (store.Page, error) {
 	page, err := s.store.Inbox(ctx, c, limit)
 	if err != nil || wait == 0 || page.Unread.Wake() > 0 {
@@ -132,7 +133,10 @@ func (s *Server) inTurnWait(ctx context.Context, c store.Caller, limit int, wait
 		}
 		err = s.hold(ctx, wake, deadline)
 		release()
-		if err != nil {
+		switch {
+		case errors.Is(err, errShuttingDown):
+			return page, nil
+		case err != nil:
 			return page, err
 		}
 	}

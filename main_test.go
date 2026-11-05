@@ -105,6 +105,93 @@ func TestServe(t *testing.T) {
 	}
 }
 
+// startServe runs serve on a free port until the returned cancel, and
+// returns its address, its logs and serve's result.
+func startServe(t *testing.T) (addr string, logs *syncBuffer, cancel context.CancelFunc, done <-chan error) {
+	t.Helper()
+	logs = &syncBuffer{}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	out := make(chan error, 1)
+	marker := filepath.Join(t.TempDir(), ".healthy")
+	go func() {
+		out <- serve(ctx, testConfig(t), "127.0.0.1:0", marker, slog.New(slog.NewJSONHandler(logs, nil)))
+	}()
+	for deadline := time.Now().Add(5 * time.Second); addr == ""; time.Sleep(10 * time.Millisecond) {
+		if m := listeningAddr.FindStringSubmatch(logs.String()); m != nil {
+			addr = m[1]
+		} else if time.Now().After(deadline) {
+			t.Fatalf("no listening line within 5 s; logs: %s", logs.String())
+		}
+	}
+	return addr, logs, cancel, out
+}
+
+// call sends one /v1 request from session and returns its status and code.
+func call(t *testing.T, addr, method, path, session, body string) (status int, code string) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), method, "http://"+addr+path, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Grelot-Version", "dev")
+	req.Header.Set("Grelot-Session", session)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, path, err)
+	}
+	defer resp.Body.Close()
+	var out struct{ Code string }
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	return resp.StatusCode, out.Code
+}
+
+func TestServe_aStopAnswersAnOpenWaitAndDrains(t *testing.T) {
+	t.Parallel()
+	addr, logs, cancel, done := startServe(t)
+	const session = "test:session-a"
+	register := `{"name":"reader","paths":["/workspace/grelot"],"description":"reading","host":"host-a/app",` +
+		`"os":"linux","arch":"amd64","ttl":"1h","where":{"machine":"dmi:` + strings.Repeat("1", 32) +
+		`","environment":"` + strings.Repeat("a", 32) + `","checkouts":[]}}`
+	if status, code := call(t, addr, http.MethodPost, "/v1/register", session, register); status != http.StatusCreated {
+		t.Fatalf("register: %d %s", status, code)
+	}
+	type answer struct {
+		code   string
+		status int
+	}
+	waited := make(chan answer, 1)
+	go func() {
+		status, code := call(t, addr, http.MethodPost, "/v1/events/wait", session, `{"wait":"55s"}`)
+		waited <- answer{code: code, status: status}
+	}()
+	time.Sleep(200 * time.Millisecond)
+	cancel()
+	select {
+	case a := <-waited:
+		if a.status != http.StatusServiceUnavailable || a.code != "shutting_down" {
+			t.Errorf("the open wait = %d %s, want 503 shutting_down", a.status, a.code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the open wait got no answer within 5 s of the stop")
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("serve returned %v, want nil", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("serve did not return within 5 s of the stop")
+	}
+	if !strings.Contains(logs.String(), `"msg":"stopped"`) {
+		t.Errorf("no stopped line; logs: %s", logs.String())
+	}
+	if strings.Contains(logs.String(), `"level":"ERROR"`) {
+		t.Errorf("an ERROR line at a stop with a wait open; logs: %s", logs.String())
+	}
+}
+
 func TestServe_listenError(t *testing.T) {
 	t.Parallel()
 	err := serve(context.Background(), testConfig(t), "256.0.0.1:0", filepath.Join(t.TempDir(), ".healthy"), slog.New(slog.DiscardHandler))

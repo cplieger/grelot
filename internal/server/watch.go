@@ -165,7 +165,8 @@ func (s *Server) deferred(id uint64, due *store.Nudge) (until time.Time, ok bool
 	return s.presence.inTurnHolds(id, due.Seq, s.now())
 }
 
-// hold blocks until wake closes, the clock reaches until or ctx ends.
+// hold blocks until wake closes, the clock reaches until, ctx ends or
+// Release is called, which it answers with errShuttingDown.
 func (s *Server) hold(ctx context.Context, wake <-chan struct{}, until time.Time) error {
 	t := time.NewTimer(until.Sub(s.now()))
 	defer t.Stop()
@@ -174,6 +175,8 @@ func (s *Server) hold(ctx context.Context, wake <-chan struct{}, until time.Time
 	case <-t.C:
 	case <-ctx.Done():
 		return ctx.Err()
+	case <-s.stopping:
+		return errShuttingDown
 	}
 	return nil
 }

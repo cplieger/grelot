@@ -104,7 +104,8 @@ func serve(ctx context.Context, cfg *server.Config, addr, markerPath string, log
 		close(stated)
 	}()
 	logger.Info("listening", "addr", ln.Addr().String(), "version", version)
-	err = httpserver.Run(ctx, srv.HTTPServer(), ln, nil)
+	err = httpserver.Run(ctx, srv.HTTPServer(), ln, nil,
+		httpserver.WithPreDrain(func(context.Context) { srv.Release() }))
 	cancel()
 	<-stated
 	if serr := <-swept; err == nil {

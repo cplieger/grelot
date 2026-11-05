@@ -22,6 +22,13 @@ type apiError struct {
 
 func (e *apiError) Error() string { return e.msg }
 
+// errShuttingDown answers a request the server cannot serve because it is
+// stopping: a wait at Release, or any route once the store is closed.
+var errShuttingDown = &apiError{
+	status: http.StatusServiceUnavailable, code: "shutting_down",
+	msg: "the server is shutting down; retry once it is back",
+}
+
 func badRequest(msg string) *apiError {
 	return &apiError{status: http.StatusBadRequest, code: "invalid", msg: msg}
 }
@@ -58,6 +65,9 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, context.Canceled) && r.Context().Err() != nil {
 		return
 	}
+	if errors.Is(err, store.ErrClosed) {
+		err = errShuttingDown
+	}
 	body := errorBody{RequestID: httpserver.RequestIDFromContext(r.Context()), PathRoot: s.cfg.PathRoot}
 	status := http.StatusInternalServerError
 	var se *store.Error
@@ -77,8 +87,6 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		if ae.retryAfter > 0 {
 			w.Header().Set("Retry-After", strconv.Itoa(int(ae.retryAfter.Seconds())))
 		}
-	case errors.Is(err, store.ErrClosed):
-		status, body.Code, body.Error = http.StatusServiceUnavailable, "shutting_down", "the server is shutting down; retry once it is back"
 	default:
 		s.log.Error("request failed", "path", r.URL.Path, "error", err)
 		body.Code, body.Error = "internal_error", "internal server error"

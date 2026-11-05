@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -38,10 +39,12 @@ type Server struct {
 	posts    *postLimit
 	hub      *Hub
 	push     Pusher
+	stopping chan struct{}
 	version  string
 	cfg      Config
 	beat     atomic.Int64
 	bearer   httpserver.StaticTokenVerifier
+	stopOnce sync.Once
 }
 
 // New builds the server. Options.Now defaults to time.Now and must be the
@@ -62,9 +65,15 @@ func New(o *Options) *Server {
 	return &Server{
 		store: o.Store, log: o.Logger, now: now, version: o.Version, cfg: o.Config,
 		presence: newPresence(), posts: newPostLimit(), hub: hub, push: push,
-		bearer: httpserver.NewStaticTokenVerifier(o.Config.Token),
+		bearer:   httpserver.NewStaticTokenVerifier(o.Config.Token),
+		stopping: make(chan struct{}),
 	}
 }
+
+// Release answers every held standing and in-turn wait at once, and every
+// one opened after it, so a graceful stop's drain need not outlast their
+// deadlines. It does not wait for them: http.Server.Shutdown does.
+func (s *Server) Release() { s.stopOnce.Do(func() { close(s.stopping) }) }
 
 // Beat records a sweeper pass that committed, which /healthz answers down
 // once the last one is older than healthyFor, and forgets the in-memory

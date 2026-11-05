@@ -437,3 +437,27 @@ func TestWait_refreshesLastSeenAndPresence(t *testing.T) {
 		t.Errorf("reader = %v, want last_seen %s and online", e, h.clk.now().Format(time.RFC3339))
 	}
 }
+
+func TestRelease_answersEveryHeldWaitAtOnce(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h := newBubbleHarness(t)
+		h.mustRegisterAlone(sessA, "reader")
+		standing := h.watchAsync(sessA, 55*time.Second)
+		inTurn := h.inTurn(sessA, 55*time.Second)
+		synctest.Wait()
+		start := time.Now()
+		h.srv.Release()
+		if r := <-standing; r.status != http.StatusServiceUnavailable || r.str("code") != "shutting_down" || time.Since(start) != 0 {
+			t.Errorf("the held standing wait = %d %s after %v, want 503 shutting_down at once", r.status, r.raw, time.Since(start))
+		}
+		if r := <-inTurn; r.status != http.StatusOK || r.body["entries"] == nil || time.Since(start) != 0 {
+			t.Errorf("the held in-turn wait = %d %s after %v, want 200 with the page at once", r.status, r.raw, time.Since(start))
+		}
+		if r := h.watch(sessA, 55*time.Second); r.status != http.StatusServiceUnavailable || time.Since(start) != 0 {
+			t.Errorf("a wait opened after Release = %d %s after %v, want 503 at once", r.status, r.raw, time.Since(start))
+		}
+		if got := h.logs.lines(slog.LevelError, "request failed"); len(got) != 0 {
+			t.Errorf("request failed lines: %d, want none", len(got))
+		}
+	})
+}
