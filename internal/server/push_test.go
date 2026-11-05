@@ -104,8 +104,27 @@ func (r *pushReceiver) kiroDoor() []string {
 // folder of name, content pairs. Call it inside the bubble.
 func newPushHarness(t *testing.T, files ...string) *harness {
 	t.Helper()
+	var h *harness
+	noSecretLogged(t, &h)
+	h = newBubbleHarness(t, pushFrom(files...))
+	return h
+}
+
+// pushFrom serves the harness through the real sender from files.
+func pushFrom(files ...string) func(*Options) {
 	fsys := providers(files...)
-	return newBubbleHarness(t, func(o *Options) { o.Push, o.Providers = nil, fsys })
+	return func(o *Options) { o.Push, o.Providers = nil, fsys }
+}
+
+// noSecretLogged fails t, once *h is stopped, if any line its server or
+// store wrote holds the door secret. Call it before building the harness,
+// so the check runs after its Release.
+func noSecretLogged(t *testing.T, h **harness) {
+	t.Cleanup(func() {
+		if *h != nil && strings.Contains((*h).logs.text(), doorSecret) {
+			t.Errorf("the door secret is in the log:\n%s", (*h).logs.text())
+		}
+	})
 }
 
 // registerOn registers name from session on host, on a work path of its

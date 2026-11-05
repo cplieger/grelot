@@ -93,6 +93,19 @@ func (l logSink) lines(level slog.Level, msg string) []slog.Record {
 	return out
 }
 
+// atLeast returns the records at level or above.
+func (l logSink) atLeast(level slog.Level) []slog.Record {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var out []slog.Record
+	for _, r := range *l.records {
+		if r.Level >= level {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 // harness is one server over a fresh store on a test clock.
 type harness struct {
 	t     *testing.T
@@ -167,6 +180,13 @@ func buildHarness(t *testing.T, o store.Options, now func() time.Time, edits ...
 // old server's handler.
 func (h *harness) restart() {
 	h.t.Helper()
+	h.restartAfter(0)
+}
+
+// restartAfter is restart with the server down for down, on the bubble's
+// clock.
+func (h *harness) restartAfter(down time.Duration) {
+	h.t.Helper()
 	if h.http != nil {
 		h.t.Fatal("restart needs a bubble harness")
 	}
@@ -174,6 +194,7 @@ func (h *harness) restart() {
 	if err := h.store.Close(); err != nil {
 		h.t.Fatalf("store.Close: %v", err)
 	}
+	time.Sleep(down)
 	h.open()
 }
 
