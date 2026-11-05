@@ -88,9 +88,8 @@ func (d *deliveryRow) wakes() bool { return d.Via == "" && d.Kind != kindJoin &&
 // Page is an inbox fetch: the oldest unread deliveries, and Unread, every
 // delivery past read, the page's included.
 type Page struct {
-	Entries  []Entry
-	Identity Identity
-	Unread   Counts
+	Entries []Entry
+	Unread  Counts
 }
 
 // Acked is what an ack answers: the read cursor and the deliveries still
@@ -133,7 +132,6 @@ func (s *Store) Inbox(ctx context.Context, c Caller, limit int) (Page, error) {
 		if err != nil {
 			return err
 		}
-		out.Identity = s.view(&me)
 		return s.scanUnread(r, me.ID, me.Read, now, func(d *deliveryRow) error {
 			out.Unread.add(d)
 			if len(out.Entries) == limit {

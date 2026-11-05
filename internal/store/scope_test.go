@@ -337,9 +337,4 @@ func TestScope_aDelegateIsShownWithItsParentsWhere(t *testing.T) {
 		t.Fatal(err)
 	}
 	known("ack", acked.Identity)
-	page, err := s.Inbox(t.Context(), as(sess("subflux-dev"), d.Name), 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	known("inbox", page.Identity)
 }
