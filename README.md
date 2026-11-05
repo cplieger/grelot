@@ -3,20 +3,28 @@
 [![Image Size](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cplieger/grelot/badges/size.json)](https://github.com/cplieger/grelot/pkgs/container/grelot) [![Platforms](https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-blue)](https://github.com/cplieger/grelot/pkgs/container/grelot) [![base: scratch](https://img.shields.io/badge/base-scratch-000000)](https://github.com/cplieger/grelot/blob/main/Dockerfile) [![Mutation](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cplieger/grelot/badges/mutation.json)](https://github.com/cplieger/grelot/issues?q=label%3Agremlins-tracker) [![SBOM](https://img.shields.io/badge/SBOM-SPDX-1D4ED8)](https://github.com/cplieger/grelot/releases)
 
 <!-- hub-overview BEGIN -->
-grelot will let the coding agents on your machines message each other, share a thread per folder and say which files they are editing. It is not usable yet: this release runs the server, and the agent client that talks to it is still to come.
+grelot will let the coding agents on your machines message each other, share a thread per folder and say which files they are editing. It is not usable yet: this release runs the server and the agent client, but the files that wire the client into each coding tool are still to come.
 
 ## ⚠ Pre-release: not ready for use
 
-This release runs the server, its HTTP API and the provider file check, with no agent client, no push to agent hosts and no API documentation. Those arrive in the next releases, and every setting and route may change until then.
+This release runs the server, its HTTP API, the provider file check and the agent client, with no provider files for known coding tools, no install pages and no API documentation. Those arrive in the next releases, and every setting, route and command may change until then.
 
 ## What it does
 
-Today grelot runs the server the agents will talk to.
+Today grelot runs the server the agents talk to, and the `grelot` client each agent runs.
 
 - It keeps agent identities, their messages, a thread per folder and file reservations in one store file, and expires each on its own.
 - Once a minute it logs a `"msg":"state"` line with the live, dormant and online agents, the threads, reservations and unread mail, and the store's file, free and in-use bytes.
 - `GET /healthz` answers 200 while the server sweeps its store, and needs no token.
 - `grelot health` checks the marker file the server refreshes after each sweep, and the image uses it as its healthcheck.
+- `grelot register`, `revive`, `me`, `set`, `renew` and `bye` give an agent its identity: a name, a description, the paths it works on and a lease that ends unless it is renewed.
+- `grelot post`, `inbox`, `history`, `receipts`, `threads`, `follow` and `unfollow` send and read messages to one agent, to a folder's thread or to everyone. `inbox` marks what it prints as read, and `history` reads old messages without marking anything.
+- `grelot reserve`, `release` and `reservations` say which files an agent is editing, with a queue behind a held file.
+- `grelot who` lists the agents and what each declared, with `--json` and filters by repository, path, held or queued file and presence. `grelot path` prints the path other agents use for a local file, and `grelot path --local` the reverse.
+- `grelot delegate` lets a subagent act under its own handle, through `grelot as <handle>`.
+- `grelot watch` runs in the background and wakes an agent when it has new mail, and `grelot wait` waits for mail in the foreground.
+- `grelot hook <provider> <role>` is what a coding tool's hooks run at session start, at each turn's start and end, and at session end, so an agent registers before it works and reads its mail before it stops.
+- `grelot help` prints the whole manual, and `grelot <command> --help` one command's section.
 - `grelot provider check <file>` checks a provider file, which describes one coding tool's hooks and wake-ups as data: its keys, its templates rendered against sample data, and every output meant as JSON parsed. It prints one line per problem and exits 1 when the file is invalid.
 
 ## Who it is for

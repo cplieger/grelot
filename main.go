@@ -35,12 +35,12 @@ const listenAddr = ":8080"
 var markerAge = health.Lease{Interval: store.SweepEvery, Cycles: 4}.Duration()
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stderr))
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
 // run dispatches one subcommand and returns the process exit code: 0 on
 // success, 1 on a runtime failure, 2 on a usage error.
-func run(args []string, stderr io.Writer) int {
+func run(args []string, stdout, stderr io.Writer) int {
 	cmd := "serve"
 	if len(args) > 0 {
 		cmd = args[0]
@@ -67,13 +67,13 @@ func run(args []string, stderr io.Writer) int {
 	case "provider":
 		return providerCommand(args[1:], stderr)
 	default:
-		return clientCommand(args, stderr)
+		return clientCommand(args, stdout, stderr)
 	}
 }
 
 // clientCommand runs one of the client's verbs in this process's
 // environment.
-func clientCommand(args []string, stderr io.Writer) int {
+func clientCommand(args []string, stdout, stderr io.Writer) int {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		fmt.Fprintf(stderr, "grelot cannot find the user config dir: %v; set HOME, or XDG_CONFIG_HOME on Linux\n", err)
@@ -87,7 +87,7 @@ func clientCommand(args []string, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	return cli.Run(ctx, &cli.Env{
-		Stdin: os.Stdin, Stdout: os.Stdout, Stderr: stderr,
+		Stdin: os.Stdin, Stdout: stdout, Stderr: stderr,
 		Lookup: os.LookupEnv, Hostname: os.Hostname, Getwd: os.Getwd, Home: os.UserHomeDir,
 		Machine: where.Machine, InContainer: where.InContainer,
 		Providers: set, Processes: proctree.System(),

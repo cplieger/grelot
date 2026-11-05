@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,7 +74,7 @@ func TestRun_provider_check(t *testing.T) {
 			t.Parallel()
 			var stderr bytes.Buffer
 			args := append([]string{"provider", "check"}, c.args(t)...)
-			if code := run(args, &stderr); code != c.wantCode {
+			if code := run(args, io.Discard, &stderr); code != c.wantCode {
 				t.Errorf("exit %d, want %d; stderr %q", code, c.wantCode, stderr.String())
 			}
 			if c.wantCode == 0 && stderr.Len() != 0 {
@@ -94,7 +95,7 @@ func TestRun_provider_usage(t *testing.T) {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			t.Parallel()
 			var stderr bytes.Buffer
-			if code := run(args, &stderr); code != 2 {
+			if code := run(args, io.Discard, &stderr); code != 2 {
 				t.Errorf("exit %d, want 2", code)
 			}
 			if !strings.Contains(stderr.String(), "grelot provider check <file>") {
