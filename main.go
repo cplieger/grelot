@@ -1,5 +1,5 @@
 // Command grelot is the grelot server, which coordinates coding agents
-// through one HTTP API, its healthcheck and its provider-file check.
+// through one HTTP API, its healthcheck, and the client every agent runs.
 package main
 
 import (
@@ -10,13 +10,19 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/cplieger/go/health"
 	"github.com/cplieger/go/httpserver"
 	"github.com/cplieger/go/slogx"
+	"github.com/cplieger/grelot/internal/cli"
+	"github.com/cplieger/grelot/internal/client"
+	"github.com/cplieger/grelot/internal/proctree"
+	"github.com/cplieger/grelot/internal/provider"
 	"github.com/cplieger/grelot/internal/server"
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/where"
 )
 
 // version is set at build time with -ldflags "-X main.version=<tag>".
@@ -61,9 +67,32 @@ func run(args []string, stderr io.Writer) int {
 	case "provider":
 		return providerCommand(args[1:], stderr)
 	default:
-		fmt.Fprintf(stderr, "grelot: unknown command %q; want serve, health or provider check\n", cmd)
-		return 2
+		return clientCommand(args, stderr)
 	}
+}
+
+// clientCommand runs one of the client's verbs in this process's
+// environment.
+func clientCommand(args []string, stderr io.Writer) int {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		fmt.Fprintf(stderr, "grelot cannot find the user config dir: %v; set HOME, or XDG_CONFIG_HOME on Linux\n", err)
+		return 1
+	}
+	set, err := provider.LoadSet(os.DirFS(filepath.Join(client.Dir(configDir), "providers")))
+	if err != nil {
+		fmt.Fprintf(stderr, "grelot: %v\n", err)
+		return 1
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	return cli.Run(ctx, &cli.Env{
+		Stdin: os.Stdin, Stdout: os.Stdout, Stderr: stderr,
+		Lookup: os.LookupEnv, Hostname: os.Hostname, Getwd: os.Getwd,
+		Machine: where.Machine, InContainer: where.InContainer,
+		Providers: set, Processes: proctree.System(),
+		ConfigDir: configDir, Version: version, PID: os.Getpid(),
+	}, args)
 }
 
 // serve opens the store, sweeps it, logs the state line and serves the API

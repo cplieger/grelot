@@ -1,0 +1,329 @@
+package cli
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/url"
+	"runtime"
+	"strings"
+
+	"github.com/cplieger/grelot/internal/client"
+	"github.com/cplieger/grelot/internal/proctree"
+	"github.com/cplieger/grelot/internal/where"
+)
+
+// registerBody is POST /v1/register's body for an identity.
+type registerBody struct {
+	Where       client.Where `json:"where"`
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	Host        string       `json:"host"`
+	OS          string       `json:"os"`
+	Arch        string       `json:"arch"`
+	Proc        string       `json:"proc,omitempty"`
+	TTL         string       `json:"ttl,omitempty"`
+	Paths       []string     `json:"paths"`
+	TakeOver    bool         `json:"take_over,omitempty"`
+}
+
+// delegateBody is POST /v1/register's body for a delegate, which sends no
+// where: it runs in its parent's.
+type delegateBody struct {
+	Delegate    string `json:"delegate"`
+	Description string `json:"description"`
+}
+
+type reviveBody struct {
+	Name  string       `json:"name,omitempty"`
+	Host  string       `json:"host"`
+	OS    string       `json:"os"`
+	Arch  string       `json:"arch"`
+	Proc  string       `json:"proc,omitempty"`
+	TTL   string       `json:"ttl,omitempty"`
+	Where client.Where `json:"where"`
+}
+
+// patchBody is PATCH /v1/me's body; an empty field keeps its value.
+type patchBody struct {
+	Where       *client.Where `json:"where,omitempty"`
+	Name        string        `json:"name,omitempty"`
+	Description string        `json:"description,omitempty"`
+	TTL         string        `json:"ttl,omitempty"`
+	Paths       []string      `json:"paths,omitempty"`
+}
+
+func (r *run) register(ctx context.Context, args []string) error {
+	fs := flags(r.verb)
+	var paths list
+	fs.Var(&paths, "paths", "")
+	desc := fs.String("desc", "", "")
+	ttl := fs.String("ttl", "", "")
+	link := fs.String("delegate", "", "")
+	takeOver := fs.Bool("take-over", false, "")
+	rest, err := parse(fs, args)
+	if err != nil {
+		return err
+	}
+	if *link != "" {
+		if len(rest) > 0 || len(paths) > 0 || *ttl != "" || *takeOver {
+			return usagef(r.verb, "a delegate registers with --delegate <link> --desc <your task> alone: its name is its handle, its scope replaces paths, and its lease comes from the grant")
+		}
+		var got client.Registered
+		body := delegateBody{Delegate: *link, Description: *desc}
+		if cerr := r.call(ctx, &client.Request{Method: http.MethodPost, Path: "/v1/register", Body: body}, &got); cerr != nil {
+			return cerr
+		}
+		r.registered(&got)
+		return nil
+	}
+	if len(rest) != 1 {
+		return usagef(r.verb, "name the identity once: grelot register <name> --paths <path> --desc <what and why> --ttl <d>")
+	}
+	p, err := r.provider()
+	if err != nil {
+		return err
+	}
+	r.freshRoot(ctx)
+	canonical, locs, err := r.canonical(ctx, paths)
+	if err != nil {
+		return err
+	}
+	cfg, _ := r.config()
+	body := registerBody{
+		Where: r.placeOf(ctx, locs), Name: rest[0], Description: *desc,
+		Host: cfg.Host, OS: runtime.GOOS, Arch: runtime.GOARCH,
+		Proc: proctree.Proc(r.tree(), p.Session.Process, p.Session.ProcessShared),
+		TTL:  *ttl, Paths: canonical, TakeOver: *takeOver,
+	}
+	var got client.Registered
+	if err := r.call(ctx, &client.Request{Method: http.MethodPost, Path: "/v1/register", Body: body}, &got); err != nil {
+		return err
+	}
+	if note := client.ProviderNote(r.Providers, r.providerFlag, cfg, client.Shell{Lookup: r.Lookup, Ancestors: proctree.Names(r.tree())}); note != "" {
+		fmt.Fprintln(r.Stdout, note)
+	}
+	r.registered(&got)
+	return nil
+}
+
+// freshRoot asks the server for its path root before paths are named, when
+// no answer has given it yet; a failure leaves the cached default.
+func (r *run) freshRoot(ctx context.Context) {
+	if client.LoadFacts(r.ConfigDir).Version == "" {
+		_, _ = r.peekMe(ctx)
+	}
+	r.resolver = nil
+}
+
+// registered prints a register's or revive's answer: the lines the server
+// owes, the identity card, then the manual.
+func (r *run) registered(got *client.Registered) {
+	if got.NoEnvironment != "" {
+		file := where.EnvironmentFile(r.ConfigDir)
+		fmt.Fprintln(r.Stdout, "grelot: "+strings.Replace(got.NoEnvironment,
+			"no environment id:", "no environment id ("+file+" could not be read or created):", 1))
+	}
+	if got.Existing {
+		fmt.Fprintf(r.Stdout, "grelot: this session already has the identity @%s, returned unchanged with its lease; run grelot renew --ttl <d> to extend it\n",
+			got.Identity.Name)
+	}
+	if got.Unread > 0 {
+		fmt.Fprintf(r.Stdout, "grelot: %d unread: run grelot inbox\n", got.Unread)
+	}
+	writeCard(r.Stdout, &got.Identity)
+	fmt.Fprintln(r.Stdout)
+	fmt.Fprint(r.Stdout, manual)
+}
+
+func (r *run) revive(ctx context.Context, args []string) error {
+	fs := flags(r.verb)
+	ttl := fs.String("ttl", "", "")
+	rest, err := parse(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(rest) > 1 {
+		return usagef(r.verb, "name at most one identity: grelot revive [<name>] --ttl <d>")
+	}
+	p, err := r.provider()
+	if err != nil {
+		return err
+	}
+	cfg, _ := r.config()
+	body := reviveBody{
+		Host: cfg.Host, OS: runtime.GOOS, Arch: runtime.GOARCH, TTL: *ttl,
+		Proc: proctree.Proc(r.tree(), p.Session.Process, p.Session.ProcessShared),
+	}
+	var paths []string
+	if len(rest) == 1 {
+		body.Name = rest[0]
+		paths = r.dormantPaths(ctx, rest[0])
+	} else if me, err := r.peekMe(ctx); err == nil && me.Identity != nil {
+		paths = me.Identity.Paths
+	}
+	body.Where = r.placeHere(ctx, paths)
+	var got client.Registered
+	if err := r.call(ctx, &client.Request{Method: http.MethodPost, Path: "/v1/revive", Body: body}, &got); err != nil {
+		return err
+	}
+	r.registered(&got)
+	return nil
+}
+
+// dormantPaths are the work paths of the dormant identity name, nil when
+// none is listed; the server answers for a name it cannot revive.
+func (r *run) dormantPaths(ctx context.Context, name string) []string {
+	var got client.Peers
+	q := url.Values{"all": {"1"}, "q": {name}, "fields": {"paths,state"}}
+	if r.peek(ctx, &client.Request{Method: http.MethodGet, Path: "/v1/identities", Query: q}, &got) != nil {
+		return nil
+	}
+	for i := range got.Identities {
+		if p := &got.Identities[i]; p.Name == name && p.State == client.StateDormant {
+			return p.Paths
+		}
+	}
+	return nil
+}
+
+func (r *run) me(ctx context.Context, args []string) error {
+	if _, err := parse(flags(r.verb), args); err != nil {
+		return err
+	}
+	a, err := r.client(true)
+	if err != nil {
+		return err
+	}
+	me, resp, err := a.Me(ctx, url.Values{}, http.Header{})
+	if err != nil {
+		return err
+	}
+	r.printStatus(resp.Status)
+	switch {
+	case me.State == client.StateNone:
+		fmt.Fprintln(r.Stdout, "grelot: register as the line above says, then read what it prints")
+		return nil
+	case me.Identity == nil:
+		return nil
+	}
+	writeCard(r.Stdout, me.Identity)
+	writeMe(r.Stdout, me, where.EnvironmentFile(r.ConfigDir))
+	return nil
+}
+
+func (r *run) set(ctx context.Context, args []string) error {
+	fs := flags(r.verb)
+	var paths list
+	fs.Var(&paths, "paths", "")
+	name := fs.String("name", "", "")
+	desc := fs.String("desc", "", "")
+	ttl := fs.String("ttl", "", "")
+	rest, err := parse(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(rest) > 0 {
+		return usagef(r.verb, "unexpected %q: grelot set takes only --name, --paths, --desc and --ttl", rest[0])
+	}
+	body := patchBody{Name: *name, Description: *desc, TTL: *ttl}
+	if len(paths) > 0 {
+		r.freshRoot(ctx)
+		canonical, locs, err := r.canonical(ctx, paths)
+		if err != nil {
+			return err
+		}
+		body.Paths = canonical
+		if len(locs) > 0 {
+			w := r.placeOf(ctx, locs)
+			body.Where = &w
+		}
+	}
+	if body.Where == nil && *ttl != "" {
+		w := r.placeHere(ctx, r.currentPaths(ctx))
+		body.Where = &w
+	}
+	return r.patchMe(ctx, &body, func(id *client.Identity) { writeCard(r.Stdout, id) })
+}
+
+func (r *run) patchMe(ctx context.Context, body *patchBody, show func(*client.Identity)) error {
+	var got client.IdentityAnswer
+	if err := r.call(ctx, &client.Request{Method: http.MethodPatch, Path: "/v1/me", Body: body}, &got); err != nil {
+		return err
+	}
+	if got.Identity.Notice != "" {
+		fmt.Fprintln(r.Stdout, "grelot: "+got.Identity.Notice)
+	}
+	show(&got.Identity)
+	return nil
+}
+
+// currentPaths are the identity's work paths, nil when GET /v1/me names
+// none.
+func (r *run) currentPaths(ctx context.Context) []string {
+	me, err := r.peekMe(ctx)
+	if err != nil || me.Identity == nil {
+		return nil
+	}
+	return me.Identity.Paths
+}
+
+func (r *run) renew(ctx context.Context, args []string) error {
+	fs := flags(r.verb)
+	ttl := fs.String("ttl", "", "")
+	rest, err := parse(fs, args)
+	if err != nil {
+		return err
+	}
+	switch {
+	case len(rest) > 1:
+		return usagef(r.verb, "name at most one reservation: grelot renew [<reservation id>] --ttl <d>")
+	case len(rest) == 1:
+		return r.renewReservation(ctx, rest[0], *ttl)
+	}
+	w := r.placeHere(ctx, r.currentPaths(ctx))
+	return r.patchMe(ctx, &patchBody{TTL: *ttl, Where: &w}, func(id *client.Identity) {
+		fmt.Fprintf(r.Stdout, "grelot: @%s renewed for %s, until %s\n", id.Name, id.TTL, stamp(id.Expires))
+	})
+}
+
+func (r *run) renewReservation(ctx context.Context, id, ttl string) error {
+	if !isID(id) {
+		return usagef(r.verb, "%q is not a reservation id: grelot reservations lists them", id)
+	}
+	var got client.ReservationAnswer
+	req := &client.Request{Method: http.MethodPatch, Path: "/v1/reservations/" + id, Body: map[string]string{"ttl": ttl}}
+	if err := r.call(ctx, req, &got); err != nil {
+		return err
+	}
+	v := &got.Reservation
+	fmt.Fprintf(r.Stdout, "grelot: reservation %d on %s renewed for %s, until %s\n", v.ID, safe(v.Path), v.TTL, stamp(v.Expires))
+	return nil
+}
+
+func isID(s string) bool {
+	if s == "" || len(s) > 20 {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func (r *run) bye(ctx context.Context, args []string) error {
+	rest, err := parse(flags(r.verb), args)
+	if err != nil {
+		return err
+	}
+	if len(rest) > 0 {
+		return usagef(r.verb, "grelot bye takes no arguments")
+	}
+	if err := r.call(ctx, &client.Request{Method: http.MethodDelete, Path: "/v1/me"}, nil); err != nil {
+		return err
+	}
+	fmt.Fprintln(r.Stdout, "grelot: identity retired: its reservations went to their queues and its delegates ended")
+	return nil
+}

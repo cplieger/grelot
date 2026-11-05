@@ -1,0 +1,157 @@
+// Package cli runs grelot's client verbs: it reads the command line, the
+// client config and the shell it runs in, sends the API calls, and prints
+// what an agent reads, the status line first.
+package cli
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"strings"
+
+	"github.com/cplieger/grelot/internal/client"
+	"github.com/cplieger/grelot/internal/proctree"
+	"github.com/cplieger/grelot/internal/provider"
+)
+
+// Env is what a command reads of the process it runs in.
+type Env struct {
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
+	// Lookup reads an environment variable.
+	Lookup   func(name string) (string, bool)
+	Hostname func() (string, error)
+	Getwd    func() (string, error)
+	// Machine is the machine id, <kind>:<hex>, or "" when unknown.
+	Machine     func(context.Context) string
+	InContainer func() bool
+	Providers   *provider.Set
+	// Processes is read for this process's ancestors; nil reads none.
+	Processes proctree.Table
+	// ConfigDir is the user config dir; grelot's files are under its grelot
+	// folder.
+	ConfigDir string
+	Version   string
+	PID       int
+}
+
+// Exit codes: a refusal or failure is 1, a command line grelot cannot read
+// is 2.
+const (
+	exitOK     = 0
+	exitFailed = 1
+	exitUsage  = 2
+)
+
+// verbs are the commands Run knows, by name.
+var verbs = map[string]func(*run, context.Context, []string) error{
+	"register": (*run).register,
+	"revive":   (*run).revive,
+	"me":       (*run).me,
+	"set":      (*run).set,
+	"renew":    (*run).renew,
+	"bye":      (*run).bye,
+	"who":      (*run).who,
+	"path":     (*run).path,
+	"help":     (*run).help,
+}
+
+// Run runs the command args names, after the global flags --self and
+// --provider <name>, and returns the process exit code.
+func Run(ctx context.Context, env *Env, args []string) int {
+	r := &run{Env: env}
+	args, err := r.globals(args)
+	if err != nil {
+		return r.fail(err)
+	}
+	if len(args) == 0 {
+		return r.fail(usagef("", "name a command: grelot help lists them"))
+	}
+	fn, ok := verbs[args[0]]
+	if !ok {
+		return r.fail(usagef("", "unknown command %q: grelot help lists the commands", args[0]))
+	}
+	r.verb = args[0]
+	if err := fn(r, ctx, args[1:]); err != nil {
+		if errors.Is(err, errHelp) {
+			fmt.Fprint(r.Stdout, section(r.verb))
+			return exitOK
+		}
+		return r.fail(err)
+	}
+	return exitOK
+}
+
+// globals reads the flags before the command.
+func (r *run) globals(args []string) ([]string, error) {
+	for len(args) > 0 {
+		a := args[0]
+		switch {
+		case a == "--self":
+			r.self = true
+			args = args[1:]
+		case a == "--provider":
+			if len(args) < 2 || args[1] == "" {
+				return nil, usagef("", "--provider needs a provider name")
+			}
+			r.providerFlag, args = args[1], args[2:]
+		case strings.HasPrefix(a, "--provider="):
+			if r.providerFlag = strings.TrimPrefix(a, "--provider="); r.providerFlag == "" {
+				return nil, usagef("", "--provider needs a provider name")
+			}
+			args = args[1:]
+		default:
+			return args, nil
+		}
+	}
+	return args, nil
+}
+
+// usageError is a command line grelot cannot read; it exits 2.
+type usageError struct {
+	verb string
+	msg  string
+}
+
+func (e *usageError) Error() string {
+	if e.verb == "" {
+		return "grelot: " + e.msg
+	}
+	return fmt.Sprintf("grelot %s: %s; run grelot %s --help", e.verb, e.msg, e.verb)
+}
+
+func usagef(verb, format string, a ...any) error {
+	return &usageError{verb: verb, msg: fmt.Sprintf(format, a...)}
+}
+
+// codeNoIdentity is the refusal code for a session with no identity.
+const codeNoIdentity = "none"
+
+// fail prints err and answers its exit code. A refusal leads with the
+// status line it carried, unless that line already says the same.
+func (r *run) fail(err error) int {
+	if ue, ok := errors.AsType[*usageError](err); ok {
+		fmt.Fprintln(r.Stderr, ue.Error())
+		return exitUsage
+	}
+	if ae, ok := errors.AsType[*client.APIError](err); ok {
+		line := r.statusLine(ae.Status)
+		msg := "grelot: " + ae.Msg
+		if ae.Code == codeNoIdentity {
+			msg += ", then read what it prints"
+		}
+		if line != "" && line != "grelot: "+ae.Msg && !r.statusShown {
+			fmt.Fprintln(r.Stdout, line)
+		}
+		fmt.Fprintln(r.Stderr, msg)
+		return exitFailed
+	}
+	msg := err.Error()
+	if !strings.HasPrefix(msg, "grelot") {
+		msg = "grelot: " + msg
+	}
+	fmt.Fprintln(r.Stderr, msg)
+	return exitFailed
+}
