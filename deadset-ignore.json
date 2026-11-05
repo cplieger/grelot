@@ -393,12 +393,6 @@
     },
     {
       "code": "DS1301",
-      "symbol": "go://github.com/cplieger/grelot/internal/client#APIError.HTTP",
-      "path": "internal/client/api.go",
-      "reason": "The hooks, not built yet, tell a 426, a 410 and a 5xx apart with it."
-    },
-    {
-      "code": "DS1301",
       "symbol": "go://github.com/cplieger/grelot/internal/client#Where.Machine",
       "path": "internal/client/wire.go",
       "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."

@@ -33,7 +33,7 @@ func (r *run) path(ctx context.Context, args []string) error {
 	p, err := res.Local(ctx, rest[0])
 	switch {
 	case errors.Is(err, canon.ErrNotRepoPath):
-		return fmt.Errorf("%s is not under %s, so it is local to the agent that sent it: ask it for the content", safe(rest[0]), r.root)
+		return fmt.Errorf("%s is not under %s, so it is local to the agent that sent it: ask it for the content with grelot post @<its name>", safe(rest[0]), r.root)
 	case errors.Is(err, canon.ErrNoClone):
 		return fmt.Errorf("no clone of the repository %s names is known on this machine: clone it, then run grelot path on a file inside it", safe(rest[0]))
 	case err != nil:

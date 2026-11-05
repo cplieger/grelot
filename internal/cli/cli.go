@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"time"
 
@@ -156,8 +157,11 @@ func (r *run) fail(err error) int {
 	if ae, ok := errors.AsType[*client.APIError](err); ok {
 		line := r.statusLine(ae.Status)
 		msg := "grelot: " + ae.Msg
-		if ae.Code == codeNoIdentity {
+		switch {
+		case ae.Code == codeNoIdentity:
 			msg += ", then read what it prints"
+		case ae.HTTP == http.StatusUnauthorized:
+			msg += fmt.Sprintf(" (%s, or the file %s names), then run grelot me", client.ConfigFile(r.ConfigDir), client.EnvTokenFile)
 		}
 		if line != "" && line != "grelot: "+ae.Msg && !r.statusShown {
 			fmt.Fprintln(r.Stdout, line)

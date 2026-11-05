@@ -173,3 +173,14 @@ func TestRegister_rawMachineValueNeverSent(t *testing.T) {
 		t.Errorf("the registration does not carry the machine id %s", machine)
 	}
 }
+
+func TestRun_aWrongTokenNamesWhereTheTokenIs(t *testing.T) {
+	ts := newServer(t)
+	a := newAgent(t, ts, "s-1", "")
+	writeClientConfig(t, a.env.ConfigDir, "server: "+ts.URL+"\ntoken: wrong\n")
+	code, _, errOut := a.run("me")
+	file := filepath.Join(a.env.ConfigDir, "grelot", "config.yaml")
+	if code != 1 || !strings.Contains(errOut, file) || !strings.Contains(errOut, "GRELOT_TOKEN_FILE") || !strings.Contains(errOut, "grelot me") {
+		t.Errorf("exit %d, stderr %q; want 1 naming %s, GRELOT_TOKEN_FILE and grelot me", code, errOut, file)
+	}
+}

@@ -159,7 +159,7 @@ func readBody(in io.Reader) (string, error) {
 		return "", fmt.Errorf("grelot cannot read the body on stdin: %w", err)
 	}
 	if len(data) > maxBody {
-		return "", errors.New("grelot: the body is over 64 KiB: shorten it, or send a pushed ref instead of the content")
+		return "", errors.New("grelot: the body is over 64 KiB: shorten it, or post a pushed ref instead of the content; grelot post --help")
 	}
 	return string(data), nil
 }

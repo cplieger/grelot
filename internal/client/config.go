@@ -63,17 +63,17 @@ func LoadConfig(configDir string, lookup func(string) (string, bool), hostname f
 		yamlenv.WithLookupEnv(func(string) (string, bool) { return "", false }),
 		yamlenv.WithSanitizeOptions(yamlenv.WithUnknownKeyEcho(true)))
 	if err != nil {
-		return nil, fmt.Errorf("client config %s: %w", file, err)
+		return nil, fmt.Errorf("client config %s: %w; grelot help lists its keys", file, err)
 	}
 	if len(unresolved) > 0 {
-		return nil, fmt.Errorf("client config %s: environment references are not read: ${%s}; write the value, or the token's file in %s",
+		return nil, fmt.Errorf("client config %s: environment references are not read: ${%s}; write the value, or the token's file in %s; grelot help lists the keys",
 			file, strings.Join(unresolved, "}, ${"), EnvTokenFile)
 	}
 	if err := checkMode(info, cfg.Token != ""); err != nil {
 		return nil, fmt.Errorf("client config %s %w; run chmod 600 %s", file, err, file)
 	}
 	if err := cfg.finish(lookup, hostname); err != nil {
-		return nil, fmt.Errorf("client config %s: %w", file, err)
+		return nil, fmt.Errorf("client config %s: %w; grelot help lists its keys", file, err)
 	}
 	return cfg, nil
 }
