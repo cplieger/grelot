@@ -77,6 +77,8 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		if ae.retryAfter > 0 {
 			w.Header().Set("Retry-After", strconv.Itoa(int(ae.retryAfter.Seconds())))
 		}
+	case errors.Is(err, store.ErrClosed):
+		status, body.Code, body.Error = http.StatusServiceUnavailable, "shutting_down", "the server is shutting down; retry once it is back"
 	default:
 		s.log.Error("request failed", "path", r.URL.Path, "error", err)
 		body.Code, body.Error = "internal_error", "internal server error"

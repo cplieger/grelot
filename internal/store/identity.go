@@ -417,7 +417,7 @@ func (s *Store) Retire(ctx context.Context, c Caller) error {
 func (s *Store) Seen(ctx context.Context, c Caller) (Identity, error) {
 	var row identityRow
 	var found bool
-	if err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
+	if err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		var err error
 		row, found, err = s.callerFor(r, c, s.now())
 		return err
@@ -462,7 +462,7 @@ func (s *Store) Seen(ctx context.Context, c Caller) (Identity, error) {
 // delegate, which is pull only.
 func (s *Store) Watcher(ctx context.Context, c Caller) (Identity, error) {
 	var row identityRow
-	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
+	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		var err error
 		row, err = s.liveFor(r, c, s.now())
 		return err

@@ -52,7 +52,7 @@ type NudgeState struct {
 // live identity. A delegate, which is pull only, and a session the
 // SessionEnd report closed are never nudged.
 func (s *Store) Nudging(ctx context.Context, id uint64) (out NudgeState, found bool, err error) {
-	err = s.db.View(ctx, func(r *bolttable.ReadTx) error {
+	err = s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		row, ok, gerr := s.t.identities.table.Get(r, id)
 		if gerr != nil || !ok {

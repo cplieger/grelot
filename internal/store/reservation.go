@@ -270,7 +270,7 @@ func (s *Store) Reservations(ctx context.Context, c Caller, q ReservationQuery) 
 		return nil, err
 	}
 	var out []Reservation
-	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
+	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		var me identityRow
 		if v, found, err := s.callerFor(r, c, now); err != nil {

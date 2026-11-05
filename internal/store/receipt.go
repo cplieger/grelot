@@ -51,7 +51,7 @@ func (s *Store) Receipts(ctx context.Context, c Caller, msg uint64) (Receipts, e
 		return Receipts{}, err
 	}
 	var out Receipts
-	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
+	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		me, err := s.liveFor(r, c, now)
 		if err != nil {

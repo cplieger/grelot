@@ -7,6 +7,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,14 +25,15 @@ func openAt(t *testing.T, path string, sink logSink) (*Store, error) {
 	return s, err
 }
 
-// siblings lists the names beside path that start with its base name.
+// siblings lists the names beside path that start with its base name,
+// but for <path>.lock, which bolttable's Open creates and never removes.
 func siblings(t *testing.T, path string) []string {
 	t.Helper()
 	m, err := filepath.Glob(path + ".*")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return m
+	return slices.DeleteFunc(m, func(p string) bool { return p == path+".lock" })
 }
 
 func TestOpen_keepsRowsAcrossARestart(t *testing.T) {
@@ -208,8 +212,11 @@ func TestOpen_corruptFileIsMovedAsideAndTheStoreStartsEmpty(t *testing.T) {
 				t.Fatalf("Open: %v", err)
 			}
 
-			moved := path + ".corrupt-20261104T053900Z"
-			got, err := os.ReadFile(moved)
+			moved := siblings(t, path)
+			if len(moved) != 1 || !movedAsideName.MatchString(strings.TrimPrefix(moved[0], path)) {
+				t.Fatalf("files beside the store = %v, want one <path>.<UTC stamp>.invalid", moved)
+			}
+			got, err := os.ReadFile(moved[0])
 			if err != nil {
 				t.Fatalf("moved-aside file: %v", err)
 			}
@@ -223,34 +230,107 @@ func TestOpen_corruptFileIsMovedAsideAndTheStoreStartsEmpty(t *testing.T) {
 			if len(errs) != 1 {
 				t.Fatalf("corrupt ERROR lines = %d, want 1", len(errs))
 			}
-			if got := attr(errs[0], "moved_to"); got != moved {
-				t.Errorf("corrupt line moved_to = %q, want %q", got, moved)
+			if got := attr(errs[0], "moved_to"); got != moved[0] {
+				t.Errorf("corrupt line moved_to = %q, want %q", got, moved[0])
 			}
 		})
 	}
 }
 
-func TestOpen_corruptFileNeverOverwritesAnEarlierCopy(t *testing.T) {
+// movedAsideName is the suffix bolttable's InvalidFileMoveAside gives a
+// moved file: .<UTC time as 20060102T150405.000000000Z>.invalid.
+var movedAsideName = regexp.MustCompile(`^\.\d{8}T\d{6}\.\d{9}Z\.invalid$`)
+
+func TestOpen_compactsAFileMostlyFreeAndKeepsItsRows(t *testing.T) {
+	clk := &clock{t: testNow}
 	path := filepath.Join(t.TempDir(), "grelot.db")
-	earlier := path + ".corrupt-20261104T053900Z"
-	if err := os.WriteFile(earlier, []byte("earlier"), 0o600); err != nil {
+	o := Options{Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: time.Hour}
+	s, err := Open(path, o)
+	if err != nil {
 		t.Fatal(err)
 	}
-	corrupt := bytes.Repeat([]byte{0xab}, 32<<10)
-	if err := os.WriteFile(path, corrupt, 0o600); err != nil {
+	regAt(t, s, "alpha", "/workspace/alpha")
+	regAt(t, s, "bravo", "/workspace/bravo")
+	// About 40 MiB of mail: bbolt grows the file in 16 MiB steps whose
+	// unwritten tail is not free, so the burst must be well past one step
+	// for its expiry to free half the file.
+	p := posting(sess("alpha"), Target{Agent: "bravo"})
+	p.Body = strings.Repeat("x", maxBody)
+	for range 640 {
+		mustPost(t, s, p)
+	}
+	clk.advance(time.Hour)
+	mustSweep(t, s)
+	before := mustMeasure(t, s)
+	// The design's thresholds: at least half the file and 4 MiB free.
+	if before.FreeBytes*2 < before.FileBytes || before.FreeBytes < 4<<20 {
+		t.Fatalf("free %d of %d bytes before the restart: the fixture does not reach the thresholds", before.FreeBytes, before.FileBytes)
+	}
+	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
 
-	_, err := openAt(t, path, newLogSink())
+	sink := newLogSink()
+	o.Logger = slog.New(sink)
+	s, err = Open(path, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
 
-	if err == nil {
-		t.Fatal("Open succeeded, want a failure")
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if b, _ := os.ReadFile(earlier); string(b) != "earlier" {
-		t.Errorf("the earlier copy = %q, want it unchanged", b)
+	if fi.Size()*2 > before.FileBytes {
+		t.Errorf("file %d bytes after the restart, want at most half of %d", fi.Size(), before.FileBytes)
 	}
-	if b, _ := os.ReadFile(path); !bytes.Equal(b, corrupt) {
-		t.Error("the corrupt file changed")
+	if n := len(mustInbox(t, s, sess("bravo"), 0).Entries); n != 0 {
+		t.Errorf("bravo has %d messages after the compaction, want 0: they expired", n)
+	}
+	if _, err := s.Status(t.Context(), Caller{Session: sess("alpha")}); err != nil {
+		t.Errorf("alpha after the compaction: %v", err)
+	}
+	if n := len(sink.lines(slog.LevelWarn, msgCompactFailed)); n != 0 {
+		t.Errorf("compaction WARN lines = %d, want 0", n)
+	}
+}
+
+func TestLogOpen_aFailedCompactionIsOneWarn(t *testing.T) {
+	sink := newLogSink()
+	s := newStore(&Options{Logger: slog.New(sink)})
+
+	s.logOpen("/data/grelot.db", &bolttable.OpenReport{CompactErr: errors.New("no space left on device")})
+
+	warns := sink.lines(slog.LevelWarn, msgCompactFailed)
+	if len(warns) != 1 {
+		t.Fatalf("compaction WARN lines = %d, want 1", len(warns))
+	}
+	if got := attr(warns[0], "error"); got != "no space left on device" {
+		t.Errorf("compaction line error = %q, want the cause", got)
+	}
+	if n := len(sink.lines(slog.LevelError, msgStoreCorrupt)) + len(sink.lines(slog.LevelWarn, msgStoreReset)); n != 0 {
+		t.Errorf("a report with only a compaction failure logged %d corrupt or reset lines, want 0", n)
+	}
+}
+
+func TestPost_onAClosedStoreReportsErrClosed(t *testing.T) {
+	s, _ := openClockStore(t)
+	regAt(t, s, "alpha", "/workspace/alpha")
+	regAt(t, s, "bravo", "/workspace/bravo")
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	p := posting(sess("alpha"), Target{Agent: "bravo"})
+	_, err := s.Post(t.Context(), &p)
+
+	if !errors.Is(err, ErrClosed) {
+		t.Errorf("Post after Close: %v, want ErrClosed", err)
+	}
+	w := envA()
+	if _, err := s.Set(t.Context(), Caller{Session: sess("alpha")}, Change{TTL: 2 * time.Hour, Where: &w}); !errors.Is(err, ErrClosed) {
+		t.Errorf("Set after Close: %v, want ErrClosed", err)
 	}
 }
 

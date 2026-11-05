@@ -381,7 +381,7 @@ type GrantedDelegate struct {
 // the delegate gate included.
 func (s *Store) Delegations(ctx context.Context, c Caller) (Delegation, error) {
 	var out Delegation
-	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
+	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		me, err := s.liveFor(r, c, now)
 		if err != nil || me.Parent != 0 {

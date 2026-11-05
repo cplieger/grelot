@@ -25,7 +25,7 @@ func (s *Store) Status(ctx context.Context, c Caller) (Status, error) {
 		c.Self = true
 	}
 	var out Status
-	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
+	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		me, err := s.liveFor(r, c, now)
 		if err != nil {

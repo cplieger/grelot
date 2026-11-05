@@ -507,14 +507,9 @@ func defineReservations(ns *bolttable.Namespace, t *tables) error {
 }
 
 // scanExact calls fn for each row whose entry in a non-unique index is
-// exactly key. A Range prefix alone also matches longer keys, such as a
-// subpath's; an exact key's entries sort before them, so the scan stops
-// at the first longer one.
+// exactly key, never a longer one such as a subpath's.
 func scanExact[V any](r *bolttable.ReadTx, ix *bolttable.Index[uint64, V], key string, fn func(id uint64) (bool, error)) error {
-	return ix.Scan(r, bolttable.Range{Prefix: []byte(key)}, func(ikey []byte, id uint64, _ []byte) (bool, error) {
-		if string(ikey) != key {
-			return false, nil
-		}
+	return ix.Scan(r, bolttable.Exact([]byte(key)), func(_ []byte, id uint64, _ []byte) (bool, error) {
 		return fn(id)
 	})
 }

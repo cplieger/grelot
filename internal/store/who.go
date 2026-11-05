@@ -70,7 +70,7 @@ func (s *Store) Who(ctx context.Context, c Caller, query *WhoQuery) ([]Peer, err
 		return nil, err
 	}
 	var out []Peer
-	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
+	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		var caller party
 		if me, found, err := s.callerFor(r, c, now); err != nil {

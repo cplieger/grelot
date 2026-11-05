@@ -147,7 +147,7 @@ func (s *Store) TakeOverHint(ctx context.Context, session, proc string, caller W
 		return Identity{}, false, err
 	}
 	var best *identityRow
-	err = s.db.View(ctx, func(r *bolttable.ReadTx) error {
+	err = s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		return scanExact(r, s.t.byProc, proc, func(id uint64) (bool, error) {
 			row, found, gerr := s.t.identities.table.Get(r, id)

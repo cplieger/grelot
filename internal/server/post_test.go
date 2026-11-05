@@ -170,6 +170,24 @@ func TestPost_storeNearlyFullIs507(t *testing.T) {
 	}
 }
 
+func TestPost_duringShutdownIs503WithNoErrorLine(t *testing.T) {
+	h := newHarness(t)
+	h.mustRegister(sessA, "sender")
+	h.mustRegister(sessB, "reader")
+	if err := h.store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	r := h.as(sessA, http.MethodPost, "/v1/posts", postBody(map[string]any{"agent": "reader"}, "hello", "a body"))
+
+	if r.status != http.StatusServiceUnavailable || r.str("code") != "shutting_down" {
+		t.Errorf("post: %d %s, want 503 shutting_down", r.status, r.raw)
+	}
+	if n := len(h.logs.lines(slog.LevelError, "request failed")); n != 0 {
+		t.Errorf("request failed ERROR lines = %d, want 0", n)
+	}
+}
+
 func TestPost_refusesABadTargetOrReceiptList(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegister(sessA, "sender")

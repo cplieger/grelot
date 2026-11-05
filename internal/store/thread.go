@@ -114,7 +114,7 @@ func (s *Store) Threads(ctx context.Context, c Caller, root string) ([]PathThrea
 		prefix = root
 	}
 	out := []PathThread{}
-	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
+	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		if _, err := s.liveFor(r, c, now); err != nil {
 			return err

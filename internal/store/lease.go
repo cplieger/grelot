@@ -1,7 +1,6 @@
 package store
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"strings"
@@ -192,12 +191,8 @@ func (l *leased[K, V]) warnDue(w *wtx, budget int) (int, error) {
 
 // dueKeys lists up to limit rows whose index time is at or before now.
 func dueKeys[K, V any](w *wtx, ix *bolttable.Index[K, V], limit int) ([]K, error) {
-	bound := timeKey(w.now)
 	var ks []K
-	err := ix.Scan(w.r, bolttable.Range{}, func(ikey []byte, k K, _ []byte) (bool, error) {
-		if bytes.Compare(ikey, bound) > 0 {
-			return false, nil
-		}
+	err := ix.Scan(w.r, bolttable.Range{To: timeKey(w.now.Add(time.Nanosecond))}, func(_ []byte, k K, _ []byte) (bool, error) {
 		ks = append(ks, k)
 		return len(ks) < limit, nil
 	})

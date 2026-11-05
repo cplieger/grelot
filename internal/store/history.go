@@ -65,7 +65,7 @@ func (s *Store) History(ctx context.Context, c Caller, query *HistoryQuery) (His
 		return History{}, err
 	}
 	var out History
-	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
+	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		me, err := s.liveFor(r, c, now)
 		if err != nil {
@@ -235,7 +235,7 @@ func (w *walk) walkDeliveries(r *bolttable.ReadTx) ([]Entry, error) {
 	var out []Entry
 	rg := bolttable.Range{Prefix: be64(w.me.ID), Reverse: true}
 	if w.lastRead {
-		rg.From = pairKey(w.me.ID, w.seqs.To)
+		rg.To = pairKey(w.me.ID, w.seqs.To+1)
 	}
 	err := w.s.t.deliveries.table.Scan(r, rg, func(_ []byte, d *deliveryRow) (bool, error) {
 		if d.Seq < w.seqs.From || d.Written.Before(w.since) {

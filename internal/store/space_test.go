@@ -6,11 +6,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/cplieger/bolttable"
 )
 
 func mustMeasure(t *testing.T, s *Store) Space {
 	t.Helper()
-	sp, err := s.Measure(t.Context())
+	sp, err := s.Measure()
 	if err != nil {
 		t.Fatalf("Measure: %v", err)
 	}
@@ -27,10 +29,10 @@ func TestPost_refusedOnlyPastNinetyPercentOfTheDefaultCeiling(t *testing.T) {
 	regAt(t, s, "alpha", "/workspace/alpha")
 	regAt(t, s, "bravo", "/workspace/bravo")
 
-	s.inUse.Store(483_183_820)
+	s.space = inUse(483_183_820)
 	mustPost(t, s, posting(sess("alpha"), Target{Agent: "bravo"}))
 
-	s.inUse.Store(483_183_821)
+	s.space = inUse(483_183_821)
 	p := posting(sess("alpha"), Target{Agent: "bravo"})
 	_, err := s.Post(t.Context(), &p)
 	wantRefusal(t, err, KindFull, "", "store nearly full")
@@ -56,29 +58,30 @@ func TestPost_atExactlyNinetyPercentStillGoesThrough(t *testing.T) {
 	regAt(t, s, "alpha", "/workspace/alpha")
 	regAt(t, s, "bravo", "/workspace/bravo")
 	s.maxBytes = 1000
-	s.inUse.Store(900)
+	s.space = inUse(900)
 	mustPost(t, s, posting(sess("alpha"), Target{Agent: "bravo"}))
-	s.inUse.Store(901)
+	s.space = inUse(901)
 	p := posting(sess("alpha"), Target{Agent: "bravo"})
 	_, err := s.Post(t.Context(), &p)
 	wantRefusal(t, err, KindFull, "", "store nearly full")
 }
 
-// fillUntilFull posts 64 KiB messages from alpha to bravo, measuring every
-// 16 posts as the server's minute does, until a post is refused as nearly
-// full; it fails the test if none is by limit posts.
+// inUse is a space reading of n bytes in use.
+func inUse(n int64) func() (bolttable.Space, error) {
+	return func() (bolttable.Space, error) { return bolttable.Space{FileBytes: n}, nil }
+}
+
+// fillUntilFull posts 64 KiB messages from alpha to bravo until a post is
+// refused as nearly full; it fails the test if none is by limit posts.
 func fillUntilFull(t *testing.T, s *Store, limit int) Space {
 	t.Helper()
 	p := posting(sess("alpha"), Target{Agent: "bravo"})
 	p.Body = strings.Repeat("x", maxBody)
-	for i := range limit {
+	for range limit {
 		_, err := s.Post(t.Context(), &p)
 		if err != nil {
 			wantRefusal(t, err, KindFull, "", "store nearly full")
 			return mustMeasure(t, s)
-		}
-		if i%16 == 15 {
-			mustMeasure(t, s)
 		}
 	}
 	t.Fatalf("no post refused after %d posts of 64 KiB", limit)
@@ -115,7 +118,7 @@ func TestMeasure_inUseFallsWhenABurstExpiresThoughTheFileDoesNot(t *testing.T) {
 	mustPost(t, s, posting(sess("alpha"), Target{Agent: "bravo"}))
 }
 
-func TestOpen_measuresTheStoreItOpens(t *testing.T) {
+func TestPost_refusedOnAFullStoreAfterARestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grelot.db")
 	o := Options{Logger: slog.New(newLogSink()), Now: func() time.Time { return testNow }, MaxBytes: testMaxBytes}
 	s, err := Open(path, o)

@@ -127,7 +127,7 @@ func (s *Store) Inbox(ctx context.Context, c Caller, limit int) (Page, error) {
 		return Page{}, err
 	}
 	var out Page
-	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
+	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		me, err := s.liveFor(r, c, now)
 		if err != nil {
@@ -251,7 +251,7 @@ func (w *wtx) stampRead(me *identityRow, to uint64) ([]deliveryRow, error) {
 func (s *Store) Hold(ctx context.Context, c Caller) (Held, error) {
 	var out Held
 	write := false
-	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
+	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		me, err := s.liveFor(r, c, now)
 		if err != nil {
