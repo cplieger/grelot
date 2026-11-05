@@ -194,6 +194,13 @@ type Inbox struct {
 	Entries []Entry `json:"entries"`
 }
 
+// Nudge is a standing wait's answer: the signal line's seq and the count
+// of new mail.
+type Nudge struct {
+	Seq   uint64 `json:"seq"`
+	Count int    `json:"count"`
+}
+
 // Acked is POST /v1/inbox/ack's answer: what is still past read.
 type Acked struct {
 	Left Counts `json:"left"`

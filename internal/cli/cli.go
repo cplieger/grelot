@@ -72,6 +72,8 @@ var verbs = map[string]func(*run, context.Context, []string) error{
 	"release":      (*run).release,
 	"reservations": (*run).reservations,
 	"delegate":     (*run).delegate,
+	"watch":        (*run).watch,
+	"wait":         (*run).wait,
 }
 
 func init() { verbs["as"] = (*run).as }
@@ -93,6 +95,9 @@ func Run(ctx context.Context, env *Env, args []string) int {
 	}
 	r.verb = args[0]
 	if err := fn(r, ctx, args[1:]); err != nil {
+		if ee, ok := errors.AsType[*exitError](err); ok {
+			return ee.code
+		}
 		if errors.Is(err, errHelp) {
 			fmt.Fprint(r.Stdout, section(r.verb))
 			return exitOK
@@ -143,6 +148,11 @@ func (e *usageError) Error() string {
 func usagef(verb, format string, a ...any) error {
 	return &usageError{verb: verb, msg: fmt.Sprintf(format, a...)}
 }
+
+// exitError ends a command with code, its output already printed.
+type exitError struct{ code int }
+
+func (e *exitError) Error() string { return fmt.Sprintf("exit %d", e.code) }
 
 // codeNoIdentity is the refusal code for a session with no identity.
 const codeNoIdentity = "none"

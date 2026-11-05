@@ -76,7 +76,7 @@ func TestManual_everyCommandHasOneSectionWithAnExample(t *testing.T) {
 // command, a flag, or the one shell command a config file's mode needs.
 var nextStep = regexp.MustCompile(`grelot (--self |--provider \S+ )?(as \S+ )?(` +
 	`register|revive|me|set|renew|bye|who|path|help|post|inbox|history|receipts|threads|follow|unfollow|` +
-	`reserve|release|reservations|delegate|as|provider check)\b|--[a-z][a-z-]+|chmod 600`)
+	`reserve|release|reservations|delegate|as|watch|wait|provider check)\b|--[a-z][a-z-]+|chmod 600`)
 
 func TestRefusals_nameTheNextCommandOrAFlag(t *testing.T) {
 	ts := newServer(t)
@@ -118,6 +118,15 @@ func TestRefusals_nameTheNextCommandOrAFlag(t *testing.T) {
 		{name: "as nothing", args: []string{"as"}},
 		{name: "as an unknown command", args: []string{"as", "a/b", "bogus"}},
 		{name: "as with self", args: []string{"--self", "as", "a/b", "me"}},
+		{name: "watch an argument", args: []string{"watch", "x"}},
+		{name: "watch a door and a transport", args: []string{"watch", "--door", "a", "--transport", "exit"}},
+		{name: "watch a command with no transport", args: []string{"watch", "--", "x"}},
+		{name: "watch a bad transport", args: []string{"watch", "--transport", "http"}},
+		{name: "watch no door", args: []string{"watch"}},
+		{name: "watch as a delegate", args: []string{"as", "a/b", "watch"}},
+		{name: "wait no timeout", args: []string{"wait"}},
+		{name: "wait an argument", args: []string{"wait", "x", "--timeout", "1m"}},
+		{name: "unregistered wait", args: []string{"wait", "--timeout", "1m"}},
 		{name: "unregistered inbox", args: []string{"inbox"}},
 		{name: "unregistered set", args: []string{"set", "--desc", "x"}},
 		{

@@ -36,16 +36,27 @@ const (
 // testMachine is a machine id as where.Machine answers one.
 const testMachine = "dmi:0123456789abcdef0123456789abcdef"
 
-// clock is the server's clock, which a test moves forward.
+// clock is the server's clock, which a test moves forward. Once live, it
+// also runs with the wall clock, so a held wait can lapse.
 type clock struct {
-	mu  sync.Mutex
-	now time.Time
+	mu   sync.Mutex
+	now  time.Time
+	live time.Time
 }
 
 func (c *clock) Now() time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if !c.live.IsZero() {
+		return c.now.Add(time.Since(c.live))
+	}
 	return c.now
+}
+
+func (c *clock) run() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.live = time.Now()
 }
 
 func (c *clock) advance(d time.Duration) {

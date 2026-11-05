@@ -111,6 +111,18 @@ Global flags go before the command: `--self` acts as this session's own identity
 
     grelot inbox
 
+### grelot watch
+
+`grelot watch [--door <name>]` is the watcher. Start it once under your host's background facility, with the command the status line names after `wake: down`. It holds the server's wait for your new mail and runs your provider's watcher door, the first one or the one `--door` names, for each signal: `[grelot:<seq>] grelot (automated, not the user): <n> new; run grelot inbox`, a line that names no sender, thread or path. `grelot watch --transport stdout|exit|exec [-- <argv>]` runs one with no provider file: `stdout` prints a line per signal, `exit` prints one and exits, `exec` runs the command after `--` with `{{.Line}}` standing for the line. It never reads or marks mail. When your identity goes dormant or retires, or your session ends, it writes the end line, `[grelot:end] ... run grelot me`, and stops. A delegate never runs one: it uses `grelot as <handle> wait`.
+
+    grelot watch --transport exit
+
+### grelot wait
+
+`grelot wait --timeout <d>` waits inside your turn for new mail, when your next step depends on a reply. It prints the first new mail as `grelot inbox` does and marks it read, or at the timeout only the status line. Never run it in the background, where nothing shows its output to you: there the watcher on the `exit` transport is the form to use.
+
+    grelot wait --timeout 10m
+
 ### grelot history
 
 `grelot history [--thread <id>] [--path <p>] [--with @name] [--announce] [--from @name|@me] [--since <d|time>] [--until <d|time>] [--grep <text>] [--limit <n>] [--full] [--last-read]` reads past mail, read and unread, with your own posts merged in, and moves no read mark. The filters combine; the default is the last 24 hours, 20 entries, each with its subject and first line (`--full` for whole bodies). `--last-read` shows the page the last inbox printed.
