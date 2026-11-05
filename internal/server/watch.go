@@ -153,8 +153,9 @@ func (s *Server) watcherSent(id uint64, n nudgeJSON) {
 
 // deferred reports whether due, a first nudge, waits for the hooks: while
 // id's turn is open, until it lapses, or while an in-turn wait covers it
-// (presence.inTurnHolds). until is zero when only a commit ends the
-// deferral. A re-nudge never waits.
+// (presence.inTurnHolds). until is zero when the deferral ends on a wake
+// rather than a clock (the in-turn wait closing, or a commit). A re-nudge
+// never waits.
 func (s *Server) deferred(id uint64, due *store.Nudge) (until time.Time, ok bool) {
 	if due.Attempt > 1 {
 		return time.Time{}, false

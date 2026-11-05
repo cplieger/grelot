@@ -316,6 +316,37 @@ func TestWho_aDelegateIsOnlineWhileItWasSeenUnder90s(t *testing.T) {
 	}
 }
 
+func TestWho_aDelegateWhoseSessionEndedIsOfflineAtOnce(t *testing.T) {
+	h := whoHarness(t)
+	g, err := h.store.Delegate(t.Context(), &store.Grant{Caller: store.Caller{Session: sessOf("toolbelt-dev"), Self: true}, Label: "sub", TTL: time.Hour})
+	if err != nil {
+		t.Fatalf("Delegate: %v", err)
+	}
+	own := sessOf("toolbelt-dev-sub")
+	if r := h.as(own, http.MethodPost, "/v1/register", map[string]any{"delegate": g.Link, "description": "testing the chooser"}); r.status != http.StatusCreated {
+		t.Fatalf("register --delegate from its own session: %d %s", r.status, r.raw)
+	}
+	subOn := func() any {
+		ds, _ := entries(t, h.as(sessOf("docs-writer"), http.MethodGet, "/v1/identities?q=chooser", nil))["toolbelt-dev"]["delegates"].([]any)
+		for _, d := range ds {
+			if d, _ := d.(map[string]any); d["name"] == "toolbelt-dev/sub" {
+				return d["online"]
+			}
+		}
+		t.Fatalf("toolbelt-dev delegates %v, want toolbelt-dev/sub among them", ds)
+		return nil
+	}
+	if on := subOn(); on != true {
+		t.Fatalf("a delegate just registered: online %v, want true", on)
+	}
+	if r := h.as(own, http.MethodPost, "/v1/lifecycle", map[string]any{"event": "session_end"}); r.status != http.StatusOK {
+		t.Fatalf("session_end: %d %s", r.status, r.raw)
+	}
+	if on := subOn(); on != false {
+		t.Errorf("a delegate whose session ended: online %v, want false at once", on)
+	}
+}
+
 func TestWho_textFindsAParentByItsDelegate(t *testing.T) {
 	h := whoHarness(t)
 	got := entries(t, h.as(sessOf("docs-writer"), http.MethodGet, "/v1/identities?q=reviewing", nil))
