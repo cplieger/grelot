@@ -172,7 +172,7 @@ func (p *postLimit) take(key uint64, now time.Time) (at time.Time, retry time.Du
 	}
 	if len(times) >= postsPerMinute {
 		p.m[key] = times
-		return time.Time{}, max(time.Second, times[0].Add(time.Minute).Sub(now).Round(time.Second)), false
+		return time.Time{}, retryAfter(times[0].Add(time.Minute).Sub(now)), false
 	}
 	p.m[key] = append(times, now)
 	return now, 0, true
@@ -206,4 +206,13 @@ func (p *postLimit) give(key uint64, at time.Time) {
 		return
 	}
 	p.m[key] = times
+}
+
+// retryAfter is d rounded up to whole seconds with a 1 s floor, so a client
+// that waits the Retry-After it was sent is admitted (RFC 9110 section 10.2.3).
+func retryAfter(d time.Duration) time.Duration {
+	if r := d.Truncate(time.Second); r < d {
+		d = r + time.Second
+	}
+	return max(time.Second, d)
 }

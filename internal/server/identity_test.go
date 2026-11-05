@@ -260,35 +260,3 @@ func TestDelegateGate_refusesASessionWithDelegatesNamingNeither(t *testing.T) {
 		}
 	})
 }
-
-func TestMe_agentActsAsTheDelegateBoundToIt(t *testing.T) {
-	h := newHarness(t)
-	h.mustRegister(sessA, "grelot-dev")
-	g, err := h.store.Delegate(t.Context(), &store.Grant{Caller: store.Caller{Session: sessA}, Label: "tests", TTL: time.Hour})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if r := h.as(sessA, http.MethodPost, "/v1/register", map[string]any{"delegate": g.Link, "description": "writing tests"}); r.status != http.StatusCreated {
-		t.Fatalf("register --delegate: %d %s", r.status, r.raw)
-	}
-	if err := h.store.Bind(t.Context(), store.Caller{Session: sessA, As: g.Handle}, "agent-1"); err != nil {
-		t.Fatal(err)
-	}
-	t.Run("a bound agent id", func(t *testing.T) {
-		r := h.as(sessA, http.MethodGet, "/v1/me?agent=agent-1", nil)
-		if r.status != http.StatusOK || identityOf(r)["name"] != g.Handle {
-			t.Errorf("got %d %s, want 200 as %s", r.status, r.raw, g.Handle)
-		}
-	})
-	t.Run("an unbound agent id is 410", func(t *testing.T) {
-		if r := h.as(sessA, http.MethodGet, "/v1/me?agent=agent-2", nil); r.status != http.StatusGone {
-			t.Errorf("got %d %s, want 410", r.status, r.raw)
-		}
-	})
-	t.Run("another route ignores the parameter", func(t *testing.T) {
-		r := h.as(sessA, http.MethodPatch, "/v1/me?agent=agent-1", map[string]any{"description": "x"})
-		if r.status != http.StatusConflict {
-			t.Errorf("got %d %s, want the gate's 409 for the parent", r.status, r.raw)
-		}
-	})
-}

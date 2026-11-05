@@ -11,7 +11,7 @@ import (
 	"github.com/cplieger/grelot/internal/store"
 )
 
-// The request headers of section "HTTP API".
+// The request headers every /v1 route reads.
 const (
 	headerVersion = "Grelot-Version"
 	headerSession = "Grelot-Session"
@@ -50,20 +50,14 @@ type callerMode int
 const (
 	// callerSession requires Grelot-Session.
 	callerSession callerMode = iota
-	// callerAgent also reads the subagent id in the agent parameter.
-	callerAgent
 	// callerAnyone takes a request with no Grelot-Session as a session with
 	// no identity, so an agent can look before it registers.
 	callerAnyone
 )
 
-// callerOf reads who an identity request acts as from its headers and,
-// under callerAgent, the subagent id its agent parameter names.
+// callerOf reads who an identity request acts as from its headers.
 func callerOf(r *http.Request, mode callerMode) (store.Caller, error) {
 	c := store.Caller{Session: r.Header.Get(headerSession), As: r.Header.Get(headerAs)}
-	if mode == callerAgent {
-		c.Agent = r.URL.Query().Get("agent")
-	}
 	if c.Session == "" && (mode != callerAnyone || c.As != "") {
 		return c, badRequest("Grelot-Session is required: send <provider>:<host session id>")
 	}
@@ -85,10 +79,6 @@ type identityFunc func(r *http.Request, c store.Caller) (int, any, error)
 // caller's status line on the answer, read after fn so it shows what fn
 // changed.
 func (s *Server) identity(fn identityFunc) http.Handler { return s.identityFor(fn, callerSession) }
-
-// identityAgent is identity for a route a subagent's hook calls, which
-// acts as the delegate bound to the subagent id in its agent parameter.
-func (s *Server) identityAgent(fn identityFunc) http.Handler { return s.identityFor(fn, callerAgent) }
 
 // anyone is identity for a read any caller may make, with or without a
 // session.

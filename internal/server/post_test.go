@@ -154,9 +154,33 @@ func TestPost_thirtyAMinuteADelegateCountingAsItsParent(t *testing.T) {
 	if r.status != http.StatusTooManyRequests || r.header.Get("Retry-After") != "60" {
 		t.Fatalf("31st post: %d Retry-After %q %s, want 429 after 60 s", r.status, r.header.Get("Retry-After"), r.raw)
 	}
-	h.clk.advance(time.Minute + time.Second)
+	h.clk.advance(29600 * time.Millisecond)
+	r = post(self, "reader", "still too many")
+	if r.status != http.StatusTooManyRequests || r.header.Get("Retry-After") != "31" {
+		t.Fatalf("post with the oldest 29.6 s old: %d Retry-After %q, want 429 after 31 s, rounded up", r.status, r.header.Get("Retry-After"))
+	}
+	h.clk.advance(31 * time.Second)
 	if r := post(self, "reader", "a new minute"); r.status != http.StatusCreated {
-		t.Errorf("post a minute later: %d %s", r.status, r.raw)
+		t.Errorf("post after the Retry-After: %d %s", r.status, r.raw)
+	}
+}
+
+func TestRetryAfter_roundsUpWithAOneSecondFloor(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		in   time.Duration
+		want time.Duration
+	}{
+		{name: "whole seconds", in: 60 * time.Second, want: 60 * time.Second},
+		{name: "a fraction past a second", in: 30400 * time.Millisecond, want: 31 * time.Second},
+		{name: "under a second", in: 200 * time.Millisecond, want: time.Second},
+		{name: "nothing left", in: 0, want: time.Second},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := retryAfter(c.in); got != c.want {
+				t.Errorf("retryAfter(%v) = %v, want %v", c.in, got, c.want)
+			}
+		})
 	}
 }
 

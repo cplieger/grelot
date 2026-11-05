@@ -366,8 +366,8 @@ type Delegation struct {
 }
 
 // GrantedDelegate is a live delegate as its parent sees it. Bound reports
-// one tied to a session or a subagent id of its own, which the delegate
-// gate no longer counts.
+// one registered from a session of its own, which the delegate gate no
+// longer counts.
 type GrantedDelegate struct {
 	Expires     time.Time
 	LastSeen    time.Time
@@ -422,7 +422,7 @@ func (s *Store) liveDelegates(r *bolttable.ReadTx, parent uint64, now time.Time)
 		if found && settled(&d, now, s.dormantTTL) != nil {
 			out = append(out, GrantedDelegate{
 				Expires: d.Lease.Expires, LastSeen: s.lastSeen(&d), Handle: d.Name,
-				Description: d.Description, Bound: d.Session != "" || d.Agent != "",
+				Description: d.Description, Bound: d.Session != "",
 			})
 		}
 	}

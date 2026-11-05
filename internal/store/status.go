@@ -21,7 +21,7 @@ type Status struct {
 // KindGone with the register command (Why none) or the revive offer (Why
 // dormant) as its Msg, which is that session's status line.
 func (s *Store) Status(ctx context.Context, c Caller) (Status, error) {
-	if c.As == "" && c.Agent == "" {
+	if c.As == "" {
 		c.Self = true
 	}
 	var out Status

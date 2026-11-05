@@ -246,8 +246,7 @@ func (w *wtx) stampRead(me *identityRow, to uint64) ([]deliveryRow, error) {
 // them wakes, advances shown to the highest seq, so the next hold shows
 // only what commits after this one; cards alone advance nothing, and wait
 // for the next hold that shows a wake event. It never moves read, and
-// commits only when shown moves or seenDue asks for a write, since the
-// hooks hold on every tool call. A session with no live identity is
+// commits only when shown moves or seenDue asks for a write. A session with no live identity is
 // KindGone.
 func (s *Store) Hold(ctx context.Context, c Caller) (Held, error) {
 	var out Held

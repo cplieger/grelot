@@ -156,23 +156,6 @@ func (s *Server) revoke(r *http.Request, c store.Caller) (status int, body any, 
 	return http.StatusOK, revokeResponse{Ended: nonNil(got.Handles), Link: got.Link}, nil
 }
 
-type bindRequest struct {
-	AgentID string `json:"agent_id"`
-}
-
-// bind is POST /v1/me/bind: the host's subagent id recorded on the
-// delegate Grelot-As names.
-func (s *Server) bind(r *http.Request, c store.Caller) (status int, body any, err error) {
-	var req bindRequest
-	if derr := decode(r, &req); derr != nil {
-		return 0, nil, derr
-	}
-	if err := s.store.Bind(r.Context(), c, req.AgentID); err != nil {
-		return 0, nil, err
-	}
-	return http.StatusOK, map[string]bool{"bound": true}, nil
-}
-
 type lifecycleRequest struct {
 	Event   string `json:"event"`
 	AgentID string `json:"agent_id"`
@@ -196,7 +179,7 @@ func (s *Server) lifecycle(r *http.Request, c store.Caller) (status int, body an
 	ctx := r.Context()
 	switch req.Event {
 	case eventSubagentStop:
-		err = s.store.SubagentStop(ctx, c.Session, req.AgentID)
+		err = s.store.SubagentStop(ctx, c.Session)
 	case eventSessionEnd, eventTurnEnd:
 		if req.AgentID != "" {
 			break

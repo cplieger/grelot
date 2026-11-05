@@ -10,14 +10,11 @@ import (
 
 // Caller is who an identity request acts as: the identity bound to
 // Session or, with As (the Grelot-As header), the delegate of that handle,
-// which only its parent's session or its own may act as. Agent, a host's
-// subagent id a hook names, acts as the delegate of Session's identity
-// bound to it. Self is the Grelot-Self header, which an agent sends to act
+// which only its parent's session or its own may act as. Self is the Grelot-Self header, which an agent sends to act
 // as its own identity past the delegate gate.
 type Caller struct {
 	Session string
 	As      string
-	Agent   string
 	Self    bool
 }
 
@@ -114,9 +111,8 @@ func (s *Store) delegateFor(r *bolttable.ReadTx, c Caller, v *identityRow, now t
 	return d, true, nil
 }
 
-// callerID is the id of the row c names: its session's identity, the
-// delegate of its handle, or the delegate its session's identity bound to
-// its agent id.
+// callerID is the id of the row c names: its session's identity or the
+// delegate of its handle.
 func (s *Store) callerID(r *bolttable.ReadTx, c Caller) (id uint64, found bool, err error) {
 	if cerr := checkCaller(c); cerr != nil {
 		return 0, false, cerr
@@ -126,10 +122,6 @@ func (s *Store) callerID(r *bolttable.ReadTx, c Caller) (id uint64, found bool, 
 		return id, found, err
 	}
 	id, _, found, err = s.t.bySession.Lookup(r, []byte(c.Session))
-	if err != nil || !found || c.Agent == "" {
-		return id, found, err
-	}
-	id, _, found, err = s.t.byAgent.Lookup(r, agentKey(id, c.Agent))
 	return id, found, err
 }
 
@@ -163,8 +155,6 @@ func (s *Store) liveFor(r *bolttable.ReadTx, c Caller, now time.Time) (identityR
 
 func checkCaller(c Caller) error {
 	switch {
-	case c.Agent != "" && (c.As != "" || c.Self):
-		return refuse(KindInvalid, "a subagent id acts as the delegate bound to it: send it without --self or as <handle>")
 	case c.As == "":
 		return nil
 	case c.Self:
@@ -197,15 +187,13 @@ func asAllowed(c Caller, d, parent *identityRow) error {
 }
 
 // orEnded is err, else nothing for a session with no identity and the
-// delegate-ended refusal for a handle or an agent id.
+// delegate-ended refusal for a handle.
 func orEnded(err error, c Caller) error {
 	switch {
 	case err != nil:
 		return err
 	case c.As != "":
 		return delegateEnded(c.As)
-	case c.Agent != "":
-		return &Error{Kind: KindGone, Why: "delegate_ended", Msg: "no delegate is bound to this subagent; ask your parent for a new link"}
 	}
 	return nil
 }

@@ -14,7 +14,7 @@ const (
 	guideMD      = repoDocs + "/guide.md"
 )
 
-// whoFixture registers Ruling 13's agents: one on toolbelt holding
+// whoFixture registers four agents: one on toolbelt holding
 // engine.go, two on web-terminal-kiro with different descriptions, and
 // docs-writer on docs, which holds guide.md, queues for engine.go and
 // follows the web-terminal-kiro thread.

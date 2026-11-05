@@ -137,7 +137,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	}
 	handle("POST /v1/register", s.identity(s.register))
 	handle("POST /v1/revive", s.identity(s.revive))
-	handle("GET /v1/me", s.identityAgent(s.me))
+	handle("GET /v1/me", s.identity(s.me))
 	handle("PATCH /v1/me", s.identity(s.patchMe))
 	handle("DELETE /v1/me", s.identity(s.deleteMe))
 	handle("GET /v1/identities", s.anyone(s.who))
@@ -154,7 +154,6 @@ func (s *Server) routes(mux *http.ServeMux) {
 	handle("DELETE /v1/reservations/{id}", s.identity(s.release))
 	handle("POST /v1/delegates", s.identity(s.grant))
 	handle("DELETE /v1/delegates/{label}", s.identity(s.revoke))
-	handle("POST /v1/me/bind", s.identity(s.bind))
 	handle("POST /v1/lifecycle", s.identity(s.lifecycle))
 	handle("POST /v1/events/hold", s.identity(s.eventHold))
 	mux.Handle("POST /v1/events/wait", httpserver.RouteTimeout(s.identity(s.standingWait), waitRouteTimeout, ""))

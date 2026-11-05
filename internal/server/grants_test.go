@@ -94,29 +94,6 @@ func TestDelegates_grantGateAndRevoke(t *testing.T) {
 	}
 }
 
-func TestBind_oncePerDelegateFromTheParentsSession(t *testing.T) {
-	h := newHarness(t)
-	h.mustRegister(sessA, "parent")
-	handle := h.grantDelegate(sessA, "review")
-	bind := func(session, agent string) *response {
-		return h.request(http.MethodPost, "/v1/me/bind", map[string]any{"agent_id": agent},
-			map[string]string{headerSession: session, headerAs: handle})
-	}
-	if r := bind(sessC, "agent-1"); r.status != http.StatusForbidden {
-		t.Errorf("a bind from another session: %d %s, want 403", r.status, r.raw)
-	}
-	if r := bind(sessA, "agent-1"); r.status != http.StatusOK {
-		t.Fatalf("bind: %d %s", r.status, r.raw)
-	}
-	if r := bind(sessA, "agent-2"); r.status != http.StatusConflict {
-		t.Errorf("a second bind: %d %s, want 409", r.status, r.raw)
-	}
-	r := h.as(sessA, http.MethodGet, "/v1/me?agent=agent-1", nil)
-	if id, _ := r.body["identity"].(map[string]any); r.status != http.StatusOK || id["name"] != handle {
-		t.Errorf("me for the bound id: %d %s, want the delegate", r.status, r.raw)
-	}
-}
-
 func TestLifecycle_sessionEndSubagentStopAndTurnEnd(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegister(sessA, "parent")
@@ -140,8 +117,6 @@ func TestLifecycle_sessionEndSubagentStopAndTurnEnd(t *testing.T) {
 		}
 		return st.Identity.Ended
 	}
-	h.request(http.MethodPost, "/v1/me/bind", map[string]any{"agent_id": "agent-1"}, map[string]string{headerSession: sessA, headerAs: handle})
-
 	if r := life(map[string]string{headerSession: sessA}, eventSubagentStop, "internal-agent"); r.status != http.StatusOK {
 		t.Errorf("subagent_stop for an unbound id: %d %s, want 200 past the gate", r.status, r.raw)
 	}
@@ -154,11 +129,8 @@ func TestLifecycle_sessionEndSubagentStopAndTurnEnd(t *testing.T) {
 	if r := life(self, eventTurnEnd, ""); r.status != http.StatusOK {
 		t.Errorf("turn_end: %d %s", r.status, r.raw)
 	}
-	if r := life(map[string]string{headerSession: sessA}, eventSubagentStop, "agent-1"); r.status != http.StatusOK {
-		t.Fatalf("subagent_stop: %d %s", r.status, r.raw)
-	}
-	if r := h.request(http.MethodGet, "/v1/inbox", nil, map[string]string{headerSession: sessA, headerAs: handle}); r.status/100 != 4 {
-		t.Errorf("the stopped delegate still acts: %d %s", r.status, r.raw)
+	if r := h.request(http.MethodGet, "/v1/inbox", nil, map[string]string{headerSession: sessA, headerAs: handle}); r.status != http.StatusOK {
+		t.Errorf("the parent's subagent_stop ended its delegate: %d %s, want it still acting", r.status, r.raw)
 	}
 
 	second := h.grantDelegate(sessA, "tests")

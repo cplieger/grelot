@@ -21,7 +21,7 @@ const (
 
 func sessOf(name string) string { return "kiro-cli:session-" + name }
 
-// whoHarness registers Ruling 13's agents: toolbelt-dev holding
+// whoHarness registers four agents: toolbelt-dev holding
 // engine.go with one delegate, wtk-ui and wtk-server on
 // web-terminal-kiro (wtk-server in another environment), and docs-writer
 // holding guide.md, queued for engine.go and following the
@@ -90,7 +90,7 @@ func sortedKeys(m map[string]any) []string { return slices.Sorted(maps.Keys(m)) 
 
 func TestWho_listsEveryAgentWithItsDeclaredWork(t *testing.T) {
 	h := whoHarness(t)
-	// Ruling 13's entry, plus state, which marks a dormant one under all=1.
+	// Every field an entry carries; state marks a dormant one under all=1.
 	wantKeys := []string{
 		"arch", "delegates", "description", "expires_at", "follows", "host", "last_seen",
 		"name", "online", "os", "paths", "queued", "relation", "reservations", "state",

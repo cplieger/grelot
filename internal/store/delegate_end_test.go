@@ -79,77 +79,30 @@ func TestDelegate_revoke(t *testing.T) {
 	})
 }
 
-func TestDelegate_bind(t *testing.T) {
-	s, _, _ := openIdentityStore(t)
-	regAt(t, s, "stranger", repoGrelot)
-	_, d := delegateOf(t, s, "parent", "review")
-	other := mustRegisterDelegate(t, s, sess("parent"), mustGrant(t, s, grantFrom("parent", "other")).Link)
-	if err := s.Bind(t.Context(), as(sess("parent"), d.Name), "agent-1"); err != nil {
-		t.Fatal(err)
-	}
-	if row, _ := findIdentity(t, s, d.ID); row.Agent != "agent-1" {
-		t.Errorf("stored agent %q, want agent-1", row.Agent)
-	}
-	t.Run("a second binding of the delegate", func(t *testing.T) {
-		wantRefusal(t, s.Bind(t.Context(), as(sess("parent"), d.Name), "agent-2"), KindConflict, "", d.Name)
-	})
-	t.Run("a second binding of the agent id", func(t *testing.T) {
-		wantRefusal(t, s.Bind(t.Context(), as(sess("parent"), other.Name), "agent-1"), KindConflict, "", "agent-1")
-	})
-	t.Run("no handle", func(t *testing.T) {
-		wantRefusal(t, s.Bind(t.Context(), self("parent"), "agent-3"), KindInvalid, "", "")
-	})
-	t.Run("no agent id", func(t *testing.T) {
-		wantRefusal(t, s.Bind(t.Context(), as(sess("parent"), other.Name), ""), KindInvalid, "", "")
-	})
-	t.Run("another session", func(t *testing.T) {
-		wantRefusal(t, s.Bind(t.Context(), as(sess("stranger"), other.Name), "agent-3"), KindForbidden, "", "")
-	})
-}
-
 func TestDelegate_subagentStop(t *testing.T) {
-	t.Run("a bound agent id ends its delegate", func(t *testing.T) {
-		s, _, sink := openIdentityStore(t)
-		p, d := delegateOf(t, s, "parent", "review")
-		if err := s.Bind(t.Context(), as(sess("parent"), d.Name), "agent-1"); err != nil {
-			t.Fatal(err)
-		}
-		if err := s.SubagentStop(t.Context(), sess("parent"), "agent-1"); err != nil {
-			t.Fatal(err)
-		}
-		if identityExists(t, s, d.ID) {
-			t.Error("delegate kept after its SubagentStop, want it deleted")
-		}
-		if why := endedWhy(sink, d.Name); len(why) != 1 || why[0] != "subagent_stop" {
-			t.Errorf("delegate ended lines %v, want one subagent_stop", why)
-		}
-		if row, found := findIdentity(t, s, p.ID); !found || row.State != stateLive {
-			t.Errorf("parent found %v state %q, want it live", found, row.State)
-		}
-	})
 	t.Run("the session's own delegate", func(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
 		regAt(t, s, "parent", repoSubflux)
 		d := mustRegisterDelegate(t, s, "codex:thread-1", mustGrant(t, s, grantFrom("parent", "codex")).Link)
-		if err := s.SubagentStop(t.Context(), "codex:thread-1", "agent-9"); err != nil {
+		if err := s.SubagentStop(t.Context(), "codex:thread-1"); err != nil {
 			t.Fatal(err)
 		}
 		if identityExists(t, s, d.ID) {
 			t.Error("delegate kept after its own session's SubagentStop")
 		}
 	})
-	t.Run("an unbound agent id, from a session holding a link", func(t *testing.T) {
+	t.Run("the parent's session ends none of its delegates", func(t *testing.T) {
 		s, sink, _, _ := gateFixture(t)
 		d := mustRegisterDelegate(t, s, sess("parent"), mustGrant(t, s, grantFrom("parent", "bound")).Link)
 		lines := len(*sink.records)
-		if err := s.SubagentStop(t.Context(), sess("parent"), "prompt-suggestion"); err != nil {
-			t.Errorf("SubagentStop for an unbound id: %v, want no refusal", err)
+		if err := s.SubagentStop(t.Context(), sess("parent")); err != nil {
+			t.Errorf("SubagentStop from the parent's session: %v, want no refusal", err)
 		}
 		if n := len(*sink.records) - lines; n != 0 {
-			t.Errorf("%d log lines, want none for an unbound id", n)
+			t.Errorf("%d log lines, want none", n)
 		}
 		if !identityExists(t, s, d.ID) {
-			t.Error("the session's unbound delegate ended")
+			t.Error("the parent's SubagentStop ended its delegate")
 		}
 	})
 }
