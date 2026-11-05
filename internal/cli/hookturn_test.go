@@ -309,6 +309,43 @@ func TestHookPrompt_staleSignalBlock(t *testing.T) {
 	})
 }
 
+// End to end against the server: the signal is blocked from the moment
+// read reaches its seq, and runs its turn while that seq is unread.
+func TestHookPrompt_staleSignalBlockAgainstTheServer(t *testing.T) {
+	ts := newServer(t)
+	a := turnAgent(t, ts, hookTurnFile)
+	b, _ := registerAt(t, ts, "s-2", "bee-dev")
+	a.must("inbox")
+	for i := range 3 {
+		b.postTo("@toolbelt-dev", fmt.Sprintf("question %d", i+1))
+	}
+	var page client.Inbox
+	ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodGet, Path: "/v1/inbox"}, &page)
+	if len(page.Entries) != 3 {
+		t.Fatalf("inbox holds %d entries, want the 3 questions", len(page.Entries))
+	}
+	sig := page.Entries[1].Seq
+	line := signal(int(sig), 1)
+	stale := fmt.Sprintf("signal %d is stale", sig)
+	ackUpto := func(seq uint64) {
+		var left client.Acked
+		ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodPost, Path: "/v1/inbox/ack", Body: map[string]uint64{"upto": seq}}, &left)
+	}
+
+	ackUpto(page.Entries[0].Seq)
+	t.Run("read one below the signal runs the turn", func(t *testing.T) {
+		if code, out := a.prompt(line); code != 0 || !strings.HasPrefix(out, "grelot: @toolbelt-dev · 2 unread") {
+			t.Errorf("exit %d, stdout %q; want the turn's line", code, out)
+		}
+	})
+	ackUpto(sig)
+	t.Run("read at the signal with newer mail unread blocks it", func(t *testing.T) {
+		if code, out := a.prompt(line); code != 0 || !strings.Contains(blockReason(t, out), stale) {
+			t.Errorf("exit %d, stdout %q; want the block naming %q", code, out, stale)
+		}
+	})
+}
+
 func TestHookPrompt_signalPattern(t *testing.T) {
 	ts := newServer(t)
 	file := strings.Replace(hookTurnFile, "    event: Prompt\n",
