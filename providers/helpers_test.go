@@ -3,6 +3,7 @@ package providers_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -114,13 +115,19 @@ type shell struct {
 	home     string
 	config   string
 	wd       string
+	// version is the client's release, the server's own unless a test
+	// sets another.
+	version string
+	// fixtures is the provider whose recorded payloads fixture reads, the
+	// shell's own when empty.
+	fixtures string
 }
 
 // newShell is a shell of the named shipped provider whose environment
 // holds vars, with a client config naming the server and host label box.
 func newShell(t *testing.T, srv *testServer, name string, vars map[string]string) *shell {
 	t.Helper()
-	s := &shell{t: t, srv: srv, provider: name, vars: vars, home: t.TempDir(), config: t.TempDir(), wd: t.TempDir()}
+	s := &shell{t: t, srv: srv, provider: name, vars: vars, home: t.TempDir(), config: t.TempDir(), wd: t.TempDir(), version: "v1.1.0"}
 	file := client.ConfigFile(s.config)
 	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
 		t.Fatal(err)
@@ -164,7 +171,7 @@ func (s *shell) run(stdin string, args ...string) outcome {
 		Providers:   set,
 		Processes:   s.procs,
 		ConfigDir:   s.config,
-		Version:     "v1.1.0",
+		Version:     s.version,
 		PID:         300,
 	}, args)
 	return outcome{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Requests: s.srv.since(before)}
@@ -177,13 +184,121 @@ func (s *shell) hook(role string, in []byte) outcome {
 	return s.run(string(in), "hook", s.provider, role)
 }
 
-// fixture reads a recorded hook input of the shell's provider,
-// testdata/golden/<provider>/<name>.json.
+// fixture reads a recorded hook input, testdata/golden/<provider>/<name>.json.
 func (s *shell) fixture(name string) []byte {
 	s.t.Helper()
-	data, err := os.ReadFile(filepath.Join("testdata", "golden", s.provider, name+".json"))
+	dir := s.fixtures
+	if dir == "" {
+		dir = s.provider
+	}
+	data, err := os.ReadFile(filepath.Join("testdata", "golden", dir, name+".json"))
 	if err != nil {
 		s.t.Fatal(err)
 	}
 	return data
+}
+
+// must runs one grelot command and fails the test unless it exits 0.
+func (s *shell) must(stdin string, args ...string) string {
+	s.t.Helper()
+	got := s.run(stdin, args...)
+	if got.Code != 0 {
+		s.t.Fatalf("grelot %s exited %d\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), got.Code, got.Stdout, got.Stderr)
+	}
+	return got.Stdout
+}
+
+// register registers the shell's session as name, working in its own
+// directory for two hours.
+func (s *shell) register(name string) {
+	s.t.Helper()
+	s.must("", "register", name, "--paths", filepath.ToSlash(s.wd), "--desc", "testing the provider file", "--ttl", "2h")
+}
+
+// post sends one message to target from the shell's identity.
+func (s *shell) post(target, body string) {
+	s.t.Helper()
+	s.must(body, "post", target, "Question: shape", "--name", "no change", "--paths", "no change", "--desc", "no change")
+}
+
+// wire is one command a hook file runs for a host event.
+type wire struct {
+	Event   string
+	Command string
+	Timeout int
+}
+
+// kiroHookFile is the hook file format of the Kiro agent server: a v1 file
+// in ~/.kiro/hooks/.
+type kiroHookFile struct {
+	Version string `json:"version"`
+	Hooks   []struct {
+		Trigger string `json:"trigger"`
+		Matcher string `json:"matcher"`
+		Action  struct {
+			Type    string `json:"type"`
+			Command string `json:"command"`
+		} `json:"action"`
+		Timeout int `json:"timeout"`
+	} `json:"hooks"`
+}
+
+// hookWiring reads a provider's hook file, <provider>/hooks.json, as the
+// commands it runs per event.
+func hookWiring(t *testing.T, name string) []wire {
+	t.Helper()
+	var f kiroHookFile
+	if err := json.Unmarshal(mustRead(t, filepath.Join(name, "hooks.json")), &f); err != nil {
+		t.Fatalf("%s/hooks.json: %v", name, err)
+	}
+	if f.Version != "v1" {
+		t.Errorf("%s/hooks.json version %q, want v1", name, f.Version)
+	}
+	var got []wire
+	for _, h := range f.Hooks {
+		if h.Action.Type != "command" || h.Matcher != "" {
+			t.Errorf("%s/hooks.json: %s hook is a %q action with matcher %q, want a command for every call", name, h.Trigger, h.Action.Type, h.Matcher)
+		}
+		got = append(got, wire{Event: h.Trigger, Command: h.Action.Command, Timeout: h.Timeout})
+	}
+	return got
+}
+
+// wantWiring is what a provider's hook file must run: grelot hook
+// <provider> <role> under each role's event with a 10 s timeout, for every
+// role the provider spells and no other.
+func wantWiring(t *testing.T, name string) []wire {
+	t.Helper()
+	set, err := provider.LoadSet(providers.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := set.Get(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want []wire
+	add := func(role, event string) {
+		want = append(want, wire{Event: event, Command: "grelot hook " + name + " " + role, Timeout: 10})
+	}
+	hs := &p.Hooks
+	if hs.SessionStart != nil {
+		add("session_start", hs.SessionStart.Event)
+	}
+	if hs.Prompt != nil {
+		add("prompt", hs.Prompt.Event)
+	}
+	if hs.Stop != nil {
+		add("stop", hs.Stop.Event)
+	}
+	if hs.TurnEnd != nil {
+		add("turn_end", hs.TurnEnd.Event)
+	}
+	if hs.SessionEnd != nil {
+		add("session_end", hs.SessionEnd.Event)
+	}
+	if hs.SubagentStop != nil {
+		add("subagent_stop", hs.SubagentStop.Event)
+	}
+	return want
 }

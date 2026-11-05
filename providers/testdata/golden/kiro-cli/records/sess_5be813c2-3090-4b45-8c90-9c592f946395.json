@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "1.0.0",
+  "dataModelVersion": 1,
+  "id": "sess_5be813c2-3090-4b45-8c90-9c592f946395",
+  "title": "tangent",
+  "agentMode": "vibe",
+  "workspacePaths": [
+    "/workspace"
+  ],
+  "rootPaths": [
+    "/workspace"
+  ],
+  "createdAt": "2026-11-04T02:27:42.597Z",
+  "lastModifiedAt": "2026-11-04T02:27:44.083Z",
+  "parentSessionId": "sess_ef71553f-8632-4ea2-a64f-846c852e8478",
+  "forkedAtMessageId": "71b07cc0-176c-499c-9a6d-7270ef2c9f41-turn-end",
+  "createdReason": "tangent",
+  "modelId": "claude-sonnet-5.5",
+  "workflowLaunch": "when-asked",
+  "effortLevel": "high",
+  "disableAutoCompaction": true,
+  "memoryConfig": {
+    "mode": "disabled",
+    "reflection": false
+  },
+  "memoryConfigSource": "explicit",
+  "titleSetByUser": true,
+  "rootConversationId": "sess_ef71553f-8632-4ea2-a64f-846c852e8478"
+}

@@ -1,0 +1,11 @@
+# The Kiro IDE, which runs the Kiro CLI's agent server with its own client.
+# It takes kiro-cli's session, hooks and workflow door. It is never detected:
+# its shells carry the same KIRO_SESSION_ID as kiro-cli's, so a client config
+# picks it with provider: kiro-ide, and its own hook file names kiro-ide in
+# every command. The IDE and the CLI read one ~/.kiro/hooks folder, so a
+# machine installs this hook file or kiro-cli's, never both. Its own hook
+# payloads are not recorded yet, so its tests run on kiro-cli's.
+name: kiro-ide
+extends: kiro-cli
+evidence: unverified
+notes: docs/hosts/kiro-ide.md

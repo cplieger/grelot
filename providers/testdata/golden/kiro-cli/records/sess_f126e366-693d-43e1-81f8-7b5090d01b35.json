@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "1.0.0",
+  "dataModelVersion": 1,
+  "id": "sess_f126e366-693d-43e1-81f8-7b5090d01b35",
+  "title": "rewind",
+  "agentMode": "vibe",
+  "workspacePaths": [
+    "/tmp/p3tui"
+  ],
+  "rootPaths": [
+    "/tmp/p3tui"
+  ],
+  "createdAt": "2026-11-04T02:48:32.000Z",
+  "lastModifiedAt": "2026-11-04T02:48:32.000Z",
+  "parentSessionId": "sess_dd97485d-a96a-44bc-ba17-eb8230525c06",
+  "forkedAtMessageId": "71b07cc0-176c-499c-9a6d-7270ef2c9f41-turn-end",
+  "createdReason": "rewind",
+  "modelId": "claude-sonnet-5.5",
+  "workflowLaunch": "when-asked",
+  "effortLevel": "high",
+  "disableAutoCompaction": true,
+  "memoryConfig": {
+    "mode": "disabled",
+    "reflection": false
+  },
+  "memoryConfigSource": "explicit",
+  "rootConversationId": "sess_dd97485d-a96a-44bc-ba17-eb8230525c06"
+}
