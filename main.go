@@ -88,7 +88,7 @@ func clientCommand(args []string, stderr io.Writer) int {
 	defer stop()
 	return cli.Run(ctx, &cli.Env{
 		Stdin: os.Stdin, Stdout: os.Stdout, Stderr: stderr,
-		Lookup: os.LookupEnv, Hostname: os.Hostname, Getwd: os.Getwd,
+		Lookup: os.LookupEnv, Hostname: os.Hostname, Getwd: os.Getwd, Home: os.UserHomeDir,
 		Machine: where.Machine, InContainer: where.InContainer,
 		Providers: set, Processes: proctree.System(),
 		ConfigDir: configDir, Version: version, PID: os.Getpid(),

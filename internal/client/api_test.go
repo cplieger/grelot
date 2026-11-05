@@ -145,6 +145,20 @@ func TestDo_retriesAGetAndSendsAPostOnce(t *testing.T) {
 	}
 }
 
+func TestNewHookAPI_sendsAGetOnce(t *testing.T) {
+	f := newFake(t, answerJSON(http.StatusServiceUnavailable, `{"error":"store unavailable","code":"unavailable"}`))
+	a, err := NewHookAPI(&Config{Server: f.srv.URL, Token: "test-token"}, "v1.1.0", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Do(t.Context(), &Request{Method: http.MethodGet, Path: "/v1/me"}, nil); err == nil {
+		t.Error("Do answered no error for a 503")
+	}
+	if n := len(f.requests()); n != 1 {
+		t.Errorf("server saw %d requests, want 1", n)
+	}
+}
+
 func TestDo_refusal(t *testing.T) {
 	f := newFake(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Grelot-Status", "grelot: @a · 0 unread · wake: watcher")

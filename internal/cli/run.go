@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/cplieger/grelot/internal/canon"
 	"github.com/cplieger/grelot/internal/client"
@@ -45,6 +46,13 @@ func (r *run) config() (*client.Config, error) {
 	return cfg, nil
 }
 
+func (r *run) now() time.Time {
+	if r.Now != nil {
+		return r.Now()
+	}
+	return time.Now()
+}
+
 func (r *run) tree() []proctree.Process {
 	if !r.readTree {
 		r.readTree = true
@@ -81,7 +89,11 @@ func (r *run) client(identity bool) (*client.API, error) {
 	if err != nil {
 		return nil, err
 	}
-	a, err := client.NewAPI(cfg, r.Version, r.ConfigDir)
+	newAPI := client.NewAPI
+	if r.verb == verbHook {
+		newAPI = client.NewHookAPI
+	}
+	a, err := newAPI(cfg, r.Version, r.ConfigDir)
 	if err != nil {
 		return nil, err
 	}

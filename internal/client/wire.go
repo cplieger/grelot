@@ -14,6 +14,7 @@ const (
 type Me struct {
 	Identity     *Identity     `json:"identity"`
 	Unread       *Counts       `json:"unread"`
+	Hint         *Hint         `json:"hint"`
 	State        string        `json:"state"`
 	Wake         string        `json:"wake"`
 	Version      string        `json:"version"`
@@ -42,6 +43,12 @@ type Identity struct {
 	Paths            []string  `json:"paths"`
 	Follows          []string  `json:"follows"`
 	EnvironmentKnown bool      `json:"environment_known"`
+}
+
+// Hint is the take-over hint a session with no identity may get: Line
+// names the identity and the command that goes on as it.
+type Hint struct {
+	Line string `json:"line"`
 }
 
 // Counts is unread deliveries by kind.

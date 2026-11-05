@@ -59,11 +59,21 @@ type API struct {
 // retried with backoff, every other method is sent once, and no redirect
 // is followed, since one would carry the bearer elsewhere.
 func NewAPI(cfg *Config, version, configDir string) (*API, error) {
+	return newAPI(cfg, version, configDir, httpclient.TransportConfig{BaseDelay: retryDelay})
+}
+
+// NewHookAPI is NewAPI sending every request once, since a hook makes at
+// most one request within its budget.
+func NewHookAPI(cfg *Config, version, configDir string) (*API, error) {
+	return newAPI(cfg, version, configDir, httpclient.TransportConfig{MaxAttempts: -1})
+}
+
+func newAPI(cfg *Config, version, configDir string, retry httpclient.TransportConfig) (*API, error) {
 	base, err := httpclient.CloneDefaultTransport()
 	if err != nil {
 		return nil, err
 	}
-	c := httpclient.NewRetry(base, httpclient.RefuseAllRedirects, httpclient.TransportConfig{BaseDelay: retryDelay})
+	c := httpclient.NewRetry(base, httpclient.RefuseAllRedirects, retry)
 	c.Timeout = clientTimeout
 	return &API{http: c, server: cfg.Server, token: cfg.Token, version: version, configDir: configDir}, nil
 }

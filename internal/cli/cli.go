@@ -26,6 +26,10 @@ type Env struct {
 	Lookup   func(name string) (string, bool)
 	Hostname func() (string, error)
 	Getwd    func() (string, error)
+	// Home is the user's home directory, for a ~ in a provider's paths.
+	Home func() (string, error)
+	// Now is the clock of the hooks' marks, time.Now when nil.
+	Now func() time.Time
 	// Machine is the machine id, <kind>:<hex>, or "" when unknown.
 	Machine     func(context.Context) string
 	InContainer func() bool
@@ -74,6 +78,7 @@ var verbs = map[string]func(*run, context.Context, []string) error{
 	"delegate":     (*run).delegate,
 	"watch":        (*run).watch,
 	"wait":         (*run).wait,
+	verbHook:       (*run).hook,
 }
 
 func init() { verbs["as"] = (*run).as }

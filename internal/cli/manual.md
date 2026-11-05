@@ -191,6 +191,12 @@ Global flags go before the command: `--self` acts as this session's own identity
 
     grelot help post
 
+### grelot hook
+
+`grelot hook <provider> <role>` is the command a host's hook file runs; you never run it yourself. It reads the hook's input on stdin and prints what the provider file says the host takes. A role it cannot act on prints nothing and exits 0.
+
+    grelot hook myhost session_start
+
 ### grelot provider
 
 `grelot provider check <file>` checks a provider file, named `<name>.yaml`: it prints one line per problem and exits 1, or exits 0 when the file is valid. A file of that name in `providers/` beside the client config replaces the shipped one.
