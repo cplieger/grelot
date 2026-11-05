@@ -27,9 +27,9 @@ func TestNoToolNamesInCode(t *testing.T) {
 	}
 }
 
-// toolNameHits tokenizes every non-test Go file under root that the go tool
-// builds, and reports each tool name as "path:line: name". It skips what the
-// go tool ignores: directories named testdata and paths starting with . or _.
+// toolNameHits tokenizes every non-test Go file under root and reports each
+// tool name as "path:line: name". It skips directories named testdata and
+// paths starting with a dot, which hold checkouts and editor state.
 func toolNameHits(root string) ([]string, error) {
 	var hits []string
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -38,13 +38,13 @@ func toolNameHits(root string) ([]string, error) {
 		}
 		name := d.Name()
 		if d.IsDir() {
-			if path != root && (name == "testdata" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")) {
+			if path != root && (name == "testdata" || strings.HasPrefix(name, ".")) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") ||
-			strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") {
+			strings.HasPrefix(name, ".") {
 			return nil
 		}
 		found, err := fileToolNames(path)
@@ -201,13 +201,20 @@ func TestToolNameHitsPlantedTree(t *testing.T) {
 		{
 			name: "files the rule exempts",
 			files: map[string]string{
-				"a_test.go":          "package a\n\nvar marotte, kasHost = \"cursor\", 1\n",
-				"providers/kiro.md":  "kiro and KAS\n",
-				"testdata/a.go":      "package a // codex\n",
-				".worktrees/x/a.go":  "package a // codex\n",
+				"a_test.go":         "package a\n\nvar marotte, kasHost = \"cursor\", 1\n",
+				"providers/kiro.md": "kiro and KAS\n",
+				"testdata/a.go":     "package a // codex\n",
+				".worktrees/x/a.go": "package a // codex\n",
+				"internal/.a.go":    "package internal // codex\n",
+			},
+		},
+		{
+			name: "files whose path starts with an underscore",
+			files: map[string]string{
 				"_old/a.go":          "package a // codex\n",
 				"internal/_draft.go": "package internal // codex\n",
 			},
+			want: []string{"_old/a.go:1:11: codex", "internal/_draft.go:1:18: codex"},
 		},
 	}
 	for _, tc := range cases {

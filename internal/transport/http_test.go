@@ -122,6 +122,9 @@ func TestHTTPRetryLater(t *testing.T) {
 		{"599 is a 5xx", "", 599, 15 * time.Second},
 		{"malformed Retry-After", "soon", 503, 15 * time.Second},
 		{"Retry-After zero", "0", 429, 5 * time.Second},
+		{"Retry-After many zeros", "00000000000000000000", 429, 5 * time.Second},
+		{"delta seconds past int64", "9999999999999999999", 503, 60 * time.Second},
+		{"delta seconds past nineteen digits", "99999999999999999999", 503, 60 * time.Second},
 		{"negative Retry-After", "-5", 503, 15 * time.Second},
 		{"past date", "Mon, 02 Jan 2006 15:04:05 GMT", 503, 5 * time.Second},
 	}

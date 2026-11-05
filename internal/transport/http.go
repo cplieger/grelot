@@ -120,7 +120,12 @@ func retryAfter(resp *http.Response) time.Duration {
 	if _, err := http.ParseTime(h); err != nil && !isDigits(h) {
 		return retryDefault
 	}
-	return min(max(httpclient.ParseRetryAfterResponse(resp), retryFloor), retryCeiling)
+	d := httpclient.ParseRetryAfterResponse(resp)
+	if d == 0 && isDigits(h) && strings.Trim(h, "0") != "" {
+		// httpclient reads a delta too large for an int64 as 0.
+		return retryCeiling
+	}
+	return min(max(d, retryFloor), retryCeiling)
 }
 
 func isDigits(s string) bool {
