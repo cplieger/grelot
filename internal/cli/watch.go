@@ -267,6 +267,9 @@ func (r *run) wait(ctx context.Context, args []string) error {
 	case *timeout <= 0:
 		return usagef(r.verb, "--timeout needs a duration above 0, such as 10m")
 	}
+	// A session waits on a reply right after granting, when the delegate gate
+	// would refuse an unnamed request; as <handle> wait keeps the handle.
+	r.self = r.handle == ""
 	a, err := r.client(true)
 	if err != nil {
 		return err

@@ -119,7 +119,7 @@ Global flags go before the command: `--self` acts as this session's own identity
 
 ### grelot wait
 
-`grelot wait --timeout <d>` waits inside your turn for new mail, when your next step depends on a reply. It prints the first new mail as `grelot inbox` does and marks it read, or at the timeout only the status line. Never run it in the background, where nothing shows its output to you: there the watcher on the `exit` transport is the form to use.
+`grelot wait --timeout <d>` waits inside your turn for new mail, when your next step depends on a reply. It prints the first new mail as `grelot inbox` does and marks it read, or at the timeout only the status line. Never run it in the background, where nothing shows its output to you: there the watcher on the `exit` transport is the form to use. It always waits as your own identity, so it needs no `--self` while you hold delegates; a delegate waits with `grelot as <handle> wait --timeout <d>`.
 
     grelot wait --timeout 10m
 

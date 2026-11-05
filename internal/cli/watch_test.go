@@ -368,6 +368,35 @@ func TestWait_timeoutPrintsOnlyTheStatusLine(t *testing.T) {
 	}
 }
 
+func TestWait_aSessionHoldingADelegateWaitsAsItself(t *testing.T) {
+	ts := newServer(t)
+	ts.clock.run()
+	shell := withDelegate(t, ts)
+	defer func(d time.Duration) { maxHold = d }(maxHold)
+	maxHold = 100 * time.Millisecond
+	cases := []struct {
+		args       []string
+		wantStatus string
+		wantAs     string
+		wantSelf   string
+	}{
+		{[]string{"wait", "--timeout", "150ms"}, "grelot: @ant-dev · ", "", "1"},
+		{[]string{"as", "ant-dev/review", "wait", "--timeout", "150ms"}, "grelot: @ant-dev/review", "ant-dev/review", ""},
+	}
+	for _, c := range cases {
+		code, out, errOut := shell.run(c.args...)
+		if code != 0 || !strings.HasPrefix(out, c.wantStatus) {
+			t.Errorf("grelot %s: exit %d, stdout %q, stderr %q, want the wait answered with %q", strings.Join(c.args, " "), code, out, errOut, c.wantStatus)
+			continue
+		}
+		req := ts.last(t, http.MethodGet, "/v1/inbox")
+		if req.Header.Get("Grelot-As") != c.wantAs || req.Header.Get("Grelot-Self") != c.wantSelf {
+			t.Errorf("grelot %s sent Grelot-As %q and Grelot-Self %q, want %q and %q", strings.Join(c.args, " "),
+				req.Header.Get("Grelot-As"), req.Header.Get("Grelot-Self"), c.wantAs, c.wantSelf)
+		}
+	}
+}
+
 func TestWatch_triesAgainWhileTheServerFails(t *testing.T) {
 	defer func(d time.Duration) { watchRetry = d }(watchRetry)
 	watchRetry = time.Millisecond
