@@ -246,9 +246,13 @@ func TestMetrics_eachPushTryIsCountedByDoorAndOutcome(t *testing.T) {
 				h := newPushHarness(t, rcv.kiroDoor()...)
 				h.mustRegisterAlone(sessA, "reader")
 				h.mustRegisterAlone(sessB, "writer")
-				if got := h.scrape()[`grelot_push_door_up{`+door+`}`]; got != 1 {
-					t.Fatalf("door up before any send = %v, want 1", got)
+				// Every outcome is on the page at 0 before the first try,
+				// so increase() over the alert window sees that try.
+				before := map[string]float64{`grelot_push_door_up{` + door + `}`: 1}
+				for _, o := range []string{"accepted", "retry", "gone", "gave_up"} {
+					before[`grelot_push_sends_total{`+door+`,outcome="`+o+`"}`] = 0
 				}
+				wantSeries(t, h.scrape(), before)
 				h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
 				synctest.Wait()
 

@@ -106,21 +106,29 @@ func probeHealth(stderr io.Writer, addr string, timeout time.Duration) int {
 	return probe.Check(stderr, timeout, "http://"+net.JoinHostPort("127.0.0.1", port)+"/healthz")
 }
 
-// serve opens the store, sweeps it and serves the API on addr until ctx
-// ends, then waits for the sweeper and closes the store.
-func serve(ctx context.Context, cfg *server.Config, addr string, logger *slog.Logger) error {
+// build opens the store and builds the server on it, both recording into
+// metrics. The caller closes the store and releases the server.
+func build(cfg *server.Config, logger *slog.Logger, metrics *obs.Metrics) (*store.Store, *server.Server, error) {
 	hub := server.NewHub()
-	metrics := obs.New()
 	st, err := store.Open(cfg.StorePath, &store.Options{
 		Logger: logger, Metrics: metrics, MaxBytes: cfg.MaxBytes, ThreadTTL: cfg.ThreadTTL,
 		DormantTTL: cfg.DormantTTL, ReservationMaxTTL: cfg.ReservationMaxTTL, PathRoot: cfg.PathRoot,
 		Woke: hub.Woke,
 	})
 	if err != nil {
+		return nil, nil, err
+	}
+	return st, server.New(&server.Options{Store: st, Logger: logger, Hub: hub, Metrics: metrics, Version: version, Config: *cfg}), nil
+}
+
+// serve opens the store, sweeps it and serves the API on addr until ctx
+// ends, then waits for the sweeper and closes the store.
+func serve(ctx context.Context, cfg *server.Config, addr string, logger *slog.Logger) error {
+	st, srv, err := build(cfg, logger, obs.New())
+	if err != nil {
 		return err
 	}
 	defer st.Close()
-	srv := server.New(&server.Options{Store: st, Logger: logger, Hub: hub, Metrics: metrics, Version: version, Config: *cfg})
 	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
 	if err != nil {
 		return err

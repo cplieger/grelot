@@ -85,6 +85,9 @@ func startHostPush(s *Server, doors *provider.ServerDoors) *hostPush {
 	}
 	for _, d := range doors.All() {
 		s.metrics.PushDoorUp.Set(1, doorLabel(d))
+		for _, o := range []string{obs.SendAccepted, obs.SendRetry, obs.SendGone, obs.SendGaveUp} {
+			s.metrics.PushSends.Add(0, doorLabel(d), o)
+		}
 	}
 	go p.run(ctx)
 	return p
