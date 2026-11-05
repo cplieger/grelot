@@ -40,6 +40,14 @@ type hookCall struct {
 	marks *hook.Marks
 	// session is the environment's host session id.
 	session string
+	// printed are the marks emit sets once it has printed the text that
+	// carries them; a run that prints nothing spends none.
+	printed [][2]string
+}
+
+// onPrint sets the mark when this run's emit prints.
+func (h *hookCall) onPrint(kind, key string) {
+	h.printed = append(h.printed, [2]string{kind, key})
 }
 
 // hook runs a host's hook. It never fails the host: a provider that does
@@ -138,29 +146,32 @@ func (h *hookCall) sessionStart(ctx context.Context, role *provider.SessionStart
 	if role.Once && h.marks.Has(hook.MarkOnce, key) {
 		return nil
 	}
-	err := h.emit(out, h.parentStart(ctx, role))
-	if role.Once {
-		h.marks.Set(hook.MarkOnce, key)
+	text, err := h.parentStart(ctx, role)
+	if err != nil {
+		return h.emit(out, failLine(err, role.Budget))
 	}
-	return err
+	if role.Once {
+		h.onPrint(hook.MarkOnce, key)
+	}
+	return h.emit(out, text)
 }
 
 // parentStart is the session start text of a session that acts for its
 // own identity: the card, the status line and the manual; the revive
 // offer; or the register line with the take-over hint a take_over source
-// may get.
-func (h *hookCall) parentStart(ctx context.Context, role *provider.SessionStartRole) string {
+// may get. An error is a server that did not answer it.
+func (h *hookCall) parentStart(ctx context.Context, role *provider.SessionStartRole) (string, error) {
 	h.self = true
 	api, err := h.client(true)
 	if err != nil {
-		return failLine(err, role.Budget)
+		return "", err
 	}
 	q, header := h.startRequest(ctx, role.Source)
 	me, resp, err := hookMe(ctx, api, role.Budget, q, header)
 	if err != nil {
-		return failLine(err, role.Budget)
+		return "", err
 	}
-	return h.startText(me, resp.Status)
+	return h.startText(me, resp.Status), nil
 }
 
 // startRequest is session start's query and headers: proc only for a
@@ -242,7 +253,7 @@ func (h *hookCall) forkLine(c hook.Class) string {
 	if h.marks.Has(markFork, key) {
 		return ""
 	}
-	h.marks.Set(markFork, key)
+	h.onPrint(markFork, key)
 	return lineFork + "\n"
 }
 
@@ -282,9 +293,11 @@ func failLine(err error, budget time.Duration) string {
 }
 
 // emit prints text through the provider's output, which says how the
-// host takes it, and exits with the output's code. A role whose host
-// spells no such output prints nothing.
+// host takes it, sets the onPrint marks, and exits with the output's
+// code. A role whose host spells no such output prints nothing.
 func (h *hookCall) emit(out *provider.Output, text string) error {
+	printed := h.printed
+	h.printed = nil
 	text = strings.TrimSuffix(text, "\n")
 	if out == nil || text == "" {
 		return nil
@@ -300,7 +313,12 @@ func (h *hookCall) emit(out *provider.Output, text string) error {
 	if !strings.HasSuffix(s, "\n") {
 		s += "\n"
 	}
-	fmt.Fprint(w, s)
+	if _, err := fmt.Fprint(w, s); err != nil {
+		return nil
+	}
+	for _, m := range printed {
+		h.marks.Set(m[0], m[1])
+	}
 	if out.Exit != 0 {
 		return &exitError{code: out.Exit}
 	}

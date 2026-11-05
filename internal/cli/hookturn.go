@@ -102,20 +102,22 @@ func (h *hookCall) prompt(ctx context.Context, role *provider.PromptRole) error 
 		return nil
 	}
 	h.marks.Set(markTurn, h.chatKey(c))
-	var note string
-	if c.Kind == hook.SameAgent {
-		note = h.sameAgentNote(c)
-	}
 	seq, isSignal := signalSeq(role, h.in.String(role.Stdin.Prompt))
-	text, stale := h.promptText(ctx, role, seq)
-	if role.Once {
-		h.marks.Set(hook.MarkOnce, key)
+	me, err := h.promptMe(ctx, role, seq)
+	if err != nil {
+		return h.emit(out, failLine(err, role.Budget))
 	}
-	if stale && isSignal && role.Outputs.Block != nil {
+	if role.Once {
+		h.onPrint(hook.MarkOnce, key)
+	}
+	if isSignal && role.Outputs.Block != nil && me.State == client.StateLive && me.SignalRead {
 		return h.emit(role.Outputs.Block, fmt.Sprintf(lineStale, seq))
 	}
-	if note != "" {
-		text = note + "\n" + text
+	text := h.promptLine(me)
+	if c.Kind == hook.SameAgent {
+		if note := h.sameAgentNote(c); note != "" {
+			text = note + "\n" + text
+		}
 	}
 	return h.emit(out, text)
 }
@@ -131,7 +133,7 @@ func (h *hookCall) sameAgentNote(c hook.Class) string {
 	if h.marks.Has(markNote, key) {
 		return ""
 	}
-	h.marks.Set(markNote, key)
+	h.onPrint(markNote, key)
 	return "grelot: " + safe(rec.SameAgentNote)
 }
 
@@ -161,9 +163,9 @@ func signalSeq(role *provider.PromptRole, prompt string) (uint64, bool) {
 	return seq, true
 }
 
-// promptText asks GET /v1/me?turn=start and answers the prompt's line.
-// stale reports the server's answer that read has reached the signal.
-func (h *hookCall) promptText(ctx context.Context, role *provider.PromptRole, seq uint64) (text string, stale bool) {
+// promptMe asks GET /v1/me?turn=start, with the signal the prompt
+// carries, which opens the turn unless the server finds the signal read.
+func (h *hookCall) promptMe(ctx context.Context, role *provider.PromptRole, seq uint64) (*client.Me, error) {
 	q := url.Values{"turn": {"start"}}
 	if seq > 0 {
 		q.Set("signal", strconv.FormatUint(seq, 10))
@@ -171,26 +173,28 @@ func (h *hookCall) promptText(ctx context.Context, role *provider.PromptRole, se
 	h.self = true
 	api, err := h.client(true)
 	if err != nil {
-		return failLine(err, role.Budget), false
+		return nil, err
 	}
 	me, _, err := hookMe(ctx, api, role.Budget, q, http.Header{})
-	if err != nil {
-		return failLine(err, role.Budget), false
-	}
+	return me, err
+}
+
+// promptLine is the prompt's line for the server's answer.
+func (h *hookCall) promptLine(me *client.Me) string {
 	switch me.State {
 	case client.StateLive:
 		if me.Identity == nil {
-			return "", false
+			return ""
 		}
-		return h.turnLine(me), me.SignalRead
+		return h.turnLine(me)
 	case client.StateDormant:
 		name := ""
 		if me.Identity != nil {
 			name = me.Identity.Name
 		}
-		return dormantLine(name), false
+		return dormantLine(name)
 	}
-	return lineUnregistered, false
+	return lineUnregistered
 }
 
 func dormantLine(name string) string {
@@ -239,7 +243,7 @@ func (h *hookCall) reminderDue() bool {
 	if t, ok := h.marks.When(markReminder, key); ok && h.now().Sub(t) < reminderAge {
 		return false
 	}
-	h.marks.Set(markReminder, key)
+	h.onPrint(markReminder, key)
 	return true
 }
 
@@ -285,14 +289,17 @@ func (h *hookCall) stop(ctx context.Context, role *provider.StopRole) error {
 		Method: http.MethodPost, Path: "/v1/events/hold", Body: map[string]any{"for": "stop", "last": last},
 	}, &held)
 	cancel()
-	text, block := h.stopText(&held, err, role.Budget)
+	text, block, err := h.stopText(&held, err)
+	if err != nil {
+		return h.emit(role.Outputs.Notice, failLine(err, role.Budget))
+	}
 	out := role.Outputs.Notice
 	if block {
 		out = role.Outputs.Block
 		h.marks.Set(markHeld, h.chatKey(c))
 	}
-	if role.Once && text != "" {
-		h.marks.Set(hook.MarkOnce, key)
+	if role.Once {
+		h.onPrint(hook.MarkOnce, key)
 	}
 	return h.emit(out, text)
 }
@@ -310,30 +317,30 @@ func (h *hookCall) heldThisTurn(c hook.Class) bool {
 	return h.now().Sub(held) < turnLapse
 }
 
-// stopText is the stop hold's reason, and whether it holds the turn. A
-// hold with only a down wake prints nothing: the prompt line names the
-// start line every turn.
-func (h *hookCall) stopText(held *client.Held, err error, budget time.Duration) (text string, block bool) {
+// stopText is the stop hold's reason, and whether it holds the turn; the
+// error is a hold the server did not answer. A hold with only a down wake
+// prints nothing: the prompt line names the start line every turn.
+func (h *hookCall) stopText(held *client.Held, err error) (text string, block bool, _ error) {
 	if err == nil {
 		if !held.Block {
-			return "", false
+			return "", false, nil
 		}
 		text = fmt.Sprintf(lineHold, countsLine(&held.Counts))
 		if start := client.FirstStart(h.prov); held.Wake == wakeDown && start != "" {
 			text += " · wake: down, start: " + safe(start)
 		}
-		return text, true
+		return text, true, nil
 	}
 	ae, isAPI := errors.AsType[*client.APIError](err)
 	switch {
 	case isAPI && ae.HTTP == http.StatusGone && ae.Code == client.StateNone:
-		return lineUnregistered, true
+		return lineUnregistered, true, nil
 	case isAPI && ae.HTTP == http.StatusGone && ae.Code == client.StateDormant:
-		return dormantLine(""), true
+		return dormantLine(""), true, nil
 	case isAPI && ae.HTTP == http.StatusGone:
-		return "", false
+		return "", false, nil
 	}
-	return failLine(err, budget), false
+	return "", false, err
 }
 
 // lifecycle reports turn_end, session_end or subagent_stop and prints

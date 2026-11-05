@@ -392,6 +392,85 @@ func TestHookPrompt_once(t *testing.T) {
 	}
 }
 
+// pointAt rewrites a's client config to send to url.
+func (a *agent) pointAt(url string) {
+	a.t.Helper()
+	writeClientConfig(a.t, a.env.ConfigDir, fmt.Sprintf("server: %s\ntoken: test-token\nhost: box\n", url))
+}
+
+// A role under once spends its one print only on the server's answer
+// (probes O3-4: suppressed after its first successful print).
+func TestHook_onceSpendsOnlyAnAnswer(t *testing.T) {
+	const noCheck = "could not check this session's identity (the server cannot be reached)"
+	onceFile := strings.NewReplacer(
+		"    event: Start\n", "    event: Start\n    once: true\n",
+		"    event: Prompt\n", "    event: Prompt\n    once: true\n",
+		"    event: Stop\n", "    event: Stop\n    once: true\n",
+	).Replace(hookTurnFile)
+	for _, role := range []string{"session_start", "prompt", "stop"} {
+		t.Run(role, func(t *testing.T) {
+			ts := newServer(t)
+			a := hooked(t, newAgent(t, ts, "s-1", ""), "alpha", onceFile)
+			stdin := `{"session_id":"s-1","prompt":"x"}`
+			a.pointAt(closedURL(t))
+			if _, out, _ := a.hook(role, stdin); !strings.Contains(out, noCheck) {
+				t.Fatalf("down: stdout %q, want the could-not-check line", out)
+			}
+			a.pointAt(ts.URL)
+			if _, out, _ := a.hook(role, stdin); !strings.Contains(out, "grelot: not registered.") {
+				t.Errorf("after the outage: stdout %q, want the register line", out)
+			}
+			if _, out, _ := a.hook(role, stdin); out != "" {
+				t.Errorf("after the answer: stdout %q, want nothing", out)
+			}
+		})
+	}
+}
+
+// A prompt the server did not answer prints neither the hourly reminder
+// nor the same-agent note, so the next answered prompt still carries
+// them (build-notes Ruling 18: at most once an hour; probes O3-6).
+func TestHookPrompt_aFailedCheckSpendsNoMark(t *testing.T) {
+	const reminder = "still true? `grelot set --desc` if not"
+	ts := newServer(t)
+	a := turnAgent(t, ts, hookTurnFile)
+	a.record("r-1", `{"parent":"s-1","reason":"rewind"}`)
+	ts.clock.advance(61 * time.Minute)
+	t.Run("the reminder", func(t *testing.T) {
+		a.pointAt(closedURL(t))
+		if _, out := a.prompt("x"); strings.Contains(out, reminder) || !strings.Contains(out, "could not check") {
+			t.Fatalf("down: stdout %q, want only the could-not-check line", out)
+		}
+		a.pointAt(ts.URL)
+		if _, out := a.prompt("x"); !strings.Contains(out, reminder) {
+			t.Errorf("up: stdout %q, want the reminder", out)
+		}
+	})
+	t.Run("the note", func(t *testing.T) {
+		a.pointAt(closedURL(t))
+		if _, out, _ := a.hook("prompt", `{"session_id":"r-1"}`); strings.Contains(out, "rewind") || !strings.Contains(out, "could not check") {
+			t.Fatalf("down: stdout %q, want only the could-not-check line", out)
+		}
+		a.pointAt(ts.URL)
+		if _, out, _ := a.hook("prompt", `{"session_id":"r-1"}`); !strings.HasPrefix(out, "grelot: this chat is a rewind\n") {
+			t.Errorf("up: stdout %q, want the note first", out)
+		}
+	})
+}
+
+// A stale-signal block prints no reminder, so it spends none.
+func TestHookPrompt_aStaleBlockSpendsNoReminder(t *testing.T) {
+	ts := meServer(t, `{"total":0,"wake":0}`, true)
+	a := hooked(t, newAgent(t, ts, "s-1", ""), "alpha", hookTurnFile)
+	a.env.Now = func() time.Time { return time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC) }
+	if _, out := a.prompt(signal(5, 1)); blockReason(t, out) == "" {
+		t.Fatalf("stdout %q, want the stale block", out)
+	}
+	if _, out := a.prompt("x"); !strings.Contains(out, "still true? `grelot set --desc` if not") {
+		t.Errorf("stdout %q, want the reminder the block did not print", out)
+	}
+}
+
 func TestHookPrompt_failsOpenAndThe426(t *testing.T) {
 	t.Run("unreachable", func(t *testing.T) {
 		a := hooked(t, newAgent(t, &testServer{URL: closedURL(t)}, "s-1", ""), "alpha", hookTurnFile)
