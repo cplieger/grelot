@@ -30,6 +30,7 @@ type Server struct {
 	log      *slog.Logger
 	now      func() time.Time
 	presence *presence
+	posts    *postLimit
 	push     Pusher
 	version  string
 	cfg      Config
@@ -50,7 +51,7 @@ func New(o *Options) *Server {
 	}
 	return &Server{
 		store: o.Store, log: o.Logger, now: now, version: o.Version, cfg: o.Config,
-		presence: newPresence(), push: push,
+		presence: newPresence(), posts: newPostLimit(), push: push,
 		bearer: httpserver.NewStaticTokenVerifier(o.Config.Token),
 	}
 }
@@ -108,6 +109,22 @@ func (s *Server) routes(mux *http.ServeMux) {
 	handle("PATCH /v1/me", s.identity(s.patchMe))
 	handle("DELETE /v1/me", s.identity(s.deleteMe))
 	handle("GET /v1/identities", s.anyone(s.who))
+	handle("POST /v1/posts", s.identity(s.post))
+	handle("GET /v1/threads", s.identity(s.threads))
+	handle("GET /v1/messages/{id}/receipts", s.identity(s.receipts))
+	handle("GET /v1/history", s.identity(s.history))
+	handle("PUT /v1/follows", s.identity(s.follow))
+	handle("DELETE /v1/follows", s.identity(s.unfollow))
+	handle("GET /v1/inbox", s.identity(s.inbox))
+	handle("POST /v1/inbox/ack", s.identity(s.ack))
+	handle("POST /v1/reservations", s.identity(s.reserve))
+	handle("GET /v1/reservations", s.identity(s.reservations))
+	handle("PATCH /v1/reservations/{id}", s.identity(s.renewReservation))
+	handle("DELETE /v1/reservations/{id}", s.identity(s.release))
+	handle("POST /v1/delegates", s.identity(s.grant))
+	handle("DELETE /v1/delegates/{label}", s.identity(s.revoke))
+	handle("POST /v1/me/bind", s.identity(s.bind))
+	handle("POST /v1/lifecycle", s.identity(s.lifecycle))
 	mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, &apiError{status: http.StatusNotFound, code: "not_found", msg: "no such route: " + r.Method + " " + r.URL.Path})
 	})

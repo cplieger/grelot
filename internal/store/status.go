@@ -11,8 +11,9 @@ import (
 type Status struct {
 	Identity Identity
 	Unread   Counts
-	// Delegate reports a delegate, which is pull only.
-	Delegate bool
+	// Parent is a delegate's parent id, 0 for any other identity; a
+	// delegate is pull only.
+	Parent uint64
 }
 
 // Status reads c's status and writes nothing. The delegate gate does not
@@ -30,7 +31,7 @@ func (s *Store) Status(ctx context.Context, c Caller) (Status, error) {
 		if err != nil {
 			return err
 		}
-		out.Identity, out.Delegate = s.view(&me), me.Parent != 0
+		out.Identity, out.Parent = s.view(&me), me.Parent
 		return s.scanUnread(r, me.ID, me.Read, now, func(d *deliveryRow) error {
 			out.Unread.add(d)
 			return nil

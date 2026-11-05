@@ -10,6 +10,7 @@ require (
 	github.com/cplieger/go/httpserver v1.0.0-dev.1
 	github.com/cplieger/go/pathinside v1.0.0-dev.1
 	github.com/cplieger/go/slogx v1.0.0-dev.1
+	github.com/cplieger/go/textsafe v1.0.0-dev.1
 	github.com/cplieger/go/yamlenv v1.0.0-dev.1
 	go.etcd.io/bbolt v1.5.0
 	go.yaml.in/yaml/v3 v3.0.6

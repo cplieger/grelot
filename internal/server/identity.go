@@ -168,14 +168,19 @@ type hintJSON struct {
 	Line  string `json:"line"`
 }
 
+// reservationJSON is a grant or queue entry; Relation is its holder's
+// relation to the caller at Path.
 type reservationJSON struct {
-	Expires time.Time `json:"expires_at,omitzero"`
-	Since   time.Time `json:"since"`
-	Path    string    `json:"path"`
-	Reason  string    `json:"reason"`
-	State   string    `json:"state"`
-	TTL     string    `json:"ttl"`
-	ID      uint64    `json:"id"`
+	Expires  time.Time `json:"expires_at,omitzero"`
+	Since    time.Time `json:"since"`
+	Path     string    `json:"path"`
+	Reason   string    `json:"reason"`
+	State    string    `json:"state"`
+	Holder   string    `json:"holder"`
+	Host     string    `json:"host"`
+	Relation string    `json:"relation"`
+	TTL      string    `json:"ttl"`
+	ID       uint64    `json:"id"`
 }
 
 type delegateJSON struct {
@@ -244,11 +249,7 @@ func (s *Server) meLive(r *http.Request, c store.Caller, out *meResponse, id uin
 	out.Push = string(s.push.State(id))
 	out.Online = !st.Identity.Ended && s.presence.online(id, now)
 	for i := range resv {
-		v := &resv[i]
-		out.Reservations = append(out.Reservations, reservationJSON{
-			Expires: v.Expires.UTC(), Since: v.Since.UTC(), Path: v.Path, Reason: v.Reason,
-			State: v.State, TTL: v.TTL.String(), ID: v.ID,
-		})
+		out.Reservations = append(out.Reservations, reservationOut(&resv[i]))
 	}
 	for _, d := range dl.Delegates {
 		out.Delegates = append(out.Delegates, delegateJSON{

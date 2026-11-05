@@ -20,7 +20,7 @@ func TestStatus_countsUnreadAndWritesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Identity.Name != "subflux-dev" || st.Unread.Direct != 1 || st.Unread.Cards != 1 || st.Unread.Total() != 2 || st.Delegate {
+	if st.Identity.Name != "subflux-dev" || st.Unread.Direct != 1 || st.Unread.Cards != 1 || st.Unread.Total() != 2 || st.Parent != 0 {
 		t.Errorf("status %+v, want subflux-dev with one direct message and store-dev's join card unread, not a delegate", st)
 	}
 	if commitCount(t, s) != before {
@@ -53,7 +53,7 @@ func TestStatus_passesTheDelegateGateAndMarksADelegate(t *testing.T) {
 	}
 	mustRegisterDelegate(t, s, sessA, g.Link)
 	st, err := s.Status(t.Context(), Caller{Session: sessA, As: g.Handle})
-	if err != nil || !st.Delegate || st.Identity.Name != g.Handle {
+	if err != nil || st.Parent == 0 || st.Identity.Name != g.Handle {
 		t.Errorf("status %+v, %v; want the delegate %s", st, err, g.Handle)
 	}
 }

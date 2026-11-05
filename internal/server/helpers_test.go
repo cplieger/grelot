@@ -106,10 +106,18 @@ type harness struct {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
+	return newHarnessWith(t, store.Options{})
+}
+
+// newHarnessWith is newHarness over a store opened with o, its logger,
+// clock and path root set by the harness.
+func newHarnessWith(t *testing.T, o store.Options) *harness {
+	t.Helper()
 	clk := &clock{t: testNow}
 	logs := newLogSink()
 	logger := slog.New(logs)
-	st, err := store.Open(filepath.Join(t.TempDir(), "grelot.db"), store.Options{Logger: logger, Now: clk.now, PathRoot: DefaultPathRoot})
+	o.Logger, o.Now, o.PathRoot = logger, clk.now, DefaultPathRoot
+	st, err := store.Open(filepath.Join(t.TempDir(), "grelot.db"), o)
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}

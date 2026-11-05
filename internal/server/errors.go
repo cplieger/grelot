@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/cplieger/go/httpserver"
 	"github.com/cplieger/grelot/internal/store"
@@ -14,6 +16,8 @@ type apiError struct {
 	code   httpserver.ErrorCode
 	msg    string
 	status int
+	// retryAfter, when set, goes out as Retry-After in whole seconds.
+	retryAfter time.Duration
 }
 
 func (e *apiError) Error() string { return e.msg }
@@ -31,6 +35,9 @@ type errorBody struct {
 	RequestID string               `json:"request_id,omitempty"`
 	PathRoot  string               `json:"path_root,omitempty"`
 }
+
+// whyDelegateGate is the store's Why on the delegate gate's 409.
+const whyDelegateGate = "delegate_gate"
 
 var kindStatus = map[store.Kind]struct {
 	code   httpserver.ErrorCode
@@ -62,8 +69,14 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		if se.Why != "" {
 			body.Code = httpserver.ErrorCode(se.Why)
 		}
+		if se.Why == whyDelegateGate {
+			s.log.Info("request refused", "method", r.Method, "path", r.URL.Path)
+		}
 	case errors.As(err, &ae):
 		status, body.Code, body.Error = ae.status, ae.code, ae.msg
+		if ae.retryAfter > 0 {
+			w.Header().Set("Retry-After", strconv.Itoa(int(ae.retryAfter.Seconds())))
+		}
 	default:
 		s.log.Error("request failed", "path", r.URL.Path, "error", err)
 		body.Code, body.Error = "internal_error", "internal server error"

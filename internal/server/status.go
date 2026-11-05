@@ -49,7 +49,7 @@ func (s *Server) statusLine(ctx context.Context, c store.Caller) string {
 // wakeState is how mail wakes st's identity now.
 func (s *Server) wakeState(st *store.Status, now time.Time) string {
 	switch {
-	case st.Delegate:
+	case st.Parent != 0:
 		return wakePullOnly
 	case s.push.State(st.Identity.ID) == pushOK:
 		return wakePush

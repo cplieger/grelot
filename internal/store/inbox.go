@@ -94,11 +94,14 @@ type Page struct {
 }
 
 // Acked is what an ack answers: the read cursor and the deliveries still
-// past it.
+// past it. Count is how many deliveries the ack passed and Oldest the
+// earliest of their write times, zero when it passed none.
 type Acked struct {
+	Oldest   time.Time
 	Identity Identity
 	Left     Counts
 	Read     uint64
+	Count    int
 }
 
 // Held is what a hook's hold answers: the deliveries past read and shown,
@@ -185,9 +188,13 @@ func (s *Store) Ack(ctx context.Context, c Caller, upto uint64) (Acked, error) {
 			return err
 		}
 		if to := min(upto, me.Seq); to > me.Read {
-			from, err := w.stampRead(&me, to)
+			rows, err := w.stampRead(&me, to)
 			if err != nil {
 				return err
+			}
+			from := me.Read + 1
+			if len(rows) > 0 {
+				from, out.Count, out.Oldest = rows[0].Seq, len(rows), rows[0].Written
 			}
 			me.Read, me.LastPage = to, seqRange{From: from, To: to}
 		}
@@ -199,7 +206,7 @@ func (s *Store) Ack(ctx context.Context, c Caller, upto uint64) (Acked, error) {
 		if verr != nil {
 			return verr
 		}
-		out = Acked{Identity: v, Read: me.Read}
+		out.Identity, out.Read = v, me.Read
 		return s.scanUnread(w.r, me.ID, me.Read, w.now, func(d *deliveryRow) error {
 			out.Left.add(d)
 			return nil
@@ -209,9 +216,9 @@ func (s *Store) Ack(ctx context.Context, c Caller, upto uint64) (Acked, error) {
 }
 
 // stampRead sets read_at on me's unexpired deliveries past read up to to,
-// takes me out of each receipt watch they name, and returns the first
-// one's seq, or read+1 when every one has expired.
-func (w *wtx) stampRead(me *identityRow, to uint64) (uint64, error) {
+// takes me out of each receipt watch they name, and returns them in seq
+// order.
+func (w *wtx) stampRead(me *identityRow, to uint64) ([]deliveryRow, error) {
 	var rows []deliveryRow
 	err := w.s.scanUnread(w.r, me.ID, me.Read, w.now, func(d *deliveryRow) error {
 		if d.Seq <= to {
@@ -219,19 +226,19 @@ func (w *wtx) stampRead(me *identityRow, to uint64) (uint64, error) {
 		}
 		return nil
 	})
-	if err != nil || len(rows) == 0 {
-		return me.Read + 1, err
+	if err != nil {
+		return nil, err
 	}
 	for i := range rows {
 		rows[i].ReadAt = w.now
 		if err := w.s.t.deliveries.table.Put(w.tx, pairKey(me.ID, rows[i].Seq), &rows[i]); err != nil {
-			return 0, err
+			return nil, err
 		}
 		if err := w.leaveWatch(rows[i].Watch, me, exitRead); err != nil {
-			return 0, err
+			return nil, err
 		}
 	}
-	return rows[0].Seq, nil
+	return rows, nil
 }
 
 // Hold counts c's deliveries past max(read, shown) and, when one of
