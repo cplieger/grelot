@@ -55,7 +55,7 @@ func TestManual_everyCommandHasOneSectionWithAnExample(t *testing.T) {
 			if !strings.Contains(s, "`grelot "+verb) {
 				t.Errorf("the section gives no usage line starting grelot %s", verb)
 			}
-			if !strings.Contains(s, "\n    grelot ") {
+			if !strings.Contains(s, "\n```\ngrelot ") {
 				t.Errorf("the section gives no example")
 			}
 			if n := strings.Count(manual, "### grelot "+verb+"\n"); n != 1 {
