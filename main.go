@@ -12,8 +12,9 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
-	"github.com/cplieger/go/health"
+	"github.com/cplieger/go/health/probe"
 	"github.com/cplieger/go/httpserver"
 	"github.com/cplieger/go/slogx"
 	"github.com/cplieger/grelot/internal/cli"
@@ -31,10 +32,6 @@ import (
 var version = "dev"
 
 const listenAddr = ":8080"
-
-// markerAge is the oldest health marker the probe accepts: four sweep
-// periods, since every pass that commits refreshes it.
-var markerAge = health.Lease{Interval: store.SweepEvery, Cycles: 4}.Duration()
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -59,13 +56,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 			logger.Error("config invalid", "error", err)
 			return 1
 		}
-		if err := serve(ctx, &cfg, listenAddr, health.DefaultPath, logger); err != nil {
+		if err := serve(ctx, &cfg, listenAddr, logger); err != nil {
 			logger.Error("server stopped", "error", err)
 			return 1
 		}
 		return 0
 	case "health":
-		return health.ProbeCheck(health.DefaultPath, health.WithMaxAge(markerAge))
+		return probeHealth(stderr, listenAddr, probe.DefaultTimeout)
 	case "provider":
 		return providerCommand(args[1:], stderr)
 	default:
@@ -97,10 +94,21 @@ func clientCommand(args []string, stdout, stderr io.Writer) int {
 	}, args)
 }
 
+// probeHealth is the image's healthcheck: a GET of /healthz on the
+// loopback port of addr, the listen address, so a wedged listener fails it
+// as well as a stalled sweeper. It returns 0 for a 2xx within timeout.
+func probeHealth(stderr io.Writer, addr string, timeout time.Duration) int {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		fmt.Fprintf(stderr, "unhealthy: listen address %q: %v\n", addr, err)
+		return 1
+	}
+	return probe.Check(stderr, timeout, "http://"+net.JoinHostPort("127.0.0.1", port)+"/healthz")
+}
+
 // serve opens the store, sweeps it and serves the API on addr until ctx
-// ends, then waits for the sweeper and closes the store. The health marker at markerPath is fresh while the
-// sweeper commits.
-func serve(ctx context.Context, cfg *server.Config, addr, markerPath string, logger *slog.Logger) error {
+// ends, then waits for the sweeper and closes the store.
+func serve(ctx context.Context, cfg *server.Config, addr string, logger *slog.Logger) error {
 	hub := server.NewHub()
 	metrics := obs.New()
 	st, err := store.Open(cfg.StorePath, &store.Options{
@@ -112,9 +120,6 @@ func serve(ctx context.Context, cfg *server.Config, addr, markerPath string, log
 		return err
 	}
 	defer st.Close()
-	marker := health.NewMarker(markerPath)
-	marker.Set(true)
-	defer marker.Cleanup()
 	srv := server.New(&server.Options{Store: st, Logger: logger, Hub: hub, Metrics: metrics, Version: version, Config: *cfg})
 	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
 	if err != nil {
@@ -124,10 +129,7 @@ func serve(ctx context.Context, cfg *server.Config, addr, markerPath string, log
 	defer cancel()
 	swept := make(chan error, 1)
 	go func() {
-		swept <- st.Run(ctx, func() {
-			marker.Set(true)
-			srv.Beat(ctx)
-		})
+		swept <- st.Run(ctx, func() { srv.Beat(ctx) })
 	}()
 	logger.Info("listening", "addr", ln.Addr().String(), "version", version)
 	err = httpserver.Run(ctx, srv.HTTPServer(), ln, nil,

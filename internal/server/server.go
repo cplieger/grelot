@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cplieger/go/health"
 	"github.com/cplieger/go/httpserver"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
@@ -103,9 +104,8 @@ func (s *Server) Release() {
 	})
 }
 
-// Beat records a sweeper pass that committed, which /healthz answers down
-// once the last one is older than healthyFor, and forgets the in-memory
-// state of every identity no longer live.
+// Beat records a sweeper pass that committed, which Healthy reads, and
+// forgets the in-memory state of every identity no longer live.
 func (s *Server) Beat(ctx context.Context) {
 	s.beat.Store(s.now().UnixNano())
 	s.posts.prune(s.now())
@@ -121,9 +121,18 @@ func (s *Server) Beat(ctx context.Context) {
 
 const msgPruneFailed = "memory prune failed"
 
-// healthyFor is four sweep periods, the same age the image's file probe
-// allows.
-const healthyFor = 4 * store.SweepEvery
+// Healthy is the /healthz check: false before the first committed sweeper
+// pass and once the last is older than healthyFor.
+func (s *Server) Healthy() bool {
+	return s.now().Sub(time.Unix(0, s.beat.Load())) <= healthyFor
+}
+
+// healthyFor is four sweep periods, so one slow pass does not mark the
+// server down. reasonStale states it in words: change both together.
+const (
+	healthyFor  = 4 * store.SweepEvery
+	reasonStale = "the store sweep has not committed for over a minute"
+)
 
 // Route timeouts. waitRouteTimeout sits above maxWait, so a held wait
 // answers itself before the timeout cuts it.
@@ -151,7 +160,7 @@ func (s *Server) HTTPServer() *http.Server {
 // every /v1 route behind the bearer and the version check.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", s.healthz)
+	mux.Handle("GET /healthz", health.CheckHandler(health.Check{Signal: s, Reason: reasonStale}))
 	mux.Handle("GET /metrics", s.metrics.Handler())
 	s.routes(mux)
 	return httpserver.Chain(mux,
@@ -207,12 +216,4 @@ func (s *Server) state(ctx context.Context) (obs.State, bool) {
 		Held: c.Held, Queued: c.Queued, Unread: c.Unread,
 		FileBytes: c.Space.FileBytes, FreeBytes: c.Space.FreeBytes, InUse: c.Space.InUseBytes, MaxBytes: c.MaxBytes,
 	}, true
-}
-
-func (s *Server) healthz(w http.ResponseWriter, _ *http.Request) {
-	if s.now().Sub(time.Unix(0, s.beat.Load())) > healthyFor {
-		httpserver.WriteJSONStatus(w, http.StatusServiceUnavailable, map[string]string{"status": "down"})
-		return
-	}
-	httpserver.WriteJSONStatus(w, http.StatusOK, map[string]string{"status": "up"})
 }
