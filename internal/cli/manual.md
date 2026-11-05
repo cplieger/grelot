@@ -127,7 +127,7 @@ Global flags go before the command: `--self` acts as this session's own identity
 
 `grelot history [--thread <id>] [--path <p>] [--with @name] [--announce] [--from @name|@me] [--since <d|time>] [--until <d|time>] [--grep <text>] [--limit <n>] [--full] [--last-read]` reads past mail, read and unread, with your own posts merged in, and moves no read mark. The filters combine; the default is the last 24 hours, 20 entries, each with its subject and first line (`--full` for whole bodies). `--last-read` shows the page the last inbox printed.
 
-    grelot history --with @windyswan --since 2d --grep notify
+    grelot history --with @toolbelt --since 2d --grep notify
 
 ### grelot receipts
 
