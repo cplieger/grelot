@@ -45,6 +45,10 @@ const (
 	sampleSecret  = "sample-secret"
 	funcSecret    = "secret"
 	keyRecordGlob = "session.record.glob"
+
+	// A whole-data read would render every field, .DedupeKey among them,
+	// past the walker that ties .DedupeKey to dedupe_window.
+	problemWholeData = "read the data one field at a time, as .Line, never whole"
 )
 
 var (
@@ -137,10 +141,21 @@ func parseTemplate(text string, sc scope) (*compiled, error) {
 	case scopeGlob:
 		data = globData{HookSession: "sample-session"}
 	}
-	if _, err := (&compiled{t: sample}).render(data); err != nil {
+	rendered, err := (&compiled{t: sample}).render(data)
+	if err != nil {
 		return nil, errors.New("fails when rendered against sample data")
 	}
+	if sc == scopeHeader && !headerSafe(rendered) {
+		return nil, errors.New("renders a character a header value cannot carry; put a field through json")
+	}
 	return out, nil
+}
+
+// headerSafe reports whether net/http sends s as a header value: no control
+// byte but tab (httpguts.ValidHeaderFieldValue, RFC 9110 section 5.5). A value
+// it refuses fails every send before a byte leaves, so load refuses it.
+func headerSafe(s string) bool {
+	return !strings.ContainsFunc(s, func(r rune) bool { return (r < ' ' && r != '\t') || r == 0x7f })
 }
 
 // globData is what session.record.glob reads, and nothing else does.
@@ -153,6 +168,7 @@ type walker struct {
 	fields  map[string]bool
 	secrets []string
 	scope   scope
+	rebound int // inside a with or range body, where dot is its pipeline's value
 }
 
 func (w *walker) fail(problem string) {
@@ -175,9 +191,9 @@ func (w *walker) node(n parse.Node) {
 	case *parse.IfNode:
 		w.branch(&n.BranchNode)
 	case *parse.RangeNode:
-		w.branch(&n.BranchNode)
+		w.rebind(&n.BranchNode)
 	case *parse.WithNode:
-		w.branch(&n.BranchNode)
+		w.rebind(&n.BranchNode)
 	case *parse.TemplateNode:
 		w.pipe(n.Pipe)
 	}
@@ -186,6 +202,16 @@ func (w *walker) node(n parse.Node) {
 func (w *walker) branch(b *parse.BranchNode) {
 	w.pipe(b.Pipe)
 	w.node(b.List)
+	w.node(b.ElseList)
+}
+
+// rebind walks a with or range: its body reads the pipeline's value as dot,
+// and its else branch the data.
+func (w *walker) rebind(b *parse.BranchNode) {
+	w.pipe(b.Pipe)
+	w.rebound++
+	w.node(b.List)
+	w.rebound--
 	w.node(b.ElseList)
 }
 
@@ -207,9 +233,18 @@ func (w *walker) pipe(p *parse.PipeNode) {
 func (w *walker) arg(n parse.Node) {
 	switch n := n.(type) {
 	case *parse.FieldNode:
+		if w.rebound > 0 {
+			w.fail("inside with or range, . is that value, which has no fields; read the data as $.Line")
+		}
 		w.field(n.Ident)
+	case *parse.DotNode:
+		if w.rebound == 0 {
+			w.fail(problemWholeData)
+		}
 	case *parse.VariableNode:
 		switch {
+		case len(n.Ident) == 1 && n.Ident[0] == "$":
+			w.fail(problemWholeData)
 		case len(n.Ident) > 1 && n.Ident[0] == "$":
 			w.field(n.Ident[1:])
 		case len(n.Ident) > 1:
@@ -385,7 +420,8 @@ type Request struct {
 }
 
 // RenderRequest renders an http door's URL, headers and body. A door whose
-// headers name a secret renders only after ResolveSecrets.
+// headers name a secret renders only after ResolveSecrets. A header value
+// net/http would refuse is an error naming the header, never the value.
 func (d *Door) RenderRequest(data *Data) (Request, error) {
 	if d.tmpl == nil || d.Transport != TransportHTTP {
 		return Request{}, errNotLoaded
@@ -407,6 +443,9 @@ func (d *Door) RenderRequest(data *Data) (Request, error) {
 		v, err := t.render(data)
 		if err != nil {
 			return Request{}, err
+		}
+		if !headerSafe(v) {
+			return Request{}, fmt.Errorf("provider: header %s renders a character a header value cannot carry", name)
 		}
 		req.Header[name] = v
 	}

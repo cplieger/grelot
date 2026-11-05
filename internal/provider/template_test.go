@@ -177,6 +177,39 @@ func TestTemplateSecret(t *testing.T) {
 	}
 }
 
+func TestTemplateHeaderValue(t *testing.T) {
+	header := func(value string) string {
+		return httpDoor("    url: 'https://receiver/x'\n    body: '{}'\n    headers: {X-Grelot: " + value + "}\n")
+	}
+	refusedCases := []struct{ name, value string }{
+		{"a literal line break", `"a\r\nX-Injected: 1"`},
+		{"a literal DEL", `"a\x7fb"`},
+		{"a field that can hold a line break", `'{{.Reason}}'`},
+	}
+	for _, c := range refusedCases {
+		t.Run("refused with "+c.name, func(t *testing.T) {
+			refused(t, header(c.value), "doors[0].headers.X-Grelot", "a header value cannot carry")
+		})
+	}
+	t.Run("a value that renders a line break is not rendered", func(t *testing.T) {
+		p := mustLoad(t, header(`'{{.Session}}'`))
+		_, err := p.Doors[0].RenderRequest(&Data{Session: "s-1\r\nX-Injected: 1"})
+		if err == nil || !strings.Contains(err.Error(), "X-Grelot") || strings.Contains(err.Error(), "s-1") {
+			t.Errorf("RenderRequest = %v, want an error naming the header and not the value", err)
+		}
+	})
+	t.Run("a tab, a field escaped as JSON and a non-ASCII letter load", func(t *testing.T) {
+		p := mustLoad(t, header(`"a\tb {{json .Reason}} \u00e9"`))
+		req, err := p.Doors[0].RenderRequest(&Data{Reason: "x\ny"})
+		if err != nil {
+			t.Fatalf("RenderRequest: %v", err)
+		}
+		if got, want := req.Header["X-Grelot"], "a\tb \"x\\ny\" \u00e9"; got != want {
+			t.Errorf("header = %q, want %q", got, want)
+		}
+	})
+}
+
 func TestTemplateUnknownData(t *testing.T) {
 	cases := []struct{ name, text, want string }{
 		{"unknown field", `{{.Bogus}}`, ".Bogus is not template data"},
@@ -185,6 +218,13 @@ func TestTemplateUnknownData(t *testing.T) {
 		{"hook session outside the glob", `{{.HookSession}}`, "only in session.record.glob"},
 		{"unknown function", `{{shell .Line}}`, "not a valid template"},
 		{"a field in a branch the sample skips", `{{if eq .Seq 0}}{{.Bogus}}{{end}}`, ".Bogus is not template data"},
+		{"the whole data", `{{.}}`, "one field"},
+		{"the whole data as JSON", `{{json .}}`, "one field"},
+		{"the whole data from the root", `{{json $}}`, "one field"},
+		{"the whole data inside a with", `{{with .Line}}{{$}}{{end}}`, "one field"},
+		{"the whole data in an else", `{{with .Context}}x{{else}}{{.}}{{end}}`, "one field"},
+		{"a field read from the value a with binds", `{{with .Line}}{{.Seq}}{{end}}`, "$.Line"},
+		{"a whole-data variable", `{{$d := .}}{{json $d}}`, "one field"},
 	}
 	for _, c := range cases {
 		t.Run(c.name+" in a body", func(t *testing.T) {
@@ -194,6 +234,20 @@ func TestTemplateUnknownData(t *testing.T) {
 			refused(t, "name: example\nhooks:\n  prompt: {event: P, outputs: {context: {text: '"+c.text+"'}}}\n", "hooks.prompt.outputs.context.text", c.want)
 		})
 	}
+	t.Run("the dot a with rebinds to one field", func(t *testing.T) {
+		p := mustLoad(t, httpDoor("    url: 'https://receiver/x'\n    body: '{{with .Context}}{\"c\":{{json .}}}{{else}}{}{{end}}'\n"))
+		req, err := p.Doors[0].RenderRequest(&Data{Context: "ctx", DedupeKey: "never-rendered"})
+		if err != nil {
+			t.Fatalf("RenderRequest: %v", err)
+		}
+		if req.Body != `{"c":"ctx"}` {
+			t.Errorf("body = %q, want the context alone", req.Body)
+		}
+		q := mustLoad(t, httpDoor("    url: 'https://receiver/x'\n    body: '{{with .Context}}{{json $.Seq}}{{end}}'\n"))
+		if req, err := q.Doors[0].RenderRequest(&Data{Context: "ctx", Seq: 9}); err != nil || req.Body != "9" {
+			t.Errorf("body = %q, %v; want the root's Seq through $", req.Body, err)
+		}
+	})
 	t.Run("an error the sample render finds", func(t *testing.T) {
 		refused(t, "name: example\ndoors:\n  - {name: out, layer: 2, transport: stdout, line: '{{index .Line 1000}}'}\n", "doors[0].line", "sample data")
 	})

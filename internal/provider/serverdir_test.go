@@ -75,6 +75,23 @@ func TestLoadServerDir(t *testing.T) {
 			t.Errorf("Secrets = %v, want the one resolved value", got)
 		}
 	})
+	t.Run("a symlinked file is loaded", func(t *testing.T) {
+		dir := t.TempDir()
+		target := filepath.Join(t.TempDir(), "mounted")
+		if err := os.WriteFile(target, []byte(pushFile("host", "")), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, filepath.Join(dir, "host.yaml")); err != nil {
+			t.Fatal(err)
+		}
+		doors, skipped, err := LoadServerDir(os.DirFS(dir))
+		if err != nil {
+			t.Fatalf("LoadServerDir: %v", err)
+		}
+		if len(skipped) != 0 || !slices.Equal(doorFiles(doors), []string{"host/push"}) {
+			t.Errorf("doors %v, skipped %v; want the linked file's door", doorFiles(doors), skipped)
+		}
+	})
 	t.Run("a missing folder holds no doors", func(t *testing.T) {
 		doors, skipped, err := LoadServerDir(os.DirFS(filepath.Join(t.TempDir(), "absent")))
 		if err != nil || len(skipped) != 0 || len(doors.All()) != 0 {
@@ -174,12 +191,18 @@ func TestLoadServerDirSkips(t *testing.T) {
 	const value = "tok-value-1"
 	badName := strings.Replace(pushFile("bad-name", ""), "door_token", "door-token", 1)
 	unset := strings.Replace(pushFile("unset", ""), "door_token", "unset_token", 1)
+	t.Setenv("SECRET_SPLIT_TOKEN", value+"\r\nX-Injected: 1")
+	split := strings.Replace(pushFile("split", ""), "door_token", "split_token", 1)
+	t.Setenv("SECRET_DEL_TOKEN", value+"\x7f")
+	del := strings.Replace(pushFile("del", ""), "door_token", "del_token", 1)
 	cases := []struct {
 		name, file, want string
 	}{
 		{"an unknown key", "name: broken\ncolour: red\ndoors: []\n", "colour"},
 		{"a secret name outside [a-z0-9_]+", badName, "headers.Authorization"},
 		{"an unset secret", unset, "SECRET_UNSET_TOKEN is not set"},
+		{"a secret with a line break", split, "SECRET_SPLIT_TOKEN holds a character a header value cannot carry"},
+		{"a secret with a DEL byte", del, "SECRET_DEL_TOKEN holds a character a header value cannot carry"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

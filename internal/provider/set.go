@@ -21,7 +21,8 @@ type Set struct {
 
 // LoadSet reads every *.yaml file at the root of each layer, a later layer
 // replacing an earlier layer's file of the same name, then resolves extends.
-// A layer that does not exist is empty; another read error fails the set.
+// A symlink is read as its target. A layer that does not exist is empty;
+// another read error, a dangling symlink included, fails the set.
 func LoadSet(layers ...fs.FS) (*Set, error) {
 	files, err := readLayers(layers)
 	if err != nil {
@@ -51,26 +52,49 @@ func LoadSet(layers ...fs.FS) (*Set, error) {
 func readLayers(layers []fs.FS) (map[string][]byte, error) {
 	files := map[string][]byte{}
 	for _, layer := range layers {
-		entries, err := fs.ReadDir(layer, ".")
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return nil, fmt.Errorf("read providers: %w", err)
-		}
-		for _, e := range entries {
-			name, ok := strings.CutSuffix(e.Name(), yamlExt)
-			if !ok || !e.Type().IsRegular() {
-				continue
-			}
-			data, err := fs.ReadFile(layer, e.Name())
-			if err != nil {
-				return nil, fmt.Errorf("read provider %s: %w", name, err)
-			}
-			files[name] = data
+		if err := readLayer(layer, files); err != nil {
+			return nil, err
 		}
 	}
 	return files, nil
+}
+
+// readLayer adds the layer's *.yaml files to files, replacing by name. A
+// layer that does not exist adds nothing.
+func readLayer(layer fs.FS, files map[string][]byte) error {
+	entries, err := fs.ReadDir(layer, ".")
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read providers: %w", err)
+	}
+	for _, e := range entries {
+		name, ok := strings.CutSuffix(e.Name(), yamlExt)
+		if !ok || e.IsDir() {
+			continue
+		}
+		data, regular, err := readFile(layer, e.Name())
+		if err != nil {
+			return fmt.Errorf("read provider %s: %w", name, err)
+		}
+		if regular {
+			files[name] = data
+		}
+	}
+	return nil
+}
+
+// readFile reads a regular file, or answers false for anything else. Stat
+// follows a symlink, as a mounted config file often is; a dangling one is an
+// error, and a pipe is never opened.
+func readFile(layer fs.FS, name string) (data []byte, regular bool, err error) {
+	info, err := fs.Stat(layer, name)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, false, err
+	}
+	data, err = fs.ReadFile(layer, name)
+	return data, err == nil, err
 }
 
 // Get returns the named provider. An invalid file answers its load error; a

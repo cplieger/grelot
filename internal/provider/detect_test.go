@@ -95,6 +95,29 @@ func TestDetectRefuses(t *testing.T) {
 			}
 		})
 	}
+	t.Run("an invalid file is named beside none matched", func(t *testing.T) {
+		broken := files("zeta", "name: zeta\ndetect: {env: [ZETA_ID]}\ncolour: red\n", "alpha", "name: alpha\nsurprise: 1\n")
+		_, err := mustSet(t, detectSet, broken).Detect("", env("ZETA_ID", "z"), nil)
+		de, ok := errors.AsType[*DetectError](err)
+		if !ok {
+			t.Fatalf("error %T %v is not a DetectError", err, err)
+		}
+		if !slices.Equal(de.Invalid, []string{"alpha", "zeta"}) {
+			t.Errorf("invalid = %v, want [alpha zeta]", de.Invalid)
+		}
+		msg := err.Error()
+		for _, w := range []string{"none matched", "alpha, zeta invalid", "grelot provider check", "--provider <name>"} {
+			if !strings.Contains(msg, w) {
+				t.Errorf("line %q lacks %q", msg, w)
+			}
+		}
+	})
+	t.Run("no invalid file names none", func(t *testing.T) {
+		_, err := s.Detect("", env("HOME", "/h"), nil)
+		if strings.Contains(err.Error(), "invalid") {
+			t.Errorf("line %q names an invalid provider in a set with none", err)
+		}
+	})
 	t.Run("an unknown override", func(t *testing.T) {
 		if _, err := s.Detect("nowhere", env("INNER_THREAD", "t"), nil); err == nil || !strings.Contains(err.Error(), "nowhere") {
 			t.Errorf("Detect(nowhere) = %v", err)

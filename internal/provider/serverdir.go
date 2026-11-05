@@ -25,13 +25,13 @@ type ServerDoors struct {
 	secrets []string
 }
 
-// LoadServerDir loads the server's providers folder: every *.yaml file at its
-// root decoded into the full schema, extends left unresolved, and only the
-// http doors kept. A file that fails to load, whose secret cannot be read, or
-// whose door can match an identity an earlier file's door (by file name) also
-// matches is skipped and returned in skipped, for the caller's one
-// "provider invalid" line each; no error text carries a value. A folder that
-// does not exist holds no doors; another read error is returned.
+// LoadServerDir loads the server's providers folder, read as LoadSet reads a
+// layer: the full schema, extends unresolved, only http doors kept. A file
+// that fails to load, whose secret cannot be read or holds a byte no header
+// may carry, or whose door can match an identity an earlier file's door (by
+// file name) matches is skipped and returned in skipped, for the caller's one
+// "provider invalid" line each; no error text carries a value. A missing
+// folder holds no doors; another read error is returned.
 func LoadServerDir(fsys fs.FS) (doors *ServerDoors, skipped []*LoadError, err error) {
 	files, err := readLayers([]fs.FS{fsys})
 	if err != nil {
@@ -93,6 +93,9 @@ func resolveSecrets(d *Door) (values []string, problem string) {
 		v, err := envx.Secret(secretKey(name))
 		if err != nil {
 			return nil, secretProblem(name, err)
+		}
+		if !headerSafe(v) {
+			return nil, fmt.Sprintf("secret %s: %s holds a character a header value cannot carry", name, secretKey(name))
 		}
 		resolved[name] = v
 		values = append(values, v)

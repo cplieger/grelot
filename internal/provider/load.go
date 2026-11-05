@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
+	"net/http"
 	"regexp"
 	"slices"
 	"strings"
@@ -28,6 +30,7 @@ const (
 	keyHold    = "hold"
 	keyIdle    = "idle"
 	keyURL     = "url"
+	keyHeaders = "headers"
 
 	keyDedupeWindow = "dedupe_window"
 
@@ -44,8 +47,8 @@ var (
 )
 
 // LoadError is a provider file refused at load. Key is where in the file the
-// problem is, empty for the whole file; Problem never quotes a value of the
-// file, so the error is safe to log.
+// problem is, empty for the whole file; Problem quotes no template or header
+// value, so the error is safe to log.
 type LoadError struct {
 	Provider string
 	Key      string
@@ -70,7 +73,7 @@ var commonDoorKeys = []string{keyName, "layer", "transport", "start", "asset", "
 // doorKeys is the one list of transport keys; a key of another transport is
 // refused like an unknown one.
 var doorKeys = map[Transport]doorKey{
-	TransportHTTP:   {required: []string{keyURL, "body"}, optional: []string{"match", "headers", keyDedupeWindow, "gone"}},
+	TransportHTTP:   {required: []string{keyURL, "body"}, optional: []string{"match", keyHeaders, keyDedupeWindow, "gone"}},
 	TransportExec:   {required: []string{"argv"}},
 	TransportStdout: {optional: []string{keyLine, keyHold, keyIdle, keyEnd, keyEndExit}},
 	TransportExit:   {optional: []string{keyLine, keyHold, keyIdle, keyEnd, keyEndExit}},
@@ -293,10 +296,18 @@ func (d *Door) checkHTTP(set map[string]bool) error {
 	if d.Match.Provider != "" && !nameRE.MatchString(d.Match.Provider) {
 		return &LoadError{Key: "match.provider", Problem: "must match " + nameRE.String()}
 	}
-	for h := range d.Headers {
+	seen := map[string]string{}
+	for _, h := range slices.Sorted(maps.Keys(d.Headers)) {
 		if !headerRE.MatchString(h) {
-			return &LoadError{Key: "headers", Problem: fmt.Sprintf("%q is not a header name", h)}
+			return &LoadError{Key: keyHeaders, Problem: fmt.Sprintf("%q is not a header name", h)}
 		}
+		// RFC 9110 section 5.1: names are case-insensitive, so two spellings
+		// are one header whose value would depend on map order.
+		canon := http.CanonicalHeaderKey(h)
+		if other, ok := seen[canon]; ok {
+			return &LoadError{Key: keyHeaders, Problem: fmt.Sprintf("%q and %q differ only in case and name one header", other, h)}
+		}
+		seen[canon] = h
 	}
 	if set[keyDedupeWindow] && d.DedupeWindow < minDedupeWindow {
 		return &LoadError{Key: keyDedupeWindow, Problem: "must be at least 60s, the longest gap between two tries of one key"}

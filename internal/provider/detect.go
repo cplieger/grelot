@@ -8,10 +8,12 @@ import (
 )
 
 // DetectError is detection finding no single host. Matched lists the
-// providers tied on the most variables, empty when none matched; Error is the
-// one line every identity command prints, with the fix.
+// providers tied on the most variables, empty when none matched; Invalid
+// lists the files that failed to load, any of which may be the host's. Error
+// is the one line every identity command prints, with the fix.
 type DetectError struct {
 	Matched []string
+	Invalid []string
 }
 
 func (e *DetectError) Error() string {
@@ -19,7 +21,11 @@ func (e *DetectError) Error() string {
 	if len(e.Matched) > 0 {
 		matched = "matched " + strings.Join(e.Matched, ", ")
 	}
-	return fmt.Sprintf("grelot cannot tell which host this shell runs in (%s); run with --provider <name>, or set provider: <name> in the client config", matched)
+	invalid := ""
+	if len(e.Invalid) > 0 {
+		invalid = "; provider " + strings.Join(e.Invalid, ", ") + " invalid: run grelot provider check on its file"
+	}
+	return fmt.Sprintf("grelot cannot tell which host this shell runs in (%s)%s; run with --provider <name>, or set provider: <name> in the client config", matched, invalid)
 }
 
 // NoSessionError is a provider whose file records no session variable, so
@@ -70,7 +76,7 @@ func (s *Set) Detect(override string, lookup func(name string) (string, bool), a
 	if p := nearest(tied, ancestors); p != nil {
 		return p, nil
 	}
-	err := &DetectError{}
+	err := &DetectError{Invalid: slices.Sorted(maps.Keys(s.invalid))}
 	for _, p := range tied {
 		err.Matched = append(err.Matched, p.Name)
 	}

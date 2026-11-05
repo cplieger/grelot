@@ -94,6 +94,48 @@ func TestLoadSetLayers(t *testing.T) {
 			t.Errorf("Names = %v, want [base]", got)
 		}
 	})
+	t.Run("a symlinked file replaces by name", func(t *testing.T) {
+		dir := t.TempDir()
+		target := filepath.Join(t.TempDir(), "kept.yaml")
+		if err := os.WriteFile(target, []byte("name: other\nnotes: linked\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, filepath.Join(dir, "other.yaml")); err != nil {
+			t.Fatal(err)
+		}
+		s, err := LoadSet(shipped, os.DirFS(dir))
+		if err != nil {
+			t.Fatalf("LoadSet: %v", err)
+		}
+		if p, err := s.Get("other"); err != nil || p.Notes != "linked" {
+			t.Errorf("Get(other) = %+v, %v; want the linked file", p, err)
+		}
+	})
+	t.Run("a dangling symlink fails the set", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.Symlink(filepath.Join(dir, "absent.yaml"), filepath.Join(dir, "other.yaml")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadSet(shipped, os.DirFS(dir)); err == nil || !strings.Contains(err.Error(), "other") {
+			t.Errorf("LoadSet = %v, want a read error naming other", err)
+		}
+	})
+	t.Run("a directory named like a file is ignored", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.Mkdir(filepath.Join(dir, "other.yaml"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(dir, "other.yaml"), filepath.Join(dir, "extra.yaml")); err != nil {
+			t.Fatal(err)
+		}
+		s, err := LoadSet(shipped, os.DirFS(dir))
+		if err != nil {
+			t.Fatalf("LoadSet: %v", err)
+		}
+		if p, err := s.Get("other"); err != nil || p.Notes != "shipped" || slices.Contains(s.Names(), "extra") {
+			t.Errorf("Names = %v, other = %+v, %v; want the shipped file and no extra", s.Names(), p, err)
+		}
+	})
 	t.Run("a missing layer is empty", func(t *testing.T) {
 		s, err := LoadSet(shipped, os.DirFS(filepath.Join(t.TempDir(), "absent")))
 		if err != nil {

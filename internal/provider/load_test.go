@@ -258,6 +258,7 @@ func TestLoadRefuses(t *testing.T) {
 		{"gone 401", door("{name: hh, layer: 1, transport: http, url: u, body: b, gone: [401]}"), []string{"doors[0].gone[0]"}},
 		{"gone 500", door("{name: hh, layer: 1, transport: http, url: u, body: b, gone: [404, 500]}"), []string{"doors[0].gone[1]"}},
 		{"header name", door("{name: hh, layer: 1, transport: http, url: u, body: b, headers: {'Bad Header': x}}"), []string{"doors[0].headers"}},
+		{"header names differing in case", door("{name: hh, layer: 1, transport: http, url: u, body: b, headers: {Content-Type: application/json, content-type: text/plain}}"), []string{"doors[0].headers", `"Content-Type"`, `"content-type"`, "differ only in case"}},
 		{"door name", door("{name: Bad, layer: 2, transport: stdout}"), []string{"doors[0].name"}},
 		{"duplicate door", "name: example\ndoors:\n  - {name: aa, layer: 2, transport: stdout}\n  - {name: aa, layer: 2, transport: exit}\n", []string{"doors[1].name", "twice"}},
 		{"asset outside folder", door("{name: oo, layer: 2, transport: stdout, asset: ../x}"), []string{"doors[0].asset"}},
