@@ -114,7 +114,7 @@ func newHarness(t *testing.T) *harness {
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	push := &fakePush{working: map[uint64]bool{}}
+	push := &fakePush{states: map[uint64]pushState{}}
 	srv := New(&Options{
 		Store: st, Logger: logger, Now: clk.now, Version: testVersion, Push: push,
 		Config: Config{Token: testToken, PathRoot: DefaultPathRoot},
@@ -124,24 +124,27 @@ func newHarness(t *testing.T) *harness {
 	return &harness{t: t, store: st, srv: srv, http: hs, clk: clk, logs: logs, push: push}
 }
 
-// fakePush serves the identities a test marks working.
+// fakePush serves the identities a test gives a push state.
 type fakePush struct {
-	working map[uint64]bool
-	mu      sync.Mutex
+	states map[uint64]pushState
+	mu     sync.Mutex
 }
 
 var _ Pusher = (*fakePush)(nil)
 
-func (f *fakePush) Working(id uint64) bool {
+func (f *fakePush) State(id uint64) pushState {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.working[id]
+	if st, ok := f.states[id]; ok {
+		return st
+	}
+	return pushNone
 }
 
-func (f *fakePush) set(id uint64, working bool) {
+func (f *fakePush) set(id uint64, st pushState) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.working[id] = working
+	f.states[id] = st
 }
 
 // idOf is the store id of the identity session acts as.

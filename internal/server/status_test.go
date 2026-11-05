@@ -108,18 +108,20 @@ func TestStatus_wakeState(t *testing.T) {
 			t.Errorf("wake %q, want watcher", got)
 		}
 	})
-	h.push.set(id, true)
-	t.Run("host push while its push works, a wait open or not", func(t *testing.T) {
+	h.push.set(id, pushOK)
+	t.Run("host push while its push is ok, a wait open or not", func(t *testing.T) {
 		if got := wake(); got != "host push" {
 			t.Errorf("wake %q, want host push", got)
 		}
 	})
-	h.push.set(id, false)
-	t.Run("back to watcher once push stops working", func(t *testing.T) {
-		if got := wake(); got != "watcher" {
-			t.Errorf("wake %q, want watcher", got)
-		}
-	})
+	for _, st := range []pushState{pushFailing, pushOff} {
+		h.push.set(id, st)
+		t.Run("watcher while push is "+string(st), func(t *testing.T) {
+			if got := wake(); got != "watcher" {
+				t.Errorf("wake %q, want watcher", got)
+			}
+		})
+	}
 }
 
 func TestCaller_headers(t *testing.T) {

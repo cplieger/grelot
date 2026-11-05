@@ -133,9 +133,13 @@ func (w *wtx) reviveTarget(r *Revival, provider string, own *identityRow, ownFou
 // TakeOverHint finds the identity a new session may be the continuation
 // of: one registered by another session under proc, live or dormant, that
 // shares the caller's environment and has the session's provider, ranked
-// by hintBeats. It never moves one.
+// by hintBeats. It never moves one. Refusals: KindInvalid for a bad
+// session, machine or environment.
 func (s *Store) TakeOverHint(ctx context.Context, session, proc string, caller Where) (Identity, bool, error) {
 	provider, err := checkSession(session)
+	if err == nil {
+		err = checkWhere(&caller, nil)
+	}
 	if err != nil || proc == "" {
 		return Identity{}, false, err
 	}

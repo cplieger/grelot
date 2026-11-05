@@ -51,7 +51,7 @@ func (s *Server) wakeState(st *store.Status, now time.Time) string {
 	switch {
 	case st.Delegate:
 		return wakePullOnly
-	case s.push.Working(st.Identity.ID):
+	case s.push.State(st.Identity.ID) == pushOK:
 		return wakePush
 	case !st.Identity.Ended && s.presence.online(st.Identity.ID, now):
 		return wakeWatcher

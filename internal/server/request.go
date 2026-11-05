@@ -43,9 +43,13 @@ func (s *Server) authorize(next http.Handler) http.Handler {
 	})
 }
 
-// callerOf reads who an identity request acts as from its headers.
-func callerOf(r *http.Request) (store.Caller, error) {
+// callerOf reads who an identity request acts as from its headers and,
+// with agent, the subagent id its agent parameter names.
+func callerOf(r *http.Request, agent bool) (store.Caller, error) {
 	c := store.Caller{Session: r.Header.Get(headerSession), As: r.Header.Get(headerAs)}
+	if agent {
+		c.Agent = r.URL.Query().Get("agent")
+	}
 	if c.Session == "" {
 		return c, badRequest("Grelot-Session is required: send <provider>:<host session id>")
 	}
@@ -66,9 +70,15 @@ type identityFunc func(r *http.Request, c store.Caller) (int, any, error)
 // identity serves fn with the caller its headers name, and puts the
 // caller's status line on the answer, read after fn so it shows what fn
 // changed.
-func (s *Server) identity(fn identityFunc) http.Handler {
+func (s *Server) identity(fn identityFunc) http.Handler { return s.identityFor(fn, false) }
+
+// identityAgent is identity for a route a subagent's hook calls, which
+// acts as the delegate bound to the subagent id in its agent parameter.
+func (s *Server) identityAgent(fn identityFunc) http.Handler { return s.identityFor(fn, true) }
+
+func (s *Server) identityFor(fn identityFunc, agent bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := callerOf(r)
+		c, err := callerOf(r, agent)
 		if err != nil {
 			s.fail(w, r, err)
 			return
