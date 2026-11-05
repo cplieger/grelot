@@ -103,6 +103,9 @@ type Door struct {
 	DedupeWindow time.Duration     `yaml:"dedupe_window"`
 	Hold         time.Duration     `yaml:"hold"`
 	EndExit      int               `yaml:"end_exit"`
+	// index is the door's place in its file, for problems found after the
+	// doors are sorted by layer.
+	index int
 }
 
 // Match picks the identities an http door serves: those of Provider (the

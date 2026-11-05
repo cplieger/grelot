@@ -1,5 +1,6 @@
 // Command grelot will coordinate coding agents. This release runs the server's
-// health endpoint only; the API and the agent client arrive in later releases.
+// health endpoint and checks provider files; the API and the agent client
+// arrive in later releases.
 package main
 
 import (
@@ -50,8 +51,10 @@ func run(args []string, stderr io.Writer) int {
 			return 1
 		}
 		return 0
+	case "provider":
+		return providerCommand(args[1:], stderr)
 	default:
-		fmt.Fprintf(stderr, "grelot: unknown command %q; want serve or health\n", cmd)
+		fmt.Fprintf(stderr, "grelot: unknown command %q; want serve, health or provider check\n", cmd)
 		return 2
 	}
 }

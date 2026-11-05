@@ -113,6 +113,9 @@ func Load(name string, data []byte) (*Provider, error) {
 		}
 		return nil, err
 	}
+	for i := range p.Doors {
+		p.Doors[i].index = i
+	}
 	slices.SortStableFunc(p.Doors, func(a, b Door) int { return a.Layer - b.Layer })
 	return p, nil
 }
