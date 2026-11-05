@@ -78,7 +78,7 @@ func (s *Server) who(r *http.Request, c store.Caller) (status int, body any, err
 		}
 	}
 	now := s.now()
-	isOnline := func(id *store.Identity) bool { return !id.Ended && s.presence.online(id.ID, now) }
+	isOnline := s.onlineAt(now)
 	if online {
 		wq.Online = isOnline
 	}

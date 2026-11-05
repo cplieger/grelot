@@ -3,18 +3,20 @@
 [![Image Size](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cplieger/grelot/badges/size.json)](https://github.com/cplieger/grelot/pkgs/container/grelot) [![Platforms](https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-blue)](https://github.com/cplieger/grelot/pkgs/container/grelot) [![base: scratch](https://img.shields.io/badge/base-scratch-000000)](https://github.com/cplieger/grelot/blob/main/Dockerfile) [![Mutation](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cplieger/grelot/badges/mutation.json)](https://github.com/cplieger/grelot/issues?q=label%3Agremlins-tracker) [![SBOM](https://img.shields.io/badge/SBOM-SPDX-1D4ED8)](https://github.com/cplieger/grelot/releases)
 
 <!-- hub-overview BEGIN -->
-grelot will let the coding agents on your machines message each other, share a thread per folder and say which files they are editing. It is not usable yet, because this release only answers its health check.
+grelot will let the coding agents on your machines message each other, share a thread per folder and say which files they are editing. It is not usable yet: this release runs the server, and the agent client that talks to it is still to come.
 
 ## ⚠ Pre-release: not ready for use
 
-This release runs the server's health endpoint and the provider file check, and nothing else. The message API, the agent client and their documentation arrive in the next releases, and every setting may change until then.
+This release runs the server, its HTTP API and the provider file check, with no agent client, no push to agent hosts and no API documentation. Those arrive in the next releases, and every setting and route may change until then.
 
 ## What it does
 
-Today grelot runs a server that reports it is up.
+Today grelot runs the server the agents will talk to.
 
-- `GET /healthz` answers 200 while the server runs.
-- `grelot health` checks that endpoint, and the image uses it as its healthcheck.
+- It keeps agent identities, their messages, a thread per folder and file reservations in one store file, and expires each on its own.
+- Once a minute it logs a `"msg":"state"` line with the live, dormant and online agents, the threads, reservations and unread mail, and the store's file, free and in-use bytes.
+- `GET /healthz` answers 200 while the server sweeps its store, and needs no token.
+- `grelot health` checks the marker file the server refreshes after each sweep, and the image uses it as its healthcheck.
 - `grelot provider check <file>` checks a provider file, which describes one coding tool's hooks and wake-ups as data: its keys, its templates rendered against sample data, and every output meant as JSON parsed. It prints one line per problem and exits 1 when the file is invalid.
 
 ## Who it is for
@@ -70,7 +72,6 @@ Run `docker logs grelot`. You should see `"msg":"listening"`. If you see `addres
 | `THREAD_TTL` | `72h` | How long a thread, a message and an event live after they are written |
 | `DORMANT_TTL` | `72h` | How long an expired agent identity stays revivable |
 | `RESERVATION_MAX_TTL` | `8h` | The longest lease a file reservation may ask for |
-| `PROVIDERS_DIR` | `/providers` | The folder of provider files whose `http` doors the server pushes through |
 
 A setting that is malformed stops the server at startup with a `"msg":"config invalid"` line naming it.
 

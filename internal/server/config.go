@@ -14,10 +14,9 @@ import (
 // Config is the server's configuration, read from the environment once at
 // startup.
 type Config struct {
-	Token        string
-	PathRoot     string
-	StorePath    string
-	ProvidersDir string
+	Token     string
+	PathRoot  string
+	StorePath string
 	// MaxBytes is the store's ceiling on the bytes in use.
 	MaxBytes          int64
 	ThreadTTL         time.Duration
@@ -30,7 +29,6 @@ const (
 	keyToken             envx.Key = "GRELOT_TOKEN" //nolint:gosec // an environment variable name, not a credential
 	keyPathRoot          envx.Key = "GRELOT_PATH_ROOT"
 	keyStorePath         envx.Key = "STORE_PATH"
-	keyProvidersDir      envx.Key = "PROVIDERS_DIR"
 	keyMaxBytes          envx.Key = "STORE_MAX_BYTES"
 	keyThreadTTL         envx.Key = "THREAD_TTL"
 	keyDormantTTL        envx.Key = "DORMANT_TTL"
@@ -39,9 +37,8 @@ const (
 
 // The defaults of the optional keys.
 const (
-	DefaultPathRoot     = store.DefaultPathRoot
-	DefaultStorePath    = "/data/grelot.db"
-	DefaultProvidersDir = "/providers"
+	DefaultPathRoot  = store.DefaultPathRoot
+	DefaultStorePath = "/data/grelot.db"
 )
 
 // LoadConfig reads the configuration from the environment. Its error names
@@ -50,7 +47,6 @@ func LoadConfig() (Config, error) {
 	c := Config{
 		PathRoot:          DefaultPathRoot,
 		StorePath:         DefaultStorePath,
-		ProvidersDir:      DefaultProvidersDir,
 		MaxBytes:          store.DefaultMaxBytes,
 		ThreadTTL:         store.DefaultThreadTTL,
 		DormantTTL:        store.DefaultDormantTTL,
@@ -70,9 +66,6 @@ func LoadConfig() (Config, error) {
 	}
 	if v := envx.String(keyStorePath); v != "" {
 		c.StorePath = v
-	}
-	if v := envx.String(keyProvidersDir); v != "" {
-		c.ProvidersDir = v
 	}
 	errs = append(errs, c.readLimits()...)
 	return c, errors.Join(errs...)

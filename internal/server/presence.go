@@ -5,6 +5,8 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/cplieger/grelot/internal/store"
 )
 
 const (
@@ -111,10 +113,15 @@ func (p *presence) closed(id uint64, now time.Time) {
 
 // online reports whether id holds a standing wait, or closed one under
 // onlineFor ago. A session the SessionEnd report closed is offline, which
-// the caller checks.
+// Server.onlineAt checks.
 func (p *presence) online(id uint64, now time.Time) bool {
 	m := p.get(id)
 	return m.open > 0 || (!m.closed.IsZero() && now.Sub(m.closed) < onlineFor)
+}
+
+// onlineAt reports, at now, whether an identity is online.
+func (s *Server) onlineAt(now time.Time) func(*store.Identity) bool {
+	return func(id *store.Identity) bool { return !id.Ended && s.presence.online(id.ID, now) }
 }
 
 // inTurnOpened records an in-turn wait of id starting; the caller calls
