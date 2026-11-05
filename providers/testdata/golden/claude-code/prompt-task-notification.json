@@ -1,0 +1,9 @@
+{
+  "session_id": "cf282512-ceef-4065-8ac9-000a6a72dee7",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-AppData-Local-Temp-probe-claude-i\\cf282512-ceef-4065-8ac9-000a6a72dee7.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\probe\\claude-i",
+  "prompt_id": "c3869d1b-2633-4586-89f3-dca16fe58316",
+  "permission_mode": "default",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "<task-notification>\n<task-id>bgva38piz</task-id>\n<tool-use-id>toolu_bdrk_01N6FpiphCCx6htT299vfggm</tool-use-id>\n<output-file>C:\\Users\\user\\AppData\\Local\\Temp\\claude\\C--Users-user-AppData-Local-Temp-probe-claude-i\\a9c96e81-c3c7-4658-9534-acfd0d061ae6\\tasks\\bgva38piz.output</output-file>\n<status>completed</status>\n<summary>Monitor \"c3.sh probe events\" stream ended</summary>\n<event>evt-ayegs6d9</event>\n</task-notification>"
+}

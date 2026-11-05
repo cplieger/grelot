@@ -1,0 +1,9 @@
+{
+  "session_id": "a566043a-0e68-47a3-b0c8-f88261a1f011",
+  "transcript_path": "/tmp/p10cc/cfg/projects/-tmp-p10cc-work/a566043a-0e68-47a3-b0c8-f88261a1f011.jsonl",
+  "cwd": "/tmp/p10cc/work",
+  "prompt_id": "ad739400-f2ae-46ec-9b9f-81c39ed6daa3",
+  "hook_event_name": "StopFailure",
+  "error": "unknown",
+  "last_assistant_message": "Done."
+}

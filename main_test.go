@@ -226,6 +226,47 @@ func TestRun_serveRefusesAMissingToken(t *testing.T) {
 	}
 }
 
+func TestRun_clientLoadsTheShippedProvidersUnderTheUsersOwn(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("KIRO_SESSION_ID", "")
+	t.Setenv("GRELOT_TOKEN_FILE", "")
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(configDir, "grelot")
+	if err := os.MkdirAll(filepath.Join(dir, "providers"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("server: http://127.0.0.1:1\ntoken: test-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	me := func(t *testing.T) string {
+		t.Helper()
+		var stderr bytes.Buffer
+		if code := run([]string{"--provider", "kiro-cli", "me"}, io.Discard, &stderr); code != 1 {
+			t.Errorf("exit %d, want 1; stderr %q", code, stderr.String())
+		}
+		return stderr.String()
+	}
+	t.Run("a shipped file with no file on disk", func(t *testing.T) {
+		if got := me(t); !strings.Contains(got, "KIRO_SESSION_ID") {
+			t.Errorf("stderr %q, want the shipped kiro-cli file's session variable", got)
+		}
+	})
+	t.Run("a user file replaces the shipped one", func(t *testing.T) {
+		file := filepath.Join(dir, "providers", "kiro-cli.yaml")
+		if err := os.WriteFile(file, []byte("name: kiro-cli\nsession: {env: USER_FILE_SESSION}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := me(t); !strings.Contains(got, "USER_FILE_SESSION") || strings.Contains(got, "KIRO_SESSION_ID") {
+			t.Errorf("stderr %q, want the user file's session variable only", got)
+		}
+	})
+}
+
 func TestRun_clientVerbs(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

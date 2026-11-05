@@ -1,0 +1,15 @@
+{
+  "session_id": "63cd652a-8c48-452b-a178-11ba86bda9b3",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-AppData-Local-Temp-probe-claude-p\\63cd652a-8c48-452b-a178-11ba86bda9b3.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\probe\\claude-p",
+  "prompt_id": "f280b652-9afd-4700-a0be-2dfdf4438eff",
+  "permission_mode": "default",
+  "effort": {
+    "level": "xhigh"
+  },
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "Done.",
+  "background_tasks": [],
+  "session_crons": []
+}

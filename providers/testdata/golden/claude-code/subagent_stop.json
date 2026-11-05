@@ -1,0 +1,23 @@
+{
+  "session_id": "7bd3ea77-8a49-4b04-b409-d34362a2159f",
+  "transcript_path": "/tmp/p10cc/cfg/projects/-tmp-p10cc-work/7bd3ea77-8a49-4b04-b409-d34362a2159f.jsonl",
+  "cwd": "/tmp/p10cc/work",
+  "prompt_id": "b35f57a4-40a7-4de1-9947-484ddb7e5178",
+  "permission_mode": "default",
+  "agent_id": "ad027b06737f739c9",
+  "agent_type": "general-purpose",
+  "hook_event_name": "SubagentStop",
+  "stop_hook_active": false,
+  "agent_transcript_path": "/tmp/p10cc/cfg/projects/-tmp-p10cc-work/7bd3ea77-8a49-4b04-b409-d34362a2159f/subagents/agent-ad027b06737f739c9.jsonl",
+  "last_assistant_message": "Done.",
+  "background_tasks": [
+    {
+      "id": "ad027b06737f739c9",
+      "type": "subagent",
+      "status": "running",
+      "description": "Probe subagent",
+      "agent_type": "general-purpose"
+    }
+  ],
+  "session_crons": []
+}

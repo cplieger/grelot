@@ -1,0 +1,66 @@
+# The Kiro CLI, and any host that runs its agent server. Measured on
+# kiro-cli 2.37.1 on Linux.
+name: kiro-cli
+evidence: measured
+detect:
+  env: [KIRO_SESSION_ID]
+session:
+  # A workflow step's or a fork's shell carries the root chat's id here,
+  # while its hooks carry the step's or fork's own id on stdin.
+  env: KIRO_SESSION_ID
+  stdin: session_id
+  # No process: one agent server process can serve many chats.
+  record:
+    dir_env: KIRO_HOME
+    dir_default: ~/.kiro
+    glob: "sessions/*/{{.HookSession}}/session.json"
+    parent: parentSessionId
+    reason: createdReason
+    same_agent: [rewind]
+    same_agent_note: >-
+      this chat is a rewind of an earlier session; a grelot-watch run started
+      before the rewind still wakes the old session, which this chat never sees.
+      Ask the user to stop it (ctrl+g, select the run, ctrl+x twice), then
+      start a new one with the start line below.
+doors:
+  # One grelot watch run is one poll of the workflow's command watch: it
+  # prints one JSON result line and always exits 0, since the watch reads
+  # any other exit as idle without reading the line.
+  - name: workflow
+    layer: 2
+    transport: exit
+    start: start the grelot-watch workflow (~/.kiro/workflows/grelot-watch.workflow.json)
+    asset: kiro-cli/grelot-watch.workflow.json
+    hold: 45s
+    line: '{"outcome":"new-activity","cursor":null,"payload":{{json .Line}}}'
+    idle: '{"outcome":"idle","cursor":null}'
+    end: '{"outcome":"terminal-state","cursor":null,"payload":{{json .Line}}}'
+    end_exit: 0
+    notes: >-
+      The grelot-watch workflow polls every 10 seconds and runs until the
+      identity ends, or until the user cancels the run. Install it in
+      ~/.kiro/workflows/ and the grelot-notifier agent in ~/.kiro/agents/.
+hooks:
+  session_start:
+    event: SessionStart
+    outputs:
+      context: {text: "{{.Context}}"}
+  prompt:
+    event: UserPromptSubmit
+    stdin: {prompt: prompt}
+    outputs:
+      context: {text: "{{.Context}}"}
+  stop:
+    event: Stop
+    # The agent server runs the Stop hooks once per turn, so the hold ends
+    # the turn whether or not it blocks. Its Stop output reads only
+    # decision and reason, so it takes no notice.
+    once_per_turn: true
+    outputs:
+      block: {text: '{"decision":"block","reason":{{json .Reason}}}'}
+  session_end:
+    event: SessionEnd
+    # SessionEnd also fires when the server unloads an idle chat or a client
+    # disconnects; only a deleted chat has closed.
+    when: {reason: [delete]}
+notes: docs/hosts/kiro-cli.md

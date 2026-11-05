@@ -23,6 +23,7 @@ import (
 	"github.com/cplieger/grelot/internal/server"
 	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/where"
+	"github.com/cplieger/grelot/providers"
 )
 
 // version is set at build time with -ldflags "-X main.version=<tag>".
@@ -79,7 +80,7 @@ func clientCommand(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "grelot cannot find the user config dir: %v; set HOME, or XDG_CONFIG_HOME on Linux\n", err)
 		return 1
 	}
-	set, err := provider.LoadSet(os.DirFS(filepath.Join(client.Dir(configDir), "providers")))
+	set, err := provider.LoadSet(providers.FS, os.DirFS(filepath.Join(client.Dir(configDir), "providers")))
 	if err != nil {
 		fmt.Fprintf(stderr, "grelot: %v\n", err)
 		return 1
