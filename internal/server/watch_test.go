@@ -81,8 +81,8 @@ func TestWait_sendsTheDueNudgeAndReturnsIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Last == nil || st.Last.Attempt != 1 || st.Last.Seq != uint64(seq) {
-		t.Errorf("stored nudge = %+v, want attempt 1 at seq %v", st.Last, seq)
+	if want := h.clk.now().Add(3 * time.Minute); st.Due != nil || !st.Next.Equal(want) {
+		t.Errorf("nudge state = %+v, want the send recorded: none due, its re-nudge at %v", st, want)
 	}
 }
 

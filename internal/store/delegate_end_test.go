@@ -152,8 +152,8 @@ func TestDelegate_renewal(t *testing.T) {
 		if want := clk.now().Add(2 * time.Hour); !got.Expires.Equal(want) || got.Notice != "" {
 			t.Errorf("expires %v notice %q, want now + 2 h, %v, and no notice", got.Expires, got.Notice, want)
 		}
-		if want := got.Expires.Add(-30 * time.Minute); !got.WarnAt.Equal(want) {
-			t.Errorf("warn_at %v, want min(30 min, ttl/2) before expiry, %v", got.WarnAt, want)
+		if warn, want := getIdentity(t, s, got.ID).Lease.WarnAt, got.Expires.Add(-30*time.Minute); !warn.Equal(want) {
+			t.Errorf("warn_at %v, want min(30 min, ttl/2) before expiry, %v", warn, want)
 		}
 	})
 	t.Run("by itself, capped at its parent's expiry", func(t *testing.T) {

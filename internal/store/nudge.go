@@ -29,7 +29,6 @@ var reNudgeAfter = [...]time.Duration{3 * time.Minute, 15 * time.Minute, time.Ho
 // which send of the outstanding nudge it is, 1 to 4. Oldest is the write
 // time of the oldest of those deliveries.
 type Nudge struct {
-	At       time.Time
 	Oldest   time.Time
 	Identity uint64
 	Seq      uint64
@@ -39,13 +38,11 @@ type Nudge struct {
 }
 
 // NudgeState is an identity's nudge state at one instant. Due is the send due
-// now; Last is the outstanding nudge's latest send, which every standing
-// wait returns; Next is when its next re-nudge comes due. Each is zero
-// when there is none.
+// now; Next is when the outstanding nudge's next re-nudge comes due. Each
+// is zero when there is none.
 type NudgeState struct {
 	Next time.Time
 	Due  *Nudge
-	Last *Nudge
 }
 
 // Nudging is identity id's nudge state now. found is false when id has no
@@ -116,13 +113,7 @@ func (s *Store) nudging(r *bolttable.ReadTx, me *identityRow, now time.Time) (Nu
 		return out, err
 	}
 	outstanding := me.Read < me.Nudged
-	if outstanding {
-		out.Last = &Nudge{
-			At: me.NudgedAt, Oldest: b.oldest, Identity: me.ID, Seq: me.Nudged, Read: me.Read,
-			Count: b.count, Attempt: me.Nudges,
-		}
-	}
-	due := &Nudge{At: now, Oldest: b.oldest, Identity: me.ID, Seq: b.newest, Read: me.Read, Count: b.count, Attempt: 1}
+	due := &Nudge{Oldest: b.oldest, Identity: me.ID, Seq: b.newest, Read: me.Read, Count: b.count, Attempt: 1}
 	switch {
 	case b.count == 0:
 	case !outstanding:

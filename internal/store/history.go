@@ -45,8 +45,7 @@ type HistoryQuery struct {
 
 // History is a history read: the newest matching entries, oldest first.
 type History struct {
-	Entries  []Entry
-	Identity Identity
+	Entries []Entry
 }
 
 // History reads c's own mailbox, its deliveries read and unread and,
@@ -71,7 +70,6 @@ func (s *Store) History(ctx context.Context, c Caller, query *HistoryQuery) (His
 		if err != nil {
 			return err
 		}
-		out.Identity = s.view(&me)
 		h, ok, err := s.historyWalk(r, &me, &q, now)
 		if err != nil || !ok {
 			return err

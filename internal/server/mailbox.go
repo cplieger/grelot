@@ -172,6 +172,10 @@ type threadJSON struct {
 	ID      uint64    `json:"id"`
 }
 
+type threadsResponse struct {
+	Threads []threadJSON `json:"threads"`
+}
+
 // threads is GET /v1/threads: the live path threads under path.
 func (s *Server) threads(r *http.Request, c store.Caller) (status int, body any, err error) {
 	got, err := s.store.Threads(r.Context(), c, r.URL.Query().Get("path"))
@@ -182,7 +186,7 @@ func (s *Server) threads(r *http.Request, c store.Caller) (status int, body any,
 	for _, t := range got {
 		out = append(out, threadJSON{Expires: t.Expires.UTC(), Path: t.Path, ID: t.ID})
 	}
-	return http.StatusOK, map[string]any{"threads": out}, nil
+	return http.StatusOK, threadsResponse{Threads: out}, nil
 }
 
 type receiptJSON struct {

@@ -48,7 +48,6 @@ type Fields struct {
 // machine, environment or checkout value, only whether each is known.
 type Identity struct {
 	Expires      time.Time
-	WarnAt       time.Time
 	RegisteredAt time.Time
 	DormantSince time.Time
 	LastSeen     time.Time
@@ -794,7 +793,7 @@ func fmtTime(t time.Time) string { return t.UTC().Format("2006-01-02 15:04 UTC")
 
 func (s *Store) view(r *identityRow) Identity {
 	return Identity{
-		Expires: r.Lease.Expires, WarnAt: r.Lease.WarnAt, RegisteredAt: r.RegisteredAt,
+		Expires: r.Lease.Expires, RegisteredAt: r.RegisteredAt,
 		DormantSince: r.DormantSince, LastSeen: s.lastSeen(r),
 		Name: r.Name, Description: r.Description, State: r.State,
 		Host: r.Host, OS: r.OS, Arch: r.Arch, Provider: r.Provider,
