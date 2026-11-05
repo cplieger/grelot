@@ -53,25 +53,27 @@ type Posted struct {
 	Other           int
 }
 
-// Post stores a message from p.Caller's live identity, applies the
-// identity fields it carries, and writes one delivery to each recipient,
-// dormant ones included, and a quiet copy to each delegate's parent that
-// would not otherwise see it. A post in a path thread follows it, except
-// a delegate's. Refusals: KindInvalid for a bad target, message, field or
-// where; KindGone for a session with no live identity; KindForbidden for a
-// delegate's post outside its scope or a direct post to a delegate from
-// outside its scope; KindNotFound for an unknown @name; KindConflict for
-// a rename to a held name; KindFull when the last Measure found the bytes
-// in use past 90 % of Options.MaxBytes.
+// Post stores a message from p.Caller's live identity, applies its
+// identity fields, and delivers it to each recipient, dormant ones too,
+// with a quiet copy to each delegate's parent that would not otherwise see
+// it; a non-delegate's path post follows the thread. Refusals: KindInvalid
+// for a bad target, message, field or where; KindGone with no live
+// identity; KindForbidden outside a delegate's scope, either way;
+// KindNotFound for an unknown @name; KindConflict for a rename to a held
+// name; KindFull past 90 % of Options.MaxBytes; ErrClosed after Close.
 func (s *Store) Post(ctx context.Context, p *Posting) (Posted, error) {
 	if err := checkMessage(p); err != nil {
 		return Posted{}, err
 	}
-	if s.nearlyFull() {
+	full, err := s.nearlyFull()
+	if err != nil {
+		return Posted{}, err
+	}
+	if full {
 		return Posted{}, refuse(KindFull, "store nearly full: posts resume as older mail expires")
 	}
 	var out Posted
-	err := s.update(ctx, func(w *wtx) error {
+	err = s.update(ctx, func(w *wtx) error {
 		var perr error
 		out, perr = w.post(p)
 		return perr

@@ -1,28 +1,32 @@
-// Command grelot will coordinate coding agents. This release runs the server's
-// health endpoint and checks provider files; the API and the agent client
-// arrive in later releases.
+// Command grelot is the grelot server, which coordinates coding agents
+// through one HTTP API, its healthcheck and its provider-file check.
 package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
+
+	"github.com/cplieger/go/health"
+	"github.com/cplieger/go/httpserver"
+	"github.com/cplieger/go/slogx"
+	"github.com/cplieger/grelot/internal/server"
+	"github.com/cplieger/grelot/internal/store"
 )
 
-const (
-	listenAddr   = ":8080"
-	healthURL    = "http://127.0.0.1:8080/healthz"
-	probeTimeout = 3 * time.Second
-	stopTimeout  = 10 * time.Second
-)
+// version is set at build time with -ldflags "-X main.version=<tag>".
+var version = "dev"
+
+const listenAddr = ":8080"
+
+// markerAge is the oldest health marker the probe accepts: four sweep
+// periods, since every pass that commits refreshes it.
+var markerAge = health.Lease{Interval: store.SweepEvery, Cycles: 4}.Duration()
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stderr))
@@ -39,18 +43,21 @@ func run(args []string, stderr io.Writer) int {
 	case "serve":
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 		defer stop()
-		logger := slog.New(slog.NewJSONHandler(stderr, nil))
-		if err := serve(ctx, listenAddr, logger); err != nil {
+		h, _ := slogx.NewHandler(slogx.Options{Output: stderr, Format: slogx.JSON})
+		logger := slog.New(h)
+		slog.SetDefault(logger)
+		cfg, err := server.LoadConfig()
+		if err != nil {
+			logger.Error("config invalid", "error", err)
+			return 1
+		}
+		if err := serve(ctx, &cfg, listenAddr, health.DefaultPath, logger); err != nil {
 			logger.Error("server stopped", "error", err)
 			return 1
 		}
 		return 0
 	case "health":
-		if err := probe(healthURL, probeTimeout); err != nil {
-			fmt.Fprintf(stderr, "grelot health: %v\n", err)
-			return 1
-		}
-		return 0
+		return health.ProbeCheck(health.DefaultPath, health.WithMaxAge(markerAge))
 	case "provider":
 		return providerCommand(args[1:], stderr)
 	default:
@@ -59,59 +66,53 @@ func run(args []string, stderr io.Writer) int {
 	}
 }
 
-// newMux serves GET /healthz, which answers 200 while the process serves.
-func newMux() *http.ServeMux {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"status":"ok"}`)
+// serve opens the store, sweeps it, logs the state line and serves the API
+// on addr until ctx ends, then waits for the sweeper and the state line and
+// closes the store. The health marker at markerPath is fresh while the
+// sweeper commits.
+func serve(ctx context.Context, cfg *server.Config, addr, markerPath string, logger *slog.Logger) error {
+	hub := server.NewHub()
+	st, err := store.Open(cfg.StorePath, store.Options{
+		Logger: logger, MaxBytes: cfg.MaxBytes, ThreadTTL: cfg.ThreadTTL,
+		DormantTTL: cfg.DormantTTL, ReservationMaxTTL: cfg.ReservationMaxTTL, PathRoot: cfg.PathRoot,
+		Woke: hub.Woke,
 	})
-	return mux
-}
-
-// serve listens on addr until ctx ends, then drains for at most stopTimeout.
-func serve(ctx context.Context, addr string, logger *slog.Logger) error {
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	marker := health.NewMarker(markerPath)
+	marker.Set(true)
+	defer marker.Cleanup()
+	srv := server.New(&server.Options{Store: st, Logger: logger, Hub: hub, Version: version, Config: *cfg})
 	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
 	if err != nil {
 		return err
 	}
-	srv := &http.Server{Handler: newMux(), ReadHeaderTimeout: 10 * time.Second}
-	errc := make(chan error, 1)
-	go func() { errc <- srv.Serve(ln) }()
-	logger.Info("listening", "addr", ln.Addr().String())
-	select {
-	case err := <-errc:
-		return err
-	case <-ctx.Done():
-	}
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), stopTimeout)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return err
+	swept := make(chan error, 1)
+	go func() {
+		swept <- st.Run(ctx, func() {
+			marker.Set(true)
+			srv.Beat(ctx)
+		})
+	}()
+	stated := make(chan struct{})
+	go func() {
+		srv.LogState(ctx)
+		close(stated)
+	}()
+	logger.Info("listening", "addr", ln.Addr().String(), "version", version)
+	err = httpserver.Run(ctx, srv.HTTPServer(), ln, nil,
+		httpserver.WithPreDrain(func(context.Context) { srv.Release() }))
+	cancel()
+	<-stated
+	if serr := <-swept; err == nil {
+		err = serr
 	}
-	if err := <-errc; !errors.Is(err, http.ErrServerClosed) {
-		return err
+	if err == nil {
+		logger.Info("stopped")
 	}
-	logger.Info("stopped")
-	return nil
-}
-
-// probe returns nil when url answers 200 within timeout.
-func probe(url string, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
-	if err != nil {
-		return err
-	}
-	resp, err := (&http.Client{Timeout: timeout + time.Second}).Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<10))
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("status %d", resp.StatusCode)
-	}
-	return nil
+	return err
 }

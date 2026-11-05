@@ -7,23 +7,26 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
-	"os"
+	"slices"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/cplieger/bolttable"
 	bolterrors "go.etcd.io/bbolt/errors"
 )
 
-// ErrLocked reports that another process holds the store file.
-var ErrLocked = errors.New("store: file held by another process")
+var (
+	// ErrLocked reports that another process holds the store file.
+	ErrLocked = errors.New("store: file held by another process")
+	// ErrClosed reports a call on a closed store, as during shutdown.
+	ErrClosed = errors.New("store: closed")
+)
 
 const (
-	msgStoreReset   = "store reset"
-	msgStoreCorrupt = "store corrupt"
+	msgStoreReset    = "store reset"
+	msgStoreCorrupt  = "store corrupt"
+	msgCompactFailed = "store compaction failed"
 )
 
 // Default lifetimes, used where Options leaves one zero.
@@ -33,6 +36,8 @@ const (
 	DefaultMaxBytes   = 512 << 20
 	// DefaultReservationMaxTTL is RESERVATION_MAX_TTL's default.
 	DefaultReservationMaxTTL = 8 * time.Hour
+	// DefaultPathRoot is GRELOT_PATH_ROOT's default.
+	DefaultPathRoot = "/workspace"
 )
 
 // Options configures Open. A nil Logger discards; a nil Now is time.Now;
@@ -40,6 +45,13 @@ const (
 type Options struct {
 	Logger *slog.Logger
 	Now    func() time.Time
+	// Woke, when set, is called after each commit that delivered to an
+	// identity, recorded a nudge for it or moved its read, with those ids.
+	// It runs in commit order and must not start a write transaction.
+	Woke func(ids []uint64)
+	// PathRoot is the canonical root every repo lies in, <root>/<repo>,
+	// which Who's Repo filter reads; the caller checks it is canonical.
+	PathRoot string
 	// ThreadTTL is how long a path or direct thread, a post and an event
 	// live after they are written.
 	ThreadTTL time.Duration
@@ -58,58 +70,78 @@ type Store struct {
 	t   *tables
 	log *slog.Logger
 	now func() time.Time
+	// space reads the file's space; tests replace it.
+	space func() (bolttable.Space, error)
+	woke  func(ids []uint64)
 	// seen is each identity's newest request time; seenMu guards it.
 	seen       map[uint64]time.Time
+	pathRoot   string
 	resvPolicy leasePolicy
 	threadTTL  time.Duration
 	dormantTTL time.Duration
 	maxBytes   int64
-	// inUse is the last Measure's bytes in use, which posts check.
-	inUse  atomic.Int64
-	seenMu sync.Mutex
+	seenMu     sync.Mutex
 }
 
-// Open opens or creates the store file at path and measures it. A file
-// another process holds fails with ErrLocked; any other failure but the two
-// below also fails. Either way the file is left untouched. A file of
-// another format is reset to empty, with a WARN. A file bbolt reports as
-// invalid is renamed <path>.corrupt-<UTC time as 20060102T150405Z> and
-// replaced by an empty store, with an ERROR.
+// Open opens or creates the store file at path. A file another process
+// holds fails with ErrLocked, and any other failure leaves the path as it
+// was, but for three repairs: a file of another format is reset to empty,
+// with a WARN; a file bbolt cannot read is renamed
+// <path>.<UTC stamp>.invalid and replaced by an empty store, with an
+// ERROR; a file at least half and 4 MiB free is compacted, and a failed
+// compaction leaves it whole with a WARN.
 func Open(path string, o Options) (*Store, error) {
 	s := newStore(&o)
-	db, t, err := openFile(path)
-	if fe := (*bolttable.FormatError)(nil); errors.As(err, &fe) {
-		err = s.reset(path, fe)
-		if err == nil {
-			db, t, err = openFile(path)
-		}
+	schema, t, err := newSchema()
+	if err != nil {
+		return nil, err
 	}
-	if isCorrupt(err) {
-		err = s.moveAside(path, err)
-		if err == nil {
-			db, t, err = openFile(path)
-		}
-	}
-	if errors.Is(err, bolterrors.ErrTimeout) {
+	db, err := bolttable.Open(path, schema, openOptions)
+	if errors.Is(err, bolttable.ErrLocked) {
 		return nil, fmt.Errorf("%w: %w", ErrLocked, err)
 	}
 	if err != nil {
 		return nil, err
 	}
-	s.db, s.t = db, t
+	rep := db.OpenReport()
+	s.logOpen(path, &rep)
+	s.db, s.t, s.space = db, t, db.Space
 	s.wireLeases()
 	if err := s.ensureServerThreads(context.Background()); err != nil {
-		return nil, errors.Join(err, db.Close())
-	}
-	if _, err := s.Measure(context.Background()); err != nil {
 		return nil, errors.Join(err, db.Close())
 	}
 	return s, nil
 }
 
+// openOptions resets every namespace of another format with no copy kept:
+// the rows all expire within days and agents register again, so a format
+// change keeps nothing.
+var openOptions = bolttable.Options{
+	Compact:     bolttable.CompactPolicy{MinFreeRatio: 0.5, MinFreeBytes: 4 << 20},
+	Reset:       bolttable.ResetPolicy{Allow: func(bolttable.NamespaceDigest) bool { return true }},
+	InvalidFile: bolttable.InvalidFileMoveAside,
+}
+
+// logOpen logs each repair Open made to the file.
+func (s *Store) logOpen(path string, rep *bolttable.OpenReport) {
+	if rep.MovedAside != "" {
+		s.log.Error(msgStoreCorrupt, "path", path, "moved_to", rep.MovedAside, "error", rep.Invalid.Error())
+	}
+	if len(rep.Reset) > 0 {
+		names := make([]string, 0, len(rep.Reset))
+		for _, n := range rep.Reset {
+			names = append(names, n.Name)
+		}
+		s.log.Warn(msgStoreReset, "path", path, "namespaces", names)
+	}
+	if rep.CompactErr != nil {
+		s.log.Warn(msgCompactFailed, "path", path, "error", rep.CompactErr.Error())
+	}
+}
+
 // newStore is a Store configured by o, each zero option taking its default.
 func newStore(o *Options) *Store {
-	s := &Store{log: o.Logger, now: o.Now, threadTTL: o.ThreadTTL, dormantTTL: o.DormantTTL, maxBytes: o.MaxBytes, seen: map[uint64]time.Time{}}
+	s := &Store{log: o.Logger, now: o.Now, woke: o.Woke, threadTTL: o.ThreadTTL, dormantTTL: o.DormantTTL, maxBytes: o.MaxBytes, seen: map[uint64]time.Time{}}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
 	}
@@ -125,6 +157,10 @@ func newStore(o *Options) *Store {
 	if s.maxBytes == 0 {
 		s.maxBytes = DefaultMaxBytes
 	}
+	s.pathRoot = o.PathRoot
+	if s.pathRoot == "" {
+		s.pathRoot = DefaultPathRoot
+	}
 	s.resvPolicy = reservationPolicy
 	if o.ReservationMaxTTL != 0 {
 		s.resvPolicy.max = o.ReservationMaxTTL
@@ -132,58 +168,12 @@ func newStore(o *Options) *Store {
 	return s
 }
 
-func openFile(path string) (*bolttable.DB, *tables, error) {
-	schema, t, err := newSchema()
-	if err != nil {
-		return nil, nil, err
+// closed is err as ErrClosed when it is bbolt's closed-database error.
+func closed(err error) error {
+	if errors.Is(err, bolterrors.ErrDatabaseNotOpen) {
+		return fmt.Errorf("%w: %w", ErrClosed, err)
 	}
-	db, err := bolttable.Open(path, schema, bolttable.Options{})
-	return db, t, err
-}
-
-// reset empties every namespace fe lists. The store's rows all expire
-// within days and agents register again, so a format change keeps nothing.
-func (s *Store) reset(path string, fe *bolttable.FormatError) error {
-	names := make([]string, 0, len(fe.Namespaces))
-	for _, n := range fe.Namespaces {
-		names = append(names, n.Name)
-	}
-	schema, _, err := newSchema()
-	if err != nil {
-		return err
-	}
-	if err := bolttable.ResetNamespaces(path, schema, names); err != nil {
-		return err
-	}
-	s.log.Warn(msgStoreReset, "path", path, "namespaces", names)
-	return nil
-}
-
-// isCorrupt reports bbolt's own verdict on a file that is not a database
-// it can open; bolttable passes these errors through wrapped.
-func isCorrupt(err error) bool {
-	return errors.Is(err, bolterrors.ErrInvalid) ||
-		errors.Is(err, bolterrors.ErrChecksum) ||
-		errors.Is(err, bolterrors.ErrVersionMismatch)
-}
-
-// moveAside renames a corrupt file out of the way, so the store starts
-// empty: its data is short-lived, and serving beats keeping a broken file
-// in place. It never overwrites an earlier corrupt copy, and leaves alone
-// anything but a regular file, which bbolt also reports as invalid.
-func (s *Store) moveAside(path string, cause error) error {
-	if fi, err := os.Lstat(path); err != nil || !fi.Mode().IsRegular() {
-		return cause
-	}
-	dst := path + ".corrupt-" + s.now().UTC().Format("20060102T150405Z")
-	if _, err := os.Lstat(dst); !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("store: %s is corrupt (%w) and %s exists", path, cause, dst)
-	}
-	if err := os.Rename(path, dst); err != nil {
-		return fmt.Errorf("store: move aside %s: %w", path, err)
-	}
-	s.log.Error(msgStoreCorrupt, "path", path, "moved_to", dst, "error", cause.Error())
-	return nil
+	return err
 }
 
 // Close closes the file, waiting for open transactions.
@@ -198,18 +188,38 @@ type wtx struct {
 	// cards and events are owed so far, written once fn is done.
 	cards  []card
 	events []owedEvent
+	// woke is every identity Options.Woke reports once this commits.
+	woke []uint64
+}
+
+// wake has Options.Woke report id once this transaction commits.
+func (w *wtx) wake(id uint64) {
+	if !slices.Contains(w.woke, id) {
+		w.woke = append(w.woke, id)
+	}
 }
 
 // update runs fn in one write transaction, at one instant of the clock,
 // then writes the cards and events it owes.
 func (s *Store) update(ctx context.Context, fn func(*wtx) error) error {
-	return s.db.Update(ctx, func(tx *bolttable.Tx) error {
+	return closed(s.db.Update(ctx, func(tx *bolttable.Tx) error {
 		w := &wtx{s: s, tx: tx, r: tx.Read(), now: s.now()}
 		if err := fn(w); err != nil {
 			return err
 		}
-		return w.flushOwed()
-	})
+		if err := w.flushOwed(); err != nil {
+			return err
+		}
+		if ids := w.woke; len(ids) > 0 && s.woke != nil {
+			tx.AfterCommit(func() { s.woke(ids) })
+		}
+		return nil
+	}))
+}
+
+// read runs fn in one read transaction.
+func (s *Store) read(ctx context.Context, fn func(*bolttable.ReadTx) error) error {
+	return closed(s.db.View(ctx, fn))
 }
 
 // sweepBatch bounds the rows one sweep transaction handles, so a backlog

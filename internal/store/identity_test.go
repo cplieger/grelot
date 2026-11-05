@@ -83,7 +83,7 @@ func TestRegister_createsTheIdentityUnderItsDeclaredLease(t *testing.T) {
 	if want := testNow.Add(6 * time.Hour); !got.Expires.Equal(want) {
 		t.Errorf("expires %v, want now + the declared 6h", got.Expires)
 	}
-	if lead := got.Expires.Sub(got.WarnAt); lead != 30*time.Minute {
+	if lead := got.Expires.Sub(getIdentity(t, s, got.ID).Lease.WarnAt); lead != 30*time.Minute {
 		t.Errorf("warning lead %v, want 30m", lead)
 	}
 	if !got.RegisteredAt.Equal(testNow) {
@@ -422,8 +422,9 @@ func TestSet_renewMovesTheLeaseAndReArmsTheWarning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := clk.now().Add(2 * time.Hour); !got.Expires.Equal(want) || !got.WarnAt.Equal(want.Add(-30*time.Minute)) {
-		t.Errorf("expires %v warn %v, want %v and 30m before", got.Expires, got.WarnAt, want)
+	warn := getIdentity(t, s, got.ID).Lease.WarnAt
+	if want := clk.now().Add(2 * time.Hour); !got.Expires.Equal(want) || !warn.Equal(want.Add(-30*time.Minute)) {
+		t.Errorf("expires %v warn %v, want %v and 30m before", got.Expires, warn, want)
 	}
 	_, err = s.Set(t.Context(), Caller{Session: sessA}, Change{TTL: 2 * time.Hour})
 	wantRefusal(t, err, KindInvalid, "", "where is required")
@@ -525,11 +526,12 @@ func TestEndSession_capsTheLeaseAtAnHour(t *testing.T) {
 	r := registration(sessA, "short-lease", envA())
 	r.TTL = 30 * time.Minute
 	short := mustRegister(t, s2, r)
+	before := getIdentity(t, s2, short.ID).Lease
 	if err := s2.EndSession(t.Context(), sessA); err != nil {
 		t.Fatal(err)
 	}
-	if row := getIdentity(t, s2, short.ID); !row.Lease.Expires.Equal(short.Expires) || !row.Lease.WarnAt.Equal(short.WarnAt) {
-		t.Errorf("a lease under the hour moved: %+v, want %v / %v", row.Lease, short.Expires, short.WarnAt)
+	if row := getIdentity(t, s2, short.ID); !row.Lease.Expires.Equal(before.Expires) || !row.Lease.WarnAt.Equal(before.WarnAt) {
+		t.Errorf("a lease under the hour moved: %+v, want %v / %v", row.Lease, before.Expires, before.WarnAt)
 	}
 }
 
@@ -594,7 +596,7 @@ func TestEndSession_aRepeatedRegisterOrWhoClearsEndedAndKeepsTheCap(t *testing.T
 					t.Errorf("repeated register %+v, want the existing identity", got)
 				}
 			} else {
-				_, err = s.Who(t.Context(), Caller{Session: sessA}, WhoQuery{})
+				_, err = s.Who(t.Context(), Caller{Session: sessA}, &WhoQuery{})
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -687,7 +689,7 @@ func TestWho_listsLiveIdentitiesWithTheirRelation(t *testing.T) {
 
 	who := func(sess string, q WhoQuery) []string {
 		t.Helper()
-		ps, err := s.Who(t.Context(), Caller{Session: sess}, q)
+		ps, err := s.Who(t.Context(), Caller{Session: sess}, &q)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -700,7 +702,7 @@ func TestWho_listsLiveIdentitiesWithTheirRelation(t *testing.T) {
 	if got, want := who(sessA, WhoQuery{Here: true}), []string{"agent-a you", "agent-b same environment"}; !slices.Equal(got, want) {
 		t.Errorf("who --here %v, want %v", got, want)
 	}
-	all, err := s.Who(t.Context(), Caller{Session: sessA}, WhoQuery{All: true})
+	all, err := s.Who(t.Context(), Caller{Session: sessA}, &WhoQuery{All: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -731,7 +733,7 @@ func TestWho_showsAPeerOnlyItsRelation(t *testing.T) {
 	mustRegister(t, s, registration(sessA, "agent-a", envA()))
 	mustRegister(t, s, registration(sessB, "agent-b", envA()))
 	for _, caller := range []string{sessA, "kiro-cli:session-none"} {
-		ps, err := s.Who(t.Context(), Caller{Session: caller}, WhoQuery{})
+		ps, err := s.Who(t.Context(), Caller{Session: caller}, &WhoQuery{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -761,7 +763,7 @@ func TestWho_aReadSeesAPurgeTheSweepHasNotRun(t *testing.T) {
 	r.TTL = 15 * time.Minute
 	mustRegister(t, s, r)
 	clk.advance(15*time.Minute + 72*time.Hour)
-	ps, err := s.Who(t.Context(), Caller{Session: sessB}, WhoQuery{All: true})
+	ps, err := s.Who(t.Context(), Caller{Session: sessB}, &WhoQuery{All: true})
 	if err != nil {
 		t.Fatal(err)
 	}

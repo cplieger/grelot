@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cplieger/bolttable"
 	"github.com/cplieger/go/pathinside"
 )
 
@@ -20,9 +21,12 @@ type Where struct {
 }
 
 // Checkout names one working tree of the repo whose canonical root is Repo.
+// Remote is a keyed hash of the clone's normalized remote, so two clones
+// that share a root's name but not a repository can be told apart.
 type Checkout struct {
-	Repo string `json:"repo"`
-	ID   string `json:"id"`
+	Repo   string `json:"repo"`
+	ID     string `json:"id"`
+	Remote string `json:"remote"`
 }
 
 // maxCheckouts matches the 16 work paths an identity may hold.
@@ -62,10 +66,44 @@ func checkWhere(w *Where, paths []string) error {
 			return refuse(KindInvalid, field+".repo repeats a repo: send one entry per repo")
 		case !hexPattern.MatchString(c.ID):
 			return refuse(KindInvalid, field+".id must be 32 lowercase hex digits")
+		case !hexPattern.MatchString(c.Remote):
+			return refuse(KindInvalid, field+".remote must be 32 lowercase hex digits")
 		}
 		seen[c.Repo] = true
 	}
 	return nil
+}
+
+// repoConflict refuses row's where when one of its checkouts names a repo
+// root that another live identity's checkout gives another remote: two
+// repositories with one name would otherwise share every path thread and
+// reservation under that root.
+func (w *wtx) repoConflict(row *identityRow) error {
+	if len(row.Where.Checkouts) == 0 {
+		return nil
+	}
+	var refusal error
+	err := w.s.t.identities.table.Scan(w.r, bolttable.Range{}, func(_ uint64, v *identityRow) (bool, error) {
+		if v = settled(v, w.now, w.s.dormantTTL); v == nil || v.ID == row.ID || v.State != stateLive {
+			return true, nil
+		}
+		for _, mine := range row.Where.Checkouts {
+			for _, theirs := range v.Where.Checkouts {
+				if mine.Repo == theirs.Repo && mine.Remote != theirs.Remote {
+					refusal = &Error{Kind: KindConflict, Why: "other_repository", Msg: fmt.Sprintf(
+						"%s is another repository for %s; give one of them another name with `repos:` in your client config",
+						mine.Repo, v.Name,
+					)}
+					return false, nil
+				}
+			}
+		}
+		return true, nil
+	})
+	if err != nil {
+		return err
+	}
+	return refusal
 }
 
 // isCanonicalPath reports the shape the server accepts for a canonical

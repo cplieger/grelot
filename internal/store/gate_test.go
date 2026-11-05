@@ -163,27 +163,3 @@ func TestGate_aSessionThatNeverGrantedPaysNothing(t *testing.T) {
 		t.Errorf("Seen with --self and no delegates: %v, want it to act as the identity", err)
 	}
 }
-
-func TestGate_aBoundAgentIDActsForItsDelegate(t *testing.T) {
-	s, _, _, link := gateFixture(t)
-	d := mustRegisterDelegate(t, s, sess("parent"), link)
-	if err := s.Bind(t.Context(), as(sess("parent"), d.Name), "agent-1"); err != nil {
-		t.Fatal(err)
-	}
-	t.Run("bound", func(t *testing.T) {
-		got, err := s.Seen(t.Context(), Caller{Session: sess("parent"), Agent: "agent-1"})
-		if err != nil || got.ID != d.ID {
-			t.Errorf("Seen for agent-1: %d, %v; want the delegate %d past the gate", got.ID, err, d.ID)
-		}
-	})
-	t.Run("unbound", func(t *testing.T) {
-		_, err := s.Seen(t.Context(), Caller{Session: sess("parent"), Agent: "agent-2"})
-		wantRefusal(t, err, KindGone, "delegate_ended", "no delegate is bound")
-	})
-	t.Run("with a handle or self", func(t *testing.T) {
-		_, err := s.Seen(t.Context(), Caller{Session: sess("parent"), Agent: "agent-1", Self: true})
-		wantRefusal(t, err, KindInvalid, "", "subagent id")
-		_, err = s.Seen(t.Context(), Caller{Session: sess("parent"), Agent: "agent-1", As: d.Name})
-		wantRefusal(t, err, KindInvalid, "", "subagent id")
-	})
-}

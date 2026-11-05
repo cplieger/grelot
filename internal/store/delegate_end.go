@@ -5,11 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"unicode/utf8"
 )
-
-// maxAgentID bounds a host's subagent id.
-const maxAgentID = 256
 
 // Revoked is what a revoke ended: the live delegates of the label, by
 // handle, and whether an unused link of the label went too.
@@ -102,64 +98,16 @@ func (w *wtx) revokeLink(me *identityRow, label string) (bool, error) {
 	return true, nil
 }
 
-// Bind records agent, the host's subagent id a hook saw register c's
-// delegate, on that delegate once, so SubagentStop and the subagent's own
-// hooks find it by that id. Refusals: KindInvalid for a caller that names
-// no handle or a bad id; KindConflict for a delegate already bound or an
-// id already bound to another delegate of the parent; and those of acting
-// as the handle.
-func (s *Store) Bind(ctx context.Context, c Caller, agent string) error {
-	if c.As == "" {
-		return refuse(KindInvalid, "a binding names its delegate: send it as <handle>")
-	}
-	if agent == "" || len(agent) > maxAgentID || !utf8.ValidString(agent) || strings.ContainsFunc(agent, isControl) {
-		return refuse(KindInvalid, fmt.Sprintf("the subagent id must be 1 to %d bytes of text, on one line", maxAgentID))
-	}
-	return s.update(ctx, func(w *wtx) error {
-		d, err := w.liveAs(c)
-		if err != nil {
-			return err
-		}
-		if d.Agent != "" {
-			return refuse(KindConflict, fmt.Sprintf("@%s is already bound to a subagent", d.Name))
-		}
-		if _, _, held, err := s.t.byAgent.Lookup(w.r, agentKey(d.Parent, agent)); err != nil || held {
-			return orConflict(err, fmt.Sprintf("subagent %s is already bound to another delegate", agent))
-		}
-		d.Agent = agent
-		if err := s.t.identities.table.Put(w.tx, d.ID, &d); err != nil {
-			return err
-		}
-		s.log.Info("delegate bound", "handle", d.Name, "id", d.ID)
-		return nil
-	})
-}
-
-// SubagentStop ends the delegate the SubagentStop report from session
-// names: the session's own identity when that is a delegate, else the
-// delegate of the session's identity bound to agent. It sits outside the
-// delegate gate and changes nothing for anything else, an unbound id
-// included, since hosts report their internal agents' stops too.
-func (s *Store) SubagentStop(ctx context.Context, session, agent string) error {
+// SubagentStop ends the session's own identity when that is a delegate
+// registered from a session of its own. It sits outside the delegate gate
+// and changes nothing for any other session, since hosts report their
+// internal agents' stops too and a parent's session names no subagent.
+func (s *Store) SubagentStop(ctx context.Context, session string) error {
 	return s.update(ctx, func(w *wtx) error {
 		own, found, err := w.identityBy(s.t.bySession, session)
-		if err != nil || !found || own.State != stateLive {
+		if err != nil || !found || own.State != stateLive || own.Parent == 0 {
 			return err
 		}
-		if own.Parent != 0 {
-			return w.endDelegate(&own, endSubagent)
-		}
-		if agent == "" {
-			return nil
-		}
-		id, _, found, err := s.t.byAgent.Lookup(w.r, agentKey(own.ID, agent))
-		if err != nil || !found {
-			return err
-		}
-		d, found, err := s.t.identities.settle(w, id)
-		if err != nil || !found {
-			return err
-		}
-		return w.endDelegate(&d, endSubagent)
+		return w.endDelegate(&own, endSubagent)
 	})
 }

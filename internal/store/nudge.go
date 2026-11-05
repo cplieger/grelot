@@ -29,7 +29,6 @@ var reNudgeAfter = [...]time.Duration{3 * time.Minute, 15 * time.Minute, time.Ho
 // which send of the outstanding nudge it is, 1 to 4. Oldest is the write
 // time of the oldest of those deliveries.
 type Nudge struct {
-	At       time.Time
 	Oldest   time.Time
 	Identity uint64
 	Seq      uint64
@@ -39,20 +38,18 @@ type Nudge struct {
 }
 
 // NudgeState is an identity's nudge state at one instant. Due is the send due
-// now; Last is the outstanding nudge's latest send, which every standing
-// wait returns; Next is when its next re-nudge comes due. Each is zero
-// when there is none.
+// now; Next is when the outstanding nudge's next re-nudge comes due. Each
+// is zero when there is none.
 type NudgeState struct {
 	Next time.Time
 	Due  *Nudge
-	Last *Nudge
 }
 
 // Nudging is identity id's nudge state now. found is false when id has no
 // live identity. A delegate, which is pull only, and a session the
 // SessionEnd report closed are never nudged.
 func (s *Store) Nudging(ctx context.Context, id uint64) (out NudgeState, found bool, err error) {
-	err = s.db.View(ctx, func(r *bolttable.ReadTx) error {
+	err = s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		row, ok, gerr := s.t.identities.table.Get(r, id)
 		if gerr != nil || !ok {
@@ -97,6 +94,7 @@ func (s *Store) RecordNudge(ctx context.Context, n *Nudge, via NudgeVia) (got Nu
 // send; the caller stores me.
 func (w *wtx) recordNudge(me *identityRow, n *Nudge, via NudgeVia) {
 	me.Nudged, me.Nudges, me.NudgedAt = n.Seq, n.Attempt, w.now
+	w.wake(me.ID)
 	w.s.log.Info(msgNudgeSent, "via", string(via), "attempt", n.Attempt, "seq", n.Seq,
 		"oldest_delay_ms", w.now.Sub(n.Oldest).Milliseconds())
 }
@@ -115,13 +113,7 @@ func (s *Store) nudging(r *bolttable.ReadTx, me *identityRow, now time.Time) (Nu
 		return out, err
 	}
 	outstanding := me.Read < me.Nudged
-	if outstanding {
-		out.Last = &Nudge{
-			At: me.NudgedAt, Oldest: b.oldest, Identity: me.ID, Seq: me.Nudged, Read: me.Read,
-			Count: b.count, Attempt: me.Nudges,
-		}
-	}
-	due := &Nudge{At: now, Oldest: b.oldest, Identity: me.ID, Seq: b.newest, Read: me.Read, Count: b.count, Attempt: 1}
+	due := &Nudge{Oldest: b.oldest, Identity: me.ID, Seq: b.newest, Read: me.Read, Count: b.count, Attempt: 1}
 	switch {
 	case b.count == 0:
 	case !outstanding:

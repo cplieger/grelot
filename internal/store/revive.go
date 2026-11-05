@@ -88,6 +88,9 @@ func (w *wtx) revive(r *Revival, provider string) (Revived, error) {
 		Machine: r.Where.Machine, Environment: r.Where.Environment,
 		Checkouts: mergeCheckouts(row.Where.Checkouts, r.Where.Checkouts, row.Paths),
 	}
+	if cerr := w.repoConflict(&row); cerr != nil {
+		return Revived{}, cerr
+	}
 	row.TTL, row.Lease = r.TTL, ls
 	row.State, row.DormantSince, row.Ended, row.LastSeen = stateLive, time.Time{}, false, w.now
 	row.Nudged, row.Nudges, row.NudgedAt = 0, 0, time.Time{}
@@ -133,14 +136,18 @@ func (w *wtx) reviveTarget(r *Revival, provider string, own *identityRow, ownFou
 // TakeOverHint finds the identity a new session may be the continuation
 // of: one registered by another session under proc, live or dormant, that
 // shares the caller's environment and has the session's provider, ranked
-// by hintBeats. It never moves one.
+// by hintBeats. It never moves one. Refusals: KindInvalid for a bad
+// session, machine or environment.
 func (s *Store) TakeOverHint(ctx context.Context, session, proc string, caller Where) (Identity, bool, error) {
 	provider, err := checkSession(session)
+	if err == nil {
+		err = checkWhere(&caller, nil)
+	}
 	if err != nil || proc == "" {
 		return Identity{}, false, err
 	}
 	var best *identityRow
-	err = s.db.View(ctx, func(r *bolttable.ReadTx) error {
+	err = s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		return scanExact(r, s.t.byProc, proc, func(id uint64) (bool, error) {
 			row, found, gerr := s.t.identities.table.Get(r, id)

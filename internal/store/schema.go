@@ -80,10 +80,8 @@ type identityRow struct {
 	Arch         string    `json:"arch"`
 	Provider     string    `json:"provider"`
 	// Session is empty on a dormant row a fresh registration detached.
-	Session string `json:"session,omitempty"`
-	Proc    string `json:"proc,omitempty"`
-	// Agent is the host's subagent id a delegate is bound to, set once.
-	Agent    string   `json:"agent,omitempty"`
+	Session  string   `json:"session,omitempty"`
+	Proc     string   `json:"proc,omitempty"`
 	Paths    []string `json:"paths"`
 	Follows  []string `json:"follows,omitempty"`
 	LastPage seqRange `json:"last_page"`
@@ -237,8 +235,6 @@ type tables struct {
 	byFollow   *bolttable.Index[uint64, identityRow]
 	byProc     *bolttable.Index[uint64, identityRow]
 	byParent   *bolttable.Index[uint64, identityRow]
-	// byAgent finds a bound delegate by agentKey(parent, agent).
-	byAgent *bolttable.Index[uint64, identityRow]
 	// byAllow indexes a delegate's allowed path threads.
 	byAllow    *bolttable.Index[uint64, identityRow]
 	threads    *leased[uint64, threadRow]
@@ -415,28 +411,15 @@ func defineIdentityIndexes(ids *bolttable.Table[uint64, identityRow], t *tables)
 		}); err != nil {
 		return err
 	}
-	if t.byParent, err = bolttable.DefineIndex(ids, "identities.parent", many,
+	t.byParent, err = bolttable.DefineIndex(ids, "identities.parent", many,
 		func(_ uint64, v *identityRow) []bolttable.Entry {
 			if v.Parent == 0 {
 				return nil
 			}
 			return []bolttable.Entry{{Key: be64(v.Parent)}}
-		}); err != nil {
-		return err
-	}
-	t.byAgent, err = bolttable.DefineIndex(ids, "identities.agent", unique,
-		func(_ uint64, v *identityRow) []bolttable.Entry {
-			if v.Parent == 0 || v.Agent == "" {
-				return nil
-			}
-			return []bolttable.Entry{{Key: agentKey(v.Parent, v.Agent)}}
 		})
 	return err
 }
-
-// agentKey is the byAgent key of the delegate of parent bound to agent:
-// subagent ids are the host's, unique only within one parent's session.
-func agentKey(parent uint64, agent string) []byte { return append(be64(parent), agent...) }
 
 // defineLinks declares the unused delegate links, their lease and the
 // lookup by hash a registration reads. A deleted identity's links go by
@@ -507,14 +490,9 @@ func defineReservations(ns *bolttable.Namespace, t *tables) error {
 }
 
 // scanExact calls fn for each row whose entry in a non-unique index is
-// exactly key. A Range prefix alone also matches longer keys, such as a
-// subpath's; an exact key's entries sort before them, so the scan stops
-// at the first longer one.
+// exactly key, never a longer one such as a subpath's.
 func scanExact[V any](r *bolttable.ReadTx, ix *bolttable.Index[uint64, V], key string, fn func(id uint64) (bool, error)) error {
-	return ix.Scan(r, bolttable.Range{Prefix: []byte(key)}, func(ikey []byte, id uint64, _ []byte) (bool, error) {
-		if string(ikey) != key {
-			return false, nil
-		}
+	return ix.Scan(r, bolttable.Exact([]byte(key)), func(_ []byte, id uint64, _ []byte) (bool, error) {
 		return fn(id)
 	})
 }

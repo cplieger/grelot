@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"time"
+
+	"github.com/cplieger/bolttable"
 )
 
 // The two singleton threads' keys. A path key starts with / and a direct
@@ -90,4 +92,47 @@ func (w *wtx) thread(key string) (threadRow, bool, error) {
 	}
 	id, err = w.s.t.threads.table.NextID(w.tx)
 	return threadRow{ID: id, Key: key}, false, err
+}
+
+// PathThread is a live path thread: its path and when it expires, which is
+// THREAD_TTL after its last post.
+type PathThread struct {
+	Expires time.Time
+	Path    string
+	ID      uint64
+}
+
+// Threads lists, by path, the live path threads at or under root, every
+// one when root is "". Like any request it clears ended (Seen).
+// Refusals: KindInvalid for a path that is not canonical; KindGone for a
+// session with no live identity.
+func (s *Store) Threads(ctx context.Context, c Caller, root string) ([]PathThread, error) {
+	prefix := "/"
+	if root != "" {
+		if _, err := checkPaths([]string{root}); err != nil {
+			return nil, err
+		}
+		prefix = root
+	}
+	if _, err := s.Seen(ctx, c); err != nil {
+		return nil, err
+	}
+	out := []PathThread{}
+	err := s.read(ctx, func(r *bolttable.ReadTx) error {
+		now := s.now()
+		if _, err := s.liveFor(r, c, now); err != nil {
+			return err
+		}
+		return s.t.threadKey.Scan(r, bolttable.Range{Prefix: []byte(prefix)}, func(_ []byte, id uint64, _ []byte) (bool, error) {
+			th, found, err := s.t.threads.table.Get(r, id)
+			if err != nil || !found || th.Kind != kindPath || !th.Lease.Expires.After(now) {
+				return err == nil, err
+			}
+			if root == "" || under(th.Path, root) {
+				out = append(out, PathThread{Expires: th.Lease.Expires, Path: th.Path, ID: th.ID})
+			}
+			return true, nil
+		})
+	})
+	return out, err
 }

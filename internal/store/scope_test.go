@@ -286,7 +286,7 @@ func TestScope_whoNestsADelegateUnderItsParent(t *testing.T) {
 	regAt(t, s, "subflux-dev", repoSubflux)
 	mustRegister(t, s, registration(sess("cloudy-lake"), "cloudy-lake", Where{Machine: dmi("1"), Environment: hex32("b")}))
 	d := scopedDelegate(t, s, "subflux-dev", "review", nil)
-	peers, err := s.Who(t.Context(), Caller{Session: sess("cloudy-lake")}, WhoQuery{})
+	peers, err := s.Who(t.Context(), Caller{Session: sess("cloudy-lake")}, &WhoQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}

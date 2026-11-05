@@ -1,5 +1,5 @@
 {
-  "description": "Provider API that the server's push sender and the client's hooks and watcher call once they are built. Each entry goes in the change that adds its first caller.",
+  "description": "API that the server's push sender and the client's hooks and watcher call once they are built. Each entry goes in the change that adds its first caller.",
   "ignore": [
     {
       "code": "DS1004",
@@ -126,6 +126,24 @@
       "symbol": "go://github.com/cplieger/grelot/internal/provider#Record.RenderGlob",
       "path": "internal/provider/template.go",
       "reason": "The client, not built yet, finds the host's session record with it."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/server#pushFailing",
+      "path": "internal/server/push.go",
+      "reason": "The server's push sender, not built yet, reports a send it will retry with it."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/server#pushOff",
+      "path": "internal/server/push.go",
+      "reason": "The server's push sender, not built yet, reports a door it turned off with it."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/store#NudgeByPush",
+      "path": "internal/store/nudge.go",
+      "reason": "The server's push sender, not built yet, records its sends with it."
     }
   ]
 }

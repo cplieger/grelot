@@ -48,7 +48,6 @@ type Fields struct {
 // machine, environment or checkout value, only whether each is known.
 type Identity struct {
 	Expires      time.Time
-	WarnAt       time.Time
 	RegisteredAt time.Time
 	DormantSince time.Time
 	LastSeen     time.Time
@@ -64,10 +63,12 @@ type Identity struct {
 	MachineKind string
 	// Notice is a line for the caller about this answer: a delegate's
 	// renewal capped at its parent's expiry.
-	Notice           string
-	Paths            []string
-	Follows          []string
-	ID               uint64
+	Notice  string
+	Paths   []string
+	Follows []string
+	ID      uint64
+	// Read is the read cursor: the highest seq the identity has fetched.
+	Read             uint64
 	TTL              time.Duration
 	EnvironmentKnown bool
 	Ended            bool
@@ -231,6 +232,9 @@ func (w *wtx) registerRow(r *Registration, provider string) (row identityRow, ad
 	row.TTL, row.Lease = r.TTL, ls
 	row.Ended = false
 	row.LastSeen = w.now
+	if err := w.repoConflict(&row); err != nil {
+		return identityRow{}, nil, false, err
+	}
 	return row, added, held, nil
 }
 
@@ -314,6 +318,11 @@ func (w *wtx) applyFields(row *identityRow, f Fields, sent *Where, mode fieldMod
 		return err
 	}
 	applyWhere(row, sent, fc.pathsChanged, fc.paths)
+	if sent != nil {
+		if err := w.repoConflict(row); err != nil {
+			return err
+		}
+	}
 	row.Name, row.Paths, row.Description = fc.name, fc.paths, fc.description
 	w.queueCards(kindJoin, row, fc.added)
 	return nil
@@ -401,6 +410,25 @@ func (s *Store) Retire(ctx context.Context, c Caller) error {
 	})
 }
 
+// Live returns, in the order given, the ids among ids whose identity is
+// live; a dormant, retired or unknown id is left out.
+func (s *Store) Live(ctx context.Context, ids []uint64) ([]uint64, error) {
+	out := []uint64{}
+	err := s.read(ctx, func(r *bolttable.ReadTx) error {
+		for _, id := range ids {
+			row, found, err := s.t.identities.table.Get(r, id)
+			if err != nil {
+				return err
+			}
+			if found && row.State == stateLive {
+				out = append(out, id)
+			}
+		}
+		return nil
+	})
+	return out, err
+}
+
 // Seen records a request as c other than the standing wait and
 // returns its identity, live or dormant. A live one has ended cleared and
 // last_seen refreshed, its row written only when ended was set or the
@@ -409,7 +437,7 @@ func (s *Store) Retire(ctx context.Context, c Caller) error {
 func (s *Store) Seen(ctx context.Context, c Caller) (Identity, error) {
 	var row identityRow
 	var found bool
-	if err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
+	if err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		var err error
 		row, found, err = s.callerFor(r, c, s.now())
 		return err
@@ -449,12 +477,12 @@ func (s *Store) Seen(ctx context.Context, c Caller) (Identity, error) {
 }
 
 // Watcher returns the identity a standing wait from c holds for, and
-// writes nothing: a standing wait never clears ended. Refusals: KindGone
-// with Why dormant or none, as on every route; KindInvalid for a
-// delegate, which is pull only.
+// records the request time in memory only: a standing wait never clears
+// ended and is no commit. Refusals: KindGone with Why dormant or none, as
+// on every route; KindInvalid for a delegate, which is pull only.
 func (s *Store) Watcher(ctx context.Context, c Caller) (Identity, error) {
 	var row identityRow
-	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
+	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		var err error
 		row, err = s.liveFor(r, c, s.now())
 		return err
@@ -465,6 +493,7 @@ func (s *Store) Watcher(ctx context.Context, c Caller) (Identity, error) {
 	case row.Parent != 0:
 		return Identity{}, refuse(KindInvalid, "a delegate is pull only; use grelot wait")
 	}
+	s.noteSeen(row.ID, s.now())
 	return s.view(&row), nil
 }
 
@@ -484,109 +513,6 @@ func (w *wtx) seen(row *identityRow) bool {
 // the stored last_seen is lastSeenEvery old.
 func seenDue(row *identityRow, now time.Time) bool {
 	return row.Ended || now.Sub(row.LastSeen) >= lastSeenEvery
-}
-
-// WhoQuery filters Who. Path keeps identities with a work path at, above
-// or under it; Text keeps those whose name, description, host label or a
-// path holds it, ignoring case; All adds dormant ones; Here keeps only
-// those that share the caller's environment.
-type WhoQuery struct {
-	Path string
-	Text string
-	All  bool
-	Here bool
-}
-
-// Peer is an identity as a caller sees it, with its relation to the
-// caller. A dormant peer's Expires is its purge time. Only the caller's
-// own entry carries MachineKind and EnvironmentKnown.
-type Peer struct {
-	Relation string
-	// Delegates are a parent's live delegates, which Who lists only here.
-	Delegates []Peer
-	Identity
-}
-
-// Who lists live identities, by name, as c's identity sees them, each
-// live parent's delegates nested under it and nowhere else; q filters the
-// parents. A session with no live identity sees every relation as unknown.
-func (s *Store) Who(ctx context.Context, c Caller, q WhoQuery) ([]Peer, error) {
-	if _, err := s.Seen(ctx, c); err != nil && !isKind(err, KindGone) {
-		return nil, err
-	}
-	text := strings.ToLower(q.Text)
-	var out []Peer
-	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
-		now := s.now()
-		var caller party
-		if me, found, err := s.callerFor(r, c, now); err != nil {
-			return err
-		} else if found && me.State == stateLive {
-			caller = party{where: me.Where, id: me.ID}
-		}
-		var shown []identityRow
-		delegates := map[uint64][]identityRow{}
-		err := s.t.identities.table.Scan(r, bolttable.Range{}, func(_ uint64, v *identityRow) (bool, error) {
-			switch v = settled(v, now, s.dormantTTL); {
-			case v == nil:
-			case v.Parent != 0:
-				delegates[v.Parent] = append(delegates[v.Parent], *v)
-			case q.shows(v, text, caller.where):
-				shown = append(shown, *v)
-			}
-			return true, nil
-		})
-		for i := range shown {
-			out = append(out, s.parentPeer(caller, &shown[i], delegates[shown[i].ID]))
-		}
-		return err
-	})
-	slices.SortFunc(out, func(a, b Peer) int { return strings.Compare(a.Name, b.Name) })
-	return out, err
-}
-
-// parentPeer is v as caller sees it, with its delegates, which a dormant
-// v no longer has, judged by v's where.
-func (s *Store) parentPeer(caller party, v *identityRow, delegates []identityRow) Peer {
-	p := s.peer(caller, v)
-	if v.State != stateLive {
-		return p
-	}
-	for i := range delegates {
-		delegates[i].Where = v.Where
-		p.Delegates = append(p.Delegates, s.peer(caller, &delegates[i]))
-	}
-	slices.SortFunc(p.Delegates, func(a, b Peer) int { return strings.Compare(a.Name, b.Name) })
-	return p
-}
-
-// peer is v as caller sees it.
-func (s *Store) peer(caller party, v *identityRow) Peer {
-	p := Peer{Identity: s.view(v), Relation: caller.relationTo(party{where: v.Where, id: v.ID}, "")}
-	if v.ID != caller.id {
-		p.MachineKind, p.EnvironmentKnown = "", false
-	}
-	return p
-}
-
-// shows reports whether q lists v for a caller at where; text is q.Text
-// lowercased.
-func (q WhoQuery) shows(v *identityRow, text string, where Where) bool {
-	if (v.State == stateDormant && !q.All) || (q.Here && !shareEnvironment(where, v.Where)) {
-		return false
-	}
-	return whoMatches(v, text, q.Path)
-}
-
-func whoMatches(v *identityRow, text, path string) bool {
-	if path != "" && !slices.ContainsFunc(v.Paths, func(p string) bool { return under(p, path) || under(path, p) }) {
-		return false
-	}
-	if text == "" {
-		return true
-	}
-	hay := append([]string{v.Name, v.Description, v.Host}, v.Paths...)
-	return slices.ContainsFunc(hay, func(h string) bool { return strings.Contains(strings.ToLower(h), text) })
 }
 
 // settled is v as a read sees it before the sweeper reaches it: a live row
@@ -867,13 +793,13 @@ func fmtTime(t time.Time) string { return t.UTC().Format("2006-01-02 15:04 UTC")
 
 func (s *Store) view(r *identityRow) Identity {
 	return Identity{
-		Expires: r.Lease.Expires, WarnAt: r.Lease.WarnAt, RegisteredAt: r.RegisteredAt,
+		Expires: r.Lease.Expires, RegisteredAt: r.RegisteredAt,
 		DormantSince: r.DormantSince, LastSeen: s.lastSeen(r),
 		Name: r.Name, Description: r.Description, State: r.State,
 		Host: r.Host, OS: r.OS, Arch: r.Arch, Provider: r.Provider,
 		MachineKind: machineKindOf(r.Where.Machine),
 		Paths:       slices.Clone(r.Paths), Follows: slices.Clone(r.Follows),
-		ID: r.ID, TTL: r.TTL, EnvironmentKnown: r.Where.Environment != "", Ended: r.Ended,
+		ID: r.ID, Read: r.Read, TTL: r.TTL, EnvironmentKnown: r.Where.Environment != "", Ended: r.Ended,
 	}
 }
 

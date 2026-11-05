@@ -47,8 +47,9 @@ func TestRevive_sameSessionRestoresTheIdentity(t *testing.T) {
 	if id.State != stateLive || !id.DormantSince.IsZero() || id.Ended {
 		t.Errorf("state %q since %v ended %v, want live, not dormant, not ended", id.State, id.DormantSince, id.Ended)
 	}
-	if !id.Expires.Equal(now.Add(6*time.Hour)) || !id.WarnAt.Equal(now.Add(6*time.Hour-30*time.Minute)) {
-		t.Errorf("expires %v warn %v, want a new 6 h lease warned 30 min ahead", id.Expires, id.WarnAt)
+	warn := getIdentity(t, s, id.ID).Lease.WarnAt
+	if !id.Expires.Equal(now.Add(6*time.Hour)) || !warn.Equal(now.Add(6*time.Hour-30*time.Minute)) {
+		t.Errorf("expires %v warn %v, want a new 6 h lease warned 30 min ahead", id.Expires, warn)
 	}
 	if !id.RegisteredAt.Equal(testNow) || !slices.Equal(id.Follows, []string{"/workspace/docs"}) {
 		t.Errorf("registered %v follows %v, want both kept", id.RegisteredAt, id.Follows)

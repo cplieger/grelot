@@ -23,18 +23,16 @@ func nudgeOf(t *testing.T, s *Store, id uint64) NudgeState {
 	return st
 }
 
-// mustSend records the send due for id and returns it.
-func mustSend(t *testing.T, s *Store, id uint64) Nudge {
+// mustSend records the send due for id.
+func mustSend(t *testing.T, s *Store, id uint64) {
 	t.Helper()
 	st := nudgeOf(t, s, id)
 	if st.Due == nil {
 		t.Fatalf("identity %d: no nudge due, state %+v", id, st)
 	}
-	got, ok, err := s.RecordNudge(t.Context(), st.Due, NudgeByWatcher)
-	if err != nil || !ok {
+	if _, ok, err := s.RecordNudge(t.Context(), st.Due, NudgeByWatcher); err != nil || !ok {
 		t.Fatalf("RecordNudge(%+v): recorded %v, %v", *st.Due, ok, err)
 	}
-	return got
 }
 
 // directTo posts a direct message from one name to another and returns
@@ -63,6 +61,21 @@ func wantDue(t *testing.T, st NudgeState, attempt int, seq uint64) {
 	}
 }
 
+// sentNudge is an identity's stored outstanding nudge.
+type sentNudge struct {
+	at      time.Time
+	seq     uint64
+	attempt int
+}
+
+// outstanding is id's outstanding nudge; ok is false when read has passed
+// the last one sent, or none was.
+func outstanding(t *testing.T, s *Store, id uint64) (n sentNudge, ok bool) {
+	t.Helper()
+	row := getIdentity(t, s, id)
+	return sentNudge{at: row.NudgedAt, seq: row.Nudged, attempt: row.Nudges}, row.Read < row.Nudged
+}
+
 func TestNudge_firstNudgeCoversTheNewestWakeSeq(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	regAt(t, s, "alpha")
@@ -71,8 +84,8 @@ func TestNudge_firstNudgeCoversTheNewestWakeSeq(t *testing.T) {
 	t.Run("a card alone nudges nothing", func(t *testing.T) {
 		st := nudgeOf(t, s, bravo.ID)
 		wantNoNudge(t, st)
-		if st.Last != nil || !st.Next.IsZero() {
-			t.Errorf("last %v next %v, want neither", st.Last, st.Next)
+		if n, ok := outstanding(t, s, bravo.ID); ok || !st.Next.IsZero() {
+			t.Errorf("outstanding %+v next %v, want neither", n, st.Next)
 		}
 	})
 	directTo(t, s, "alpha", "bravo", bravo.ID)
@@ -87,8 +100,8 @@ func TestNudge_firstNudgeCoversTheNewestWakeSeq(t *testing.T) {
 		}
 	})
 	t.Run("nothing is outstanding yet", func(t *testing.T) {
-		if st.Last != nil {
-			t.Errorf("last %+v, want none", *st.Last)
+		if n, ok := outstanding(t, s, bravo.ID); ok {
+			t.Errorf("outstanding %+v, want none", n)
 		}
 	})
 }
@@ -98,18 +111,18 @@ func TestNudge_nothingNewGoesOutWhileOneIsOutstanding(t *testing.T) {
 	regAt(t, s, "alpha")
 	bravo := regAt(t, s, "bravo")
 	first := directTo(t, s, "alpha", "bravo", bravo.ID)
-	sent := mustSend(t, s, bravo.ID)
+	mustSend(t, s, bravo.ID)
 	clk.advance(time.Minute)
 	directTo(t, s, "alpha", "bravo", bravo.ID)
 	st := nudgeOf(t, s, bravo.ID)
 	wantNoNudge(t, st)
 	t.Run("the outstanding nudge is the one sent", func(t *testing.T) {
-		if st.Last == nil || st.Last.Seq != first || st.Last.Attempt != 1 || !st.Last.At.Equal(testNow) || st.Last.Count != 2 {
-			t.Errorf("last %+v, want seq %d attempt 1 at %v counting 2", st.Last, first, testNow)
+		if n, ok := outstanding(t, s, bravo.ID); !ok || n.seq != first || n.attempt != 1 || !n.at.Equal(testNow) {
+			t.Errorf("outstanding %+v %v, want seq %d attempt 1 at %v", n, ok, first, testNow)
 		}
 	})
 	t.Run("the re-nudge is due 3 minutes after the send", func(t *testing.T) {
-		if want := sent.At.Add(3 * time.Minute); !st.Next.Equal(want) {
+		if want := testNow.Add(3 * time.Minute); !st.Next.Equal(want) {
 			t.Errorf("next %v, want %v", st.Next, want)
 		}
 	})
@@ -140,15 +153,15 @@ func TestNudge_reNudgesAt3_15And60MinutesCoveringTheNewestThenStops(t *testing.T
 		clk.advance(4 * time.Hour)
 		st := nudgeOf(t, s, bravo.ID)
 		wantNoNudge(t, st)
-		if !st.Next.IsZero() || st.Last == nil || st.Last.Attempt != 4 {
-			t.Errorf("next %v last %+v, want no re-nudge after attempt 4", st.Next, st.Last)
+		if n, ok := outstanding(t, s, bravo.ID); !st.Next.IsZero() || !ok || n.attempt != 4 {
+			t.Errorf("next %v outstanding %+v %v, want no re-nudge after attempt 4", st.Next, n, ok)
 		}
 	})
 	t.Run("a read past nudged ends it, and new mail starts at one", func(t *testing.T) {
 		readAll(t, s, "bravo")
 		st := nudgeOf(t, s, bravo.ID)
-		if st.Due != nil || st.Last != nil {
-			t.Errorf("after the read: due %v last %v, want neither", st.Due, st.Last)
+		if n, ok := outstanding(t, s, bravo.ID); st.Due != nil || ok {
+			t.Errorf("after the read: due %v outstanding %+v, want neither", st.Due, n)
 		}
 		newest := directTo(t, s, "alpha", "bravo", bravo.ID)
 		wantDue(t, nudgeOf(t, s, bravo.ID), 1, newest)
@@ -164,8 +177,8 @@ func TestNudge_aReadPastNudgedStopsTheReNudge(t *testing.T) {
 	mustAck(t, s, sess("bravo"), seq)
 	clk.advance(time.Hour)
 	st := nudgeOf(t, s, bravo.ID)
-	if st.Due != nil || st.Last != nil || !st.Next.IsZero() {
-		t.Errorf("due %v last %v next %v, want nothing once read passed nudged", st.Due, st.Last, st.Next)
+	if n, ok := outstanding(t, s, bravo.ID); st.Due != nil || ok || !st.Next.IsZero() {
+		t.Errorf("due %v outstanding %+v next %v, want nothing once read passed nudged", st.Due, n, st.Next)
 	}
 }
 
@@ -294,8 +307,11 @@ func TestRecordNudge_ofTwoRacersOnlyOneRecords(t *testing.T) {
 	due := *nudgeOf(t, s, bravo.ID).Due
 	t.Run("in turn", func(t *testing.T) {
 		got, ok, err := s.RecordNudge(t.Context(), &due, NudgeByPush)
-		if err != nil || !ok || got.Seq != seq || got.Attempt != 1 || !got.At.Equal(testNow) {
-			t.Fatalf("first RecordNudge = %+v, %v, %v; want seq %d attempt 1 at %v", got, ok, err, seq, testNow)
+		if err != nil || !ok || got.Seq != seq || got.Attempt != 1 {
+			t.Fatalf("first RecordNudge = %+v, %v, %v; want seq %d attempt 1", got, ok, err, seq)
+		}
+		if n, _ := outstanding(t, s, bravo.ID); !n.at.Equal(testNow) {
+			t.Errorf("recorded at %v, want %v", n.at, testNow)
 		}
 		if _, ok, err := s.RecordNudge(t.Context(), &due, NudgeByWatcher); err != nil || ok {
 			t.Errorf("second RecordNudge recorded %v, %v; want nothing", ok, err)
@@ -457,8 +473,8 @@ func TestNudge_theStateOutlivesARestart(t *testing.T) {
 	t.Run("the send is not repeated", func(t *testing.T) {
 		st := nudgeOf(t, s, bravo.ID)
 		wantNoNudge(t, st)
-		if st.Last == nil || st.Last.Seq != seq || !st.Next.Equal(testNow.Add(3*time.Minute)) {
-			t.Errorf("last %+v next %v, want the send kept and its re-nudge due at %v", st.Last, st.Next, testNow.Add(3*time.Minute))
+		if n, ok := outstanding(t, s, bravo.ID); !ok || n.seq != seq || !st.Next.Equal(testNow.Add(3*time.Minute)) {
+			t.Errorf("outstanding %+v %v next %v, want the send kept and its re-nudge due at %v", n, ok, st.Next, testNow.Add(3*time.Minute))
 		}
 	})
 	t.Run("the due re-nudge is not forgotten", func(t *testing.T) {

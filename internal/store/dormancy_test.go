@@ -106,10 +106,10 @@ func TestDormant_readsCommitNothing(t *testing.T) {
 	wantRefusal(t, err, KindGone, "dormant", "`grelot revive --ttl <d>` restores it")
 	_, err = s.History(ctx, Caller{Session: sessA}, &HistoryQuery{})
 	wantRefusal(t, err, KindGone, "dormant")
-	if _, err := s.Who(ctx, Caller{Session: sessA}, WhoQuery{}); err != nil {
+	if _, err := s.Who(ctx, Caller{Session: sessA}, &WhoQuery{}); err != nil {
 		t.Fatalf("who from the dormant session: %v", err)
 	}
-	if _, err := s.Who(ctx, Caller{Session: "kiro-cli:nobody"}, WhoQuery{}); err != nil {
+	if _, err := s.Who(ctx, Caller{Session: "kiro-cli:nobody"}, &WhoQuery{}); err != nil {
 		t.Fatalf("who from a session with no identity: %v", err)
 	}
 	if n := commitCount(t, s) - start; n != 0 {
@@ -137,9 +137,9 @@ func TestDormant_readsNeverWaitForTheWriter(t *testing.T) {
 		errs = append(errs, err)
 		_, err = s.History(ctx, Caller{Session: sessA}, &HistoryQuery{})
 		errs = append(errs, err)
-		_, err = s.Who(ctx, Caller{Session: sessA}, WhoQuery{})
+		_, err = s.Who(ctx, Caller{Session: sessA}, &WhoQuery{})
 		errs = append(errs, err)
-		_, err = s.Who(ctx, Caller{Session: "kiro-cli:nobody"}, WhoQuery{})
+		_, err = s.Who(ctx, Caller{Session: "kiro-cli:nobody"}, &WhoQuery{})
 		errs = append(errs, err)
 	}()
 	select {

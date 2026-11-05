@@ -358,6 +358,78 @@ func (s *Store) linksOf(r *bolttable.ReadTx, parent uint64) ([]linkRow, error) {
 	return out, err
 }
 
+// Delegation is what an identity has granted: its live delegates and its
+// unused links, each by handle.
+type Delegation struct {
+	Delegates []GrantedDelegate
+	Links     []Granted
+}
+
+// GrantedDelegate is a live delegate as its parent sees it. Bound reports
+// one registered from a session of its own, which the delegate gate no
+// longer counts.
+type GrantedDelegate struct {
+	Expires     time.Time
+	LastSeen    time.Time
+	Handle      string
+	Description string
+	Bound       bool
+}
+
+// Delegations lists c's live delegates and unused links, by handle; a
+// delegate has none. It writes nothing. Refusals: those of every route,
+// the delegate gate included.
+func (s *Store) Delegations(ctx context.Context, c Caller) (Delegation, error) {
+	var out Delegation
+	err := s.read(ctx, func(r *bolttable.ReadTx) error {
+		now := s.now()
+		me, err := s.liveFor(r, c, now)
+		if err != nil || me.Parent != 0 {
+			return err
+		}
+		if out.Links, err = s.unusedLinks(r, &me, now); err != nil {
+			return err
+		}
+		out.Delegates, err = s.liveDelegates(r, me.ID, now)
+		return err
+	})
+	return out, err
+}
+
+func (s *Store) unusedLinks(r *bolttable.ReadTx, me *identityRow, now time.Time) ([]Granted, error) {
+	links, err := s.linksOf(r, me.ID)
+	var out []Granted
+	for i := range links {
+		if !links[i].Lease.due(now) {
+			out = append(out, Granted{Handle: me.Name + "/" + links[i].Label, Expires: links[i].Lease.Expires})
+		}
+	}
+	slices.SortFunc(out, func(a, b Granted) int { return strings.Compare(a.Handle, b.Handle) })
+	return out, err
+}
+
+func (s *Store) liveDelegates(r *bolttable.ReadTx, parent uint64, now time.Time) ([]GrantedDelegate, error) {
+	ids, err := s.delegatesOf(r, parent)
+	if err != nil {
+		return nil, err
+	}
+	var out []GrantedDelegate
+	for _, id := range ids {
+		d, found, err := s.t.identities.table.Get(r, id)
+		if err != nil {
+			return nil, err
+		}
+		if found && settled(&d, now, s.dormantTTL) != nil {
+			out = append(out, GrantedDelegate{
+				Expires: d.Lease.Expires, LastSeen: s.lastSeen(&d), Handle: d.Name,
+				Description: d.Description, Bound: d.Session != "",
+			})
+		}
+	}
+	slices.SortFunc(out, func(a, b GrantedDelegate) int { return strings.Compare(a.Handle, b.Handle) })
+	return out, nil
+}
+
 // delegatesOf lists the ids of parent's live delegates.
 func (s *Store) delegatesOf(r *bolttable.ReadTx, parent uint64) ([]uint64, error) {
 	var out []uint64

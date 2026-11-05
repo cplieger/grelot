@@ -48,7 +48,7 @@ func keepAlive(t *testing.T, s *Store, ids ...uint64) {
 func TestHistory_readAndUnreadMailWithOwnPostsInTimeOrder(t *testing.T) {
 	s, clk := openClockStore(t)
 	regAt(t, s, "alpha", "/workspace/alpha")
-	bravo := regAt(t, s, "bravo", "/workspace/bravo")
+	regAt(t, s, "bravo", "/workspace/bravo")
 	regAt(t, s, "charlie", "/workspace/charlie")
 	say(t, s, "alpha", Target{Agent: "bravo"}, "a1")
 	clk.advance(time.Minute)
@@ -73,9 +73,6 @@ func TestHistory_readAndUnreadMailWithOwnPostsInTimeOrder(t *testing.T) {
 	}
 	if !unread.ReadAt.IsZero() || unread.Kind != kindAnnounce || unread.Relation != "same environment" {
 		t.Errorf("unread entry %+v, want charlie's unread announcement, same environment", unread)
-	}
-	if h.Identity.ID != bravo.ID {
-		t.Errorf("identity %d, want bravo's %d", h.Identity.ID, bravo.ID)
 	}
 }
 
@@ -454,5 +451,19 @@ func TestHistory_clearsEnded(t *testing.T) {
 	mustHistory(t, s, sess("bravo"), HistoryQuery{})
 	if getIdentity(t, s, bravo.ID).Ended {
 		t.Error("ended still set after a history read, want it cleared like any identity request")
+	}
+}
+
+func TestThreads_clearsEnded(t *testing.T) {
+	s, _ := openClockStore(t)
+	bravo := regAt(t, s, "bravo", "/workspace/bravo")
+	if err := s.EndSession(t.Context(), sess("bravo")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Threads(t.Context(), Caller{Session: sess("bravo")}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if getIdentity(t, s, bravo.ID).Ended {
+		t.Error("ended still set after a threads read, want it cleared like any identity request")
 	}
 }

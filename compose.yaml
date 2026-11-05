@@ -4,7 +4,18 @@ services:
     image: ghcr.io/cplieger/grelot:latest
     container_name: grelot
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+
+    environment:
+      # The bearer token every client sends. Prefer GRELOT_TOKEN_FILE pointing at a mounted secret.
+      GRELOT_TOKEN: "change-me-to-a-long-random-string"
+
+    volumes:
+      # The store. Every row in it expires, so losing it loses only mail in flight.
+      - ./data:/data
 
     ports:
-      # There is no login yet. Publish this port only to a network you trust, see README "Security".
+      # Publish this port only to a network you trust, see README "Security".
       - "8080:8080"

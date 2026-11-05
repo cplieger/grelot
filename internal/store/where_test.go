@@ -21,7 +21,11 @@ const (
 	repoInner   = "/workspace/subflux/vendor/inner"
 )
 
-func co(repo, digit string) Checkout { return Checkout{Repo: repo, ID: hex32(digit)} }
+// co is a checkout of repo with id digit; every repo's clones share one
+// remote unless a test sets another.
+func co(repo, digit string) Checkout {
+	return Checkout{Repo: repo, ID: hex32(digit), Remote: hex32("e")}
+}
 
 func TestRelation_ranks(t *testing.T) {
 	tests := []struct {
