@@ -117,13 +117,20 @@ func (t turnStart) stale(id *store.Identity) bool {
 
 // inTurnWait is GET /v1/inbox?wait=: it holds until a wake delivery is
 // past read, whatever the nudge state, then answers the page; at wait's
-// end or on Release it answers the page as it stands.
-func (s *Server) inTurnWait(ctx context.Context, c store.Caller, limit int, wait time.Duration) (store.Page, error) {
-	page, err := s.store.Inbox(ctx, c, limit)
-	if err != nil || wait == 0 || page.Unread.Wake() > 0 {
-		return page, err
+// end or on Release it answers the page as it stands. The wait is counted
+// open before its first Inbox, whose Seen wakes an ended session's
+// identity at its commit: a first nudge that wake finds uncovered goes out
+// for the mail this wait returns.
+func (s *Server) inTurnWait(ctx context.Context, c store.Caller, limit int, wait time.Duration) (page store.Page, err error) {
+	if wait == 0 {
+		return s.store.Inbox(ctx, c, limit)
 	}
-	id := page.Identity.ID
+	me, err := s.store.Acting(ctx, c)
+	if err != nil {
+		// Inbox answers the refusal, so it reads as it does with no wait.
+		return s.store.Inbox(ctx, c, limit)
+	}
+	id := me.ID
 	s.presence.inTurnOpened(id)
 	defer func() { s.inTurnEnded(id, newestWake(page.Entries)) }()
 	deadline := s.now().Add(wait)

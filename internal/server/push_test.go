@@ -523,6 +523,37 @@ func TestPush_aResumedSessionsPromptDefersTheMailThatWaitedToItsTurnEnd(t *testi
 	}
 }
 
+func TestPush_aResumedSessionsInTurnWaitHoldsTheMailItReturnsForItsAck(t *testing.T) {
+	t.Setenv(doorTokenEnv, doorSecret)
+	rcv := newPushReceiver(t)
+	synctest.Test(t, func(t *testing.T) {
+		h := newPushHarness(t, rcv.kiroDoor()...)
+		h.mustRegisterAlone(sessA, "reader")
+		h.mustRegisterAlone(sessB, "writer")
+		h.self(sessA, http.MethodPost, "/v1/lifecycle", map[string]any{"event": eventSessionEnd})
+		h.directPost(sessB, "reader")
+		synctest.Wait()
+		if n := len(rcv.requests()); n != 0 {
+			t.Fatalf("%d pushes while the session was ended, want none", n)
+		}
+		start := time.Now()
+		page := entriesOf(t, <-h.inTurn(sessA, 55*time.Second))
+		if len(page) != 1 || time.Since(start) != 0 {
+			t.Fatalf("the in-turn wait = %v after %v, want the waiting mail at once", page, time.Since(start))
+		}
+		synctest.Wait()
+		if n := len(rcv.requests()); n != 0 {
+			t.Fatalf("%d pushes for the mail the in-turn wait returned, before its ack, want none", n)
+		}
+		h.ack(sessA, page[0]["seq"].(float64))
+		time.Sleep(ackGrace)
+		synctest.Wait()
+		if n := len(rcv.requests()); n != 0 {
+			t.Errorf("%d pushes once the mail was acked, want none", n)
+		}
+	})
+}
+
 func TestPush_aPromptTheDelegateGateRefusesOpensNoTurn(t *testing.T) {
 	t.Setenv(doorTokenEnv, doorSecret)
 	rcv := newPushReceiver(t)
