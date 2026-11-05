@@ -25,11 +25,18 @@ type presence struct {
 	mu sync.Mutex
 }
 
+// sendCount counts the nudges an identity's standing waits sent.
+type sendCount uint64
+
 type mark struct {
 	// closed is when the last standing wait closed.
 	closed time.Time
 	// turnAt is when the open turn was last set, zero when none is.
 	turnAt time.Time
+	// sent is the last nudge a standing wait sent, and sends counts them,
+	// so every wait open at that send returns it.
+	sent  nudgeJSON
+	sends sendCount
 	// open and inTurn count the standing and in-turn waits held now.
 	open   int
 	inTurn int
@@ -59,15 +66,35 @@ func (p *presence) get(id uint64) mark {
 }
 
 // registered starts id's session marks afresh, for a registration, a
-// take-over or a revival; the waits already open stay counted.
+// take-over or a revival; the waits already open stay counted, with the
+// sends they compare against.
 func (p *presence) registered(id uint64) {
-	p.update(id, func(m *mark) { *m = mark{closed: m.closed, open: m.open, inTurn: m.inTurn} })
+	p.update(id, func(m *mark) {
+		*m = mark{closed: m.closed, open: m.open, inTurn: m.inTurn, sent: m.sent, sends: m.sends}
+	})
 }
 
 // opened records a standing wait of id starting, which ends the down
-// episode; the caller calls closed when it ends.
-func (p *presence) opened(id uint64) {
-	p.update(id, func(m *mark) { m.open, m.held, m.downTold = m.open+1, true, false })
+// episode, and returns the sends so far for sentSince; the caller calls
+// closed when it ends.
+func (p *presence) opened(id uint64) (sends sendCount) {
+	p.update(id, func(m *mark) {
+		m.open, m.held, m.downTold = m.open+1, true, false
+		sends = m.sends
+	})
+	return sends
+}
+
+// watcherSent records n, a nudge a standing wait of id sent.
+func (p *presence) watcherSent(id uint64, n nudgeJSON) {
+	p.update(id, func(m *mark) { m.sent, m.sends = n, m.sends+1 })
+}
+
+// sentSince returns the last nudge a standing wait of id sent, when one
+// went out after the sends count since.
+func (p *presence) sentSince(id uint64, since sendCount) (nudgeJSON, bool) {
+	m := p.get(id)
+	return m.sent, m.sends > since
 }
 
 func (p *presence) closed(id uint64, now time.Time) {

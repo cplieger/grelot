@@ -476,9 +476,9 @@ func (s *Store) Seen(ctx context.Context, c Caller) (Identity, error) {
 }
 
 // Watcher returns the identity a standing wait from c holds for, and
-// writes nothing: a standing wait never clears ended. Refusals: KindGone
-// with Why dormant or none, as on every route; KindInvalid for a
-// delegate, which is pull only.
+// records the request time in memory only: a standing wait never clears
+// ended and is no commit. Refusals: KindGone with Why dormant or none, as
+// on every route; KindInvalid for a delegate, which is pull only.
 func (s *Store) Watcher(ctx context.Context, c Caller) (Identity, error) {
 	var row identityRow
 	err := s.read(ctx, func(r *bolttable.ReadTx) error {
@@ -492,6 +492,7 @@ func (s *Store) Watcher(ctx context.Context, c Caller) (Identity, error) {
 	case row.Parent != 0:
 		return Identity{}, refuse(KindInvalid, "a delegate is pull only; use grelot wait")
 	}
+	s.noteSeen(row.ID, s.now())
 	return s.view(&row), nil
 }
 

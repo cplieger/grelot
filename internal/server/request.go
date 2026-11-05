@@ -106,11 +106,14 @@ func (s *Server) identityFor(fn identityFunc, mode callerMode) http.Handler {
 		if c.Session != "" {
 			s.setStatus(w, r, c)
 		}
-		if err != nil {
+		switch {
+		case err != nil:
 			s.fail(w, r, err)
-			return
+		case status == http.StatusNoContent:
+			w.WriteHeader(status)
+		default:
+			httpserver.WriteJSONStatus(w, status, body)
 		}
-		httpserver.WriteJSONStatus(w, status, body)
 	})
 }
 

@@ -148,6 +148,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	handle("DELETE /v1/delegates/{label}", s.identity(s.revoke))
 	handle("POST /v1/me/bind", s.identity(s.bind))
 	handle("POST /v1/lifecycle", s.identity(s.lifecycle))
+	mux.Handle("POST /v1/events/wait", httpserver.RouteTimeout(s.identity(s.standingWait), waitRouteTimeout, ""))
 	mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, &apiError{status: http.StatusNotFound, code: "not_found", msg: "no such route: " + r.Method + " " + r.URL.Path})
 	})

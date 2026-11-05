@@ -114,10 +114,27 @@ func newHarness(t *testing.T) *harness {
 func newHarnessWith(t *testing.T, o store.Options) *harness {
 	t.Helper()
 	clk := &clock{t: testNow}
+	h := buildHarness(t, o, clk.now)
+	h.clk = clk
+	h.http = httptest.NewServer(h.srv.Handler())
+	t.Cleanup(h.http.Close)
+	return h
+}
+
+// newBubbleHarness is a harness on the clock of the synctest bubble it is
+// called in. It serves each request in process: a goroutine blocked on a
+// socket is not durably blocked, so the bubble's clock would never move.
+func newBubbleHarness(t *testing.T) *harness {
+	t.Helper()
+	return buildHarness(t, store.Options{}, time.Now)
+}
+
+func buildHarness(t *testing.T, o store.Options, now func() time.Time) *harness {
+	t.Helper()
 	logs := newLogSink()
 	logger := slog.New(logs)
 	hub := NewHub()
-	o.Logger, o.Now, o.PathRoot, o.Woke = logger, clk.now, DefaultPathRoot, hub.Woke
+	o.Logger, o.Now, o.PathRoot, o.Woke = logger, now, DefaultPathRoot, hub.Woke
 	st, err := store.Open(filepath.Join(t.TempDir(), "grelot.db"), o)
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
@@ -125,12 +142,10 @@ func newHarnessWith(t *testing.T, o store.Options) *harness {
 	t.Cleanup(func() { _ = st.Close() })
 	push := &fakePush{states: map[uint64]pushState{}}
 	srv := New(&Options{
-		Store: st, Logger: logger, Now: clk.now, Version: testVersion, Push: push, Hub: hub,
+		Store: st, Logger: logger, Now: now, Version: testVersion, Push: push, Hub: hub,
 		Config: Config{Token: testToken, PathRoot: DefaultPathRoot},
 	})
-	hs := httptest.NewServer(srv.Handler())
-	t.Cleanup(hs.Close)
-	return &harness{t: t, store: st, srv: srv, http: hs, clk: clk, logs: logs, push: push}
+	return &harness{t: t, store: st, srv: srv, logs: logs, push: push}
 }
 
 // fakePush serves the identities a test gives a push state.
@@ -193,7 +208,11 @@ func (h *harness) request(method, path string, body any, headers map[string]stri
 		}
 		rd = bytes.NewReader(b)
 	}
-	req, err := http.NewRequestWithContext(h.t.Context(), method, h.http.URL+path, rd)
+	base := ""
+	if h.http != nil {
+		base = h.http.URL
+	}
+	req, err := http.NewRequestWithContext(h.t.Context(), method, base+path, rd)
 	if err != nil {
 		h.t.Fatal(err)
 	}
@@ -206,15 +225,27 @@ func (h *harness) request(method, path string, body any, headers map[string]stri
 			req.Header.Set(k, v)
 		}
 	}
-	resp, err := h.http.Client().Do(req)
-	if err != nil {
-		h.t.Fatal(err)
-	}
+	resp := h.do(req)
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	out := &response{status: resp.StatusCode, header: resp.Header, raw: string(raw)}
 	_ = json.Unmarshal(raw, &out.body)
 	return out
+}
+
+// do sends req over the network, or in process for a bubble harness.
+func (h *harness) do(req *http.Request) *http.Response {
+	h.t.Helper()
+	if h.http == nil {
+		rec := httptest.NewRecorder()
+		h.srv.Handler().ServeHTTP(rec, req)
+		return rec.Result()
+	}
+	resp, err := h.http.Client().Do(req)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return resp
 }
 
 // as sends a request from session.

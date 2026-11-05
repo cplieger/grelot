@@ -19,7 +19,9 @@ const (
 
 // Pusher is how the server reaches an identity's host push. Only pushOK
 // counts as working: an identity in any other state is woken by its
-// standing waits, as one with no door is.
+// standing waits, as one with no door is. An implementation calls
+// Hub.Woke for an identity whose state leaves pushOK, or a standing wait
+// already holding sends its due nudge only at its next wake.
 type Pusher interface {
 	// State is id's push state now.
 	State(id uint64) pushState
