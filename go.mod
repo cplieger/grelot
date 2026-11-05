@@ -14,9 +14,7 @@ require (
 	github.com/cplieger/go/yamlenv v1.0.0-dev.2
 	go.etcd.io/bbolt v1.5.0
 	go.yaml.in/yaml/v3 v3.0.6
+	golang.org/x/sys v0.49.0
 )
 
-require (
-	go.yaml.in/yaml/v4 v4.0.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
-)
+require go.yaml.in/yaml/v4 v4.0.0 // indirect
