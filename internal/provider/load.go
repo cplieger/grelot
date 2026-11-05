@@ -20,6 +20,8 @@ const (
 	defaultEndExit  = 1
 
 	keyName    = "name"
+	keyExtends = "extends"
+	keyDetect  = "detect"
 	keyLine    = "line"
 	keyEnd     = "end"
 	keyEndExit = "end_exit"
@@ -156,9 +158,11 @@ func (p *Provider) check(name string, doorSets []map[string]bool) error {
 	case p.Name != name:
 		return &LoadError{Key: keyName, Problem: fmt.Sprintf("is %q but the file is named %q", p.Name, name+".yaml")}
 	case p.Extends != "" && !nameRE.MatchString(p.Extends):
-		return &LoadError{Key: "extends", Problem: "must match " + nameRE.String()}
+		return &LoadError{Key: keyExtends, Problem: "must match " + nameRE.String()}
 	case p.Extends == p.Name:
-		return &LoadError{Key: "extends", Problem: "a provider cannot extend itself"}
+		return &LoadError{Key: keyExtends, Problem: "a provider cannot extend itself"}
+	case p.Extends != "" && p.set[keyDetect]:
+		return &LoadError{Key: keyDetect, Problem: "a file that extends another is chosen only by name"}
 	}
 	switch p.Evidence {
 	case "", EvidenceMeasured, EvidenceDocumented, EvidenceUnverified:

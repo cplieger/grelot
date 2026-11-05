@@ -1,0 +1,199 @@
+package provider
+
+import (
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+	"testing/fstest"
+)
+
+func files(kv ...string) fstest.MapFS {
+	m := fstest.MapFS{}
+	for i := 0; i < len(kv); i += 2 {
+		m[kv[i]+".yaml"] = &fstest.MapFile{Data: []byte(kv[i+1])}
+	}
+	return m
+}
+
+func mustSet(t *testing.T, layers ...fstest.MapFS) *Set {
+	t.Helper()
+	fss := make([]fs.FS, len(layers))
+	for i, l := range layers {
+		fss[i] = l
+	}
+	s, err := LoadSet(fss...)
+	if err != nil {
+		t.Fatalf("LoadSet: %v", err)
+	}
+	return s
+}
+
+func doorNames(p *Provider) []string {
+	var names []string
+	for _, d := range p.Doors {
+		names = append(names, d.Name)
+	}
+	return names
+}
+
+const parentFile = `name: base
+evidence: measured
+notes: docs/base.md
+detect: {env: [BASE_ID]}
+session: {env: BASE_ID, process: [base]}
+doors:
+  - {name: queue, layer: 2, transport: exec, argv: [base, queue]}
+  - {name: watch, layer: 2, transport: exit}
+  - {name: out, layer: 2, transport: stdout}
+hooks:
+  prompt: {event: Prompt}
+  stop: {event: Stop}
+`
+
+func TestLoadSetLayers(t *testing.T) {
+	shipped := files("base", parentFile, "other", "name: other\nnotes: shipped\n")
+	user := files("other", "name: other\nnotes: user\n", "extra", "name: extra\n")
+	s := mustSet(t, shipped, user)
+	t.Run("a later layer replaces by name", func(t *testing.T) {
+		p, err := s.Get("other")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.Notes != "user" {
+			t.Errorf("notes = %q, want the user layer's", p.Notes)
+		}
+	})
+	t.Run("names of every layer", func(t *testing.T) {
+		if got, want := s.Names(), []string{"base", "extra", "other"}; !slices.Equal(got, want) {
+			t.Errorf("Names = %v, want %v", got, want)
+		}
+	})
+	t.Run("an invalid user file replaces a valid shipped one", func(t *testing.T) {
+		s := mustSet(t, shipped, files("base", "name: base\nsurprise: 1\n"))
+		if _, err := s.Get("base"); err == nil || !strings.Contains(err.Error(), "surprise") {
+			t.Errorf("Get(base) = %v, want the user file's load error", err)
+		}
+		if !slices.Contains(s.Names(), "base") {
+			t.Errorf("Names %v lacks the invalid provider", s.Names())
+		}
+	})
+	t.Run("unknown name", func(t *testing.T) {
+		if _, err := s.Get("nowhere"); err == nil || !strings.Contains(err.Error(), "nowhere") {
+			t.Errorf("Get(nowhere) = %v", err)
+		}
+	})
+	t.Run("only yaml files at the root", func(t *testing.T) {
+		m := files("base", parentFile)
+		m["base/hooks.json"] = &fstest.MapFile{Data: []byte("{}")}
+		m["README.md"] = &fstest.MapFile{Data: []byte("x")}
+		if got := mustSet(t, m).Names(); !slices.Equal(got, []string{"base"}) {
+			t.Errorf("Names = %v, want [base]", got)
+		}
+	})
+	t.Run("a missing layer is empty", func(t *testing.T) {
+		s, err := LoadSet(shipped, os.DirFS(filepath.Join(t.TempDir(), "absent")))
+		if err != nil {
+			t.Fatalf("LoadSet: %v", err)
+		}
+		if !slices.Equal(s.Names(), []string{"base", "other"}) {
+			t.Errorf("Names = %v", s.Names())
+		}
+	})
+}
+
+func TestLoadSetExtends(t *testing.T) {
+	child := `name: child
+extends: base
+evidence: unverified
+doors:
+  - {name: watch, layer: 2, transport: stdout}
+  - {name: push, layer: 1, transport: http, url: 'http://receiver/x', body: '{}'}
+  - {name: tail, layer: 2, transport: exit}
+hooks:
+  stop: {event: Halt}
+`
+	s := mustSet(t, files("base", parentFile, "child", child))
+	p, err := s.Get("child")
+	if err != nil {
+		t.Fatalf("Get(child): %v", err)
+	}
+	t.Run("doors merge by name, by layer then inherited first", func(t *testing.T) {
+		if got, want := doorNames(p), []string{"push", "queue", "watch", "out", "tail"}; !slices.Equal(got, want) {
+			t.Errorf("doors = %v, want %v", got, want)
+		}
+		if p.Doors[2].Transport != TransportStdout {
+			t.Errorf("door watch transport = %q, want the child's stdout", p.Doors[2].Transport)
+		}
+	})
+	t.Run("a key the child sets replaces the parent's whole", func(t *testing.T) {
+		if p.Hooks.Prompt != nil || p.Hooks.Stop == nil || p.Hooks.Stop.Event != "Halt" {
+			t.Errorf("hooks = prompt %+v, stop %+v; want only the child's stop", p.Hooks.Prompt, p.Hooks.Stop)
+		}
+		if p.Evidence != EvidenceUnverified {
+			t.Errorf("evidence = %q", p.Evidence)
+		}
+	})
+	t.Run("a key the child leaves out is inherited", func(t *testing.T) {
+		if p.Session.Env != "BASE_ID" || p.Notes != "docs/base.md" {
+			t.Errorf("session %+v, notes %q", p.Session, p.Notes)
+		}
+		if !p.Has("session") {
+			t.Error("Has(session) = false for an inherited key")
+		}
+	})
+	t.Run("detect is not inherited", func(t *testing.T) {
+		if len(p.Detect.Env) != 0 || p.Has("detect") {
+			t.Errorf("detect = %+v", p.Detect)
+		}
+	})
+	t.Run("the name is the child's", func(t *testing.T) {
+		if p.Name != "child" || p.Extends != "base" {
+			t.Errorf("name %q extends %q", p.Name, p.Extends)
+		}
+	})
+	t.Run("the parent is unchanged", func(t *testing.T) {
+		b, err := s.Get("base")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := doorNames(b); !slices.Equal(got, []string{"queue", "watch", "out"}) || b.Doors[1].Transport != TransportExit {
+			t.Errorf("base doors = %v", got)
+		}
+	})
+	t.Run("an inherited door renders", func(t *testing.T) {
+		argv, err := p.Doors[1].RenderArgv(&Data{})
+		if err != nil || !slices.Equal(argv, []string{"base", "queue"}) {
+			t.Errorf("RenderArgv = %v, %v", argv, err)
+		}
+	})
+}
+
+func TestLoadSetExtendsRefuses(t *testing.T) {
+	cases := []struct {
+		name  string
+		layer fstest.MapFS
+		want  string
+	}{
+		{"unknown parent", files("child", "name: child\nextends: nowhere\n"), "extends: no provider nowhere"},
+		{"a chain", files("base", parentFile, "mid", "name: mid\nextends: base\n", "child", "name: child\nextends: mid\n"), "extends: provider mid extends another"},
+		{"an invalid parent", files("base", "name: base\nsurprise: 1\n", "child", "name: child\nextends: base\n"), "extends: provider base is invalid"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := mustSet(t, c.layer).Get("child")
+			if err == nil {
+				t.Fatal("Get(child) accepted the file")
+			}
+			if le, ok := errors.AsType[*LoadError](err); !ok || le.Provider != "child" {
+				t.Errorf("error %T %v is not a LoadError for child", err, err)
+			}
+			if !strings.Contains(err.Error(), c.want) {
+				t.Errorf("error %q lacks %q", err, c.want)
+			}
+		})
+	}
+}

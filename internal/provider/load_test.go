@@ -8,9 +8,8 @@ import (
 	"time"
 )
 
-// full spells every key of the schema once.
+// full spells every key of the schema once, but extends (set_test.go).
 const full = `name: example
-extends: base
 evidence: measured
 notes: docs/hosts/example.md
 detect:
@@ -150,7 +149,7 @@ func TestLoadFull(t *testing.T) {
 		}
 	})
 	t.Run("set keys", func(t *testing.T) {
-		for _, k := range []string{"name", "extends", "detect", "session", "doors", "hooks", "notes", "evidence"} {
+		for _, k := range []string{"name", "detect", "session", "doors", "hooks", "notes", "evidence"} {
 			if !p.Has(k) {
 				t.Errorf("Has(%q) = false", k)
 			}
@@ -230,6 +229,7 @@ func TestLoadRefuses(t *testing.T) {
 		{"name grammar", "name: Example\n", []string{"name: must match"}},
 		{"name differs from file", "name: other\n", []string{"name:", `"other"`, `"example.yaml"`}},
 		{"extends itself", "name: example\nextends: example\n", []string{"extends:"}},
+		{"detect with extends", "name: example\nextends: base\ndetect: {env: [X]}\n", []string{"detect:", "only by name"}},
 		{"bad evidence", "name: example\nevidence: guessed\n", []string{"evidence:"}},
 		{"detect env name", "name: example\ndetect: {env: [BAD-NAME]}\n", []string{"detect.env[0]"}},
 		{"session env name", "name: example\nsession: {env: 'A B'}\n", []string{"session.env"}},
