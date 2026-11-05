@@ -506,7 +506,7 @@ func TestPush_aResumedSessionsPromptDefersTheMailThatWaitedToItsTurnEnd(t *testi
 				h.stopHold(sessA, false)
 				h.self(sessA, http.MethodPost, "/v1/lifecycle", map[string]any{"event": eventSessionEnd})
 				h.directPost(sessB, "reader")
-				open := h.turnOpenAtEachWake(sessA, func() { h.prompt(sessA, "turn=start") })
+				open := h.atEachWake(sessA, h.turnOpenNow, func() { h.prompt(sessA, "turn=start") })
 				if len(open) == 0 || slices.Contains(open, false) {
 					t.Fatalf("turn open at each wake of the reader during the prompt = %v, want at least one, all true", open)
 				}
@@ -527,23 +527,23 @@ func TestPush_aResumedSessionsPromptDefersTheMailThatWaitedToItsTurnEnd(t *testi
 	}
 }
 
-// turnOpenAtEachWake runs during and returns, for each wake naming
-// session's identity meanwhile, whether its turn read open as the sender
-// told of that wake would read it. The sender may run only after during
-// returns, so its pushes alone cannot show a wake that came too early.
-func (h *harness) turnOpenAtEachWake(session string, during func()) []bool {
+// atEachWake runs during and returns, for each wake naming session's
+// identity meanwhile, what read reported as the sender told of that wake
+// would see it. The sender may run only after during returns, so its
+// pushes alone cannot show a wake that came too early.
+func (h *harness) atEachWake(session string, read func(id uint64) bool, during func()) []bool {
 	h.t.Helper()
 	id, hub := h.idOf(session), h.srv.hub
 	hub.mu.Lock()
 	sender := hub.listener
 	hub.mu.Unlock()
 	var mu sync.Mutex
-	var open []bool
+	var got []bool
 	hub.listen(func(ids []uint64) {
 		if slices.Contains(ids, id) {
-			_, o := h.srv.presence.turnOpen(id, h.srv.now())
+			v := read(id)
 			mu.Lock()
-			open = append(open, o)
+			got = append(got, v)
 			mu.Unlock()
 		}
 		sender(ids)
@@ -552,7 +552,26 @@ func (h *harness) turnOpenAtEachWake(session string, during func()) []bool {
 	hub.listen(sender)
 	mu.Lock()
 	defer mu.Unlock()
+	return got
+}
+
+func (h *harness) turnOpenNow(id uint64) bool {
+	_, open := h.srv.presence.turnOpen(id, h.srv.now())
 	return open
+}
+
+// firstNudgeHeld reports whether the first nudge due to id now waits for
+// the hooks, as the sender reads it; false when none is due.
+func (h *harness) firstNudgeHeld(id uint64) bool {
+	st, found, err := h.store.Nudging(h.t.Context(), id)
+	if err != nil {
+		h.t.Errorf("Nudging(%d): %v", id, err)
+	}
+	if !found || st.Due == nil {
+		return false
+	}
+	_, held := h.srv.deferred(id, st.Due)
+	return held
 }
 
 func TestPush_aResumedSessionsInTurnWaitHoldsTheMailItReturnsForItsAck(t *testing.T) {
@@ -569,9 +588,14 @@ func TestPush_aResumedSessionsInTurnWaitHoldsTheMailItReturnsForItsAck(t *testin
 			t.Fatalf("%d pushes while the session was ended, want none", n)
 		}
 		start := time.Now()
-		page := entriesOf(t, <-h.inTurn(sessA, 55*time.Second))
+		var got *response
+		held := h.atEachWake(sessA, h.firstNudgeHeld, func() { got = <-h.inTurn(sessA, 55*time.Second) })
+		page := entriesOf(t, got)
 		if len(page) != 1 || time.Since(start) != 0 {
 			t.Fatalf("the in-turn wait = %v after %v, want the waiting mail at once", page, time.Since(start))
+		}
+		if len(held) == 0 || slices.Contains(held, false) {
+			t.Fatalf("first nudge held at each wake of the reader during the wait = %v, want at least one, all true", held)
 		}
 		synctest.Wait()
 		if n := len(rcv.requests()); n != 0 {
