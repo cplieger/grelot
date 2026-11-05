@@ -2,6 +2,8 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -228,7 +230,7 @@ func closedURL(t *testing.T) string {
 	return u
 }
 
-func TestHookPrompt_staleSignalBlock(t *testing.T) {
+func TestHookPrompt_sendsTheSignalItCarries(t *testing.T) {
 	ts := newServer(t)
 	a := turnAgent(t, ts, hookTurnFile)
 	b, _ := registerAt(t, ts, "s-2", "bee-dev")
@@ -240,15 +242,8 @@ func TestHookPrompt_staleSignalBlock(t *testing.T) {
 		if code, out := a.prompt(line); code != 0 || !strings.HasPrefix(out, "grelot: @toolbelt-dev · 1 unread") {
 			t.Errorf("exit %d, stdout %q; want the turn's line", code, out)
 		}
-		if got := ts.last(t, http.MethodGet, "/v1/me"); !strings.Contains(got.URL, "signal="+strconv.FormatUint(seq, 10)) {
-			t.Errorf("URL = %q, want signal=%d", got.URL, seq)
-		}
-	})
-	a.must("inbox")
-	t.Run("once read it is blocked", func(t *testing.T) {
-		code, out := a.prompt(line)
-		if code != 0 || !strings.Contains(blockReason(t, out), "signal "+strconv.FormatUint(seq, 10)+" is stale") {
-			t.Errorf("exit %d, stdout %q; want the block", code, out)
+		if got := ts.last(t, http.MethodGet, "/v1/me"); !strings.Contains(got.URL, "turn=start") || !strings.Contains(got.URL, "signal="+strconv.FormatUint(seq, 10)) {
+			t.Errorf("URL = %q, want turn=start and signal=%d", got.URL, seq)
 		}
 	})
 	near := map[string]string{
@@ -258,7 +253,7 @@ func TestHookPrompt_staleSignalBlock(t *testing.T) {
 	}
 	for name, p := range near {
 		t.Run(strings.ReplaceAll(name, " ", "_"), func(t *testing.T) {
-			if _, out := a.prompt(p); !strings.HasPrefix(out, "grelot: @toolbelt-dev · 0 unread") {
+			if _, out := a.prompt(p); !strings.HasPrefix(out, "grelot: @toolbelt-dev · 1 unread") {
 				t.Errorf("stdout %q, want the turn's line", out)
 			}
 			if got := ts.last(t, http.MethodGet, "/v1/me"); strings.Contains(got.URL, "signal=") {
@@ -266,9 +261,47 @@ func TestHookPrompt_staleSignalBlock(t *testing.T) {
 			}
 		})
 	}
+}
+
+// meServer answers every request with a live identity's GET /v1/me body:
+// unread its counts, signalRead whether read has reached the signal sent.
+func meServer(t *testing.T, unread string, signalRead bool) *testServer {
+	t.Helper()
+	body := fmt.Sprintf(`{"state":"live","identity":{"name":"toolbelt-dev","registered_at":"2026-11-05T09:00:00Z"},"unread":%s,"version":"v1.1.0","path_root":"/workspace","signal_read":%t}`, unread, signalRead)
+	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(hs.Close)
+	return &testServer{URL: hs.URL}
+}
+
+// The stale-signal block follows the server's answer to the signal, never
+// the unread counts (design section 7: blocked once read reaches the seq).
+func TestHookPrompt_staleSignalBlock(t *testing.T) {
+	line := signal(5, 1)
+	stale := "signal 5 is stale"
+	t.Run("read reached the signal while newer wake mail is unread", func(t *testing.T) {
+		a := hooked(t, newAgent(t, meServer(t, `{"wake":1,"direct":1,"total":1}`, true), "s-1", ""), "alpha", hookTurnFile)
+		if code, out := a.prompt(line); code != 0 || !strings.Contains(blockReason(t, out), stale) {
+			t.Errorf("exit %d, stdout %q; want the block", code, out)
+		}
+	})
+	t.Run("read below the signal with only quiet mail past it", func(t *testing.T) {
+		a := hooked(t, newAgent(t, meServer(t, `{"cards":2,"total":2}`, false), "s-1", ""), "alpha", hookTurnFile)
+		if code, out := a.prompt(line); code != 0 || !strings.HasPrefix(out, "grelot: @toolbelt-dev · 2 unread") {
+			t.Errorf("exit %d, stdout %q; want the turn's line", code, out)
+		}
+	})
+	t.Run("never for a prompt that is no signal", func(t *testing.T) {
+		a := hooked(t, newAgent(t, meServer(t, `{"total":0}`, true), "s-1", ""), "alpha", hookTurnFile)
+		if _, out := a.prompt(line + " please"); !strings.HasPrefix(out, "grelot: @toolbelt-dev · 0 unread") {
+			t.Errorf("stdout %q, want the turn's line", out)
+		}
+	})
 	t.Run("never where block is not spelled", func(t *testing.T) {
 		noBlock := strings.Replace(hookTurnFile, "      block: {text: '{\"decision\":\"block\",\"reason\":{{json .Reason}}}'}\n  stop:", "  stop:", 1)
-		hooked(t, a, "alpha", noBlock)
+		a := hooked(t, newAgent(t, meServer(t, `{"total":0}`, true), "s-1", ""), "alpha", noBlock)
 		if _, out := a.prompt(line); !strings.HasPrefix(out, "grelot: @toolbelt-dev · 0 unread") {
 			t.Errorf("stdout %q, want the turn's line", out)
 		}
@@ -283,11 +316,11 @@ func TestHookPrompt_signalPattern(t *testing.T) {
 	b, _ := registerAt(t, ts, "s-2", "bee-dev")
 	b.postTo("@toolbelt-dev", "a question")
 	seq := firstUnread(t, ts, "alpha:s-1")
-	a.must("inbox")
 	line := signal(int(seq), 1)
 
-	if _, out := a.prompt("<note>\n<event>" + line + "</event>\n</note>"); blockReason(t, out) == "" {
-		t.Errorf("a match: stdout %q, want the block", out)
+	a.prompt("<note>\n<event>" + line + "</event>\n</note>")
+	if got := ts.last(t, http.MethodGet, "/v1/me"); !strings.Contains(got.URL, "signal="+strconv.FormatUint(seq, 10)) {
+		t.Errorf("a match: URL = %q, want signal=%d", got.URL, seq)
 	}
 	cases := map[string]string{
 		"a near-miss wrapper":           "<note>\n<event>" + line + "</event>\n</note>\nmore",
@@ -297,9 +330,7 @@ func TestHookPrompt_signalPattern(t *testing.T) {
 	}
 	for name, p := range cases {
 		t.Run(strings.ReplaceAll(name, " ", "_"), func(t *testing.T) {
-			if _, out := a.prompt(p); blockReason(t, out) != "" {
-				t.Errorf("stdout %q, want no block", out)
-			}
+			a.prompt(p)
 			if got := ts.last(t, http.MethodGet, "/v1/me"); strings.Contains(got.URL, "signal=") {
 				t.Errorf("URL = %q, want no signal", got.URL)
 			}

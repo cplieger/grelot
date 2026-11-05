@@ -23,6 +23,9 @@ type Me struct {
 	Delegates    []Delegate    `json:"delegates"`
 	Links        []Link        `json:"links"`
 	Online       bool          `json:"online"`
+	// SignalRead answers a turn=start request's signal: read has reached
+	// its seq, so the server opened no turn.
+	SignalRead bool `json:"signal_read"`
 }
 
 // Identity is an identity as its own session sees it: whether its machine

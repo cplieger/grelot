@@ -162,8 +162,7 @@ func signalSeq(role *provider.PromptRole, prompt string) (uint64, bool) {
 }
 
 // promptText asks GET /v1/me?turn=start and answers the prompt's line.
-// stale reports a signal whose mail has been read: with no wake mail past
-// read, read has passed every wake seq, the signal's among them.
+// stale reports the server's answer that read has reached the signal.
 func (h *hookCall) promptText(ctx context.Context, role *provider.PromptRole, seq uint64) (text string, stale bool) {
 	q := url.Values{"turn": {"start"}}
 	if seq > 0 {
@@ -183,7 +182,7 @@ func (h *hookCall) promptText(ctx context.Context, role *provider.PromptRole, se
 		if me.Identity == nil {
 			return "", false
 		}
-		return h.turnLine(me), seq > 0 && (me.Unread == nil || me.Unread.Wake == 0)
+		return h.turnLine(me), me.SignalRead
 	case client.StateDormant:
 		name := ""
 		if me.Identity != nil {
