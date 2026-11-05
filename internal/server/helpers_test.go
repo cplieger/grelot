@@ -109,7 +109,7 @@ func newHarness(t *testing.T) *harness {
 	clk := &clock{t: testNow}
 	logs := newLogSink()
 	logger := slog.New(logs)
-	st, err := store.Open(filepath.Join(t.TempDir(), "grelot.db"), store.Options{Logger: logger, Now: clk.now})
+	st, err := store.Open(filepath.Join(t.TempDir(), "grelot.db"), store.Options{Logger: logger, Now: clk.now, PathRoot: DefaultPathRoot})
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}

@@ -33,6 +33,8 @@ const (
 	DefaultMaxBytes   = 512 << 20
 	// DefaultReservationMaxTTL is RESERVATION_MAX_TTL's default.
 	DefaultReservationMaxTTL = 8 * time.Hour
+	// DefaultPathRoot is GRELOT_PATH_ROOT's default.
+	DefaultPathRoot = "/workspace"
 )
 
 // Options configures Open. A nil Logger discards; a nil Now is time.Now;
@@ -40,6 +42,9 @@ const (
 type Options struct {
 	Logger *slog.Logger
 	Now    func() time.Time
+	// PathRoot is the canonical root every repo lies in, <root>/<repo>,
+	// which Who's Repo filter reads; the caller checks it is canonical.
+	PathRoot string
 	// ThreadTTL is how long a path or direct thread, a post and an event
 	// live after they are written.
 	ThreadTTL time.Duration
@@ -60,6 +65,7 @@ type Store struct {
 	now func() time.Time
 	// seen is each identity's newest request time; seenMu guards it.
 	seen       map[uint64]time.Time
+	pathRoot   string
 	resvPolicy leasePolicy
 	threadTTL  time.Duration
 	dormantTTL time.Duration
@@ -124,6 +130,10 @@ func newStore(o *Options) *Store {
 	}
 	if s.maxBytes == 0 {
 		s.maxBytes = DefaultMaxBytes
+	}
+	s.pathRoot = o.PathRoot
+	if s.pathRoot == "" {
+		s.pathRoot = DefaultPathRoot
 	}
 	s.resvPolicy = reservationPolicy
 	if o.ReservationMaxTTL != 0 {

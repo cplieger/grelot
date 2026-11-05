@@ -107,6 +107,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	handle("GET /v1/me", s.identityAgent(s.me))
 	handle("PATCH /v1/me", s.identity(s.patchMe))
 	handle("DELETE /v1/me", s.identity(s.deleteMe))
+	handle("GET /v1/identities", s.anyone(s.who))
 	mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, &apiError{status: http.StatusNotFound, code: "not_found", msg: "no such route: " + r.Method + " " + r.URL.Path})
 	})

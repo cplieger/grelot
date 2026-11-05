@@ -231,6 +231,9 @@ func (w *wtx) registerRow(r *Registration, provider string) (row identityRow, ad
 	row.TTL, row.Lease = r.TTL, ls
 	row.Ended = false
 	row.LastSeen = w.now
+	if err := w.repoConflict(&row); err != nil {
+		return identityRow{}, nil, false, err
+	}
 	return row, added, held, nil
 }
 
@@ -314,6 +317,11 @@ func (w *wtx) applyFields(row *identityRow, f Fields, sent *Where, mode fieldMod
 		return err
 	}
 	applyWhere(row, sent, fc.pathsChanged, fc.paths)
+	if sent != nil {
+		if err := w.repoConflict(row); err != nil {
+			return err
+		}
+	}
 	row.Name, row.Paths, row.Description = fc.name, fc.paths, fc.description
 	w.queueCards(kindJoin, row, fc.added)
 	return nil
@@ -484,109 +492,6 @@ func (w *wtx) seen(row *identityRow) bool {
 // the stored last_seen is lastSeenEvery old.
 func seenDue(row *identityRow, now time.Time) bool {
 	return row.Ended || now.Sub(row.LastSeen) >= lastSeenEvery
-}
-
-// WhoQuery filters Who. Path keeps identities with a work path at, above
-// or under it; Text keeps those whose name, description, host label or a
-// path holds it, ignoring case; All adds dormant ones; Here keeps only
-// those that share the caller's environment.
-type WhoQuery struct {
-	Path string
-	Text string
-	All  bool
-	Here bool
-}
-
-// Peer is an identity as a caller sees it, with its relation to the
-// caller. A dormant peer's Expires is its purge time. Only the caller's
-// own entry carries MachineKind and EnvironmentKnown.
-type Peer struct {
-	Relation string
-	// Delegates are a parent's live delegates, which Who lists only here.
-	Delegates []Peer
-	Identity
-}
-
-// Who lists live identities, by name, as c's identity sees them, each
-// live parent's delegates nested under it and nowhere else; q filters the
-// parents. A session with no live identity sees every relation as unknown.
-func (s *Store) Who(ctx context.Context, c Caller, q WhoQuery) ([]Peer, error) {
-	if _, err := s.Seen(ctx, c); err != nil && !isKind(err, KindGone) {
-		return nil, err
-	}
-	text := strings.ToLower(q.Text)
-	var out []Peer
-	err := s.db.View(ctx, func(r *bolttable.ReadTx) error {
-		now := s.now()
-		var caller party
-		if me, found, err := s.callerFor(r, c, now); err != nil {
-			return err
-		} else if found && me.State == stateLive {
-			caller = party{where: me.Where, id: me.ID}
-		}
-		var shown []identityRow
-		delegates := map[uint64][]identityRow{}
-		err := s.t.identities.table.Scan(r, bolttable.Range{}, func(_ uint64, v *identityRow) (bool, error) {
-			switch v = settled(v, now, s.dormantTTL); {
-			case v == nil:
-			case v.Parent != 0:
-				delegates[v.Parent] = append(delegates[v.Parent], *v)
-			case q.shows(v, text, caller.where):
-				shown = append(shown, *v)
-			}
-			return true, nil
-		})
-		for i := range shown {
-			out = append(out, s.parentPeer(caller, &shown[i], delegates[shown[i].ID]))
-		}
-		return err
-	})
-	slices.SortFunc(out, func(a, b Peer) int { return strings.Compare(a.Name, b.Name) })
-	return out, err
-}
-
-// parentPeer is v as caller sees it, with its delegates, which a dormant
-// v no longer has, judged by v's where.
-func (s *Store) parentPeer(caller party, v *identityRow, delegates []identityRow) Peer {
-	p := s.peer(caller, v)
-	if v.State != stateLive {
-		return p
-	}
-	for i := range delegates {
-		delegates[i].Where = v.Where
-		p.Delegates = append(p.Delegates, s.peer(caller, &delegates[i]))
-	}
-	slices.SortFunc(p.Delegates, func(a, b Peer) int { return strings.Compare(a.Name, b.Name) })
-	return p
-}
-
-// peer is v as caller sees it.
-func (s *Store) peer(caller party, v *identityRow) Peer {
-	p := Peer{Identity: s.view(v), Relation: caller.relationTo(party{where: v.Where, id: v.ID}, "")}
-	if v.ID != caller.id {
-		p.MachineKind, p.EnvironmentKnown = "", false
-	}
-	return p
-}
-
-// shows reports whether q lists v for a caller at where; text is q.Text
-// lowercased.
-func (q WhoQuery) shows(v *identityRow, text string, where Where) bool {
-	if (v.State == stateDormant && !q.All) || (q.Here && !shareEnvironment(where, v.Where)) {
-		return false
-	}
-	return whoMatches(v, text, q.Path)
-}
-
-func whoMatches(v *identityRow, text, path string) bool {
-	if path != "" && !slices.ContainsFunc(v.Paths, func(p string) bool { return under(p, path) || under(path, p) }) {
-		return false
-	}
-	if text == "" {
-		return true
-	}
-	hay := append([]string{v.Name, v.Description, v.Host}, v.Paths...)
-	return slices.ContainsFunc(hay, func(h string) bool { return strings.Contains(strings.ToLower(h), text) })
 }
 
 // settled is v as a read sees it before the sweeper reaches it: a live row

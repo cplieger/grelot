@@ -36,11 +36,12 @@ func TestWhere_requiredOnRegisterReviveAndRenew(t *testing.T) {
 
 func TestWhere_malformedMemberIs400NamingTheField(t *testing.T) {
 	h := newHarness(t)
-	checkout := func(repo, id string) map[string]any {
+	checkout := func(repo, id, remote string) map[string]any {
 		w := where("a")
-		w["checkouts"] = []any{map[string]any{"repo": repo, "id": id}}
+		w["checkouts"] = []any{map[string]any{"repo": repo, "id": id, "remote": remote}}
 		return w
 	}
+	hex := strings.Repeat("1", 32)
 	member := func(key, value string) map[string]any {
 		w := where("a")
 		w[key] = value
@@ -54,8 +55,10 @@ func TestWhere_malformedMemberIs400NamingTheField(t *testing.T) {
 		{"a machine of no known kind", member("machine", "bios:"+strings.Repeat("1", 32)), "where.machine"},
 		{"a machine with upper-case hex", member("machine", "dmi:"+strings.Repeat("A", 32)), "where.machine"},
 		{"an environment of 31 digits", member("environment", strings.Repeat("a", 31)), "where.environment"},
-		{"a checkout id that is not hex", checkout(repoGrelot, strings.Repeat("z", 32)), "where.checkouts[0].id"},
-		{"a checkout for a repo no work path lies in", checkout("/workspace/other", strings.Repeat("1", 32)), "where.checkouts[0].repo"},
+		{"a checkout id that is not hex", checkout(repoGrelot, strings.Repeat("z", 32), hex), "where.checkouts[0].id"},
+		{"a checkout for a repo no work path lies in", checkout("/workspace/other", hex, hex), "where.checkouts[0].repo"},
+		{"a checkout with no remote", checkout(repoGrelot, hex, ""), "where.checkouts[0].remote"},
+		{"a remote of 31 digits", checkout(repoGrelot, hex, hex[:31]), "where.checkouts[0].remote"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			body := registerBody("grelot-dev", "6h")
@@ -93,9 +96,10 @@ func TestWhere_storedValuesInNoResponseOrLogLine(t *testing.T) {
 	machine := "dmi:" + strings.Repeat("3c", 16)
 	env := strings.Repeat("5e", 16)
 	checkoutID := strings.Repeat("9d", 16)
+	remote := strings.Repeat("7b", 16)
 	seeded := map[string]any{
 		"machine": machine, "environment": env,
-		"checkouts": []any{map[string]any{"repo": repoGrelot, "id": checkoutID}},
+		"checkouts": []any{map[string]any{"repo": repoGrelot, "id": checkoutID, "remote": remote}},
 	}
 	reg := registerBody("grelot-dev", "6h")
 	reg["where"], reg["proc"] = seeded, "4242:1700000000"
@@ -107,8 +111,10 @@ func TestWhere_storedValuesInNoResponseOrLogLine(t *testing.T) {
 		h.as(sessA, http.MethodGet, "/v1/me", nil),
 		h.as(sessA, http.MethodPatch, "/v1/me", map[string]any{"ttl": "2h", "where": seeded}),
 		h.request(http.MethodGet, "/v1/me?proc=4242:1700000000", nil, hint),
+		h.as(sessC, http.MethodGet, "/v1/identities", nil),
 	)
 	h.clk.advance(3 * time.Hour)
+	answers = append(answers, h.as(sessC, http.MethodGet, "/v1/identities?all=1", nil))
 	answers = append(answers,
 		h.as(sessA, http.MethodGet, "/v1/me", nil),
 		h.request(http.MethodGet, "/v1/me?proc=4242:1700000000", nil, hint),
@@ -120,14 +126,14 @@ func TestWhere_storedValuesInNoResponseOrLogLine(t *testing.T) {
 	}
 	for i, r := range answers {
 		text := r.raw + "\n" + strings.Join(flatHeaders(r.header), "\n")
-		for _, v := range []string{machine, strings.TrimPrefix(machine, "dmi:"), env, checkoutID} {
+		for _, v := range []string{machine, strings.TrimPrefix(machine, "dmi:"), env, checkoutID, remote} {
 			if strings.Contains(text, v) {
 				t.Errorf("answer %d carries a seeded where value: %s", i, text)
 			}
 		}
 	}
 	logs := h.logs.text()
-	for _, v := range []string{strings.TrimPrefix(machine, "dmi:"), env, checkoutID} {
+	for _, v := range []string{strings.TrimPrefix(machine, "dmi:"), env, checkoutID, remote} {
 		if strings.Contains(logs, v) {
 			t.Errorf("a log line carries a seeded where value %s:\n%s", v, logs)
 		}

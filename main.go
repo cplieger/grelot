@@ -72,7 +72,7 @@ func run(args []string, stderr io.Writer) int {
 func serve(ctx context.Context, cfg *server.Config, addr, markerPath string, logger *slog.Logger) error {
 	st, err := store.Open(cfg.StorePath, store.Options{
 		Logger: logger, MaxBytes: cfg.MaxBytes, ThreadTTL: cfg.ThreadTTL,
-		DormantTTL: cfg.DormantTTL, ReservationMaxTTL: cfg.ReservationMaxTTL,
+		DormantTTL: cfg.DormantTTL, ReservationMaxTTL: cfg.ReservationMaxTTL, PathRoot: cfg.PathRoot,
 	})
 	if err != nil {
 		return err

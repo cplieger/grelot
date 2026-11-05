@@ -39,7 +39,7 @@ const (
 
 // The defaults of the optional keys.
 const (
-	DefaultPathRoot     = "/workspace"
+	DefaultPathRoot     = store.DefaultPathRoot
 	DefaultStorePath    = "/data/grelot.db"
 	DefaultProvidersDir = "/providers"
 )

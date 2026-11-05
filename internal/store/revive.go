@@ -88,6 +88,9 @@ func (w *wtx) revive(r *Revival, provider string) (Revived, error) {
 		Machine: r.Where.Machine, Environment: r.Where.Environment,
 		Checkouts: mergeCheckouts(row.Where.Checkouts, r.Where.Checkouts, row.Paths),
 	}
+	if cerr := w.repoConflict(&row); cerr != nil {
+		return Revived{}, cerr
+	}
 	row.TTL, row.Lease = r.TTL, ls
 	row.State, row.DormantSince, row.Ended, row.LastSeen = stateLive, time.Time{}, false, w.now
 	row.Nudged, row.Nudges, row.NudgedAt = 0, 0, time.Time{}

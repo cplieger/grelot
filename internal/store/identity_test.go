@@ -594,7 +594,7 @@ func TestEndSession_aRepeatedRegisterOrWhoClearsEndedAndKeepsTheCap(t *testing.T
 					t.Errorf("repeated register %+v, want the existing identity", got)
 				}
 			} else {
-				_, err = s.Who(t.Context(), Caller{Session: sessA}, WhoQuery{})
+				_, err = s.Who(t.Context(), Caller{Session: sessA}, &WhoQuery{})
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -687,7 +687,7 @@ func TestWho_listsLiveIdentitiesWithTheirRelation(t *testing.T) {
 
 	who := func(sess string, q WhoQuery) []string {
 		t.Helper()
-		ps, err := s.Who(t.Context(), Caller{Session: sess}, q)
+		ps, err := s.Who(t.Context(), Caller{Session: sess}, &q)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -700,7 +700,7 @@ func TestWho_listsLiveIdentitiesWithTheirRelation(t *testing.T) {
 	if got, want := who(sessA, WhoQuery{Here: true}), []string{"agent-a you", "agent-b same environment"}; !slices.Equal(got, want) {
 		t.Errorf("who --here %v, want %v", got, want)
 	}
-	all, err := s.Who(t.Context(), Caller{Session: sessA}, WhoQuery{All: true})
+	all, err := s.Who(t.Context(), Caller{Session: sessA}, &WhoQuery{All: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -731,7 +731,7 @@ func TestWho_showsAPeerOnlyItsRelation(t *testing.T) {
 	mustRegister(t, s, registration(sessA, "agent-a", envA()))
 	mustRegister(t, s, registration(sessB, "agent-b", envA()))
 	for _, caller := range []string{sessA, "kiro-cli:session-none"} {
-		ps, err := s.Who(t.Context(), Caller{Session: caller}, WhoQuery{})
+		ps, err := s.Who(t.Context(), Caller{Session: caller}, &WhoQuery{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -761,7 +761,7 @@ func TestWho_aReadSeesAPurgeTheSweepHasNotRun(t *testing.T) {
 	r.TTL = 15 * time.Minute
 	mustRegister(t, s, r)
 	clk.advance(15*time.Minute + 72*time.Hour)
-	ps, err := s.Who(t.Context(), Caller{Session: sessB}, WhoQuery{All: true})
+	ps, err := s.Who(t.Context(), Caller{Session: sessB}, &WhoQuery{All: true})
 	if err != nil {
 		t.Fatal(err)
 	}
