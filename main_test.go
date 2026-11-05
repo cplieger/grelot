@@ -3,14 +3,18 @@ package main
 import (
 	"bytes"
 	"context"
-	"io"
+	"encoding/json"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/cplieger/grelot/internal/server"
 )
 
 // syncBuffer is a bytes.Buffer safe for serve's goroutine to write while the
@@ -32,101 +36,58 @@ func (b *syncBuffer) String() string {
 	return b.buf.String()
 }
 
-func TestHealthz(t *testing.T) {
-	t.Parallel()
-	srv := httptest.NewServer(newMux())
-	t.Cleanup(srv.Close)
+var listeningAddr = regexp.MustCompile(`"msg":"listening","addr":"([^"]+)"`)
 
-	t.Run("GET answers 200 with a JSON status", func(t *testing.T) {
-		t.Parallel()
-		resp, err := http.Get(srv.URL + "/healthz")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer resp.Body.Close()
-		body, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode != http.StatusOK || string(body) != `{"status":"ok"}` {
-			t.Errorf("got %d %q, want 200 {\"status\":\"ok\"}", resp.StatusCode, body)
-		}
-		if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
-			t.Errorf("Content-Type %q, want application/json", ct)
-		}
-	})
-
-	t.Run("POST is refused", func(t *testing.T) {
-		t.Parallel()
-		resp, err := http.Post(srv.URL+"/healthz", "text/plain", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusMethodNotAllowed {
-			t.Errorf("got %d, want 405", resp.StatusCode)
-		}
-	})
-
-	t.Run("an unknown path is 404", func(t *testing.T) {
-		t.Parallel()
-		resp, err := http.Get(srv.URL + "/nope")
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusNotFound {
-			t.Errorf("got %d, want 404", resp.StatusCode)
-		}
-	})
-}
-
-func TestProbe(t *testing.T) {
-	t.Parallel()
-
-	t.Run("a healthy server passes", func(t *testing.T) {
-		t.Parallel()
-		srv := httptest.NewServer(newMux())
-		t.Cleanup(srv.Close)
-		if err := probe(srv.URL+"/healthz", time.Second); err != nil {
-			t.Errorf("probe: %v", err)
-		}
-	})
-
-	t.Run("a non-200 answer fails", func(t *testing.T) {
-		t.Parallel()
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusServiceUnavailable)
-		}))
-		t.Cleanup(srv.Close)
-		err := probe(srv.URL+"/healthz", time.Second)
-		if err == nil || !strings.Contains(err.Error(), "503") {
-			t.Errorf("probe error %v, want one naming status 503", err)
-		}
-	})
-
-	t.Run("an unreachable server fails", func(t *testing.T) {
-		t.Parallel()
-		srv := httptest.NewServer(newMux())
-		url := srv.URL + "/healthz"
-		srv.Close()
-		if err := probe(url, time.Second); err == nil {
-			t.Error("probe of a closed server returned nil")
-		}
-	})
+func testConfig(t *testing.T) *server.Config {
+	t.Helper()
+	return &server.Config{
+		Token: "test-token", PathRoot: server.DefaultPathRoot,
+		StorePath: filepath.Join(t.TempDir(), "grelot.db"),
+	}
 }
 
 func TestServe(t *testing.T) {
 	t.Parallel()
 	var logs syncBuffer
+	marker := filepath.Join(t.TempDir(), ".healthy")
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- serve(ctx, "127.0.0.1:0", slog.New(slog.NewJSONHandler(&logs, nil))) }()
+	go func() {
+		done <- serve(ctx, testConfig(t), "127.0.0.1:0", marker, slog.New(slog.NewJSONHandler(&logs, nil)))
+	}()
 
-	deadline := time.Now().Add(5 * time.Second)
-	for !strings.Contains(logs.String(), `"msg":"listening"`) {
-		if time.Now().After(deadline) {
+	var addr string
+	for deadline := time.Now().Add(5 * time.Second); addr == ""; time.Sleep(10 * time.Millisecond) {
+		if m := listeningAddr.FindStringSubmatch(logs.String()); m != nil {
+			addr = m[1]
+		} else if time.Now().After(deadline) {
 			t.Fatalf("no listening line within 5 s; logs: %s", logs.String())
 		}
-		time.Sleep(10 * time.Millisecond)
 	}
+
+	t.Run("healthz answers up once the sweeper has passed", func(t *testing.T) {
+		var status string
+		for deadline := time.Now().Add(5 * time.Second); status != "up"; time.Sleep(10 * time.Millisecond) {
+			resp, err := http.Get("http://" + addr + "/healthz")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var body struct{ Status string }
+			_ = json.NewDecoder(resp.Body).Decode(&body)
+			resp.Body.Close()
+			status = body.Status
+			if time.Now().After(deadline) {
+				t.Fatalf("healthz status %q after 5 s, want up", status)
+			}
+		}
+	})
+
+	t.Run("the health marker exists while serving", func(t *testing.T) {
+		if _, err := os.Stat(marker); err != nil {
+			t.Errorf("marker: %v", err)
+		}
+	})
+
 	cancel()
 	select {
 	case err := <-done:
@@ -139,17 +100,20 @@ func TestServe(t *testing.T) {
 	if !strings.Contains(logs.String(), `"msg":"stopped"`) {
 		t.Errorf("no stopped line; logs: %s", logs.String())
 	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Errorf("marker after stop: %v, want it removed", err)
+	}
 }
 
-func TestServe_listen_error(t *testing.T) {
+func TestServe_listenError(t *testing.T) {
 	t.Parallel()
-	err := serve(context.Background(), "256.0.0.1:0", slog.New(slog.DiscardHandler))
+	err := serve(context.Background(), testConfig(t), "256.0.0.1:0", filepath.Join(t.TempDir(), ".healthy"), slog.New(slog.DiscardHandler))
 	if err == nil {
 		t.Fatal("serve on an invalid address returned nil")
 	}
 }
 
-func TestRun_unknown_command(t *testing.T) {
+func TestRun_unknownCommand(t *testing.T) {
 	t.Parallel()
 	var stderr bytes.Buffer
 	if code := run([]string{"bogus"}, &stderr); code != 2 {
@@ -157,5 +121,19 @@ func TestRun_unknown_command(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), `unknown command "bogus"`) {
 		t.Errorf("stderr %q does not name the command", stderr.String())
+	}
+}
+
+func TestRun_serveRefusesAMissingToken(t *testing.T) {
+	t.Setenv("GRELOT_TOKEN", "")
+	t.Setenv("GRELOT_TOKEN_FILE", "")
+	prev := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	var stderr bytes.Buffer
+	if code := run([]string{"serve"}, &stderr); code != 1 {
+		t.Errorf("exit %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "GRELOT_TOKEN") {
+		t.Errorf("stderr %q does not name GRELOT_TOKEN", stderr.String())
 	}
 }

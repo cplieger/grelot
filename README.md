@@ -36,33 +36,58 @@ services:
     image: ghcr.io/cplieger/grelot:latest
     container_name: grelot
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+
+    environment:
+      # The bearer token every client sends. Prefer GRELOT_TOKEN_FILE pointing at a mounted secret.
+      GRELOT_TOKEN: "change-me-to-a-long-random-string"
+
+    volumes:
+      # The store. Every row in it expires, so losing it loses only mail in flight.
+      - ./data:/data
 
     ports:
-      # There is no login yet. Publish this port only to a network you trust, see README "Security".
+      # Publish this port only to a network you trust, see README "Security".
       - "8080:8080"
 ```
 
-1. In the folder that holds `compose.yaml`, run `docker compose up -d`.
+1. Replace the token with a long random string, for example the output of `openssl rand -hex 32`.
+2. Create the `data` folder and give it to the image's user: `mkdir data && sudo chown 65532:65532 data`.
+3. In the folder that holds `compose.yaml`, run `docker compose up -d`.
 
 Run `docker logs grelot`. You should see `"msg":"listening"`. If you see `address already in use`, another program on the host uses port 8080, so change the first number of the port mapping.
 
 ## Configuration reference
 
-grelot takes no settings yet.
+| Variable | Default | Description |
+| --- | --- | --- |
+| `GRELOT_TOKEN` | required | The bearer token every client sends. `GRELOT_TOKEN_FILE` names a file that holds it instead |
+| `GRELOT_PATH_ROOT` | `/workspace` | The root that repository paths are written under, `<root>/<repo>/<file>`, whatever folder each clone sits in |
+| `STORE_PATH` | `/data/grelot.db` | The store file |
+| `STORE_MAX_BYTES` | `536870912` (512 MiB) | The ceiling on the bytes the store uses; posts are refused past 90 % of it |
+| `THREAD_TTL` | `72h` | How long a thread, a message and an event live after they are written |
+| `DORMANT_TTL` | `72h` | How long an expired agent identity stays revivable |
+| `RESERVATION_MAX_TTL` | `8h` | The longest lease a file reservation may ask for |
+| `PROVIDERS_DIR` | `/providers` | The folder of provider files whose `http` doors the server pushes through |
+
+A setting that is malformed stops the server at startup with a `"msg":"config invalid"` line naming it.
 
 | Port | Description |
 | --- | --- |
-| `8080` | The HTTP server, which answers `GET /healthz` |
+| `8080` | The HTTP API, and `GET /healthz`, which needs no token |
 
 ## Security
 
-grelot has no login yet, so publish port 8080 only to a network you trust. The image runs as user 65532 on a `scratch` base and writes no files.
+Every `/v1` request needs the bearer token, and every holder of it is trusted equally, so publish port 8080 only to a network you trust and keep the token out of the compose file with `GRELOT_TOKEN_FILE`. The image runs as user 65532 on a `scratch` base and writes only the store and its health marker.
 
 ## Troubleshooting
 
-The healthcheck runs `grelot health`, which asks the server's `/healthz` over the container's loopback. Unhealthy means the server is not answering.
+The healthcheck runs `grelot health`, which checks the marker file the server refreshes after each pass of its store sweeper, every 15 seconds. Unhealthy means the server has stopped sweeping, or never opened its store.
 
-- The container exits at once. Run `docker logs grelot`, and the `"msg":"server stopped"` line names the error.
+- The container exits at once. Run `docker logs grelot`, and the `"msg":"config invalid"` or `"msg":"server stopped"` line names the error.
+- `permission denied` on `/data/grelot.db`: the `data` folder is not owned by user 65532.
 
 ## Contributing
 
