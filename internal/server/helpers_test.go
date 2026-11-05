@@ -101,7 +101,10 @@ type harness struct {
 	http  *httptest.Server
 	clk   *clock
 	push  *fakePush
-	logs  logSink
+	// open opens the store at dbPath and builds the server over it.
+	open   func()
+	logs   logSink
+	dbPath string
 }
 
 func newHarness(t *testing.T) *harness {
@@ -132,26 +135,46 @@ func newBubbleHarness(t *testing.T, edits ...func(*Options)) *harness {
 // buildHarness applies edits to the server's Options before New.
 func buildHarness(t *testing.T, o store.Options, now func() time.Time, edits ...func(*Options)) *harness {
 	t.Helper()
-	logs := newLogSink()
-	logger := slog.New(logs)
-	hub := NewHub()
-	o.Logger, o.Now, o.PathRoot, o.Woke = logger, now, DefaultPathRoot, hub.Woke
-	st, err := store.Open(filepath.Join(t.TempDir(), "grelot.db"), o)
-	if err != nil {
-		t.Fatalf("store.Open: %v", err)
+	h := &harness{t: t, logs: newLogSink(), dbPath: filepath.Join(t.TempDir(), "grelot.db")}
+	h.open = func() {
+		so := o
+		logger := slog.New(h.logs)
+		hub := NewHub()
+		so.Logger, so.Now, so.PathRoot, so.Woke = logger, now, DefaultPathRoot, hub.Woke
+		st, err := store.Open(h.dbPath, so)
+		if err != nil {
+			t.Fatalf("store.Open: %v", err)
+		}
+		t.Cleanup(func() { _ = st.Close() })
+		h.push = &fakePush{states: map[uint64]pushState{}}
+		opts := &Options{
+			Store: st, Logger: logger, Now: now, Version: testVersion, Push: h.push, Hub: hub,
+			Config: Config{Token: testToken, PathRoot: DefaultPathRoot},
+		}
+		for _, edit := range edits {
+			edit(opts)
+		}
+		h.store, h.srv = st, New(opts)
+		t.Cleanup(h.srv.Release)
 	}
-	t.Cleanup(func() { _ = st.Close() })
-	push := &fakePush{states: map[uint64]pushState{}}
-	so := &Options{
-		Store: st, Logger: logger, Now: now, Version: testVersion, Push: push, Hub: hub,
-		Config: Config{Token: testToken, PathRoot: DefaultPathRoot},
+	h.open()
+	return h
+}
+
+// restart stops the server and closes its store, then opens a new store
+// over the same file and a new server with the same options, keeping the
+// log. Only a bubble harness restarts: a network one's listener serves the
+// old server's handler.
+func (h *harness) restart() {
+	h.t.Helper()
+	if h.http != nil {
+		h.t.Fatal("restart needs a bubble harness")
 	}
-	for _, edit := range edits {
-		edit(so)
+	h.srv.Release()
+	if err := h.store.Close(); err != nil {
+		h.t.Fatalf("store.Close: %v", err)
 	}
-	srv := New(so)
-	t.Cleanup(srv.Release)
-	return &harness{t: t, store: st, srv: srv, logs: logs, push: push}
+	h.open()
 }
 
 // fakePush serves the identities a test gives a push state.

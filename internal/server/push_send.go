@@ -312,7 +312,6 @@ func (p *hostPush) send(ctx context.Context, id uint64, d provider.ServerDoor, d
 		if _, _, err := p.s.store.RecordNudge(ctx, due, store.NudgeByPush); err != nil {
 			return false, p.lookupFailed(ctx, id, err)
 		}
-		p.edit(id, func(e *pushee) { e.retryAt = time.Time{} })
 		return true, true
 	case transport.RetryLater:
 		p.retryLater(ctx, id, key, res, p.lineAttrs(d, to.Name, res.Status, res.Err))
