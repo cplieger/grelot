@@ -1,0 +1,73 @@
+# Codex. Measured on Codex 0.166.0 on Windows and Linux.
+name: codex
+evidence: measured
+detect:
+  env: [CODEX_THREAD_ID]
+session:
+  # The thread id in the agent's shell commands. Hook processes do not
+  # carry it, so hooks act as their stdin session_id, which is the same id
+  # for a root thread.
+  env: CODEX_THREAD_ID
+  stdin: session_id
+  # A TUI or codex exec runs its threads in its own process, or in the
+  # shared codex app-server that a daemon starts, which serves every TUI
+  # attached to it; that one never counts as one session's process.
+  process: [codex, codex.exe]
+  process_shared: [app-server]
+doors:
+  # codex queue adds a message to the thread's queue, which starts a turn on
+  # an idle thread within about 10 seconds and waits for a busy one to end.
+  # Neither a background command's exit nor a subagent's end wakes an idle
+  # thread, so the watcher stays running and runs this per nudge.
+  - name: queue
+    layer: 2
+    transport: exec
+    start: run `grelot watch --door queue` as a background terminal
+    asset: codex/grelot.rules
+    argv: [codex, queue, --thread, "{{.Session}}", --message, "{{.Line}}"]
+    notes: >-
+      Start the watcher once per thread, as an exec_command you do not wait
+      on, and again after /clear, /new or a resume. It runs until the thread
+      unloads (60 seconds after its last TUI detaches from the daemon, or when
+      a TUI without one quits), or until /stop. Install grelot.rules in
+      ~/.codex/rules/ so grelot runs outside the sandbox with no approval.
+hooks:
+  session_start:
+    event: SessionStart
+    # /clear starts a new thread in the same process, which may be the same
+    # agent going on. /new sends startup, as a new codex run does, so it
+    # gets no hint.
+    source: {path: source, take_over: [clear]}
+    outputs:
+      context: {text: "{{.Context}}"}
+  prompt:
+    event: UserPromptSubmit
+    # A subagent's prompt carries its agent_id beside the root's session_id.
+    # A queued message arrives as the whole prompt, so a stale signal line
+    # ends that turn before the model runs.
+    stdin: {agent_id: agent_id, prompt: prompt}
+    outputs:
+      context: {text: "{{.Context}}"}
+      block: {text: '{"decision":"block","reason":{{json .Reason}}}'}
+  stop:
+    event: Stop
+    # Codex fails a Stop hook whose stdout is not JSON, so a line for the
+    # user goes out as a systemMessage.
+    outputs:
+      block: {text: '{"decision":"block","reason":{{json .Reason}}}'}
+      notice: {text: '{"systemMessage":{{json .Reason}}}'}
+  session_end:
+    event: SessionEnd
+    # Codex gives a SessionEnd hook 1 second unless its own timeout is
+    # longer, and at most 3.
+    budget: 1s
+  subagent_stop:
+    event: SubagentStop
+    # A subagent's hooks carry the root thread's session_id; its agent_id is
+    # its own thread id, the CODEX_THREAD_ID of its shell commands
+    # (subagent_hook_context in
+    # https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/core/src/hook_runtime.rs).
+    stdin: {agent_id: agent_id, session: agent_id}
+# No turn_end: Interrupt is not wired, so a turn the user stops with Esc
+# stays open until the server's five-minute lapse.
+notes: docs/hosts/codex.md

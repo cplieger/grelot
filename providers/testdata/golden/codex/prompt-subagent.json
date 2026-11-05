@@ -1,0 +1,12 @@
+{
+  "session_id": "01a19ef0-6415-7941-87f6-9ca8f875c78c",
+  "turn_id": "01a19ef6-6352-7073-a858-b5d99a6fa5ea",
+  "agent_id": "01a19ef2-1c3d-7a52-8e4f-3b6d9c0a7e15",
+  "agent_type": "worker",
+  "transcript_path": "C:\\Users\\user\\.codex\\sessions\\2026\\11\\03\\rollout-2026-11-03T02-05-16-01a19ef0-6415-7941-87f6-9ca8f875c78c.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\probe\\codex-h",
+  "hook_event_name": "UserPromptSubmit",
+  "model": "openai.gpt-6.1-sol",
+  "permission_mode": "default",
+  "prompt": "This is a probe prompt."
+}

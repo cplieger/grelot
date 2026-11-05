@@ -474,7 +474,7 @@ func TestKiroHookFiles(t *testing.T) {
 	wantEvents := []string{"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd"}
 	for _, name := range []string{"kiro-cli", "kiro-ide"} {
 		t.Run(name, func(t *testing.T) {
-			want := wantWiring(t, name)
+			want := wantWiring(t, name, nil)
 			var events []string
 			for _, w := range want {
 				events = append(events, w.Event)
@@ -509,11 +509,11 @@ func TestKiroIDE(t *testing.T) {
 		if ide.Session.Env != cli.Session.Env || ide.Session.Stdin != cli.Session.Stdin || ide.Session.Record == nil {
 			t.Errorf("session %+v, want kiro-cli's %+v", ide.Session, cli.Session)
 		}
-		want := wantWiring(t, "kiro-cli")
+		want := wantWiring(t, "kiro-cli", nil)
 		for i := range want {
 			want[i].Command = strings.Replace(want[i].Command, " kiro-cli ", " kiro-ide ", 1)
 		}
-		if got := wantWiring(t, "kiro-ide"); !slices.Equal(got, want) {
+		if got := wantWiring(t, "kiro-ide", nil); !slices.Equal(got, want) {
 			t.Errorf("kiro-ide spells hooks %v, want kiro-cli's %v", got, want)
 		}
 		door := kiroDoor(t, "kiro-ide")

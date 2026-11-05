@@ -323,7 +323,7 @@ func TestClaudeCodeDoors(t *testing.T) {
 }
 
 func TestClaudeCodeHookFile(t *testing.T) {
-	want := wantWiring(t, "claude-code")
+	want := wantWiring(t, "claude-code", nil)
 	var events []string
 	for _, w := range want {
 		events = append(events, w.Event)

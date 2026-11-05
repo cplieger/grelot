@@ -124,6 +124,10 @@ type shell struct {
 	// fixtures is the provider whose recorded payloads fixture reads, the
 	// shell's own when empty.
 	fixtures string
+	// hookOmits are the variables the host leaves out of its hook
+	// processes, though its agent's shell commands carry them.
+	hookOmits []string
+	inHook    bool
 }
 
 // newShell is a shell of the named shipped provider whose environment
@@ -217,6 +221,9 @@ func (s *shell) run(stdin string, args ...string) outcome {
 	code := cli.Run(s.t.Context(), &cli.Env{
 		Stdin: strings.NewReader(stdin), Stdout: &stdout, Stderr: &stderr,
 		Lookup: func(name string) (string, bool) {
+			if s.inHook && slices.Contains(s.hookOmits, name) {
+				return "", false
+			}
 			v, ok := s.vars[name]
 			return v, ok
 		},
@@ -239,6 +246,8 @@ func (s *shell) run(stdin string, args ...string) outcome {
 // provider's hook file runs it.
 func (s *shell) hook(role string, in []byte) outcome {
 	s.t.Helper()
+	s.inHook = true
+	defer func() { s.inHook = false }()
 	return s.run(string(in), "hook", s.provider, role)
 }
 
@@ -378,9 +387,10 @@ func sameWiring(got, want []wire) bool {
 }
 
 // wantWiring is what a provider's hook file must run: grelot hook
-// <provider> <role> under each role's event with a 10 s timeout, for every
-// role the provider spells and no other.
-func wantWiring(t *testing.T, name string) []wire {
+// <provider> <role> under each role's event, for every role the provider
+// spells and no other, with the timeout timeouts names for the event, or
+// 10 s.
+func wantWiring(t *testing.T, name string, timeouts map[string]int) []wire {
 	t.Helper()
 	set, err := provider.LoadSet(providers.FS)
 	if err != nil {
@@ -392,7 +402,7 @@ func wantWiring(t *testing.T, name string) []wire {
 	}
 	var want []wire
 	add := func(role, event string) {
-		want = append(want, wire{Event: event, Command: "grelot hook " + name + " " + role, Timeout: 10})
+		want = append(want, wire{Event: event, Command: "grelot hook " + name + " " + role, Timeout: cmp.Or(timeouts[event], 10)})
 	}
 	hs := &p.Hooks
 	if hs.SessionStart != nil {
