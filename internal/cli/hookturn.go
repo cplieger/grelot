@@ -277,7 +277,7 @@ func (h *hookCall) stop(ctx context.Context, role *provider.StopRole) error {
 		return h.emit(role.Outputs.Notice, failLine(err, role.Budget))
 	}
 	if h.heldThisTurn(c) {
-		h.report(ctx, api, role.Budget, map[string]any{keyEvent: roleTurnEnd})
+		postLifecycle(ctx, api, role.Budget, map[string]any{keyEvent: roleTurnEnd})
 		return nil
 	}
 	var held client.Held
@@ -365,7 +365,7 @@ func (h *hookCall) lifecycle(ctx context.Context, event string, role *provider.L
 	}
 	h.self = true
 	if api, err := h.client(true); err == nil {
-		h.report(ctx, api, role.Budget, map[string]any{keyEvent: event})
+		postLifecycle(ctx, api, role.Budget, map[string]any{keyEvent: event})
 	}
 }
 
@@ -380,10 +380,10 @@ func (h *hookCall) subagentStop(ctx context.Context, agent string, budget time.D
 	if err != nil {
 		return
 	}
-	h.report(ctx, api, budget, map[string]any{keyEvent: roleSubagentStop, "agent_id": agent})
+	postLifecycle(ctx, api, budget, map[string]any{keyEvent: roleSubagentStop, "agent_id": agent})
 }
 
-func (h *hookCall) report(ctx context.Context, api *client.API, budget time.Duration, body map[string]any) {
+func postLifecycle(ctx context.Context, api *client.API, budget time.Duration, body map[string]any) {
 	ctx, cancel := budgetCtx(ctx, budget)
 	defer cancel()
 	_, _ = api.Do(ctx, &client.Request{Method: http.MethodPost, Path: "/v1/lifecycle", Body: body}, nil)
