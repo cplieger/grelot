@@ -5,8 +5,10 @@ import "sync"
 // Hub wakes the waits of each identity. Woke, the store's commit notice,
 // closes the channel every wait of those identities holds and replaces it.
 type Hub struct {
-	m  map[uint64]*waiters
-	mu sync.Mutex
+	m map[uint64]*waiters
+	// listener is told every Woke's ids after the waits are woken.
+	listener func(ids []uint64)
+	mu       sync.Mutex
 }
 
 // waiters is one identity's channel and how many waits hold it; the entry
@@ -19,17 +21,29 @@ type waiters struct {
 // NewHub returns a hub no wait holds yet.
 func NewHub() *Hub { return &Hub{m: map[uint64]*waiters{}} }
 
-// Woke wakes every wait of each of ids. It only closes channels, as
-// store.Options.Woke requires.
+// Woke wakes every wait of each of ids. It only closes channels and tells
+// the listener, as store.Options.Woke requires.
 func (h *Hub) Woke(ids []uint64) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	for _, id := range ids {
 		if e := h.m[id]; e != nil {
 			close(e.ch)
 			e.ch = make(chan struct{})
 		}
 	}
+	tell := h.listener
+	h.mu.Unlock()
+	if tell != nil {
+		tell(ids)
+	}
+}
+
+// listen has fn told the ids of every later Woke. fn runs inside a
+// store's commit notice, so it must not block or start a store write.
+func (h *Hub) listen(fn func(ids []uint64)) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.listener = fn
 }
 
 // take returns id's channel, which the next Woke naming id closes, and the

@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -21,13 +22,16 @@ type Options struct {
 	Store  *store.Store
 	Logger *slog.Logger
 	Now    func() time.Time
-	// Push defaults to one that serves no identity.
+	// Push defaults to host push through the doors of the providers folder,
+	// started here and stopped by Release, or to none when it has none.
 	Push Pusher
 	// Hub must be the one whose Woke the store's Options.Woke calls; nil
 	// gives a hub no commit reaches, whose waits wake only at their timeout.
-	Hub     *Hub
-	Version string
-	Config  Config
+	Hub *Hub
+	// Providers is the providers folder; nil reads Config.ProvidersDir.
+	Providers fs.FS
+	Version   string
+	Config    Config
 }
 
 // Server serves the API over one open store.
@@ -40,6 +44,8 @@ type Server struct {
 	hub      *Hub
 	push     Pusher
 	stopping chan struct{}
+	// needles are the bearer and every door secret, cut from logged text.
+	needles  []string
 	version  string
 	cfg      Config
 	beat     atomic.Int64
@@ -54,26 +60,38 @@ func New(o *Options) *Server {
 	if now == nil {
 		now = time.Now
 	}
-	push := o.Push
-	if push == nil {
-		push = noPush{}
-	}
 	hub := o.Hub
 	if hub == nil {
 		hub = NewHub()
 	}
-	return &Server{
+	doors := loadDoors(o, o.Logger)
+	s := &Server{
 		store: o.Store, log: o.Logger, now: now, version: o.Version, cfg: o.Config,
-		presence: newPresence(), posts: newPostLimit(), hub: hub, push: push,
+		presence: newPresence(), posts: newPostLimit(), hub: hub, push: o.Push,
+		needles:  append([]string{o.Config.Token}, doors.Secrets()...),
 		bearer:   httpserver.NewStaticTokenVerifier(o.Config.Token),
 		stopping: make(chan struct{}),
 	}
+	switch {
+	case s.push != nil:
+	case len(doors.All()) > 0:
+		s.push = startHostPush(s, doors)
+	default:
+		s.push = noPush{}
+	}
+	return s
 }
 
 // Release answers every held standing and in-turn wait at once, and every
 // one opened after it, so a graceful stop's drain need not outlast their
-// deadlines. It does not wait for them: http.Server.Shutdown does.
-func (s *Server) Release() { s.stopOnce.Do(func() { close(s.stopping) }) }
+// deadlines. It does not wait for them: http.Server.Shutdown does. It
+// stops host push and waits for it, cancelling a send in flight.
+func (s *Server) Release() {
+	s.stopOnce.Do(func() {
+		close(s.stopping)
+		s.push.stop()
+	})
+}
 
 // Beat records a sweeper pass that committed, which /healthz answers down
 // once the last one is older than healthyFor, and forgets the in-memory
@@ -81,6 +99,7 @@ func (s *Server) Release() { s.stopOnce.Do(func() { close(s.stopping) }) }
 func (s *Server) Beat(ctx context.Context) {
 	s.beat.Store(s.now().UnixNano())
 	s.posts.prune(s.now())
+	s.push.beat(ctx)
 	ids := s.presence.ids()
 	live, err := s.store.Live(ctx, ids)
 	if err != nil {

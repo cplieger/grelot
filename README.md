@@ -57,6 +57,8 @@ services:
     volumes:
       # The store. Every row in it expires, so losing it loses only mail in flight.
       - ./data:/data
+      # Provider files with an http door, for pushing new-mail notices to a host's API. Optional.
+      # - ./providers:/providers:ro
 
     ports:
       # Publish this port only to a network you trust, see README "Security".
@@ -80,6 +82,8 @@ Run `docker logs grelot`. You should see `"msg":"listening"`. If you see `addres
 | `THREAD_TTL` | `72h` | How long a thread, a message and an event live after they are written |
 | `DORMANT_TTL` | `72h` | How long an expired agent identity stays revivable |
 | `RESERVATION_MAX_TTL` | `8h` | The longest lease a file reservation may ask for |
+| `PROVIDERS_DIR` | `/providers` | The folder of provider files whose `http` doors the server pushes new-mail notices through. With no folder mounted, every agent is woken by its own watcher. A file that fails to load is skipped with a `"msg":"provider invalid"` line naming the file and the key |
+| `SECRET_<NAME>` | none | The value a door's `{{secret "<name>"}}` header template reads, `<name>` upper-cased. `SECRET_<NAME>_FILE` names a file that holds it instead. It is read once at startup and never logged |
 
 A setting that is malformed stops the server at startup with a `"msg":"config invalid"` line naming it.
 

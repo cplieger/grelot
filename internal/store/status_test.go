@@ -57,3 +57,38 @@ func TestStatus_passesTheDelegateGateAndMarksADelegate(t *testing.T) {
 		t.Errorf("status %+v, %v; want the delegate %s", st, err, g.Handle)
 	}
 }
+
+func TestActing_refusesWhatTheGateRefusesAndWritesNothing(t *testing.T) {
+	s, clk, _ := openIdentityStore(t)
+	_, err := s.Acting(t.Context(), Caller{Session: sessA})
+	wantRefusal(t, err, KindGone, "none", "grelot register")
+	mustRegister(t, s, registration(sessA, "subflux-dev", envA()))
+	g, err := s.Delegate(t.Context(), &Grant{Caller: Caller{Session: sessA}, Label: "tests", TTL: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := commitCount(t, s)
+	t.Run("naming neither handle nor self is the gate", func(t *testing.T) {
+		_, err := s.Acting(t.Context(), Caller{Session: sessA})
+		wantRefusal(t, err, KindConflict, "delegate_gate", "this session has delegates (@"+g.Handle)
+	})
+	t.Run("self passes", func(t *testing.T) {
+		if id, err := s.Acting(t.Context(), Caller{Session: sessA, Self: true}); err != nil || id.Name != "subflux-dev" {
+			t.Errorf("acting %+v, %v; want subflux-dev", id, err)
+		}
+	})
+	if commitCount(t, s) != before {
+		t.Error("Acting committed")
+	}
+	t.Run("a delegate acts as itself", func(t *testing.T) {
+		mustRegisterDelegate(t, s, sessA, g.Link)
+		if id, err := s.Acting(t.Context(), Caller{Session: sessA, As: g.Handle}); err != nil || id.Name != g.Handle {
+			t.Errorf("acting %+v, %v; want the delegate %s", id, err, g.Handle)
+		}
+	})
+	t.Run("dormant", func(t *testing.T) {
+		clk.advance(7 * time.Hour)
+		_, err := s.Acting(t.Context(), Caller{Session: sessA, Self: true})
+		wantRefusal(t, err, KindGone, "dormant", "grelot revive --ttl")
+	})
+}

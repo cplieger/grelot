@@ -119,7 +119,7 @@ func (w *wtx) post(p *Posting) (Posted, error) {
 	if ferr := w.applyFields(&me, p.Fields, p.Where, fieldsEvery, false); ferr != nil {
 		return Posted{}, ferr
 	}
-	me.Ended, me.LastSeen = false, w.now
+	w.touch(&me)
 	rt, err := w.route(&me, p.To)
 	if err != nil {
 		return Posted{}, err

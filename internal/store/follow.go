@@ -36,7 +36,7 @@ func (s *Store) Follow(ctx context.Context, c Caller, path string) (Identity, er
 		default:
 			me.Follows = append(me.Follows, path)
 		}
-		me.Ended, me.LastSeen = false, w.now
+		w.touch(&me)
 		if err := s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {
 			return err
 		}
@@ -77,7 +77,7 @@ func (s *Store) Unfollow(ctx context.Context, c Caller, path string) (Identity, 
 			))
 		}
 		me.Follows = slices.DeleteFunc(me.Follows, func(f string) bool { return f == path })
-		me.Ended, me.LastSeen = false, w.now
+		w.touch(&me)
 		if err := s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {
 			return err
 		}

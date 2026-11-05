@@ -93,6 +93,19 @@ func (l logSink) lines(level slog.Level, msg string) []slog.Record {
 	return out
 }
 
+// atLeast returns the records at level or above.
+func (l logSink) atLeast(level slog.Level) []slog.Record {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var out []slog.Record
+	for _, r := range *l.records {
+		if r.Level >= level {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 // harness is one server over a fresh store on a test clock.
 type harness struct {
 	t     *testing.T
@@ -101,7 +114,10 @@ type harness struct {
 	http  *httptest.Server
 	clk   *clock
 	push  *fakePush
-	logs  logSink
+	// open opens the store at dbPath and builds the server over it.
+	open   func()
+	logs   logSink
+	dbPath string
 }
 
 func newHarness(t *testing.T) *harness {
@@ -111,10 +127,10 @@ func newHarness(t *testing.T) *harness {
 
 // newHarnessWith is newHarness over a store opened with o, its logger,
 // clock and path root set by the harness.
-func newHarnessWith(t *testing.T, o store.Options) *harness {
+func newHarnessWith(t *testing.T, o store.Options, edits ...func(*Options)) *harness {
 	t.Helper()
 	clk := &clock{t: testNow}
-	h := buildHarness(t, o, clk.now)
+	h := buildHarness(t, o, clk.now, edits...)
 	h.clk = clk
 	h.http = httptest.NewServer(h.srv.Handler())
 	t.Cleanup(h.http.Close)
@@ -124,28 +140,62 @@ func newHarnessWith(t *testing.T, o store.Options) *harness {
 // newBubbleHarness is a harness on the clock of the synctest bubble it is
 // called in. It serves each request in process: a goroutine blocked on a
 // socket is not durably blocked, so the bubble's clock would never move.
-func newBubbleHarness(t *testing.T) *harness {
+func newBubbleHarness(t *testing.T, edits ...func(*Options)) *harness {
 	t.Helper()
-	return buildHarness(t, store.Options{}, time.Now)
+	return buildHarness(t, store.Options{}, time.Now, edits...)
 }
 
-func buildHarness(t *testing.T, o store.Options, now func() time.Time) *harness {
+// buildHarness applies edits to the server's Options before New.
+func buildHarness(t *testing.T, o store.Options, now func() time.Time, edits ...func(*Options)) *harness {
 	t.Helper()
-	logs := newLogSink()
-	logger := slog.New(logs)
-	hub := NewHub()
-	o.Logger, o.Now, o.PathRoot, o.Woke = logger, now, DefaultPathRoot, hub.Woke
-	st, err := store.Open(filepath.Join(t.TempDir(), "grelot.db"), o)
-	if err != nil {
-		t.Fatalf("store.Open: %v", err)
+	h := &harness{t: t, logs: newLogSink(), dbPath: filepath.Join(t.TempDir(), "grelot.db")}
+	h.open = func() {
+		so := o
+		logger := slog.New(h.logs)
+		hub := NewHub()
+		so.Logger, so.Now, so.PathRoot, so.Woke = logger, now, DefaultPathRoot, hub.Woke
+		st, err := store.Open(h.dbPath, so)
+		if err != nil {
+			t.Fatalf("store.Open: %v", err)
+		}
+		t.Cleanup(func() { _ = st.Close() })
+		h.push = &fakePush{states: map[uint64]pushState{}}
+		opts := &Options{
+			Store: st, Logger: logger, Now: now, Version: testVersion, Push: h.push, Hub: hub,
+			Config: Config{Token: testToken, PathRoot: DefaultPathRoot},
+		}
+		for _, edit := range edits {
+			edit(opts)
+		}
+		h.store, h.srv = st, New(opts)
+		t.Cleanup(h.srv.Release)
 	}
-	t.Cleanup(func() { _ = st.Close() })
-	push := &fakePush{states: map[uint64]pushState{}}
-	srv := New(&Options{
-		Store: st, Logger: logger, Now: now, Version: testVersion, Push: push, Hub: hub,
-		Config: Config{Token: testToken, PathRoot: DefaultPathRoot},
-	})
-	return &harness{t: t, store: st, srv: srv, logs: logs, push: push}
+	h.open()
+	return h
+}
+
+// restart stops the server and closes its store, then opens a new store
+// over the same file and a new server with the same options, keeping the
+// log. Only a bubble harness restarts: a network one's listener serves the
+// old server's handler.
+func (h *harness) restart() {
+	h.t.Helper()
+	h.restartAfter(0)
+}
+
+// restartAfter is restart with the server down for down, on the bubble's
+// clock.
+func (h *harness) restartAfter(down time.Duration) {
+	h.t.Helper()
+	if h.http != nil {
+		h.t.Fatal("restart needs a bubble harness")
+	}
+	h.srv.Release()
+	if err := h.store.Close(); err != nil {
+		h.t.Fatalf("store.Close: %v", err)
+	}
+	time.Sleep(down)
+	h.open()
 }
 
 // fakePush serves the identities a test gives a push state.
@@ -164,6 +214,12 @@ func (f *fakePush) State(id uint64) pushState {
 	}
 	return pushNone
 }
+
+func (*fakePush) registered(uint64, string, string) {}
+
+func (*fakePush) beat(context.Context) {}
+
+func (*fakePush) stop() {}
 
 func (f *fakePush) set(id uint64, st pushState) {
 	f.mu.Lock()

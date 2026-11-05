@@ -17,6 +17,9 @@ type Config struct {
 	Token     string
 	PathRoot  string
 	StorePath string
+	// ProvidersDir is the folder of the provider files whose http doors
+	// the server pushes through.
+	ProvidersDir string
 	// MaxBytes is the store's ceiling on the bytes in use.
 	MaxBytes          int64
 	ThreadTTL         time.Duration
@@ -33,12 +36,16 @@ const (
 	keyThreadTTL         envx.Key = "THREAD_TTL"
 	keyDormantTTL        envx.Key = "DORMANT_TTL"
 	keyReservationMaxTTL envx.Key = "RESERVATION_MAX_TTL"
+	keyProvidersDir      envx.Key = "PROVIDERS_DIR"
 )
 
 // The defaults of the optional keys.
 const (
 	DefaultPathRoot  = store.DefaultPathRoot
 	DefaultStorePath = "/data/grelot.db"
+	// DefaultProvidersDir holds no file in the image, so a server with no
+	// folder mounted pushes to no host.
+	DefaultProvidersDir = "/providers"
 )
 
 // LoadConfig reads the configuration from the environment. Its error names
@@ -51,6 +58,7 @@ func LoadConfig() (Config, error) {
 		ThreadTTL:         store.DefaultThreadTTL,
 		DormantTTL:        store.DefaultDormantTTL,
 		ReservationMaxTTL: store.DefaultReservationMaxTTL,
+		ProvidersDir:      DefaultProvidersDir,
 	}
 	var errs []error
 	token, err := envx.Secret(keyToken)
@@ -66,6 +74,12 @@ func LoadConfig() (Config, error) {
 	}
 	if v := envx.String(keyStorePath); v != "" {
 		c.StorePath = v
+	}
+	if v := envx.String(keyProvidersDir); v != "" {
+		c.ProvidersDir = v
+	}
+	if !path.IsAbs(c.ProvidersDir) || !pathinside.IsCanonical(c.ProvidersDir) {
+		errs = append(errs, fmt.Errorf("%s must be a clean absolute path such as /providers", keyProvidersDir))
 	}
 	errs = append(errs, c.readLimits()...)
 	return c, errors.Join(errs...)

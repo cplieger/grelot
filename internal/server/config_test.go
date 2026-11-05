@@ -15,7 +15,7 @@ func clearConfigEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{
 		"GRELOT_TOKEN", "GRELOT_TOKEN_FILE", "GRELOT_PATH_ROOT", "STORE_PATH",
-		"STORE_MAX_BYTES", "THREAD_TTL", "DORMANT_TTL", "RESERVATION_MAX_TTL",
+		"STORE_MAX_BYTES", "THREAD_TTL", "DORMANT_TTL", "RESERVATION_MAX_TTL", "PROVIDERS_DIR",
 	} {
 		t.Setenv(k, "")
 	}
@@ -31,6 +31,7 @@ func TestLoadConfig_defaults(t *testing.T) {
 	want := Config{
 		Token: "test-token", PathRoot: "/workspace", StorePath: "/data/grelot.db",
 		MaxBytes: 512 << 20, ThreadTTL: 72 * time.Hour, DormantTTL: 72 * time.Hour, ReservationMaxTTL: 8 * time.Hour,
+		ProvidersDir: "/providers",
 	}
 	if c != want {
 		t.Errorf("config %+v, want %+v", c, want)
@@ -53,6 +54,7 @@ func TestLoadConfig_readsEachKey(t *testing.T) {
 	t.Setenv("THREAD_TTL", "24h")
 	t.Setenv("DORMANT_TTL", "12h")
 	t.Setenv("RESERVATION_MAX_TTL", "2h")
+	t.Setenv("PROVIDERS_DIR", "/etc/grelot/providers")
 	c, err := LoadConfig()
 	if err != nil {
 		t.Fatal(err)
@@ -60,6 +62,7 @@ func TestLoadConfig_readsEachKey(t *testing.T) {
 	want := Config{
 		Token: "file-token", PathRoot: "/src", StorePath: "/var/lib/grelot/g.db",
 		MaxBytes: 1 << 20, ThreadTTL: 24 * time.Hour, DormantTTL: 12 * time.Hour, ReservationMaxTTL: 2 * time.Hour,
+		ProvidersDir: "/etc/grelot/providers",
 	}
 	if c != want {
 		t.Errorf("config %+v, want %+v", c, want)
@@ -79,6 +82,9 @@ func TestLoadConfig_refusalsNameTheKey(t *testing.T) {
 		{"THREAD_TTL", "72"},
 		{"DORMANT_TTL", "-1h"},
 		{"RESERVATION_MAX_TTL", "soon"},
+		{"PROVIDERS_DIR", "providers"},
+		{"PROVIDERS_DIR", "/providers/"},
+		{"PROVIDERS_DIR", "/srv/../providers"},
 	} {
 		t.Run(tc.key+"="+tc.value, func(t *testing.T) {
 			clearConfigEnv(t)

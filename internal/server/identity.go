@@ -99,6 +99,9 @@ func (s *Server) register(r *http.Request, c store.Caller) (status int, body any
 	} else {
 		s.presence.registered(got.Identity.ID)
 	}
+	if req.Delegate == "" {
+		s.push.registered(got.Identity.ID, got.Identity.Provider, got.Identity.Host)
+	}
 	if got.Moved {
 		s.rewait(got.Identity.ID)
 	}
@@ -141,6 +144,7 @@ func (s *Server) revive(r *http.Request, c store.Caller) (status int, body any, 
 		return 0, nil, err
 	}
 	s.presence.registered(got.Identity.ID)
+	s.push.registered(got.Identity.ID, got.Identity.Provider, got.Identity.Host)
 	if got.Moved {
 		s.rewait(got.Identity.ID)
 	}
@@ -167,6 +171,7 @@ type meResponse struct {
 	Delegates    []delegateJSON    `json:"delegates,omitempty"`
 	Links        []linkJSON        `json:"links,omitempty"`
 	Online       bool              `json:"online"`
+	SignalRead   bool              `json:"signal_read,omitempty"`
 }
 
 // hintJSON is the take-over hint: the identity a new session may go on
@@ -222,6 +227,9 @@ func (s *Server) me(r *http.Request, c store.Caller) (status int, body any, err 
 		return 0, nil, err
 	}
 	out := meResponse{Version: s.version, PathRoot: s.cfg.PathRoot, State: stateNone}
+	if oerr := s.openTurn(r, c, turn); oerr != nil {
+		return 0, nil, oerr
+	}
 	id, err := s.store.Seen(r.Context(), c)
 	var se *store.Error
 	switch {
@@ -236,11 +244,31 @@ func (s *Server) me(r *http.Request, c store.Caller) (status int, body any, err 
 	if id.State != stateLive {
 		return http.StatusOK, out, nil
 	}
-	turn.open(s, &id)
 	if err := s.meLive(r, c, &out, id.ID); err != nil {
 		return 0, nil, err
 	}
+	out.SignalRead = turn.stale(&id)
 	return http.StatusOK, out, nil
+}
+
+// openTurn opens the turn of c's live identity for a prompt before Seen
+// writes: Seen clearing ended wakes the identity at its commit, and a
+// first nudge that wake finds with the turn still shut goes out into it.
+// A prompt the delegate gate refuses opens nothing and is refused here.
+func (s *Server) openTurn(r *http.Request, c store.Caller, turn turnStart) error {
+	if !turn.start {
+		return nil
+	}
+	id, err := s.store.Acting(r.Context(), c)
+	var se *store.Error
+	switch {
+	case errors.As(err, &se) && se.Kind == store.KindGone:
+		return nil
+	case err != nil:
+		return err
+	}
+	turn.open(s, &id)
+	return nil
 }
 
 // meLive fills out with what a live identity's status adds.

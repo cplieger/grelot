@@ -230,8 +230,7 @@ func (w *wtx) registerRow(r *Registration, provider string) (row identityRow, ad
 	row.Session, row.Provider = r.Session, provider
 	row.Where = cloneWhere(*r.Where)
 	row.TTL, row.Lease = r.TTL, ls
-	row.Ended = false
-	row.LastSeen = w.now
+	w.touch(&row)
 	if err := w.repoConflict(&row); err != nil {
 		return identityRow{}, nil, false, err
 	}
@@ -252,8 +251,7 @@ func (s *Store) Set(ctx context.Context, c Caller, ch Change) (Identity, error) 
 		if err != nil {
 			return err
 		}
-		row.Ended = false
-		row.LastSeen = w.now
+		w.touch(&row)
 		if err := s.t.identities.table.Put(w.tx, row.ID, &row); err != nil {
 			return err
 		}
@@ -505,8 +503,18 @@ func (w *wtx) seen(row *identityRow) bool {
 	if !seenDue(row, w.now) {
 		return false
 	}
-	row.Ended, row.LastSeen = false, w.now
+	w.touch(row)
 	return true
+}
+
+// touch records a request from row's own session: it clears ended and
+// stamps last_seen. Clearing ended wakes row, as a nudge the closed
+// session held back may now be due.
+func (w *wtx) touch(row *identityRow) {
+	if row.Ended {
+		w.wake(row.ID)
+	}
+	row.Ended, row.LastSeen = false, w.now
 }
 
 // seenDue reports whether a request at now must write row: ended is set or

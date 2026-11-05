@@ -146,9 +146,9 @@ func notifyRead(raw json.RawMessage) (store.NotifyRead, error) {
 }
 
 // redact makes client text fit a log line: one line, at most logTextCap
-// bytes, with the bearer token cut out.
+// bytes, with the bearer token and every door secret cut out.
 func (s *Server) redact(text string) string {
-	out, _ := textsafe.RedactSingleLineCapped(text, logTextCap, "…", s.cfg.Token)
+	out, _ := textsafe.RedactSingleLineCapped(text, logTextCap, "…", s.needles...)
 	return out
 }
 
