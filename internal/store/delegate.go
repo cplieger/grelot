@@ -205,7 +205,7 @@ func (w *wtx) scopeAgents(flag string, names []string) ([]uint64, error) {
 // link. The delegate stores no where, paths or labels of its own: it runs
 // in its parent's environment, and reads take the parent's. Registered
 // from its parent's session it binds no session; from any other it binds
-// that one, as a Codex subagent's own thread does.
+// that one, as a subagent with a session id of its own does.
 func (w *wtx) registerDelegate(r *Registration) (Registered, error) {
 	if err := checkDelegateFields(r); err != nil {
 		return Registered{}, err

@@ -1,0 +1,131 @@
+{
+  "description": "Provider API that the server's push sender and the client's hooks and watcher call once they are built. Each entry goes in the change that adds its first caller.",
+  "ignore": [
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#ByHand",
+      "path": "internal/provider/byhand.go",
+      "reason": "grelot watch --transport, a client verb not built yet, builds its door with it."
+    },
+    {
+      "code": "DS1103",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#NoSessionError",
+      "path": "internal/provider/detect.go",
+      "reason": "The client's hooks, not built yet, write nothing and exit 0 on it."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#Provider.SessionID",
+      "path": "internal/provider/detect.go",
+      "reason": "The client, not built yet, reads the host's session id with it."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#PromptRole.SignalPattern",
+      "path": "internal/provider/provider.go",
+      "reason": "The client's prompt hook, not built yet, finds the signal line with it."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#Set.Detect",
+      "path": "internal/provider/detect.go",
+      "reason": "The client, not built yet, picks the host's provider with it."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#Set.Names",
+      "path": "internal/provider/set.go",
+      "reason": "The client, not built yet, lists the provider files with it."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#ServerDoors.For",
+      "path": "internal/provider/serverdir.go",
+      "reason": "The server's push sender, not built yet, picks an identity's door with it."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#ServerDoors.All",
+      "path": "internal/provider/serverdir.go",
+      "reason": "The server's push sender, not built yet, lists its doors with it."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#ServerDoors.Secrets",
+      "path": "internal/provider/serverdir.go",
+      "reason": "The server, not built yet, redacts the door secrets from its logs with it."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#Request.URL",
+      "path": "internal/provider/template.go",
+      "reason": "internal/transport's http door reads it; the server's push sender, not built yet, is that package's first caller."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#Request.Body",
+      "path": "internal/provider/template.go",
+      "reason": "internal/transport's http door reads it; the server's push sender, not built yet, is that package's first caller."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#LoadServerDir",
+      "path": "internal/provider/serverdir.go",
+      "reason": "The server's push sender, not built yet, loads its doors with it."
+    },
+    {
+      "code": "DS1103",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#Set",
+      "path": "internal/provider/set.go",
+      "reason": "The client, not built yet, gets and detects its provider through it."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#LoadSet",
+      "path": "internal/provider/set.go",
+      "reason": "The client, not built yet, loads the shipped and user provider files with it."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#Door.RenderRequest",
+      "path": "internal/provider/template.go",
+      "reason": "internal/transport's http door calls it; the server's push sender, not built yet, is that package's first caller."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#Door.RenderArgv",
+      "path": "internal/provider/template.go",
+      "reason": "internal/transport's exec door calls it; the client's watcher, not built yet, is that package's first caller."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#Door.RenderLine",
+      "path": "internal/provider/template.go",
+      "reason": "internal/transport's stdout and exit doors call it; the client's watcher, not built yet, is that package's first caller."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#Door.RenderEnd",
+      "path": "internal/provider/template.go",
+      "reason": "internal/transport's stdout and exit doors call it; the client's watcher, not built yet, is that package's first caller."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#Door.RenderIdle",
+      "path": "internal/provider/template.go",
+      "reason": "internal/transport's stdout and exit doors call it; the client's watcher, not built yet, is that package's first caller."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#Output.Render",
+      "path": "internal/provider/template.go",
+      "reason": "The client's hooks, not built yet, print their outputs with it."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/provider#Record.RenderGlob",
+      "path": "internal/provider/template.go",
+      "reason": "The client, not built yet, finds the host's session record with it."
+    }
+  ]
+}

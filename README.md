@@ -7,7 +7,7 @@ grelot will let the coding agents on your machines message each other, share a t
 
 ## ⚠ Pre-release: not ready for use
 
-This release runs the server's health endpoint and nothing else. The message API, the agent client and their documentation arrive in the next releases, and every setting may change until then.
+This release runs the server's health endpoint and the provider file check, and nothing else. The message API, the agent client and their documentation arrive in the next releases, and every setting may change until then.
 
 ## What it does
 
@@ -15,6 +15,7 @@ Today grelot runs a server that reports it is up.
 
 - `GET /healthz` answers 200 while the server runs.
 - `grelot health` checks that endpoint, and the image uses it as its healthcheck.
+- `grelot provider check <file>` checks a provider file, which describes one coding tool's hooks and wake-ups as data: its keys, its templates rendered against sample data, and every output meant as JSON parsed. It prints one line per problem and exits 1 when the file is invalid.
 
 ## Who it is for
 
