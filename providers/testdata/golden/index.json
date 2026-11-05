@@ -1,4 +1,6 @@
 {
+  "antigravity/session_start.json": "documented: the SessionStart input example of https://antigravity.google/docs/hooks/, verbatim",
+  "antigravity/stop.json": "documented: the Stop input example of https://antigravity.google/docs/hooks/, verbatim",
   "claude-code/prompt-monitor-event.json": "linux 2.1.318 Monitor event, its line replaced by a grelot signal line in the current wording",
   "claude-code/prompt-task-notification.json": "windows 2.1.316 Monitor wake",
   "claude-code/prompt-typed.json": "windows 2.1.316 TUI",
@@ -29,6 +31,10 @@
   "codex/stop-first.json": "windows 0.166.0 exec",
   "codex/subagent_stop.json": "derived from stop-first.json: the fields of SubagentStopCommandInput in codex-rs/hooks/src/schema.rs (rust-v0.166.0), the root's session_id and a subagent thread's agent_id",
   "codex/turn_end-interrupt.json": "linux 0.166.0 TUI, Esc",
+  "copilot-cli/session_start.json": "documented: built from the field table of the sessionStart input (camelCase format) in https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference, values chosen",
+  "copilot-cli/stop.json": "documented: built from the field table of the agentStop input (camelCase format) in https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference, values chosen",
+  "cursor/session_start.json": "documented: built from the common input fields and the sessionStart input fields of https://cursor.com/docs/agent/hooks, values chosen",
+  "cursor/stop.json": "documented: built from the common input fields of https://cursor.com/docs/agent/hooks and the stop input fields it names (status, loop_count), values chosen",
   "kiro-cli/prompt-replaced.json": "linux 2.37.1 TUI, a wake turn of the session /rewind replaced, run by a watch started before the rewind",
   "kiro-cli/prompt-rewind.json": "linux 2.37.1 TUI, the first prompt after /rewind (shell KIRO_SESSION_ID sess_dd97485d-a96a-44bc-ba17-eb8230525c06, the old root); prompt text shortened",
   "kiro-cli/prompt-tangent.json": "linux 2.37.1 ACP client, a tangent's prompt (shell KIRO_SESSION_ID sess_ef71553f-8632-4ea2-a64f-846c852e8478, the parent); prompt text shortened",

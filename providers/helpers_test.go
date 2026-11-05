@@ -323,19 +323,45 @@ type settingsHookFile struct {
 	} `json:"hooks"`
 }
 
+// flatHook is one command entry of a hook file that lists entries straight
+// under each event: Copilot CLI's and Cursor's (a version 1 file), and
+// Antigravity's named groups. timeout, in seconds, is the key all three
+// read (Copilot CLI's alias of timeoutSec).
+type flatHook struct {
+	Type    string `json:"type"`
+	Command string `json:"command"`
+	Timeout int    `json:"timeout"`
+}
+
 // hookWiring reads a provider's hook file, <provider>/hooks.json, as the
 // commands it runs per event, in event order then file order.
 func hookWiring(t *testing.T, name string) []wire {
 	t.Helper()
 	data := mustRead(t, filepath.Join(name, "hooks.json"))
-	var head struct {
-		Version string `json:"version"`
-	}
+	var head map[string]json.RawMessage
 	if err := json.Unmarshal(data, &head); err != nil {
 		t.Fatalf("%s/hooks.json: %v", name, err)
 	}
-	if head.Version != "" {
+	switch v := string(head["version"]); {
+	case strings.HasPrefix(v, `"`):
 		return kiroWiring(t, name, data)
+	case v == "1":
+		var f struct {
+			Hooks   map[string]json.RawMessage `json:"hooks"`
+			Version int                        `json:"version"`
+		}
+		strictJSON(t, name, data, &f)
+		return flatWiring(t, name, f.Hooks)
+	case v != "":
+		t.Fatalf("%s/hooks.json: version %s, want v1 or 1", name, v)
+	case head["hooks"] == nil:
+		var groups map[string]map[string]json.RawMessage
+		strictJSON(t, name, data, &groups)
+		var got []wire
+		for _, group := range slices.Sorted(maps.Keys(groups)) {
+			got = append(got, flatWiring(t, name, groups[group])...)
+		}
+		return got
 	}
 	var f settingsHookFile
 	if err := json.Unmarshal(data, &f); err != nil {
@@ -356,6 +382,35 @@ func hookWiring(t *testing.T, name string) []wire {
 		}
 	}
 	return got
+}
+
+// flatWiring reads events, each a list of flatHook entries. A key a host
+// does not read, such as a matcher or a misspelt timeout, fails the test.
+func flatWiring(t *testing.T, name string, events map[string]json.RawMessage) []wire {
+	t.Helper()
+	var got []wire
+	for _, event := range slices.Sorted(maps.Keys(events)) {
+		var hooks []flatHook
+		strictJSON(t, name, events[event], &hooks)
+		for _, h := range hooks {
+			if h.Type != "command" {
+				t.Errorf("%s/hooks.json: a %s hook has type %q, want command", name, event, h.Type)
+			}
+			got = append(got, wire{Event: event, Command: h.Command, Timeout: h.Timeout})
+		}
+	}
+	return got
+}
+
+// strictJSON decodes data into v, failing the test on a key v has no field
+// for.
+func strictJSON(t *testing.T, name string, data []byte, v any) {
+	t.Helper()
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		t.Fatalf("%s/hooks.json: %v", name, err)
+	}
 }
 
 func kiroWiring(t *testing.T, name string, data []byte) []wire {

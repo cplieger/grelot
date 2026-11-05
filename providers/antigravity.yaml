@@ -1,0 +1,38 @@
+# Google Antigravity 2.0 (the app, the agy CLI and the IDE share one
+# harness), from its hooks page (https://antigravity.google/docs/hooks/),
+# not yet run against grelot.
+#
+# The docs name no variable that carries the conversation id in the agent's
+# own shell, so this file has no detect and no session.env. Until someone
+# runs Antigravity and records one, grelot never picks this provider by
+# itself, its hooks print nothing, and every identity command refuses.
+name: antigravity
+evidence: documented
+session:
+  stdin: conversationId
+doors:
+  # A background run_command task notifies the agent when it completes, so
+  # the watcher exits at each nudge and the session starts it again.
+  - name: background-task
+    layer: 2
+    transport: exit
+    start: run `grelot watch --door background-task` in the background
+    notes: >-
+      Run the watcher with run_command and a short WaitMsBeforeAsync, so it
+      goes on as a background task. A task whose process holds stdin open
+      can freeze the chat; the watcher closes its stdin.
+hooks:
+  session_start:
+    event: SessionStart
+    outputs:
+      context: {text: '{"injectSteps":[{"systemMessage":{"systemMessage":{{json .Context}}}}]}'}
+  stop:
+    event: Stop
+    # continue keeps the agent going with the reason as a system message.
+    # Stop takes no message for the user, so a line grelot shows the user
+    # at turn end is not printed.
+    outputs:
+      block: {text: '{"decision":"continue","reason":{{json .Reason}}}'}
+# No prompt: no event runs once at turn start (PreInvocation runs before
+# every model call). Antigravity has no session end or subagent stop event.
+notes: docs/hosts/antigravity.md
