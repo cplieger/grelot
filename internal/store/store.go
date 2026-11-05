@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -44,6 +45,10 @@ const (
 type Options struct {
 	Logger *slog.Logger
 	Now    func() time.Time
+	// Woke, when set, is called after each commit that delivered to an
+	// identity, recorded a nudge for it or moved its read, with those ids.
+	// It runs in commit order and must not start a write transaction.
+	Woke func(ids []uint64)
 	// PathRoot is the canonical root every repo lies in, <root>/<repo>,
 	// which Who's Repo filter reads; the caller checks it is canonical.
 	PathRoot string
@@ -67,6 +72,7 @@ type Store struct {
 	now func() time.Time
 	// space reads the file's space; tests replace it.
 	space func() (bolttable.Space, error)
+	woke  func(ids []uint64)
 	// seen is each identity's newest request time; seenMu guards it.
 	seen       map[uint64]time.Time
 	pathRoot   string
@@ -135,7 +141,7 @@ func (s *Store) logOpen(path string, rep *bolttable.OpenReport) {
 
 // newStore is a Store configured by o, each zero option taking its default.
 func newStore(o *Options) *Store {
-	s := &Store{log: o.Logger, now: o.Now, threadTTL: o.ThreadTTL, dormantTTL: o.DormantTTL, maxBytes: o.MaxBytes, seen: map[uint64]time.Time{}}
+	s := &Store{log: o.Logger, now: o.Now, woke: o.Woke, threadTTL: o.ThreadTTL, dormantTTL: o.DormantTTL, maxBytes: o.MaxBytes, seen: map[uint64]time.Time{}}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
 	}
@@ -182,6 +188,15 @@ type wtx struct {
 	// cards and events are owed so far, written once fn is done.
 	cards  []card
 	events []owedEvent
+	// woke is every identity Options.Woke reports once this commits.
+	woke []uint64
+}
+
+// wake has Options.Woke report id once this transaction commits.
+func (w *wtx) wake(id uint64) {
+	if !slices.Contains(w.woke, id) {
+		w.woke = append(w.woke, id)
+	}
 }
 
 // update runs fn in one write transaction, at one instant of the clock,
@@ -192,7 +207,13 @@ func (s *Store) update(ctx context.Context, fn func(*wtx) error) error {
 		if err := fn(w); err != nil {
 			return err
 		}
-		return w.flushOwed()
+		if err := w.flushOwed(); err != nil {
+			return err
+		}
+		if ids := w.woke; len(ids) > 0 && s.woke != nil {
+			tx.AfterCommit(func() { s.woke(ids) })
+		}
+		return nil
 	}))
 }
 

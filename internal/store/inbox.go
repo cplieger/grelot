@@ -197,6 +197,7 @@ func (s *Store) Ack(ctx context.Context, c Caller, upto uint64) (Acked, error) {
 				from, out.Count, out.Oldest = rows[0].Seq, len(rows), rows[0].Written
 			}
 			me.Read, me.LastPage = to, seqRange{From: from, To: to}
+			w.wake(me.ID)
 		}
 		me.Ended, me.LastSeen = false, w.now
 		if err := s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {

@@ -96,6 +96,8 @@ func (s *Server) register(r *http.Request, c store.Caller) (status int, body any
 	status = http.StatusCreated
 	if got.Existing {
 		status = http.StatusOK
+	} else {
+		s.presence.registered(got.Identity.ID)
 	}
 	out := registerResponse{Identity: identityOut(&got.Identity), Existing: got.Existing, Moved: got.Moved}
 	if req.Delegate == "" && !got.Identity.EnvironmentKnown {
@@ -135,6 +137,7 @@ func (s *Server) revive(r *http.Request, c store.Caller) (status int, body any, 
 	if err != nil {
 		return 0, nil, err
 	}
+	s.presence.registered(got.Identity.ID)
 	out := reviveResponse{Identity: identityOut(&got.Identity), Unread: got.Unread, Moved: got.Moved}
 	if !got.Identity.EnvironmentKnown {
 		out.NoEnvironment = noEnvironmentLine

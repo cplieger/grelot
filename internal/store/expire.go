@@ -111,6 +111,7 @@ func (w *wtx) writeEvent(id uint64, kind, text string) error {
 func (w *wtx) deliver(row *identityRow, d *deliveryRow) error {
 	row.Seq++
 	d.Agent, d.Seq, d.Written = row.ID, row.Seq, w.now
+	w.wake(row.ID)
 	if err := w.s.t.identities.table.Put(w.tx, row.ID, row); err != nil {
 		return err
 	}

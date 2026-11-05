@@ -116,7 +116,8 @@ func newHarnessWith(t *testing.T, o store.Options) *harness {
 	clk := &clock{t: testNow}
 	logs := newLogSink()
 	logger := slog.New(logs)
-	o.Logger, o.Now, o.PathRoot = logger, clk.now, DefaultPathRoot
+	hub := NewHub()
+	o.Logger, o.Now, o.PathRoot, o.Woke = logger, clk.now, DefaultPathRoot, hub.Woke
 	st, err := store.Open(filepath.Join(t.TempDir(), "grelot.db"), o)
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
@@ -124,7 +125,7 @@ func newHarnessWith(t *testing.T, o store.Options) *harness {
 	t.Cleanup(func() { _ = st.Close() })
 	push := &fakePush{states: map[uint64]pushState{}}
 	srv := New(&Options{
-		Store: st, Logger: logger, Now: clk.now, Version: testVersion, Push: push,
+		Store: st, Logger: logger, Now: clk.now, Version: testVersion, Push: push, Hub: hub,
 		Config: Config{Token: testToken, PathRoot: DefaultPathRoot},
 	})
 	hs := httptest.NewServer(srv.Handler())

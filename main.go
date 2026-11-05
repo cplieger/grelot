@@ -70,9 +70,11 @@ func run(args []string, stderr io.Writer) int {
 // ends, then waits for the sweeper and closes the store. The health marker
 // at markerPath is fresh while the sweeper commits.
 func serve(ctx context.Context, cfg *server.Config, addr, markerPath string, logger *slog.Logger) error {
+	hub := server.NewHub()
 	st, err := store.Open(cfg.StorePath, store.Options{
 		Logger: logger, MaxBytes: cfg.MaxBytes, ThreadTTL: cfg.ThreadTTL,
 		DormantTTL: cfg.DormantTTL, ReservationMaxTTL: cfg.ReservationMaxTTL, PathRoot: cfg.PathRoot,
+		Woke: hub.Woke,
 	})
 	if err != nil {
 		return err
@@ -81,7 +83,7 @@ func serve(ctx context.Context, cfg *server.Config, addr, markerPath string, log
 	marker := health.NewMarker(markerPath)
 	marker.Set(true)
 	defer marker.Cleanup()
-	srv := server.New(&server.Options{Store: st, Logger: logger, Version: version, Config: *cfg})
+	srv := server.New(&server.Options{Store: st, Logger: logger, Hub: hub, Version: version, Config: *cfg})
 	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
 	if err != nil {
 		return err
@@ -92,7 +94,7 @@ func serve(ctx context.Context, cfg *server.Config, addr, markerPath string, log
 	go func() {
 		swept <- st.Run(ctx, func() {
 			marker.Set(true)
-			srv.Beat()
+			srv.Beat(ctx)
 		})
 	}()
 	logger.Info("listening", "addr", ln.Addr().String(), "version", version)

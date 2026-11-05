@@ -56,14 +56,12 @@ type ReservationQuery struct {
 }
 
 // Reserve grants r.Path to r.Caller's identity for r.TTL, or queues the
-// request when r.Queue is set and it conflicts. A request conflicts with
-// another identity's grant that overlaps it and with any queued request
-// that overlaps it, the identity's own included, so a newcomer never
-// takes a subpath while an older request waits for the parent; the
-// identity's own grants never conflict. Refusals: KindInvalid for a bad
-// path, reason or ttl; KindGone for a session with no live identity;
-// KindForbidden for a delegate; KindConflict naming the holder or the
-// queue head.
+// request when r.Queue is set and it conflicts: with another identity's
+// overlapping grant (its own never conflict), or with any overlapping
+// queued request, its own included, so a newcomer never takes a subpath
+// while an older request waits for the parent. Refusals: KindInvalid for
+// a bad path, reason or ttl; KindGone with no live identity;
+// KindForbidden for a delegate; KindConflict naming the holder or queue head.
 func (s *Store) Reserve(ctx context.Context, r *Reserving) (Reserved, error) {
 	if err := checkReserving(r); err != nil {
 		return Reserved{}, err

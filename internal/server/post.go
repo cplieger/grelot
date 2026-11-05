@@ -178,6 +178,17 @@ func (p *postLimit) take(key uint64, now time.Time) (at time.Time, retry time.Du
 	return now, 0, true
 }
 
+// prune drops every key whose posts have all left the minute.
+func (p *postLimit) prune(now time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for key, times := range p.m {
+		if !times[len(times)-1].After(now.Add(-time.Minute)) {
+			delete(p.m, key)
+		}
+	}
+}
+
 // give takes back the post take recorded at at, for a post the store
 // refused.
 func (p *postLimit) give(key uint64, at time.Time) {

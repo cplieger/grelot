@@ -4,8 +4,10 @@
 package server
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -19,7 +21,10 @@ type Options struct {
 	Logger *slog.Logger
 	Now    func() time.Time
 	// Push defaults to one that serves no identity.
-	Push    Pusher
+	Push Pusher
+	// Hub must be the one whose Woke the store's Options.Woke calls; nil
+	// gives a hub no commit reaches, whose waits wake only at their timeout.
+	Hub     *Hub
 	Version string
 	Config  Config
 }
@@ -31,6 +36,7 @@ type Server struct {
 	now      func() time.Time
 	presence *presence
 	posts    *postLimit
+	hub      *Hub
 	push     Pusher
 	version  string
 	cfg      Config
@@ -49,16 +55,33 @@ func New(o *Options) *Server {
 	if push == nil {
 		push = noPush{}
 	}
+	hub := o.Hub
+	if hub == nil {
+		hub = NewHub()
+	}
 	return &Server{
 		store: o.Store, log: o.Logger, now: now, version: o.Version, cfg: o.Config,
-		presence: newPresence(), posts: newPostLimit(), push: push,
+		presence: newPresence(), posts: newPostLimit(), hub: hub, push: push,
 		bearer: httpserver.NewStaticTokenVerifier(o.Config.Token),
 	}
 }
 
-// Beat records a sweeper pass that committed; /healthz answers down once
-// the last one is older than healthyFor.
-func (s *Server) Beat() { s.beat.Store(s.now().UnixNano()) }
+// Beat records a sweeper pass that committed, which /healthz answers down
+// once the last one is older than healthyFor, and forgets the in-memory
+// state of every identity no longer live.
+func (s *Server) Beat(ctx context.Context) {
+	s.beat.Store(s.now().UnixNano())
+	s.posts.prune(s.now())
+	ids := s.presence.ids()
+	live, err := s.store.Live(ctx, ids)
+	if err != nil {
+		s.log.Warn(msgPruneFailed, "error", err.Error())
+		return
+	}
+	s.presence.forget(slices.DeleteFunc(ids, func(id uint64) bool { return slices.Contains(live, id) }))
+}
+
+const msgPruneFailed = "memory prune failed"
 
 // healthyFor is four sweep periods, the same age the image's file probe
 // allows.

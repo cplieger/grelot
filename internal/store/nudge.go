@@ -97,6 +97,7 @@ func (s *Store) RecordNudge(ctx context.Context, n *Nudge, via NudgeVia) (got Nu
 // send; the caller stores me.
 func (w *wtx) recordNudge(me *identityRow, n *Nudge, via NudgeVia) {
 	me.Nudged, me.Nudges, me.NudgedAt = n.Seq, n.Attempt, w.now
+	w.wake(me.ID)
 	w.s.log.Info(msgNudgeSent, "via", string(via), "attempt", n.Attempt, "seq", n.Seq,
 		"oldest_delay_ms", w.now.Sub(n.Oldest).Milliseconds())
 }

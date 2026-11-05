@@ -30,7 +30,7 @@ func TestHealthz_takesNoHeadersAndFollowsTheSweeperBeat(t *testing.T) {
 			t.Errorf("got %d %q, want 503 down", code, st)
 		}
 	})
-	h.srv.Beat()
+	h.srv.Beat(t.Context())
 	t.Run("up after a pass, with no bearer and no version", func(t *testing.T) {
 		if code, st := get(); code != http.StatusOK || st != "up" {
 			t.Errorf("got %d %q, want 200 up", code, st)

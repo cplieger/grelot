@@ -409,6 +409,25 @@ func (s *Store) Retire(ctx context.Context, c Caller) error {
 	})
 }
 
+// Live returns, in the order given, the ids among ids whose identity is
+// live; a dormant, retired or unknown id is left out.
+func (s *Store) Live(ctx context.Context, ids []uint64) ([]uint64, error) {
+	out := []uint64{}
+	err := s.read(ctx, func(r *bolttable.ReadTx) error {
+		for _, id := range ids {
+			row, found, err := s.t.identities.table.Get(r, id)
+			if err != nil {
+				return err
+			}
+			if found && row.State == stateLive {
+				out = append(out, id)
+			}
+		}
+		return nil
+	})
+	return out, err
+}
+
 // Seen records a request as c other than the standing wait and
 // returns its identity, live or dormant. A live one has ended cleared and
 // last_seen refreshed, its row written only when ended was set or the
