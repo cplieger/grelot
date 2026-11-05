@@ -1,8 +1,11 @@
 {
+  "claude-code/prompt-monitor-event.json": "linux 2.1.318 Monitor event, its line replaced by a grelot signal line in the current wording",
   "claude-code/prompt-task-notification.json": "windows 2.1.316 Monitor wake",
   "claude-code/prompt-typed.json": "windows 2.1.316 TUI",
   "claude-code/session_end-other.json": "linux 2.1.318 -p exit",
   "claude-code/session_start-clear.json": "windows 2.1.316 TUI /clear",
+  "claude-code/session_start-compact.json": "derived from session_start-clear.json: source compact",
+  "claude-code/session_start-fork.json": "derived from session_start-resume.json: source fork, and session_id and the transcript_path's id set to the fork's own",
   "claude-code/session_start-resume.json": "windows 2.1.316 --continue",
   "claude-code/session_start-startup-print.json": "windows 2.1.316 -p",
   "claude-code/session_start-startup-tui.json": "windows 2.1.316 TUI",

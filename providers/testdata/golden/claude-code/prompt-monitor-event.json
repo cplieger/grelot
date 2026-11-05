@@ -1,0 +1,9 @@
+{
+  "session_id": "a554296a-f8e6-422e-9919-addc9ac2b0d0",
+  "transcript_path": "/tmp/p10cc/cfg/projects/-tmp-p10cc-work/a554296a-f8e6-422e-9919-addc9ac2b0d0.jsonl",
+  "cwd": "/tmp/p10cc/work",
+  "prompt_id": "a5ffcffe-9748-4d73-bd16-0d7c244ca953",
+  "permission_mode": "default",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "<task-notification>\n<task-id>b5h2v2475</task-id>\n<summary>Monitor event: \"grelot probe watcher\"</summary>\n<event>[grelot:1] grelot (automated, not the user): 1 new; run grelot inbox</event>\n</task-notification>"
+}

@@ -2,15 +2,18 @@ package providers_test
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -138,6 +141,61 @@ func newShell(t *testing.T, srv *testServer, name string, vars map[string]string
 	return s
 }
 
+// useServer points the shell's client config at url instead of its test
+// server.
+func (s *shell) useServer(url string) {
+	s.t.Helper()
+	if err := os.WriteFile(client.ConfigFile(s.config), fmt.Appendf(nil, "server: %s\ntoken: test-token\nhost: box\n", url), 0o600); err != nil {
+		s.t.Fatal(err)
+	}
+}
+
+// processes is a fake process table.
+type processes map[int]proctree.Process
+
+func (p processes) Lookup(pid int) (proctree.Process, error) {
+	if v, ok := p[pid]; ok {
+		return v, nil
+	}
+	return proctree.Process{}, os.ErrNotExist
+}
+
+// under is a process table putting the client, pid 300, under a shell under
+// the host process name at pid 200, started at 20.
+func under(name string, args ...string) processes {
+	return processes{
+		300: {Name: "grelot", Args: []string{"grelot"}, PID: 300, PPID: 250, Start: 30},
+		250: {Name: "bash", Args: []string{"bash"}, PID: 250, PPID: 200, Start: 25},
+		200: {Name: name, Args: append([]string{name}, args...), PID: 200, PPID: 1, Start: 20},
+		1:   {Name: "init", Args: []string{"init"}, PID: 1, Start: 1},
+	}
+}
+
+// silentServer is a server that never answers; hits counts the requests
+// it has received.
+func silentServer(t *testing.T) (url string, hits func() int) {
+	t.Helper()
+	release := make(chan struct{})
+	var mu sync.Mutex
+	n := 0
+	hs := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		n++
+		mu.Unlock()
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(hs.Close)
+	t.Cleanup(func() { close(release) })
+	return hs.URL, func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return n
+	}
+}
+
 // outcome is what one grelot command did: its exit code, its output, and
 // the requests the server received while it ran.
 type outcome struct {
@@ -243,12 +301,58 @@ type kiroHookFile struct {
 	} `json:"hooks"`
 }
 
+// settingsHookFile is the hook file format Claude Code's settings and
+// plugins share: command groups per event name.
+type settingsHookFile struct {
+	Hooks map[string][]struct {
+		Matcher *string `json:"matcher"`
+		Hooks   []struct {
+			Type    string `json:"type"`
+			Command string `json:"command"`
+			Timeout int    `json:"timeout"`
+		} `json:"hooks"`
+	} `json:"hooks"`
+}
+
 // hookWiring reads a provider's hook file, <provider>/hooks.json, as the
-// commands it runs per event.
+// commands it runs per event, in event order then file order.
 func hookWiring(t *testing.T, name string) []wire {
 	t.Helper()
+	data := mustRead(t, filepath.Join(name, "hooks.json"))
+	var head struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(data, &head); err != nil {
+		t.Fatalf("%s/hooks.json: %v", name, err)
+	}
+	if head.Version != "" {
+		return kiroWiring(t, name, data)
+	}
+	var f settingsHookFile
+	if err := json.Unmarshal(data, &f); err != nil {
+		t.Fatalf("%s/hooks.json: %v", name, err)
+	}
+	var got []wire
+	for _, event := range slices.Sorted(maps.Keys(f.Hooks)) {
+		for _, g := range f.Hooks[event] {
+			if g.Matcher != nil {
+				t.Errorf("%s/hooks.json: a %s group has matcher %q, want none, so every %s runs it", name, event, *g.Matcher, event)
+			}
+			for _, h := range g.Hooks {
+				if h.Type != "command" {
+					t.Errorf("%s/hooks.json: a %s hook has type %q, want command", name, event, h.Type)
+				}
+				got = append(got, wire{Event: event, Command: h.Command, Timeout: h.Timeout})
+			}
+		}
+	}
+	return got
+}
+
+func kiroWiring(t *testing.T, name string, data []byte) []wire {
+	t.Helper()
 	var f kiroHookFile
-	if err := json.Unmarshal(mustRead(t, filepath.Join(name, "hooks.json")), &f); err != nil {
+	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("%s/hooks.json: %v", name, err)
 	}
 	if f.Version != "v1" {
@@ -262,6 +366,15 @@ func hookWiring(t *testing.T, name string) []wire {
 		got = append(got, wire{Event: h.Trigger, Command: h.Action.Command, Timeout: h.Timeout})
 	}
 	return got
+}
+
+// sameWiring reports whether two wirings run the same commands for the same
+// events, whatever their order.
+func sameWiring(got, want []wire) bool {
+	order := func(a, b wire) int {
+		return cmp.Or(strings.Compare(a.Event, b.Event), strings.Compare(a.Command, b.Command), a.Timeout-b.Timeout)
+	}
+	return slices.Equal(slices.SortedFunc(slices.Values(got), order), slices.SortedFunc(slices.Values(want), order))
 }
 
 // wantWiring is what a provider's hook file must run: grelot hook
