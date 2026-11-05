@@ -18,9 +18,14 @@ const doorSecret = "door-secret-value-42"
 // Authorization header reads the secret secretName; match, when set, is
 // the door's match line.
 func doorFile(name, secretName, match string) string {
+	return doorFileAt("https://receiver.test", name, secretName, match)
+}
+
+// doorFileAt is doorFile with its door posting to base.
+func doorFileAt(base, name, secretName, match string) string {
 	return "name: " + name + "\ndoors:\n  - name: push\n    layer: 1\n    transport: http\n" +
-		"    url: 'https://receiver.test/notify/{{path .Session}}'\n" +
-		"    body: '{\"line\": {{json .Line}}, \"key\": {{json .DedupeKey}}}'\n" +
+		"    url: '" + base + "/notify/{{path .Session}}'\n" +
+		"    body: '{\"line\": {{json .Line}}, \"key\": {{json .DedupeKey}}, \"name\": {{json .Identity}}}'\n" +
 		"    headers: {Authorization: 'Bearer {{secret \"" + secretName + "\"}}'}\n" +
 		"    dedupe_window: 10m\n    gone: [404, 410]\n" + match
 }

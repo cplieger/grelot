@@ -124,9 +124,9 @@ func newHarnessWith(t *testing.T, o store.Options, edits ...func(*Options)) *har
 // newBubbleHarness is a harness on the clock of the synctest bubble it is
 // called in. It serves each request in process: a goroutine blocked on a
 // socket is not durably blocked, so the bubble's clock would never move.
-func newBubbleHarness(t *testing.T) *harness {
+func newBubbleHarness(t *testing.T, edits ...func(*Options)) *harness {
 	t.Helper()
-	return buildHarness(t, store.Options{}, time.Now)
+	return buildHarness(t, store.Options{}, time.Now, edits...)
 }
 
 // buildHarness applies edits to the server's Options before New.
@@ -150,6 +150,7 @@ func buildHarness(t *testing.T, o store.Options, now func() time.Time, edits ...
 		edit(so)
 	}
 	srv := New(so)
+	t.Cleanup(srv.Release)
 	return &harness{t: t, store: st, srv: srv, logs: logs, push: push}
 }
 
@@ -169,6 +170,12 @@ func (f *fakePush) State(id uint64) pushState {
 	}
 	return pushNone
 }
+
+func (*fakePush) registered(uint64, string, string) {}
+
+func (*fakePush) beat(context.Context) {}
+
+func (*fakePush) stop() {}
 
 func (f *fakePush) set(id uint64, st pushState) {
 	f.mu.Lock()
