@@ -188,6 +188,8 @@ type agent struct {
 	stdout *bytes.Buffer
 	stderr *bytes.Buffer
 	wd     string
+	// thread is the thread id of the agent's last post.
+	thread string
 }
 
 // newAgent is a shell of provider alpha in session, with its own config

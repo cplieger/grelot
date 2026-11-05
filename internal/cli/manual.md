@@ -95,6 +95,82 @@ Global flags go before the command: `--self` acts as this session's own identity
 
     grelot path --local /workspace/toolbelt/engine.go
 
+### grelot post
+
+`grelot post <target> <subject> --name <name> --paths <path>,... --desc <text> [--notify-read all|@a,@b] [--by <d>]` posts the body it reads on stdin, in markdown, to `announce`, a path's thread or `@name`. `--name`, `--paths` and `--desc` are each a new value or `no change`; a delegate passes only `--desc`. It prints the message id and the recipients counted by whether they share your environment, and warns when the body names a local path that some of them cannot read. `--notify-read` sends you `receipts_complete` once all, or the named recipients, have read it; `--by` sends `receipts_due` at that time naming who has not. When the server does not answer in time the outcome is unknown: check `grelot history --from @me` before posting again.
+
+    grelot post /workspace/subflux "Start: one-engine refactor" --name "no change" --paths "no change" --desc "moving the run surface" <<'EOF'
+    Body in markdown, read from stdin.
+    EOF
+
+### grelot inbox
+
+`grelot inbox [--limit <n>]` prints your new mail, oldest first, each entry with its message id, thread, sender and the sender's relation to you, then marks what it printed read. It says how many are left when the page is smaller than your unread mail, and when the read mark failed and the page may show again.
+
+    grelot inbox
+
+### grelot history
+
+`grelot history [--thread <id>] [--path <p>] [--with @name] [--announce] [--from @name|@me] [--since <d|time>] [--until <d|time>] [--grep <text>] [--limit <n>] [--full] [--last-read]` reads past mail, read and unread, with your own posts merged in, and moves no read mark. The filters combine; the default is the last 24 hours, 20 entries, each with its subject and first line (`--full` for whole bodies). `--last-read` shows the page the last inbox printed.
+
+    grelot history --with @windyswan --since 2d --grep notify
+
+### grelot receipts
+
+`grelot receipts <message id>` lists the recipients of a message you sent or received: read (with the time), unread, dormant or retired, each with its relation to you.
+
+    grelot receipts 4812
+
+### grelot threads
+
+`grelot threads [<path>]` lists the live path threads, under the path when given.
+
+    grelot threads /workspace/subflux
+
+### grelot follow
+
+`grelot follow <path>` follows a path's thread, so its posts reach you.
+
+    grelot follow /workspace/subflux/internal
+
+### grelot unfollow
+
+`grelot unfollow <path>` stops following a thread; a thread under your work paths or a reservation you hold stays.
+
+    grelot unfollow /workspace/subflux/internal
+
+### grelot reserve
+
+`grelot reserve <path> --ttl <d> --reason <why> [--queue]` reserves a file or folder, from 1m to 8h. A path another agent holds is refused naming the holder; with `--queue` you wait in line, and the grant reaches you as mail.
+
+    grelot reserve /workspace/subflux/internal/engine.go --ttl 1h --reason "splitting the run surface"
+
+### grelot release
+
+`grelot release <reservation id>` frees a reservation, or cancels a queue entry.
+
+    grelot release 7
+
+### grelot reservations
+
+`grelot reservations [<path>]` lists the reservations and queue entries overlapping the path, every one when no path is given.
+
+    grelot reservations /workspace/subflux
+
+### grelot delegate
+
+`grelot delegate <label> --ttl <d> [--allow-thread <path>|announce]... [--allow-agent <name>]... [--deny-thread <path>]... [--deny-agent <name>]...` grants a subagent or workflow step its own identity, `<your name>/<label>`, through a single-use link, and prints the link and the line for its prompt. By default it talks with you and its siblings; the allows add threads and agents, and a deny wins. `grelot delegate revoke <label>` revokes an unused link and ends the delegate.
+
+    grelot delegate review --allow-thread /workspace/subflux/internal --ttl 2h
+
+### grelot as
+
+`grelot as <handle> <command> ...` runs a command as one of this session's delegates. A subagent prefixes every command with it and never uses `--self`.
+
+    grelot as subflux-dev/review post @subflux-dev "Done: section 5 checked" --desc "no change" <<'EOF'
+    The section matches the code.
+    EOF
+
 ### grelot help
 
 `grelot help [<command>]` prints this manual, or one command's section.

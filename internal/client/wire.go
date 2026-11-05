@@ -184,3 +184,126 @@ type PeerDelegate struct {
 type Peers struct {
 	Identities []Peer `json:"identities"`
 }
+
+// Entry is one inbox or history entry: a post or card with its message and
+// sender, or an event with only Text. Subject, Body, Text and the paths are
+// other agents' text.
+type Entry struct {
+	PostedAt   time.Time `json:"posted_at"`
+	Written    time.Time `json:"written"`
+	Kind       string    `json:"kind"`
+	Subject    string    `json:"subject"`
+	Body       string    `json:"body"`
+	Text       string    `json:"text"`
+	ThreadPath string    `json:"thread_path"`
+	From       string    `json:"from"`
+	Host       string    `json:"host"`
+	Relation   string    `json:"relation"`
+	Via        string    `json:"via"`
+	Seq        uint64    `json:"seq"`
+	Message    uint64    `json:"message"`
+	Thread     uint64    `json:"thread"`
+	Truncated  bool      `json:"truncated"`
+}
+
+// Inbox is GET /v1/inbox's answer: the oldest deliveries past read.
+type Inbox struct {
+	Entries []Entry `json:"entries"`
+}
+
+// Acked is POST /v1/inbox/ack's answer: what is still past read.
+type Acked struct {
+	Left Counts `json:"left"`
+}
+
+// History is GET /v1/history's answer.
+type History struct {
+	Entries []Entry `json:"entries"`
+}
+
+// Posted is POST /v1/posts's answer.
+type Posted struct {
+	Notices    []string   `json:"notices"`
+	Recipients Recipients `json:"recipients"`
+	Message    uint64     `json:"message"`
+	Thread     uint64     `json:"thread"`
+}
+
+// Recipients counts a post's recipients: SameEnvironment share the
+// sender's environment, Other do not.
+type Recipients struct {
+	Total           int `json:"total"`
+	SameEnvironment int `json:"same_environment"`
+	Other           int `json:"other"`
+}
+
+// The receipt states of a recipient.
+const (
+	ReceiptRead    = "read"
+	ReceiptUnread  = "unread"
+	ReceiptDormant = "dormant"
+	ReceiptRetired = "retired"
+)
+
+// Receipts is GET /v1/messages/{id}/receipts's answer. RegisteredSince
+// counts, for an announcement, the identities registered after it, which
+// never received it.
+type Receipts struct {
+	PostedAt        time.Time `json:"posted_at"`
+	Subject         string    `json:"subject"`
+	Kind            string    `json:"kind"`
+	Recipients      []Receipt `json:"recipients"`
+	Message         uint64    `json:"message"`
+	RegisteredSince int       `json:"registered_since"`
+}
+
+// Receipt is one recipient of a post and whether it has read it.
+type Receipt struct {
+	ReadAt   time.Time `json:"read_at"`
+	Name     string    `json:"name"`
+	Host     string    `json:"host"`
+	Relation string    `json:"relation"`
+	State    string    `json:"state"`
+}
+
+// Threads is GET /v1/threads's answer.
+type Threads struct {
+	Threads []Thread `json:"threads"`
+}
+
+// Thread is a live path thread.
+type Thread struct {
+	Expires time.Time `json:"expires_at"`
+	Path    string    `json:"path"`
+	ID      uint64    `json:"id"`
+}
+
+// ReservationQueued is the state of a queue entry, as against a grant.
+const ReservationQueued = "queued"
+
+// Reserved is POST /v1/reservations's answer; Behind is the grant a queue
+// entry waits on.
+type Reserved struct {
+	Behind      *Reservation `json:"behind"`
+	Reservation Reservation  `json:"reservation"`
+}
+
+// Reservations is GET /v1/reservations's answer.
+type Reservations struct {
+	Reservations []Reservation `json:"reservations"`
+}
+
+// Granted is POST /v1/delegates's answer: the single-use link and the
+// handle its delegate will have.
+type Granted struct {
+	Expires time.Time `json:"expires_at"`
+	Link    string    `json:"link"`
+	Handle  string    `json:"handle"`
+}
+
+// Revoked is DELETE /v1/delegates/{label}'s answer: the delegates ended
+// and whether an unused link went.
+type Revoked struct {
+	Ended []string `json:"ended"`
+	Link  bool     `json:"link"`
+}

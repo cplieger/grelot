@@ -24,11 +24,13 @@ type run struct {
 	place        *client.Where
 	verb         string
 	providerFlag string
-	root         string
-	ancestors    []proctree.Process
-	readTree     bool
-	self         bool
-	statusShown  bool
+	// handle is the delegate a grelot as command acts as.
+	handle      string
+	root        string
+	ancestors   []proctree.Process
+	readTree    bool
+	self        bool
+	statusShown bool
 }
 
 func (r *run) config() (*client.Config, error) {
@@ -87,7 +89,7 @@ func (r *run) client(identity bool) (*client.API, error) {
 	if err != nil && identity {
 		return nil, err
 	}
-	a.Session, a.Self = session, r.self
+	a.Session, a.Self, a.As = session, r.self, r.handle
 	r.api = a
 	return a, nil
 }
@@ -107,12 +109,19 @@ func (r *run) call(ctx context.Context, req *client.Request, out any) error {
 	if err != nil {
 		return err
 	}
-	resp, err := a.Do(ctx, req, out)
+	resp, err := a.Do(ctx, r.bounded(req), out)
 	if err != nil {
 		return err
 	}
 	r.printStatus(resp.Status)
 	return nil
+}
+
+func (r *run) bounded(req *client.Request) *client.Request {
+	if req.Timeout == 0 {
+		req.Timeout = r.Timeout
+	}
+	return req
 }
 
 // peek sends req before the command's answer, printing nothing.
@@ -121,7 +130,7 @@ func (r *run) peek(ctx context.Context, req *client.Request, out any) error {
 	if err != nil {
 		return err
 	}
-	_, err = a.Do(ctx, req, out)
+	_, err = a.Do(ctx, r.bounded(req), out)
 	return err
 }
 

@@ -13,11 +13,14 @@ import (
 	"github.com/cplieger/grelot/internal/client"
 )
 
+// pathParam is the query parameter that names a path in grelot form.
+const pathParam = "path"
+
 func (r *run) who(ctx context.Context, args []string) error {
 	fs := flags(r.verb)
 	asJSON := fs.Bool("json", false, "")
 	text := map[string]*string{"repo": fs.String("repo", "", ""), "fields": fs.String("fields", "", "")}
-	local := map[string]*string{"path": fs.String("path", "", ""), "holds": fs.String("holds", "", ""), "queued": fs.String("queued", "", "")}
+	local := map[string]*string{pathParam: fs.String("path", "", ""), "holds": fs.String("holds", "", ""), "queued": fs.String("queued", "", "")}
 	set := map[string]*bool{"online": fs.Bool("online", false, ""), "here": fs.Bool("here", false, ""), "all": fs.Bool("all", false, "")}
 	rest, err := parse(fs, args)
 	if err != nil {
@@ -44,7 +47,7 @@ func (r *run) who(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := a.Do(ctx, &client.Request{Method: http.MethodGet, Path: "/v1/identities", Query: q}, nil)
+	resp, err := a.Do(ctx, r.bounded(&client.Request{Method: http.MethodGet, Path: "/v1/identities", Query: q}), nil)
 	if err != nil {
 		return err
 	}

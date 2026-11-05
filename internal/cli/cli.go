@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/proctree"
@@ -35,6 +36,8 @@ type Env struct {
 	ConfigDir string
 	Version   string
 	PID       int
+	// Timeout bounds each API call, client.DefaultTimeout when zero.
+	Timeout time.Duration
 }
 
 // Exit codes: a refusal or failure is 1, a command line grelot cannot read
@@ -45,18 +48,32 @@ const (
 	exitUsage  = 2
 )
 
-// verbs are the commands Run knows, by name.
+// verbs are the commands Run knows, by name. as is added in init, since
+// it dispatches through this map.
 var verbs = map[string]func(*run, context.Context, []string) error{
-	"register": (*run).register,
-	"revive":   (*run).revive,
-	"me":       (*run).me,
-	"set":      (*run).set,
-	"renew":    (*run).renew,
-	"bye":      (*run).bye,
-	"who":      (*run).who,
-	"path":     (*run).path,
-	"help":     (*run).help,
+	"register":     (*run).register,
+	"revive":       (*run).revive,
+	"me":           (*run).me,
+	"set":          (*run).set,
+	"renew":        (*run).renew,
+	"bye":          (*run).bye,
+	"who":          (*run).who,
+	"path":         (*run).path,
+	"help":         (*run).help,
+	"post":         (*run).post,
+	"inbox":        (*run).inbox,
+	"history":      (*run).history,
+	"receipts":     (*run).receipts,
+	"threads":      (*run).threads,
+	"follow":       (*run).follow,
+	"unfollow":     (*run).unfollow,
+	"reserve":      (*run).reserve,
+	"release":      (*run).release,
+	"reservations": (*run).reservations,
+	"delegate":     (*run).delegate,
 }
+
+func init() { verbs["as"] = (*run).as }
 
 // Run runs the command args names, after the global flags --self and
 // --provider <name>, and returns the process exit code.
