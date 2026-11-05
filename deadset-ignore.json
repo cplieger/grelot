@@ -1,54 +1,6 @@
 {
-  "description": "API that the server's push sender and the client's hooks and watcher call once they are built, and fields deadset-go cannot see json.Marshal read. Each staged entry goes in the change that adds its first caller.",
+  "description": "API that the client's hooks and watcher call once they are built. Each entry goes in the change that adds its first caller.",
   "ignore": [
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#ServerDoors.For",
-      "path": "internal/provider/serverdir.go",
-      "reason": "The server's push sender, not built yet, picks an identity's door with it."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#ServerDoors.All",
-      "path": "internal/provider/serverdir.go",
-      "reason": "The server's push sender, not built yet, lists its doors with it."
-    },
-    {
-      "code": "DS1301",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#Request.URL",
-      "path": "internal/provider/template.go",
-      "reason": "internal/transport's http door reads it; the server's push sender, not built yet, is that package's first caller."
-    },
-    {
-      "code": "DS1301",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#Request.Body",
-      "path": "internal/provider/template.go",
-      "reason": "internal/transport's http door reads it; the server's push sender, not built yet, is that package's first caller."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#Door.RenderRequest",
-      "path": "internal/provider/template.go",
-      "reason": "internal/transport's http door calls it; the server's push sender, not built yet, is that package's first caller."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/server#pushFailing",
-      "path": "internal/server/push.go",
-      "reason": "The server's push sender, not built yet, reports a send it will retry with it."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/server#pushOff",
-      "path": "internal/server/push.go",
-      "reason": "The server's push sender, not built yet, reports a door it turned off with it."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/store#NudgeByPush",
-      "path": "internal/store/nudge.go",
-      "reason": "The server's push sender, not built yet, records its sends with it."
-    },
     {
       "code": "DS1301",
       "symbol": "go://github.com/cplieger/grelot/internal/cli#reserveBody.Path",
@@ -456,6 +408,48 @@
       "symbol": "go://github.com/cplieger/grelot/internal/transport#EndEnded",
       "path": "internal/transport/line.go",
       "reason": "the server's standing wait, not built on these words yet, answers them as its end reasons."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#NewWatch",
+      "path": "internal/transport/watch.go",
+      "reason": "The client's watcher, not built yet, runs its exec, stdout or exit door with it."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#Watch.Nudge",
+      "path": "internal/transport/watch.go",
+      "reason": "The client's watcher, not built yet, delivers each nudge through it."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#Watch.Idle",
+      "path": "internal/transport/watch.go",
+      "reason": "The client's watcher, not built yet, sends its door's idle output through it when a hold lapses."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#Watch.End",
+      "path": "internal/transport/watch.go",
+      "reason": "The client's watcher, not built yet, sends its end line through it before it stops."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#Step.Exit",
+      "path": "internal/transport/watch.go",
+      "reason": "The client's watcher, not built yet, reads it to decide whether to stop after a delivery."
+    },
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#Step.Code",
+      "path": "internal/transport/watch.go",
+      "reason": "The client's watcher, not built yet, exits with it when it stops."
+    },
+    {
+      "code": "DS1004",
+      "symbol": "go://github.com/cplieger/grelot/internal/transport#EndLine",
+      "path": "internal/transport/line.go",
+      "reason": "The client's watcher, not built yet, sends it before it stops."
     }
   ]
 }
