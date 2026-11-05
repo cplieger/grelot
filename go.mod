@@ -4,6 +4,7 @@ go 1.27.3
 
 require (
 	github.com/cplieger/bolttable v1.0.0-dev.2
+	github.com/cplieger/go/httpclient v1.0.0-dev.2
 	github.com/cplieger/go/pathinside v1.0.0-dev.1
 	github.com/cplieger/go/yamlenv v1.0.0-dev.1
 	go.etcd.io/bbolt v1.5.0
