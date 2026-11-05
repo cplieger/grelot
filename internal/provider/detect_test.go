@@ -106,7 +106,17 @@ func TestDetectRefuses(t *testing.T) {
 			t.Errorf("invalid = %v, want [alpha zeta]", de.Invalid)
 		}
 		msg := err.Error()
-		for _, w := range []string{"none matched", "alpha, zeta invalid", "grelot provider check", "--provider <name>"} {
+		for _, w := range []string{"none matched", "providers alpha, zeta invalid", "grelot provider check on each file", "--provider <name>"} {
+			if !strings.Contains(msg, w) {
+				t.Errorf("line %q lacks %q", msg, w)
+			}
+		}
+	})
+	t.Run("one invalid file is named in the singular", func(t *testing.T) {
+		broken := files("alpha", "name: alpha\nsurprise: 1\n")
+		_, err := mustSet(t, detectSet, broken).Detect("", env("ZETA_ID", "z"), nil)
+		msg := err.Error()
+		for _, w := range []string{"; provider alpha invalid", "grelot provider check on its file"} {
 			if !strings.Contains(msg, w) {
 				t.Errorf("line %q lacks %q", msg, w)
 			}

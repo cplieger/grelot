@@ -22,8 +22,12 @@ func (e *DetectError) Error() string {
 		matched = "matched " + strings.Join(e.Matched, ", ")
 	}
 	invalid := ""
-	if len(e.Invalid) > 0 {
-		invalid = "; provider " + strings.Join(e.Invalid, ", ") + " invalid: run grelot provider check on its file"
+	switch len(e.Invalid) {
+	case 0:
+	case 1:
+		invalid = "; provider " + e.Invalid[0] + " invalid: run grelot provider check on its file"
+	default:
+		invalid = "; providers " + strings.Join(e.Invalid, ", ") + " invalid: run grelot provider check on each file"
 	}
 	return fmt.Sprintf("grelot cannot tell which host this shell runs in (%s)%s; run with --provider <name>, or set provider: <name> in the client config", matched, invalid)
 }
