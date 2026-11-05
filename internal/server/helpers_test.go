@@ -111,10 +111,10 @@ func newHarness(t *testing.T) *harness {
 
 // newHarnessWith is newHarness over a store opened with o, its logger,
 // clock and path root set by the harness.
-func newHarnessWith(t *testing.T, o store.Options) *harness {
+func newHarnessWith(t *testing.T, o store.Options, edits ...func(*Options)) *harness {
 	t.Helper()
 	clk := &clock{t: testNow}
-	h := buildHarness(t, o, clk.now)
+	h := buildHarness(t, o, clk.now, edits...)
 	h.clk = clk
 	h.http = httptest.NewServer(h.srv.Handler())
 	t.Cleanup(h.http.Close)
@@ -129,7 +129,8 @@ func newBubbleHarness(t *testing.T) *harness {
 	return buildHarness(t, store.Options{}, time.Now)
 }
 
-func buildHarness(t *testing.T, o store.Options, now func() time.Time) *harness {
+// buildHarness applies edits to the server's Options before New.
+func buildHarness(t *testing.T, o store.Options, now func() time.Time, edits ...func(*Options)) *harness {
 	t.Helper()
 	logs := newLogSink()
 	logger := slog.New(logs)
@@ -141,10 +142,14 @@ func buildHarness(t *testing.T, o store.Options, now func() time.Time) *harness 
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	push := &fakePush{states: map[uint64]pushState{}}
-	srv := New(&Options{
+	so := &Options{
 		Store: st, Logger: logger, Now: now, Version: testVersion, Push: push, Hub: hub,
 		Config: Config{Token: testToken, PathRoot: DefaultPathRoot},
-	})
+	}
+	for _, edit := range edits {
+		edit(so)
+	}
+	srv := New(so)
 	return &harness{t: t, store: st, srv: srv, logs: logs, push: push}
 }
 

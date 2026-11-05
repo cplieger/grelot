@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -25,9 +26,11 @@ type Options struct {
 	Push Pusher
 	// Hub must be the one whose Woke the store's Options.Woke calls; nil
 	// gives a hub no commit reaches, whose waits wake only at their timeout.
-	Hub     *Hub
-	Version string
-	Config  Config
+	Hub *Hub
+	// Providers is the providers folder; nil reads Config.ProvidersDir.
+	Providers fs.FS
+	Version   string
+	Config    Config
 }
 
 // Server serves the API over one open store.
@@ -40,6 +43,8 @@ type Server struct {
 	hub      *Hub
 	push     Pusher
 	stopping chan struct{}
+	// needles are the bearer and every door secret, cut from logged text.
+	needles  []string
 	version  string
 	cfg      Config
 	beat     atomic.Int64
@@ -62,9 +67,11 @@ func New(o *Options) *Server {
 	if hub == nil {
 		hub = NewHub()
 	}
+	doors := loadDoors(o, o.Logger)
 	return &Server{
 		store: o.Store, log: o.Logger, now: now, version: o.Version, cfg: o.Config,
 		presence: newPresence(), posts: newPostLimit(), hub: hub, push: push,
+		needles:  append([]string{o.Config.Token}, doors.Secrets()...),
 		bearer:   httpserver.NewStaticTokenVerifier(o.Config.Token),
 		stopping: make(chan struct{}),
 	}

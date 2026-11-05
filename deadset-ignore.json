@@ -14,12 +14,6 @@
       "reason": "The server's push sender, not built yet, lists its doors with it."
     },
     {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#ServerDoors.Secrets",
-      "path": "internal/provider/serverdir.go",
-      "reason": "The server, not built yet, redacts the door secrets from its logs with it."
-    },
-    {
       "code": "DS1301",
       "symbol": "go://github.com/cplieger/grelot/internal/provider#Request.URL",
       "path": "internal/provider/template.go",
@@ -30,12 +24,6 @@
       "symbol": "go://github.com/cplieger/grelot/internal/provider#Request.Body",
       "path": "internal/provider/template.go",
       "reason": "internal/transport's http door reads it; the server's push sender, not built yet, is that package's first caller."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#LoadServerDir",
-      "path": "internal/provider/serverdir.go",
-      "reason": "The server's push sender, not built yet, loads its doors with it."
     },
     {
       "code": "DS1004",
