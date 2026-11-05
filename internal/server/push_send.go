@@ -101,11 +101,18 @@ func (p *hostPush) State(id uint64) pushState {
 	return pushOK
 }
 
+// registered always installs a new entry, so a forget holding the old one
+// leaves it, and on the same door it keeps a pending retry, so a repeated
+// register never sends before the receiver's Retry-After.
 func (p *hostPush) registered(id uint64, prov, host string) {
 	d, ok := p.doors.For(prov, host)
 	p.mu.Lock()
 	if ok {
-		p.ids[id] = &pushee{door: d}
+		fresh := &pushee{door: d}
+		if e := p.ids[id]; e != nil && e.door.Door == d.Door {
+			fresh.retryAt, fresh.key, fresh.at = e.retryAt, e.key, e.at
+		}
+		p.ids[id] = fresh
 		p.marks[id] = struct{}{}
 	} else {
 		delete(p.ids, id)
@@ -116,17 +123,15 @@ func (p *hostPush) registered(id uint64, prov, host string) {
 
 func (p *hostPush) beat(ctx context.Context) {
 	p.mu.Lock()
-	ids := slices.Collect(maps.Keys(p.ids))
+	read := maps.Clone(p.ids)
 	p.mu.Unlock()
-	live, err := p.s.store.Live(ctx, ids)
+	live, err := p.s.store.Live(ctx, slices.Collect(maps.Keys(read)))
 	if err != nil {
 		return
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	for _, id := range ids {
+	for id, e := range read {
 		if !slices.Contains(live, id) {
-			delete(p.ids, id)
+			p.forget(id, e)
 		}
 	}
 }
@@ -213,15 +218,15 @@ func (p *hostPush) next() (time.Time, bool) {
 	return next, !next.IsZero()
 }
 
-// target is id's entry and door while push is on for it.
-func (p *hostPush) target(id uint64) (pushee, bool) {
+// target is id's entry, and a copy of it, while push is on for it.
+func (p *hostPush) target(id uint64) (cur *pushee, snap pushee, ok bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	e := p.ids[id]
 	if e == nil || e.off || p.doorOff[e.door.Door] {
-		return pushee{}, false
+		return nil, pushee{}, false
 	}
-	return *e, true
+	return e, *e, true
 }
 
 // edit runs fn on id's entry, if it still has one, under the lock.
@@ -238,7 +243,7 @@ func (p *hostPush) edit(id uint64, fn func(*pushee)) {
 // by the few sends that can race. It reports false once the sender stops.
 func (p *hostPush) look(ctx context.Context, id uint64) bool {
 	for range 3 {
-		e, ok := p.target(id)
+		cur, e, ok := p.target(id)
 		if !ok {
 			return true
 		}
@@ -247,7 +252,7 @@ func (p *hostPush) look(ctx context.Context, id uint64) bool {
 		case err != nil:
 			return p.lookupFailed(ctx, id, err)
 		case !found:
-			p.forget(id)
+			p.forget(id, cur)
 			return true
 		case st.Due == nil:
 			p.edit(id, func(e *pushee) { e.retryAt, e.at = time.Time{}, st.Next })
@@ -257,7 +262,7 @@ func (p *hostPush) look(ctx context.Context, id uint64) bool {
 		if p.waits(id, &e, st.Due, key) {
 			return true
 		}
-		if sent, ok := p.send(ctx, id, e.door, st.Due, key); !ok || !sent {
+		if sent, ok := p.send(ctx, id, cur, st.Due, key); !ok || !sent {
 			return ok
 		}
 	}
@@ -283,18 +288,19 @@ func (p *hostPush) waits(id uint64, e *pushee, due *store.Nudge, key sendKey) bo
 	return deferred
 }
 
-// send pushes due to id through d. sent is true when the door accepted it
-// and the nudge is recorded or was beaten to it; ok is false once the
-// sender stops.
-func (p *hostPush) send(ctx context.Context, id uint64, d provider.ServerDoor, due *store.Nudge, key sendKey) (sent, ok bool) {
+// send pushes due to id through cur's door. sent is true when the door
+// accepted it and the nudge is recorded or was beaten to it; ok is false
+// once the sender stops.
+func (p *hostPush) send(ctx context.Context, id uint64, cur *pushee, due *store.Nudge, key sendKey) (sent, ok bool) {
 	to, found, err := p.s.store.Addressee(ctx, id)
 	switch {
 	case err != nil:
 		return false, p.lookupFailed(ctx, id, err)
 	case !found:
-		p.forget(id)
+		p.forget(id, cur)
 		return false, true
 	}
+	d := cur.door
 	res, err := p.client.Send(ctx, d.Door, &provider.Data{
 		Line: transport.SignalLine(due.Seq, due.Count), Seq: due.Seq,
 		Session: to.Session, Identity: to.Name,
@@ -379,10 +385,14 @@ func (p *hostPush) doorRefused(d provider.ServerDoor, status int) {
 	p.s.hub.Woke(served)
 }
 
-func (p *hostPush) forget(id uint64) {
+// forget drops id's entry e, read before a store call; an entry a register
+// or revive installed meanwhile is newer than that read and stays.
+func (p *hostPush) forget(id uint64, e *pushee) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	delete(p.ids, id)
+	if p.ids[id] == e {
+		delete(p.ids, id)
+	}
 }
 
 // lookupFailed logs a store read that failed and looks again later; a

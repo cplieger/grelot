@@ -8,14 +8,14 @@ type pushState string
 const (
 	// pushNone is an identity no door serves.
 	pushNone pushState = "none"
-	// pushOK is a served identity whose last send was accepted, or that has
-	// had none yet.
+	// pushOK is a served identity with push on and no retry pending.
 	pushOK pushState = "ok"
 	// pushFailing is a served identity whose last send is to be retried;
 	// its standing waits may send the nudge meanwhile.
 	pushFailing pushState = "failing"
-	// pushOff is a served identity whose door, or its own push, is off
-	// until the server restarts or it registers again.
+	// pushOff is a served identity whose door is off until the server
+	// restarts, or whose own push is off until it registers again, is
+	// revived or the server restarts.
 	pushOff pushState = "off"
 )
 

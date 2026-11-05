@@ -272,6 +272,36 @@ func TestPush_aRetryLaterStatusRetriesTheSameKeyAfterRetryAfter(t *testing.T) {
 	}
 }
 
+func TestPush_registeringAgainKeepsAPendingRetryToItsRetryAfter(t *testing.T) {
+	t.Setenv(doorTokenEnv, doorSecret)
+	rcv := newPushReceiver(t, pushReply{status: http.StatusServiceUnavailable, header: map[string]string{"Retry-After": "20"}}, pushReply{status: http.StatusAccepted})
+	synctest.Test(t, func(t *testing.T) {
+		h := newPushHarness(t, rcv.kiroDoor()...)
+		h.mustRegisterAlone(sessA, "reader")
+		h.mustRegisterAlone(sessB, "writer")
+		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
+		synctest.Wait()
+
+		time.Sleep(5 * time.Second)
+		h.reRegister(sessA, "reader")
+		synctest.Wait()
+		if got := h.pushState(sessA); got != string(pushFailing) {
+			t.Errorf("push after registering again = %q, want failing", got)
+		}
+		time.Sleep(14 * time.Second)
+		synctest.Wait()
+		if n := len(rcv.requests()); n != 1 {
+			t.Fatalf("%d pushes a second before Retry-After, want 1", n)
+		}
+		time.Sleep(time.Second)
+		synctest.Wait()
+		key := pushKey(h.idOf(sessA), 0, 1)
+		if got := rcv.keys(t); !equalStrings(got, []string{key, key}) {
+			t.Errorf("keys = %v, want %s twice", got, key)
+		}
+	})
+}
+
 func TestPush_aStandingWaitSendsANudgeWhosePushFailedAndTheRetryStops(t *testing.T) {
 	t.Setenv(doorTokenEnv, doorSecret)
 	rcv := newPushReceiver(t, pushReply{status: http.StatusServiceUnavailable, header: map[string]string{"Retry-After": "20"}})
