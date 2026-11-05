@@ -103,8 +103,9 @@ type PathThread struct {
 }
 
 // Threads lists, by path, the live path threads at or under root, every
-// one when root is "". Refusals: KindInvalid for a path that is not
-// canonical; KindGone for a session with no live identity.
+// one when root is "". Like any request it clears ended (Seen).
+// Refusals: KindInvalid for a path that is not canonical; KindGone for a
+// session with no live identity.
 func (s *Store) Threads(ctx context.Context, c Caller, root string) ([]PathThread, error) {
 	prefix := "/"
 	if root != "" {
@@ -112,6 +113,9 @@ func (s *Store) Threads(ctx context.Context, c Caller, root string) ([]PathThrea
 			return nil, err
 		}
 		prefix = root
+	}
+	if _, err := s.Seen(ctx, c); err != nil {
+		return nil, err
 	}
 	out := []PathThread{}
 	err := s.read(ctx, func(r *bolttable.ReadTx) error {

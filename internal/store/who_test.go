@@ -107,6 +107,35 @@ func TestWho_filters(t *testing.T) {
 	}
 }
 
+func TestWho_textFindsAParentByItsDelegate(t *testing.T) {
+	s := whoFixture(t)
+	mustRegisterDelegate(t, s, sess("toolbelt-dev"), mustGrant(t, s, grantFrom("toolbelt-dev", "audit")).Link)
+	for _, tc := range []struct {
+		text string
+		want []string
+	}{
+		{"AUDIT", []string{"toolbelt-dev"}},
+		{"review the diff", []string{"toolbelt-dev"}},
+		{"chooser", []string{"toolbelt-dev"}},
+		{"no such work", nil},
+	} {
+		ps, err := s.Who(t.Context(), Caller{Session: sess("docs-writer")}, &WhoQuery{Text: tc.text})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for i := range ps {
+			got = append(got, ps[i].Name)
+			if ps[i].Name == "toolbelt-dev" && (len(ps[i].Delegates) != 1 || ps[i].Delegates[0].Name != "toolbelt-dev/audit") {
+				t.Errorf("q=%s: toolbelt-dev delegates %+v, want toolbelt-dev/audit nested", tc.text, ps[i].Delegates)
+			}
+		}
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("q=%s: %v, want %v", tc.text, got, tc.want)
+		}
+	}
+}
+
 func TestWho_refusesAFilterThatIsNotCanonical(t *testing.T) {
 	s := whoFixture(t)
 	for _, tc := range []struct {

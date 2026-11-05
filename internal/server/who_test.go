@@ -265,3 +265,61 @@ func anyStrings(v any) []string {
 	}
 	return out
 }
+
+func TestWho_aPostToTheAgentWhoseDescriptionFitsReachesItAlone(t *testing.T) {
+	h := whoHarness(t)
+	got := entries(t, h.as(sessOf("docs-writer"), http.MethodGet, "/v1/identities?repo=web-terminal-kiro", nil))
+	var pick string
+	for name, e := range got {
+		if d, _ := e["description"].(string); strings.Contains(d, "pty") {
+			pick = name
+		}
+	}
+	if pick != "wtk-server" {
+		t.Fatalf("the agent whose description names the pty is %q, want wtk-server", pick)
+	}
+	h.mustPost(sessOf("docs-writer"), map[string]any{"agent": pick}, "resize question")
+	for _, name := range []string{"wtk-server", "wtk-ui", "toolbelt-dev"} {
+		has := false
+		self := map[string]string{headerSession: sessOf(name), headerSelf: "1"}
+		for _, e := range entriesOf(t, h.request(http.MethodGet, "/v1/inbox", nil, self)) {
+			if e["subject"] == "resize question" {
+				has = true
+			}
+		}
+		if has != (name == "wtk-server") {
+			t.Errorf("%s's inbox holds the post: %v, want only wtk-server's", name, has)
+		}
+	}
+}
+
+func TestWho_aDelegateIsOnlineWhileItWasSeenUnder90s(t *testing.T) {
+	h := whoHarness(t)
+	delegateOn := func() any {
+		ds, _ := entries(t, h.as(sessOf("docs-writer"), http.MethodGet, "/v1/identities?q=chooser", nil))["toolbelt-dev"]["delegates"].([]any)
+		if len(ds) != 1 {
+			t.Fatalf("toolbelt-dev delegates %v, want one", ds)
+		}
+		d, _ := ds[0].(map[string]any)
+		return d["online"]
+	}
+	if on := delegateOn(); on != true {
+		t.Errorf("a delegate just registered: online %v, want true", on)
+	}
+	h.clk.advance(89 * time.Second)
+	if on := delegateOn(); on != true {
+		t.Errorf("a delegate seen 89 s ago: online %v, want true", on)
+	}
+	h.clk.advance(2 * time.Second)
+	if on := delegateOn(); on != false {
+		t.Errorf("a delegate seen 91 s ago: online %v, want false", on)
+	}
+}
+
+func TestWho_textFindsAParentByItsDelegate(t *testing.T) {
+	h := whoHarness(t)
+	got := entries(t, h.as(sessOf("docs-writer"), http.MethodGet, "/v1/identities?q=reviewing", nil))
+	if names := slices.Sorted(maps.Keys(got)); !slices.Equal(names, []string{"toolbelt-dev"}) {
+		t.Errorf("q=reviewing: %v, want toolbelt-dev, whose delegate is reviewing the chooser", names)
+	}
+}

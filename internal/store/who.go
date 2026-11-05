@@ -15,7 +15,8 @@ import (
 // with a work path or follow at, above or under it; Repo those with a work
 // path at or under <path root>/<Repo>; Holds those holding a grant that
 // overlaps it, and Queued those with a queue entry that does; Text those
-// whose name, description, host label or a path holds it, ignoring case;
+// whose name, description, host label or a path holds it, or for which
+// a nested delegate's name or description holds it, ignoring case;
 // Online those it reports online; All adds dormant ones; Here keeps only
 // those that share the caller's environment.
 type WhoQuery struct {
@@ -94,15 +95,30 @@ func (s *Store) Who(ctx context.Context, c Caller, query *WhoQuery) ([]Peer, err
 			}
 			return true, nil
 		})
-		for i := range shown {
-			p := s.parentPeer(caller, &shown[i], delegates[shown[i].ID])
-			p.Reservations, p.Queued = held[shown[i].ID], queued[shown[i].ID]
-			out = append(out, p)
-		}
+		out = s.whoPeers(caller, q.Text, shown, delegates, held, queued)
 		return err
 	})
 	slices.SortFunc(out, func(a, b Peer) int { return strings.Compare(a.Name, b.Name) })
 	return out, err
+}
+
+// whoPeers is each of shown that text matches as caller sees it, with
+// its delegates and reservations.
+func (s *Store) whoPeers(
+	caller party, text string, shown []identityRow, delegates map[uint64][]identityRow,
+	held map[uint64][]PeerReservation, queued map[uint64][]PeerQueued,
+) []Peer {
+	var out []Peer
+	for i := range shown {
+		id := shown[i].ID
+		if !whoText(text, &shown[i], delegates[id]) {
+			continue
+		}
+		p := s.parentPeer(caller, &shown[i], delegates[id])
+		p.Reservations, p.Queued = held[id], queued[id]
+		out = append(out, p)
+	}
+	return out
 }
 
 // checkWho validates q's paths and repo, and lowercases its text.
@@ -121,8 +137,8 @@ func (s *Store) checkWho(q *WhoQuery) error {
 	return nil
 }
 
-// whoShows reports whether q lists v, a parent, for a caller at where;
-// held and queued are v's reservations. q.Text is lowercased.
+// whoShows reports whether q's filters other than Text list v, a parent,
+// for a caller at where; held and queued are v's reservations.
 func (s *Store) whoShows(q *WhoQuery, v *identityRow, where Where, held []PeerReservation, queued []PeerQueued) bool {
 	switch {
 	case v.State == stateDormant && !q.All, q.Here && !shareEnvironment(where, v.Where):
@@ -137,11 +153,22 @@ func (s *Store) whoShows(q *WhoQuery, v *identityRow, where Where, held []PeerRe
 		return false
 	case q.Online != nil && !s.online(q.Online, v):
 		return false
-	case q.Text == "":
+	}
+	return true
+}
+
+// whoText reports whether text, lowercased, is in v's name, description,
+// host label or a work path, or in a delegate's name or description; ""
+// matches every parent.
+func whoText(text string, v *identityRow, delegates []identityRow) bool {
+	if text == "" {
 		return true
 	}
 	hay := append([]string{v.Name, v.Description, v.Host}, v.Paths...)
-	return slices.ContainsFunc(hay, func(h string) bool { return strings.Contains(strings.ToLower(h), q.Text) })
+	for i := range delegates {
+		hay = append(hay, delegates[i].Name, delegates[i].Description)
+	}
+	return slices.ContainsFunc(hay, func(h string) bool { return strings.Contains(strings.ToLower(h), text) })
 }
 
 func (s *Store) online(pred func(*Identity) bool, v *identityRow) bool {

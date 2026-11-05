@@ -124,6 +124,12 @@ func (s *Server) onlineAt(now time.Time) func(*store.Identity) bool {
 	return func(id *store.Identity) bool { return !id.Ended && s.presence.online(id.ID, now) }
 }
 
+// delegateOnline reports, at now, whether a delegate is online: it made a
+// request under onlineFor ago, since it never holds a standing wait.
+func delegateOnline(d *store.Identity, now time.Time) bool {
+	return !d.LastSeen.IsZero() && now.Sub(d.LastSeen) < onlineFor
+}
+
 // inTurnOpened records an in-turn wait of id starting; the caller calls
 // inTurnClosed when it ends.
 func (p *presence) inTurnOpened(id uint64) { p.update(id, func(m *mark) { m.inTurn++ }) }

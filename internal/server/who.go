@@ -88,7 +88,7 @@ func (s *Server) who(r *http.Request, c store.Caller) (status int, body any, err
 	}
 	entries := make([]any, 0, len(peers))
 	for i := range peers {
-		e := whoOut(&peers[i], isOnline)
+		e := whoOut(&peers[i], isOnline, now)
 		if fields == nil {
 			entries = append(entries, e)
 			continue
@@ -102,7 +102,7 @@ func (s *Server) who(r *http.Request, c store.Caller) (status int, body any, err
 	return http.StatusOK, map[string]any{"identities": entries}, nil
 }
 
-func whoOut(p *store.Peer, online func(*store.Identity) bool) whoEntry {
+func whoOut(p *store.Peer, online func(*store.Identity) bool, now time.Time) whoEntry {
 	e := whoEntry{
 		Expires: p.Expires.UTC(), LastSeen: p.LastSeen.UTC(), Name: p.Name, Description: p.Description,
 		State: p.State, Host: p.Host, OS: p.OS, Arch: p.Arch, Relation: p.Relation,
@@ -119,7 +119,7 @@ func whoOut(p *store.Peer, online func(*store.Identity) bool) whoEntry {
 	for i := range p.Delegates {
 		d := &p.Delegates[i]
 		e.Delegates = append(e.Delegates, whoDelegateEntry{
-			LastSeen: d.LastSeen.UTC(), Name: d.Name, Description: d.Description, Online: online(&d.Identity),
+			LastSeen: d.LastSeen.UTC(), Name: d.Name, Description: d.Description, Online: delegateOnline(&d.Identity, now),
 		})
 	}
 	return e

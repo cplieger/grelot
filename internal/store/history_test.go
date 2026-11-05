@@ -456,3 +456,17 @@ func TestHistory_clearsEnded(t *testing.T) {
 		t.Error("ended still set after a history read, want it cleared like any identity request")
 	}
 }
+
+func TestThreads_clearsEnded(t *testing.T) {
+	s, _ := openClockStore(t)
+	bravo := regAt(t, s, "bravo", "/workspace/bravo")
+	if err := s.EndSession(t.Context(), sess("bravo")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Threads(t.Context(), Caller{Session: sess("bravo")}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if getIdentity(t, s, bravo.ID).Ended {
+		t.Error("ended still set after a threads read, want it cleared like any identity request")
+	}
+}
