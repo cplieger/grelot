@@ -83,7 +83,7 @@ hooks:
     when: {reason: [delete]}
   subagent_stop:
     event: SubagentStop
-    stdin: {agent_id: agent_id}
+    stdin: {agent_id: agent_id, session: agent_id}
 `
 
 func TestLoadFull(t *testing.T) {
@@ -144,8 +144,8 @@ func TestLoadFull(t *testing.T) {
 		if h.SessionStart == nil || h.SessionStart.Source == nil || !slices.Equal(h.SessionStart.Source.TakeOver, []string{"clear"}) {
 			t.Errorf("session_start = %+v", h.SessionStart)
 		}
-		if h.TurnEnd == nil || h.SubagentStop == nil {
-			t.Errorf("turn_end %v, subagent_stop %v", h.TurnEnd, h.SubagentStop)
+		if h.TurnEnd == nil || h.SubagentStop == nil || h.SubagentStop.Stdin.Session != "agent_id" {
+			t.Errorf("turn_end %v, subagent_stop %+v", h.TurnEnd, h.SubagentStop)
 		}
 	})
 	t.Run("set keys", func(t *testing.T) {
@@ -221,6 +221,8 @@ func TestLoadRefuses(t *testing.T) {
 		{"rewrite output", "name: example\nhooks:\n  prompt: {event: P, outputs: {rewrite: {text: x}}}\n", []string{`"rewrite"`}},
 		{"block at session_start", "name: example\nhooks:\n  session_start: {event: S, outputs: {block: {text: x}}}\n", []string{`"block"`}},
 		{"outputs on a lifecycle role", "name: example\nhooks:\n  session_end: {event: E, outputs: {}}\n", []string{`"outputs"`}},
+		{"stdin session outside subagent_stop", "name: example\nhooks:\n  session_end: {event: E, stdin: {session: agent_id}}\n", []string{`"session"`}},
+		{"subagent_stop session path", "name: example\nhooks:\n  subagent_stop: {event: E, stdin: {session: 'a..b'}}\n", []string{"hooks.subagent_stop.stdin.session", "stdin field path"}},
 		{"signal outside prompt", "name: example\nhooks:\n  stop: {event: S, signal: x}\n", []string{`"signal"`}},
 		{"once_per_turn outside stop", "name: example\nhooks:\n  prompt: {event: P, once_per_turn: true}\n", []string{`"once_per_turn"`}},
 		{"second document", "name: example\n---\nname: other\n", []string{"more than one YAML document"}},

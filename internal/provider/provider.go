@@ -122,7 +122,7 @@ type Hooks struct {
 	Stop         *StopRole         `yaml:"stop"`
 	TurnEnd      *LifecycleRole    `yaml:"turn_end"`
 	SessionEnd   *LifecycleRole    `yaml:"session_end"`
-	SubagentStop *LifecycleRole    `yaml:"subagent_stop"`
+	SubagentStop *SubagentStopRole `yaml:"subagent_stop"`
 }
 
 // Role holds the keys every hook role takes.
@@ -213,11 +213,26 @@ type StopOutputs struct {
 	Notice *Output `yaml:"notice"`
 }
 
-// LifecycleRole is turn_end, session_end or subagent_stop: each reports to
-// the server and prints nothing.
+// LifecycleRole is turn_end or session_end: each reports to the server and
+// prints nothing.
 type LifecycleRole struct {
 	Stdin Stdin `yaml:"stdin"`
 	Role  `yaml:",inline"`
+}
+
+// SubagentStopRole is subagent_stop: it ends the delegate a subagent's own
+// session holds and prints nothing.
+type SubagentStopRole struct {
+	Stdin SubagentStdin `yaml:"stdin"`
+	Role  `yaml:",inline"`
+}
+
+// SubagentStdin adds Session, the path of the session the subagent's own
+// shell carries, for a host whose subagent hooks name the parent's at
+// session.stdin; session.stdin when empty.
+type SubagentStdin struct {
+	AgentID string `yaml:"agent_id"`
+	Session string `yaml:"session"`
 }
 
 // Has reports whether the file set the top-level key itself, which extends

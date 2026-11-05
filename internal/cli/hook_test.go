@@ -280,7 +280,7 @@ func TestHook_writesNothing(t *testing.T) {
 			hooked(t, a, "alpha", hookAlphaFile+"stray: key\n")
 			return []string{"hook", "alpha", "session_start"}
 		},
-		"no session in the shell": func(a *agent) []string {
+		"no session in the shell or the input": func(a *agent) []string {
 			delete(a.vars, "ALPHA_ID")
 			return []string{"hook", "alpha", "session_start"}
 		},

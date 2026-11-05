@@ -38,8 +38,11 @@ type hookCall struct {
 	*run
 	in    hook.Input
 	marks *hook.Marks
-	// session is the environment's host session id.
+	// session is the environment's host session id, "" when the hook
+	// process has none.
 	session string
+	// own is the host session the hook acts as: session, or the stdin's.
+	own string
 	// printed are the marks emit sets once it has printed the text that
 	// carries them; a run that prints nothing spends none.
 	printed [][2]string
@@ -59,19 +62,27 @@ func (r *run) hook(ctx context.Context, args []string) error {
 		return nil
 	}
 	p, err := r.Providers.Get(args[0])
-	if err != nil {
-		return nil
-	}
-	session, err := p.SessionID(r.Lookup)
-	if err != nil {
+	if err != nil || p.Session.Env == "" {
 		return nil
 	}
 	in, err := hook.ReadInput(r.Stdin)
 	if err != nil {
 		return nil
 	}
+	// A host may leave its session variable out of hook processes; the
+	// hook then acts as its stdin session, the one the agent's own shell
+	// carries in that variable.
+	session, _ := p.SessionID(r.Lookup)
+	own := session
+	if own == "" && p.Session.Stdin != "" {
+		own = in.String(p.Session.Stdin)
+	}
+	if own == "" {
+		return nil
+	}
 	r.prov = p
-	h := &hookCall{run: r, in: in, session: session, marks: hook.NewMarks(r.ConfigDir, r.now)}
+	r.hookSession = p.Name + ":" + own
+	h := &hookCall{run: r, in: in, session: session, own: own, marks: hook.NewMarks(r.ConfigDir, r.now)}
 	return h.role(ctx, args[1])
 }
 
@@ -103,21 +114,28 @@ func (h *hookCall) role(ctx context.Context, name string) error {
 			return h.stop(ctx, hs.Stop)
 		}
 	case roleTurnEnd, roleSessionEnd, roleSubagentStop:
-		if role := lifecycleRole(hs, name); role != nil && h.in.Matches(role.When) {
-			h.lifecycle(ctx, name, role)
-		}
+		h.report(ctx, name)
 	}
 	return nil
 }
 
-func lifecycleRole(hs *provider.Hooks, name string) *provider.LifecycleRole {
-	switch name {
-	case roleTurnEnd:
-		return hs.TurnEnd
-	case roleSessionEnd:
-		return hs.SessionEnd
+// report runs a lifecycle role when the provider spells it and its when
+// filter passes.
+func (h *hookCall) report(ctx context.Context, name string) {
+	hs := &h.prov.Hooks
+	if name == roleSubagentStop {
+		if hs.SubagentStop != nil && h.in.Matches(hs.SubagentStop.When) {
+			h.subagentStop(ctx, hs.SubagentStop)
+		}
+		return
 	}
-	return hs.SubagentStop
+	role := hs.SessionEnd
+	if name == roleTurnEnd {
+		role = hs.TurnEnd
+	}
+	if role != nil && h.in.Matches(role.When) {
+		h.lifecycle(ctx, name, role)
+	}
 }
 
 func (h *hookCall) classify(agentID string) hook.Class {

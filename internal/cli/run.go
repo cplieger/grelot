@@ -26,7 +26,9 @@ type run struct {
 	verb         string
 	providerFlag string
 	// handle is the delegate a grelot as command acts as.
-	handle      string
+	handle string
+	// hookSession is the session a hook acts as, set when it runs.
+	hookSession string
 	root        string
 	ancestors   []proctree.Process
 	readTree    bool
@@ -107,6 +109,9 @@ func (r *run) client(identity bool) (*client.API, error) {
 }
 
 func (r *run) session() (string, error) {
+	if r.hookSession != "" {
+		return r.hookSession, nil
+	}
 	p, err := r.provider()
 	if err != nil {
 		return "", err

@@ -390,6 +390,13 @@ func (r *LifecycleRole) check() error {
 	return firstErr(r.checkRole(), r.Stdin.check())
 }
 
+func (r *SubagentStopRole) check() error {
+	if r == nil {
+		return nil
+	}
+	return firstErr(r.checkRole(), checkPath("stdin.agent_id", r.Stdin.AgentID), checkPath("stdin.session", r.Stdin.Session))
+}
+
 func (r *PromptRole) check() error {
 	if r == nil {
 		return nil
