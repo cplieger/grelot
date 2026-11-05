@@ -1,10 +1,13 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/cplieger/grelot/internal/store"
@@ -115,4 +118,31 @@ func TestDecode_bodyOver128KiBIs413(t *testing.T) {
 	if r := h.as(sessA, http.MethodPost, "/v1/register", body); r.status != http.StatusRequestEntityTooLarge {
 		t.Errorf("status %d, want 413: %s", r.status, r.raw)
 	}
+}
+
+func TestSweeper_aServerAtRestLogsNoPeriodicLine(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h := newBubbleHarness(t)
+		h.mustRegisterAlone(sessA, "reader")
+		h.mustRegisterAlone(sessB, "writer")
+		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
+		if r := h.as(sessA, http.MethodPost, "/v1/reservations", map[string]any{"path": "/workspace/reader/main.go", "reason": "editing", "ttl": "1h"}); r.status != http.StatusCreated {
+			t.Fatalf("reserve: %d %s", r.status, r.raw)
+		}
+		before := len(h.logs.atLeast(slog.LevelDebug))
+
+		ctx, cancel := context.WithCancel(t.Context())
+		swept := make(chan error, 1)
+		go func() { swept <- h.store.Run(ctx, func() { h.srv.Beat(ctx) }) }()
+		time.Sleep(10 * time.Minute)
+		synctest.Wait()
+		cancel()
+		if err := <-swept; err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+
+		if lines := h.logs.atLeast(slog.LevelDebug)[before:]; len(lines) != 0 {
+			t.Errorf("%d lines over ten quiet minutes, the first %s %q, want none", len(lines), lines[0].Level, lines[0].Message)
+		}
+	})
 }

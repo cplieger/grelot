@@ -115,6 +115,8 @@ type harness struct {
 	http  *httptest.Server
 	clk   *clock
 	push  *fakePush
+	// metrics is the page the store and server record into.
+	metrics *obs.Metrics
 	// open opens the store at dbPath and builds the server over it.
 	open   func()
 	logs   logSink
@@ -169,7 +171,7 @@ func buildHarness(t *testing.T, o store.Options, now func() time.Time, edits ...
 		for _, edit := range edits {
 			edit(opts)
 		}
-		h.store, h.srv = st, New(opts)
+		h.store, h.srv, h.metrics = st, New(opts), m
 		t.Cleanup(h.srv.Release)
 	}
 	h.open()

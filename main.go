@@ -97,9 +97,8 @@ func clientCommand(args []string, stdout, stderr io.Writer) int {
 	}, args)
 }
 
-// serve opens the store, sweeps it, logs the state line and serves the API
-// on addr until ctx ends, then waits for the sweeper and the state line and
-// closes the store. The health marker at markerPath is fresh while the
+// serve opens the store, sweeps it and serves the API on addr until ctx
+// ends, then waits for the sweeper and closes the store. The health marker at markerPath is fresh while the
 // sweeper commits.
 func serve(ctx context.Context, cfg *server.Config, addr, markerPath string, logger *slog.Logger) error {
 	hub := server.NewHub()
@@ -130,16 +129,10 @@ func serve(ctx context.Context, cfg *server.Config, addr, markerPath string, log
 			srv.Beat(ctx)
 		})
 	}()
-	stated := make(chan struct{})
-	go func() {
-		srv.LogState(ctx)
-		close(stated)
-	}()
 	logger.Info("listening", "addr", ln.Addr().String(), "version", version)
 	err = httpserver.Run(ctx, srv.HTTPServer(), ln, nil,
 		httpserver.WithPreDrain(func(context.Context) { srv.Release() }))
 	cancel()
-	<-stated
 	if serr := <-swept; err == nil {
 		err = serr
 	}

@@ -10,12 +10,13 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/cplieger/go/httpserver"
+	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
 )
 
-// scrape reads /metrics with no headers into series name, labels
-// included as the page prints them (sorted by name), to value.
-func (h *harness) scrape() map[string]float64 {
+// page reads /metrics with no headers.
+func (h *harness) page() string {
 	h.t.Helper()
 	req, err := http.NewRequestWithContext(h.t.Context(), http.MethodGet, h.base()+"/metrics", http.NoBody)
 	if err != nil {
@@ -27,8 +28,15 @@ func (h *harness) scrape() map[string]float64 {
 	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/plain") {
 		h.t.Fatalf("GET /metrics: %d %q", resp.StatusCode, resp.Header.Get("Content-Type"))
 	}
+	return string(raw)
+}
+
+// scrape reads /metrics into series name, labels included as the page
+// prints them (sorted by name), to value.
+func (h *harness) scrape() map[string]float64 {
+	h.t.Helper()
 	out := map[string]float64{}
-	for line := range strings.SplitSeq(string(raw), "\n") {
+	for line := range strings.SplitSeq(h.page(), "\n") {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -261,4 +269,138 @@ func TestMetrics_eachPushTryIsCountedByDoorAndOutcome(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestMetrics_noLabelValueNamesAnAgentPathSubjectOrSession(t *testing.T) {
+	h := newHarness(t)
+	const (
+		sessQ   = "kiro-cli:session-quillfeather"
+		sessM   = "kiro-cli:session-marrowbone"
+		repo    = "/workspace/zephyrine"
+		subject = "ochre lantern"
+	)
+	for sess, name := range map[string]string{sessQ: "quillfeather", sessM: "marrowbone"} {
+		if r := h.as(sess, http.MethodPost, "/v1/register", registerBody(name, "6h", repo)); r.status != http.StatusCreated {
+			t.Fatalf("register %s: %d %s", name, r.status, r.raw)
+		}
+	}
+	h.mustPost(sessQ, map[string]any{"agent": "marrowbone"}, subject)
+	h.mustPost(sessQ, map[string]any{"path": repo}, subject)
+	h.mustPost(sessQ, announce, subject)
+	if r := h.as(sessQ, http.MethodPost, "/v1/reservations", map[string]any{"path": repo + "/internal", "reason": "editing", "ttl": "1h"}); r.status != http.StatusCreated {
+		t.Fatalf("reserve: %d %s", r.status, r.raw)
+	}
+	handle := h.grantDelegate(sessQ, "tanglewood")
+	h.request(http.MethodPost, "/v1/posts", postBody(map[string]any{"path": "/workspace/elsewhere"}, subject, "a body"),
+		map[string]string{headerSession: sessQ, headerAs: handle})
+	h.as(sessM, http.MethodGet, "/v1/inbox", nil)
+	h.as(sessM, http.MethodGet, "/v1/history?path="+repo, nil)
+	h.as(sessM, http.MethodGet, "/v1/identities/quillfeather", nil)
+
+	page := h.page()
+	for _, s := range []string{"quillfeather", "marrowbone", "zephyrine", "elsewhere", "ochre", "tanglewood", handle, "session-"} {
+		if strings.Contains(page, s) {
+			t.Errorf("the page carries %q", s)
+		}
+	}
+}
+
+// seriesBudget caps the page at its worst case: the strict product of
+// every route and every code, with each latency bucket a series, is about
+// 730, so a new label that multiplies it trips this.
+const seriesBudget = 1000
+
+func TestMetrics_seriesStayBoundedAtTheWorstCase(t *testing.T) {
+	t.Setenv(doorTokenEnv, doorSecret)
+	// Eight doors stands for the largest folder an operator runs: two per
+	// shipped coding tool.
+	const doors = 8
+	var files []string
+	for i := range doors {
+		name := "tool" + strconv.Itoa(i)
+		files = append(files, name, doorFile(name, "door_token", "    match: {host: host-"+strconv.Itoa(i)+"/app}\n"))
+	}
+	h := newHarnessWith(t, store.Options{}, pushFrom(files...))
+
+	// One request per route the API serves, no session sent, so each
+	// answers at once.
+	for _, r := range [][2]string{
+		{"POST", "/v1/register"},
+		{"POST", "/v1/revive"},
+		{"GET", "/v1/me"},
+		{"PATCH", "/v1/me"},
+		{"DELETE", "/v1/me"},
+		{"GET", "/v1/identities"},
+		{"POST", "/v1/posts"},
+		{"GET", "/v1/threads"},
+		{"GET", "/v1/messages/1/receipts"},
+		{"GET", "/v1/history"},
+		{"PUT", "/v1/follows"},
+		{"DELETE", "/v1/follows"},
+		{"POST", "/v1/inbox/ack"},
+		{"POST", "/v1/reservations"},
+		{"GET", "/v1/reservations"},
+		{"PATCH", "/v1/reservations/1"},
+		{"DELETE", "/v1/reservations/1"},
+		{"POST", "/v1/delegates"},
+		{"DELETE", "/v1/delegates/review"},
+		{"POST", "/v1/lifecycle"},
+		{"POST", "/v1/events/hold"},
+		{"POST", "/v1/events/wait"},
+		{"GET", "/v1/inbox"},
+		{"GET", "/v1/no-such-route"},
+		{"GET", "/healthz"},
+		{"GET", "/no-such-page"},
+	} {
+		h.request(r[0], r[1], nil, nil)
+	}
+	h.page()
+	var routes []string
+	for name := range h.scrape() {
+		if rest, ok := strings.CutPrefix(name, `grelot_http_request_duration_seconds_count{route="`); ok {
+			routes = append(routes, strings.TrimSuffix(rest, `"}`))
+		}
+	}
+	// The label drops the method: 18 /v1 paths, the /v1/ catch-all,
+	// /healthz, /metrics and unmatched.
+	if len(routes) != 22 {
+		t.Fatalf("%d route labels %v, want 22", len(routes), routes)
+	}
+
+	for _, route := range routes {
+		for _, code := range []int{200, 201, 202, 204, 400, 401, 403, 404, 405, 409, 410, 413, 426, 429, 500, 503, 507} {
+			h.metrics.RecordHTTP(httpserver.RequestMetric{Path: route, Status: code, Latency: 30 * time.Second})
+		}
+	}
+	for i := range doors {
+		for _, outcome := range []string{obs.SendAccepted, obs.SendRetry, obs.SendGaveUp, obs.SendGone} {
+			h.metrics.PushSends.Inc("tool"+strconv.Itoa(i)+"/push", outcome)
+		}
+	}
+	for _, kind := range []string{"announce", "path", "direct", "cards"} {
+		h.metrics.Posts.Inc(kind)
+	}
+	for _, via := range []string{"push", "watcher", "hook"} {
+		for _, attempt := range []string{obs.AttemptFirst, obs.AttemptRepeat} {
+			h.metrics.Nudges.Inc(via, attempt)
+		}
+		h.metrics.NudgeDelay.Observe(1, via)
+	}
+	worst := h.scrape()
+	if n := len(worst); n > seriesBudget {
+		t.Errorf("%d series at the worst case, want at most %d", n, seriesBudget)
+	}
+	t.Logf("%d series at the worst case", len(worst))
+
+	t.Run("activity adds none", func(t *testing.T) {
+		for i := range 40 {
+			sess := "kiro-cli:session-" + strconv.Itoa(i)
+			h.mustRegister(sess, "agent-"+strconv.Itoa(i))
+			h.mustPost(sess, announce, "subject "+strconv.Itoa(i))
+			h.as(sess, http.MethodGet, "/v1/history?path=/workspace/repo-"+strconv.Itoa(i), nil)
+		}
+		if n := len(h.scrape()); n != len(worst) {
+			t.Errorf("%d series after 40 agents posted, want the %d of the worst case", n, len(worst))
+		}
+	})
 }

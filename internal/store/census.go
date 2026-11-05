@@ -7,7 +7,7 @@ import (
 	"github.com/cplieger/bolttable"
 )
 
-// Census is what the minute state line counts. Unread and Oldest cover
+// Census is what the /metrics gauges read. Unread and Oldest cover
 // the wake deliveries past read of live identities only: a dormant
 // identity's mail waits for a revival, and counting it would hold Oldest
 // at days.
