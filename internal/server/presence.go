@@ -14,6 +14,10 @@ const (
 	onlineFor = 90 * time.Second
 	// turnLapse bounds an open turn whose end no hook reports.
 	turnLapse = 5 * time.Minute
+	// ackGrace is how long mail an in-turn wait returned waits for the
+	// client's ack, which follows the printed page at once, before a first
+	// nudge covers it.
+	ackGrace = 30 * time.Second
 )
 
 // presence is what the server knows, in memory only, of each identity's
@@ -33,6 +37,10 @@ type mark struct {
 	closed time.Time
 	// turnAt is when the open turn was last set, zero when none is.
 	turnAt time.Time
+	// servedAt is when an in-turn wait last returned wake mail, up to seq
+	// served, which its ack is still to mark read.
+	servedAt time.Time
+	served   uint64
 	// sent is the last nudge a standing wait sent, and sends counts them,
 	// so every wait open at that send returns it.
 	sent  nudgeJSON
@@ -113,10 +121,29 @@ func (p *presence) online(id uint64, now time.Time) bool {
 // inTurnClosed when it ends.
 func (p *presence) inTurnOpened(id uint64) { p.update(id, func(m *mark) { m.inTurn++ }) }
 
-func (p *presence) inTurnClosed(id uint64) { p.update(id, func(m *mark) { m.inTurn-- }) }
+// inTurnClosed ends an in-turn wait of id; served is the newest wake seq
+// it returned, 0 for none.
+func (p *presence) inTurnClosed(id, served uint64, now time.Time) {
+	p.update(id, func(m *mark) {
+		m.inTurn--
+		if served > 0 {
+			m.served, m.servedAt = served, now
+		}
+	})
+}
 
-// inTurnOpen reports whether id holds an in-turn wait.
-func (p *presence) inTurnOpen(id uint64) bool { return p.get(id).inTurn > 0 }
+// inTurnHolds reports whether an in-turn wait of id covers a first nudge
+// up to seq at now: one is open, or one returned that mail under ackGrace
+// ago, until is then when that ends. One lock reads both, so a wait that
+// closes in between is never missed.
+func (p *presence) inTurnHolds(id, seq uint64, now time.Time) (until time.Time, ok bool) {
+	m := p.get(id)
+	if m.inTurn > 0 {
+		return time.Time{}, true
+	}
+	until = m.servedAt.Add(ackGrace)
+	return until, seq <= m.served && now.Before(until)
+}
 
 // sawStop records id's stop hook, without which no turn of id is kept open.
 func (p *presence) sawStop(id uint64) { p.update(id, func(m *mark) { m.stopSeen = true }) }

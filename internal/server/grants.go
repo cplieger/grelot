@@ -205,10 +205,10 @@ func (s *Server) lifecycle(r *http.Request, c store.Caller) (status int, body an
 		if me, err = s.store.Seen(ctx, c); err != nil {
 			break
 		}
-		if req.Event == eventSessionEnd {
-			if err = s.store.EndSession(ctx, c.Session); err == nil {
-				s.rewait(me.ID)
-			}
+		if req.Event == eventTurnEnd {
+			s.endTurn(me.ID)
+		} else if err = s.store.EndSession(ctx, c.Session); err == nil {
+			s.rewait(me.ID)
 		}
 	default:
 		return 0, nil, badRequest("event must be session_end, subagent_stop or turn_end")

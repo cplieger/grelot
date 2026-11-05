@@ -214,8 +214,13 @@ const (
 	headerMachine     = "Grelot-Machine"
 )
 
-// me is GET /v1/me, which every session may call, a dormant one included.
+// me is GET /v1/me, which every session may call, a dormant one included;
+// with turn=start it is the prompt hook's, which opens the turn.
 func (s *Server) me(r *http.Request, c store.Caller) (status int, body any, err error) {
+	turn, err := turnStartOf(r)
+	if err != nil {
+		return 0, nil, err
+	}
 	out := meResponse{Version: s.version, PathRoot: s.cfg.PathRoot, State: stateNone}
 	id, err := s.store.Seen(r.Context(), c)
 	var se *store.Error
@@ -231,6 +236,7 @@ func (s *Server) me(r *http.Request, c store.Caller) (status int, body any, err 
 	if id.State != stateLive {
 		return http.StatusOK, out, nil
 	}
+	turn.open(s, &id)
 	if err := s.meLive(r, c, &out, id.ID); err != nil {
 		return 0, nil, err
 	}

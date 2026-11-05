@@ -116,7 +116,7 @@ func TestBeat_forgetsTheMemoryOfAnIdentityNoLongerLive(t *testing.T) {
 	if h.srv.presence.get(charlie).open != 1 {
 		t.Error("retired charlie's open standing wait was forgotten while it is held")
 	}
-	if !h.srv.presence.inTurnOpen(delta) {
+	if h.srv.presence.get(delta).inTurn != 1 {
 		t.Error("retired delta's open in-turn wait was forgotten while it is held")
 	}
 }

@@ -158,17 +158,37 @@ func TestRegistration_startsTheSessionMarksAfresh(t *testing.T) {
 func TestPresence_countsInTurnWaits(t *testing.T) {
 	p := newPresence()
 	const id = 7
+	holds := func(id uint64) bool {
+		_, ok := p.inTurnHolds(id, 1, testNow)
+		return ok
+	}
 	p.inTurnOpened(id)
 	p.inTurnOpened(id)
-	p.inTurnClosed(id)
-	if !p.inTurnOpen(id) {
+	p.inTurnClosed(id, 0, testNow)
+	if !holds(id) {
 		t.Error("closed while one of two in-turn waits is still open")
 	}
-	p.inTurnClosed(id)
-	if p.inTurnOpen(id) {
+	p.inTurnClosed(id, 0, testNow)
+	if holds(id) {
 		t.Error("open after both closed")
 	}
-	if p.inTurnOpen(id + 1) {
+	if holds(id + 1) {
 		t.Error("another identity's in-turn wait open")
+	}
+}
+
+func TestPresence_mailAnInTurnWaitReturnedWaitsForItsAck(t *testing.T) {
+	p := newPresence()
+	const id = 7
+	p.inTurnOpened(id)
+	p.inTurnClosed(id, 5, testNow)
+	if until, ok := p.inTurnHolds(id, 5, testNow.Add(29*time.Second)); !ok || !until.Equal(testNow.Add(30*time.Second)) {
+		t.Errorf("inTurnHolds(seq 5, 29 s on) = %v, %v; want held until 30 s after the return", until, ok)
+	}
+	if _, ok := p.inTurnHolds(id, 5, testNow.Add(30*time.Second)); ok {
+		t.Error("held 30 s after the return")
+	}
+	if _, ok := p.inTurnHolds(id, 6, testNow); ok {
+		t.Error("held mail newer than what the wait returned")
 	}
 }

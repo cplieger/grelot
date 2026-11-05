@@ -127,7 +127,7 @@ func TestWait_aWaitThatLostTheRaceReturnsTheWinnersNudge(t *testing.T) {
 		synctest.Wait()
 		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
 		seq := h.newestWake(sessA)
-		h.srv.presence.inTurnClosed(id)
+		h.srv.presence.inTurnClosed(id, 0, time.Now())
 
 		// The test sends as the winning wait: its commit wakes the open
 		// wait, which looks before the winner has told the server.
@@ -211,7 +211,7 @@ func TestWait_anInTurnWaitDefersOnlyTheFirstNudge(t *testing.T) {
 		if r := h.watch(sessA, 55*time.Second); r.status != http.StatusNoContent {
 			t.Fatalf("a wait beside an in-turn wait = %d %s, want 204", r.status, r.raw)
 		}
-		h.srv.presence.inTurnClosed(id)
+		h.srv.presence.inTurnClosed(id, 0, time.Now())
 		wantNudge(t, h.watch(sessA, 55*time.Second), seq, 1, 1)
 
 		h.srv.presence.inTurnOpened(id)

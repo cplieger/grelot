@@ -64,10 +64,12 @@ type Identity struct {
 	MachineKind string
 	// Notice is a line for the caller about this answer: a delegate's
 	// renewal capped at its parent's expiry.
-	Notice           string
-	Paths            []string
-	Follows          []string
-	ID               uint64
+	Notice  string
+	Paths   []string
+	Follows []string
+	ID      uint64
+	// Read is the read cursor: the highest seq the identity has fetched.
+	Read             uint64
 	TTL              time.Duration
 	EnvironmentKnown bool
 	Ended            bool
@@ -798,7 +800,7 @@ func (s *Store) view(r *identityRow) Identity {
 		Host: r.Host, OS: r.OS, Arch: r.Arch, Provider: r.Provider,
 		MachineKind: machineKindOf(r.Where.Machine),
 		Paths:       slices.Clone(r.Paths), Follows: slices.Clone(r.Follows),
-		ID: r.ID, TTL: r.TTL, EnvironmentKnown: r.Where.Environment != "", Ended: r.Ended,
+		ID: r.ID, Read: r.Read, TTL: r.TTL, EnvironmentKnown: r.Where.Environment != "", Ended: r.Ended,
 	}
 }
 

@@ -55,13 +55,18 @@ type inboxResponse struct {
 }
 
 // inbox is GET /v1/inbox: the oldest unread entries, which it marks
-// nothing; the client acks what it printed.
+// nothing; the client acks what it printed. With wait it is the in-turn
+// wait.
 func (s *Server) inbox(r *http.Request, c store.Caller) (status int, body any, err error) {
 	limit, err := intParam(r, "limit")
 	if err != nil {
 		return 0, nil, err
 	}
-	page, err := s.store.Inbox(r.Context(), c, limit)
+	wait, err := waitParam(r)
+	if err != nil {
+		return 0, nil, err
+	}
+	page, err := s.inTurnWait(r.Context(), c, limit, wait)
 	if err != nil {
 		return 0, nil, err
 	}
