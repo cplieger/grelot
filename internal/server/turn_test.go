@@ -245,6 +245,54 @@ func TestPrompt_signalOpensNoTurnOnceReadReachedIt(t *testing.T) {
 	}
 }
 
+func TestPrompt_signalReadSaysWhetherReadReachedTheSignal(t *testing.T) {
+	t.Run("read at the signal with newer wake mail unread", func(t *testing.T) {
+		h := newHarness(t)
+		h.mustRegisterAlone(sessA, "reader")
+		h.mustRegisterAlone(sessB, "writer")
+		h.stopHold(sessA, false)
+		for i := range 6 {
+			h.mustPost(sessB, map[string]any{"agent": "reader"}, fmt.Sprintf("post %d", i+1))
+		}
+		page := entriesOf(t, h.as(sessA, http.MethodGet, "/v1/inbox", nil))
+		fifth := page[4]["seq"].(float64)
+		h.ack(sessA, fifth)
+		r := h.prompt(sessA, fmt.Sprintf("turn=start&signal=%d", int(fifth)))
+		if r.body["signal_read"] != true {
+			t.Errorf("GET /v1/me = %s, want signal_read true", r.raw)
+		}
+		if _, open := h.srv.presence.turnOpen(h.idOf(sessA), h.clk.now()); open {
+			t.Error("a turn opened for a signal read has reached")
+		}
+	})
+	t.Run("read below the signal with only quiet deliveries past it", func(t *testing.T) {
+		h := newHarness(t)
+		h.mustRegister(sessA, "reader")
+		h.stopHold(sessA, false)
+		h.mustRegister(sessB, "writer")
+		page := entriesOf(t, h.as(sessA, http.MethodGet, "/v1/inbox", nil))
+		if len(page) != 1 || page[0]["wake"] != false {
+			t.Fatalf("inbox = %v, want the writer's quiet join card alone", page)
+		}
+		r := h.prompt(sessA, fmt.Sprintf("turn=start&signal=%d", int(page[0]["seq"].(float64))))
+		if v, set := r.body["signal_read"]; set && v != false {
+			t.Errorf("GET /v1/me = %s, want signal_read absent or false", r.raw)
+		}
+		if _, open := h.srv.presence.turnOpen(h.idOf(sessA), h.clk.now()); !open {
+			t.Error("no turn opened for a signal whose seq is still unread")
+		}
+	})
+	t.Run("no signal", func(t *testing.T) {
+		h := newHarness(t)
+		h.mustRegisterAlone(sessA, "reader")
+		for _, q := range []string{"turn=start", ""} {
+			if v, set := h.prompt(sessA, q).body["signal_read"]; set && v != false {
+				t.Errorf("GET /v1/me?%s answers signal_read %v, want it absent or false", q, v)
+			}
+		}
+	})
+}
+
 func TestPrompt_refusals(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegisterAlone(sessA, "reader")

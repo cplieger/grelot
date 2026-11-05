@@ -171,6 +171,7 @@ type meResponse struct {
 	Delegates    []delegateJSON    `json:"delegates,omitempty"`
 	Links        []linkJSON        `json:"links,omitempty"`
 	Online       bool              `json:"online"`
+	SignalRead   bool              `json:"signal_read,omitempty"`
 }
 
 // hintJSON is the take-over hint: the identity a new session may go on
@@ -246,6 +247,7 @@ func (s *Server) me(r *http.Request, c store.Caller) (status int, body any, err 
 	if err := s.meLive(r, c, &out, id.ID); err != nil {
 		return 0, nil, err
 	}
+	out.SignalRead = turn.stale(&id)
 	return http.StatusOK, out, nil
 }
 

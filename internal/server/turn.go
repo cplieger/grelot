@@ -101,12 +101,18 @@ func turnStartOf(r *http.Request) (turnStart, error) {
 	return out, nil
 }
 
-// open opens id's turn for a prompt, unless the prompt is a signal line
-// read has already passed, which the client's stale-signal block ends.
+// open opens id's turn for a prompt, unless the prompt is a stale signal
+// line, which the client's stale-signal block ends.
 func (t turnStart) open(s *Server, id *store.Identity) {
-	if t.start && (t.signal == 0 || id.Read < t.signal) {
+	if t.start && !t.stale(id) {
 		s.presence.turnSet(id.ID, s.now())
 	}
+}
+
+// stale reports whether the prompt is a signal line whose seq id's read
+// has reached: GET /v1/me answers it as signal_read.
+func (t turnStart) stale(id *store.Identity) bool {
+	return t.signal != 0 && id.Read >= t.signal
 }
 
 // inTurnWait is GET /v1/inbox?wait=: it holds until a wake delivery is
