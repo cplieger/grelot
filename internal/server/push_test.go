@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -505,7 +506,10 @@ func TestPush_aResumedSessionsPromptDefersTheMailThatWaitedToItsTurnEnd(t *testi
 				h.stopHold(sessA, false)
 				h.self(sessA, http.MethodPost, "/v1/lifecycle", map[string]any{"event": eventSessionEnd})
 				h.directPost(sessB, "reader")
-				h.prompt(sessA, "turn=start")
+				open := h.turnOpenAtEachWake(sessA, func() { h.prompt(sessA, "turn=start") })
+				if len(open) == 0 || slices.Contains(open, false) {
+					t.Fatalf("turn open at each wake of the reader during the prompt = %v, want at least one, all true", open)
+				}
 				synctest.Wait()
 				if n := len(rcv.requests()); n != 0 {
 					t.Fatalf("%d pushes into the resumed session's open turn, want none", n)
@@ -521,6 +525,34 @@ func TestPush_aResumedSessionsPromptDefersTheMailThatWaitedToItsTurnEnd(t *testi
 			})
 		})
 	}
+}
+
+// turnOpenAtEachWake runs during and returns, for each wake naming
+// session's identity meanwhile, whether its turn read open as the sender
+// told of that wake would read it. The sender may run only after during
+// returns, so its pushes alone cannot show a wake that came too early.
+func (h *harness) turnOpenAtEachWake(session string, during func()) []bool {
+	h.t.Helper()
+	id, hub := h.idOf(session), h.srv.hub
+	hub.mu.Lock()
+	sender := hub.listener
+	hub.mu.Unlock()
+	var mu sync.Mutex
+	var open []bool
+	hub.listen(func(ids []uint64) {
+		if slices.Contains(ids, id) {
+			_, o := h.srv.presence.turnOpen(id, h.srv.now())
+			mu.Lock()
+			open = append(open, o)
+			mu.Unlock()
+		}
+		sender(ids)
+	})
+	during()
+	hub.listen(sender)
+	mu.Lock()
+	defer mu.Unlock()
+	return open
 }
 
 func TestPush_aResumedSessionsInTurnWaitHoldsTheMailItReturnsForItsAck(t *testing.T) {
