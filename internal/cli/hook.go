@@ -220,7 +220,8 @@ func (h *hookCall) startText(me *client.Me, status string) string {
 }
 
 // childStart is a child's session start text: the fork's one line once,
-// or the handle line of a delegate a subagent's own session holds. A
+// or the handle line of a delegate a subagent's own session holds, or the
+// could-not-check line when that session's check got no answer. A
 // subagent sharing its parent's session asks nothing, since the answer
 // would be the parent's, and a step's session never holds an identity.
 func (h *hookCall) childStart(ctx context.Context, c hook.Class, subagent bool, budget time.Duration) string {
@@ -232,15 +233,18 @@ func (h *hookCall) childStart(ctx context.Context, c hook.Class, subagent bool, 
 	}
 	cfg, err := h.config()
 	if err != nil {
-		return ""
+		return failLine(err, budget)
 	}
 	api, err := client.NewHookAPI(cfg, h.Version, h.ConfigDir)
 	if err != nil {
-		return ""
+		return failLine(err, budget)
 	}
 	api.Session = h.prov.Name + ":" + c.Stdin
 	me, _, err := hookMe(ctx, api, budget, url.Values{}, http.Header{})
-	if err != nil || me.State != client.StateLive || me.Identity == nil || !strings.Contains(me.Identity.Name, "/") {
+	if err != nil {
+		return failLine(err, budget)
+	}
+	if me.State != client.StateLive || me.Identity == nil || !strings.Contains(me.Identity.Name, "/") {
 		return ""
 	}
 	name := safe(me.Identity.Name)

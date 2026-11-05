@@ -358,9 +358,10 @@ func TestHookSessionStart_failsOpen(t *testing.T) {
 	}
 }
 
-// A subagent's own session asks within the role's budget too (design
-// section 5: a 3 s budget unless the role's is lower).
-func TestHookSessionStart_aSubagentAsksWithinTheRoleBudget(t *testing.T) {
+// A subagent's own session fails open like its parent: when its check gets
+// no answer it prints the one could-not-check line, within the role's
+// budget, and holds nothing.
+func TestHookSessionStart_aSubagentFailsOpen(t *testing.T) {
 	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
@@ -368,16 +369,45 @@ func TestHookSessionStart_aSubagentAsksWithinTheRoleBudget(t *testing.T) {
 		}
 	}))
 	t.Cleanup(slow.Close)
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed := "http://" + l.Addr().String()
+	_ = l.Close()
+
 	budgeted := strings.Replace(hookAlphaFile, "    event: Start\n", "    event: Start\n    budget: 300ms\n", 1)
-	a := hooked(t, newAgent(t, &testServer{URL: slow.URL}, "s-1", ""), "alpha", budgeted)
-	start := time.Now()
-	code, out, _ := a.hook("session_start", `{"session_id":"sub-1","agent_id":"x"}`)
-	if code != 0 || out != "" {
-		t.Errorf("exit %d, stdout %q; want 0 and nothing, since a child is never asked", code, out)
+	const subagent = `{"session_id":"sub-1","agent_id":"x"}`
+	check := func(t *testing.T, a *agent, why string) {
+		t.Helper()
+		start := time.Now()
+		code, out, _ := a.hook("session_start", subagent)
+		want := "grelot: could not check this session's identity (" + why + "); nothing is held\n"
+		if code != 0 || out != want {
+			t.Errorf("exit %d, stdout %q; want 0 and %q", code, out, want)
+		}
+		if d := time.Since(start); d > 2*time.Second {
+			t.Errorf("took %s, want the 300ms budget to end it", d)
+		}
 	}
-	if d := time.Since(start); d > 2*time.Second {
-		t.Errorf("took %s, want the 300ms budget to end it", d)
-	}
+	t.Run("over_budget", func(t *testing.T) {
+		check(t, hooked(t, newAgent(t, &testServer{URL: slow.URL}, "s-1", ""), "alpha", budgeted), "no answer within 300ms")
+	})
+	t.Run("unreachable", func(t *testing.T) {
+		check(t, hooked(t, newAgent(t, &testServer{URL: closed}, "s-1", ""), "alpha", budgeted), "the server cannot be reached")
+	})
+	t.Run("no_client_config", func(t *testing.T) {
+		a := hooked(t, newAgent(t, &testServer{URL: closed}, "s-1", ""), "alpha", budgeted)
+		file := client.ConfigFile(a.env.ConfigDir)
+		if err := os.Remove(file); err != nil {
+			t.Fatal(err)
+		}
+		code, out, _ := a.hook("session_start", subagent)
+		if code != 0 || strings.Count(out, "\n") != 1 || !strings.HasPrefix(out, "grelot: could not check this session's identity (") ||
+			!strings.Contains(out, file) || !strings.HasSuffix(out, "); nothing is held\n") {
+			t.Errorf("exit %d, stdout %q; want 0 and one could-not-check line naming %s", code, out, file)
+		}
+	})
 }
 
 func TestHookSessionStart_anOldClientGetsThe426(t *testing.T) {
