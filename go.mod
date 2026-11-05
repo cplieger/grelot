@@ -11,4 +11,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.6
 )
 
-require golang.org/x/sys v0.49.0 // indirect
+require (
+	github.com/cplieger/go/envx v1.0.0-dev.1 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+)
