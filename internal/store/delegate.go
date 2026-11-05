@@ -104,7 +104,7 @@ func (w *wtx) delegate(g *Grant) (Granted, error) {
 	if err := w.s.t.links.table.Put(w.tx, pairKey(me.ID, id), &link); err != nil {
 		return Granted{}, err
 	}
-	me.Ended, me.LastSeen = false, w.now
+	w.touch(&me)
 	if err := w.s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {
 		return Granted{}, err
 	}

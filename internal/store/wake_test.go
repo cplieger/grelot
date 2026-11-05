@@ -153,6 +153,52 @@ func TestWoke_reportsNothingForReadsOrARefusedWrite(t *testing.T) {
 	})
 }
 
+func TestWoke_reportsARequestThatClearsEnded(t *testing.T) {
+	bravoAsks := map[string]func(t *testing.T, s *Store) error{
+		"Seen": func(t *testing.T, s *Store) error {
+			_, err := s.Seen(t.Context(), Caller{Session: sess("bravo")})
+			return err
+		},
+		"Set": func(t *testing.T, s *Store) error {
+			_, err := s.Set(t.Context(), Caller{Session: sess("bravo")}, Change{Fields: Fields{Name: NoChange, Description: "resumed", Paths: []string{NoChange}}})
+			return err
+		},
+		"Post": func(t *testing.T, s *Store) error {
+			_, err := s.Post(t.Context(), new(posting(sess("bravo"), Target{Agent: "alpha"})))
+			return err
+		},
+		"Hold": func(t *testing.T, s *Store) error {
+			_, err := s.Hold(t.Context(), Caller{Session: sess("bravo")})
+			return err
+		},
+		"Ack": func(t *testing.T, s *Store) error {
+			_, err := s.Ack(t.Context(), Caller{Session: sess("bravo")}, 0)
+			return err
+		},
+		"Register again": func(t *testing.T, s *Store) error {
+			_, err := s.Register(t.Context(), new(registration(sess("bravo"), "bravo", envA())))
+			return err
+		},
+	}
+	for name, ask := range bravoAsks {
+		t.Run(name, func(t *testing.T) {
+			s, _, wl := openWokeStore(t)
+			regAt(t, s, "alpha")
+			bravo := regAt(t, s, "bravo")
+			if err := s.EndSession(t.Context(), sess("bravo")); err != nil {
+				t.Fatalf("EndSession: %v", err)
+			}
+			wl.take()
+			if err := ask(t, s); err != nil {
+				t.Fatalf("%s from the ended session: %v", name, err)
+			}
+			if got := wl.take(); !slices.Contains(got, bravo.ID) {
+				t.Errorf("%s clearing ended woke %v, want bravo [%d]: a nudge its closed session held back may now go out", name, got, bravo.ID)
+			}
+		})
+	}
+}
+
 func TestLive_keepsOnlyTheLiveIdentities(t *testing.T) {
 	s, clk, _ := openWokeStore(t)
 	dormant := regAt(t, s, "alpha")

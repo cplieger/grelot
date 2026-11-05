@@ -92,7 +92,8 @@ func (w *wtx) revive(r *Revival, provider string) (Revived, error) {
 		return Revived{}, cerr
 	}
 	row.TTL, row.Lease = r.TTL, ls
-	row.State, row.DormantSince, row.Ended, row.LastSeen = stateLive, time.Time{}, false, w.now
+	row.State, row.DormantSince = stateLive, time.Time{}
+	w.touch(&row)
 	row.Nudged, row.Nudges, row.NudgedAt = 0, 0, time.Time{}
 	if perr := w.s.t.identities.table.Put(w.tx, row.ID, &row); perr != nil {
 		return Revived{}, perr

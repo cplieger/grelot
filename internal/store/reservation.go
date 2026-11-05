@@ -106,7 +106,7 @@ func (w *wtx) reserve(r *Reserving) (Reserved, *Error, error) {
 	if me.Parent != 0 {
 		return Reserved{}, nil, refuse(KindForbidden, "a delegate cannot reserve or queue: ask your parent to reserve the path")
 	}
-	me.Ended, me.LastSeen = false, w.now
+	w.touch(&me)
 	if perr := w.s.t.identities.table.Put(w.tx, me.ID, &me); perr != nil {
 		return Reserved{}, nil, perr
 	}
@@ -249,7 +249,7 @@ func (w *wtx) ownReservation(c Caller, id uint64) (identityRow, reservationRow, 
 			"no reservation %d of yours: it expired or was released; grelot reservations --mine lists yours", id,
 		))
 	}
-	me.Ended, me.LastSeen = false, w.now
+	w.touch(&me)
 	err = w.s.t.identities.table.Put(w.tx, me.ID, &me)
 	return me, row, err
 }

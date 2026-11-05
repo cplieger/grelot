@@ -451,6 +451,38 @@ func TestPush_neverForADormantIdentityAnEndedSessionOrADelegate(t *testing.T) {
 	})
 }
 
+func TestPush_aResumedSessionIsPushedTheMailThatWaited(t *testing.T) {
+	t.Setenv(doorTokenEnv, doorSecret)
+	for name, resume := range map[string]func(h *harness) *response{
+		"GET /v1/me": func(h *harness) *response { return h.self(sessA, http.MethodGet, "/v1/me", nil) },
+		"PATCH /v1/me": func(h *harness) *response {
+			return h.as(sessA, http.MethodPatch, "/v1/me", map[string]any{"description": "resumed"})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rcv := newPushReceiver(t)
+			synctest.Test(t, func(t *testing.T) {
+				h := newPushHarness(t, rcv.kiroDoor()...)
+				h.mustRegisterAlone(sessA, "reader")
+				h.mustRegisterAlone(sessB, "writer")
+				h.self(sessA, http.MethodPost, "/v1/lifecycle", map[string]any{"event": eventSessionEnd})
+				h.directPost(sessB, "reader")
+				synctest.Wait()
+				if n := len(rcv.requests()); n != 0 {
+					t.Fatalf("%d pushes while the session was ended, want none", n)
+				}
+				if r := resume(h); r.status != http.StatusOK {
+					t.Fatalf("%s from the ended session: %d %s", name, r.status, r.raw)
+				}
+				synctest.Wait()
+				if got, want := rcv.keys(t), []string{pushKey(h.idOf(sessA), 0, 1)}; !equalStrings(got, want) {
+					t.Errorf("keys after the resume = %v, want %v", got, want)
+				}
+			})
+		})
+	}
+}
+
 func TestPush_aRevivalWithMailWaitingIsPushedAtOnce(t *testing.T) {
 	t.Setenv(doorTokenEnv, doorSecret)
 	rcv := newPushReceiver(t)
