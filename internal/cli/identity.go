@@ -100,6 +100,9 @@ func (r *run) register(ctx context.Context, args []string) error {
 	if err := r.call(ctx, &client.Request{Method: http.MethodPost, Path: "/v1/register", Body: body}, &got); err != nil {
 		return err
 	}
+	if !got.Existing {
+		r.descSent()
+	}
 	if note := client.ProviderNote(r.Providers, r.providerFlag, cfg, client.Shell{Lookup: r.Lookup, Ancestors: proctree.Names(r.tree())}); note != "" {
 		fmt.Fprintln(r.Stdout, note)
 	}
@@ -243,7 +246,12 @@ func (r *run) set(ctx context.Context, args []string) error {
 		w := r.placeHere(ctx, r.currentPaths(ctx))
 		body.Where = &w
 	}
-	return r.patchMe(ctx, &body, func(id *client.Identity) { writeCard(r.Stdout, id) })
+	return r.patchMe(ctx, &body, func(id *client.Identity) {
+		if *desc != "" {
+			r.descSent()
+		}
+		writeCard(r.Stdout, id)
+	})
 }
 
 func (r *run) patchMe(ctx context.Context, body *patchBody, show func(*client.Identity)) error {

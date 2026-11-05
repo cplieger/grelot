@@ -226,6 +226,9 @@ func newAgent(t *testing.T, ts *testServer, session, extra string) *agent {
 		Version:     "v1.1.0",
 		PID:         300,
 	}
+	if ts.clock != nil {
+		a.env.Now = ts.clock.Now
+	}
 	return a
 }
 

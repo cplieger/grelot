@@ -64,10 +64,52 @@ func (r *run) hook(ctx context.Context, args []string) error {
 	}
 	r.prov = p
 	h := &hookCall{run: r, in: in, session: session, marks: hook.NewMarks(r.ConfigDir, r.now)}
-	if role := p.Hooks.SessionStart; args[1] == "session_start" && role != nil && in.Matches(role.When) {
-		return h.sessionStart(ctx, role)
+	return h.role(ctx, args[1])
+}
+
+// The roles grelot hook runs, as provider files name them.
+const (
+	roleSessionStart = "session_start"
+	rolePrompt       = "prompt"
+	roleStop         = "stop"
+	roleTurnEnd      = "turn_end"
+	roleSessionEnd   = "session_end"
+	roleSubagentStop = "subagent_stop"
+)
+
+// role runs the named role when the provider spells it and its when
+// filter passes.
+func (h *hookCall) role(ctx context.Context, name string) error {
+	hs := &h.prov.Hooks
+	switch name {
+	case roleSessionStart:
+		if hs.SessionStart != nil && h.in.Matches(hs.SessionStart.When) {
+			return h.sessionStart(ctx, hs.SessionStart)
+		}
+	case rolePrompt:
+		if hs.Prompt != nil && h.in.Matches(hs.Prompt.When) {
+			return h.prompt(ctx, hs.Prompt)
+		}
+	case roleStop:
+		if hs.Stop != nil && h.in.Matches(hs.Stop.When) {
+			return h.stop(ctx, hs.Stop)
+		}
+	case roleTurnEnd, roleSessionEnd, roleSubagentStop:
+		if role := lifecycleRole(hs, name); role != nil && h.in.Matches(role.When) {
+			h.lifecycle(ctx, name, role)
+		}
 	}
 	return nil
+}
+
+func lifecycleRole(hs *provider.Hooks, name string) *provider.LifecycleRole {
+	switch name {
+	case roleTurnEnd:
+		return hs.TurnEnd
+	case roleSessionEnd:
+		return hs.SessionEnd
+	}
+	return hs.SubagentStop
 }
 
 func (h *hookCall) classify(agentID string) hook.Class {
@@ -92,7 +134,7 @@ func (h *hookCall) sessionStart(ctx context.Context, role *provider.SessionStart
 	case hook.Child:
 		return h.emit(out, h.childStart(ctx, c, h.in.String(role.Stdin.AgentID) != ""))
 	}
-	key := h.onceKey("session_start", c)
+	key := h.onceKey(roleSessionStart, c)
 	if role.Once && h.marks.Has(hook.MarkOnce, key) {
 		return nil
 	}
@@ -244,7 +286,7 @@ func (h *hookCall) emit(out *provider.Output, text string) error {
 	if out == nil || text == "" {
 		return nil
 	}
-	s, err := out.Render(&provider.Data{Context: text})
+	s, err := out.Render(&provider.Data{Context: text, Reason: text})
 	if err != nil {
 		return nil
 	}

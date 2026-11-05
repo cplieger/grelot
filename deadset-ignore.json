@@ -3,12 +3,6 @@
   "ignore": [
     {
       "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/provider#PromptRole.SignalPattern",
-      "path": "internal/provider/provider.go",
-      "reason": "The client's prompt hook, not built yet, finds the signal line with it."
-    },
-    {
-      "code": "DS1004",
       "symbol": "go://github.com/cplieger/grelot/internal/provider#ServerDoors.For",
       "path": "internal/provider/serverdir.go",
       "reason": "The server's push sender, not built yet, picks an identity's door with it."

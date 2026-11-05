@@ -29,6 +29,7 @@ type Me struct {
 // and environment are known, never their values.
 type Identity struct {
 	Expires          time.Time `json:"expires_at"`
+	RegisteredAt     time.Time `json:"registered_at"`
 	DormantSince     time.Time `json:"dormant_since"`
 	Name             string    `json:"name"`
 	Description      string    `json:"description"`
@@ -49,6 +50,14 @@ type Identity struct {
 // names the identity and the command that goes on as it.
 type Hint struct {
 	Line string `json:"line"`
+}
+
+// Held is a stop hold's answer: Block says the hook holds the turn for
+// the wake mail Counts counts.
+type Held struct {
+	Wake   string `json:"wake"`
+	Counts Counts `json:"counts"`
+	Block  bool   `json:"block"`
 }
 
 // Counts is unread deliveries by kind.

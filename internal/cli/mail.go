@@ -86,6 +86,9 @@ func (r *run) post(ctx context.Context, args []string) error {
 	if err := r.call(ctx, &client.Request{Method: http.MethodPost, Path: "/v1/posts", Body: req}, &got); err != nil {
 		return unknownOutcome(err)
 	}
+	if *desc != noChange {
+		r.descSent()
+	}
 	r.posted(&got, rest[0], finding, local)
 	return nil
 }
