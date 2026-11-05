@@ -73,7 +73,7 @@ func New(o *Options) *Server {
 	if m == nil {
 		m = obs.New()
 	}
-	doors := loadDoors(o, o.Logger)
+	doors := loadDoors(o, o.Logger, m)
 	s := &Server{
 		store: o.Store, log: o.Logger, now: now, version: o.Version, cfg: o.Config,
 		presence: newPresence(), posts: newPostLimit(), hub: hub, push: o.Push, metrics: m,

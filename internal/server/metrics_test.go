@@ -2,12 +2,15 @@ package server
 
 import (
 	"io"
+	"io/fs"
 	"net/http"
 	"strconv"
 	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/cplieger/grelot/internal/store"
 )
 
 // scrape reads /metrics with no headers into series name, labels
@@ -127,5 +130,135 @@ func TestMetrics_requestsAreCountedByTheirRoute(t *testing.T) {
 		if strings.Contains(name, "no-such") {
 			t.Errorf("a request path became a label: %s", name)
 		}
+	}
+}
+
+func wantSeries(t *testing.T, got, want map[string]float64) {
+	t.Helper()
+	for name, v := range want {
+		if g, ok := got[name]; !ok || g != v {
+			t.Errorf("%s = %v (present %t), want %v", name, g, ok, v)
+		}
+	}
+}
+
+func TestMetrics_postsAreCountedByThreadKindAndRefusalsByReason(t *testing.T) {
+	h := newHarness(t)
+	h.mustRegister(sessA, "sender")
+	h.mustRegister(sessB, "reader")
+	h.mustPost(sessA, announce, "news")
+	h.mustPost(sessA, map[string]any{"path": repoGrelot}, "on grelot")
+	if r := h.as(sessA, http.MethodPost, "/v1/posts", postBody(map[string]any{"agent": "reader"}, "", "a body")); r.status != http.StatusBadRequest {
+		t.Fatalf("post with no subject: %d %s, want 400", r.status, r.raw)
+	}
+	for range 28 {
+		h.mustPost(sessA, map[string]any{"agent": "reader"}, "hello")
+	}
+	if r := h.as(sessA, http.MethodPost, "/v1/posts", postBody(map[string]any{"agent": "reader"}, "hello", "a body")); r.status != http.StatusTooManyRequests {
+		t.Fatalf("31st post: %d %s, want 429", r.status, r.raw)
+	}
+	wantSeries(t, h.scrape(), map[string]float64{
+		`grelot_posts_total{thread_kind="announce"}`:        1,
+		`grelot_posts_total{thread_kind="path"}`:            1,
+		`grelot_posts_total{thread_kind="direct"}`:          28,
+		`grelot_posts_refused_total{reason="rate_limited"}`: 1,
+		`grelot_posts_refused_total{reason="store_full"}`:   0,
+		`grelot_posts_refused_total{reason="scope"}`:        0,
+	})
+
+	t.Run("a delegate's post outside its scope", func(t *testing.T) {
+		h := newHarness(t)
+		h.mustRegister(sessA, "parent")
+		handle := h.grantDelegate(sessA, "review")
+		r := h.request(http.MethodPost, "/v1/posts", postBody(map[string]any{"path": repoGrelot}, "hello", "a body"),
+			map[string]string{headerSession: sessA, headerAs: handle})
+		if r.status != http.StatusForbidden {
+			t.Fatalf("post outside the scope: %d %s, want 403", r.status, r.raw)
+		}
+		wantSeries(t, h.scrape(), map[string]float64{
+			`grelot_posts_refused_total{reason="scope"}`:        1,
+			`grelot_posts_refused_total{reason="rate_limited"}`: 0,
+		})
+	})
+	t.Run("a post past 90 % of the ceiling", func(t *testing.T) {
+		h := newHarnessWith(t, store.Options{MaxBytes: 1})
+		h.mustRegister(sessA, "sender")
+		h.mustRegister(sessB, "reader")
+		if r := h.as(sessA, http.MethodPost, "/v1/posts", postBody(map[string]any{"agent": "reader"}, "hello", "a body")); r.status != http.StatusInsufficientStorage {
+			t.Fatalf("post: %d %s, want 507", r.status, r.raw)
+		}
+		got := h.scrape()
+		wantSeries(t, got, map[string]float64{`grelot_posts_refused_total{reason="store_full"}`: 1})
+		if v, ok := got[`grelot_posts_total{thread_kind="direct"}`]; ok {
+			t.Errorf("direct posts = %v, want no series for a refused post", v)
+		}
+	})
+}
+
+func TestMetrics_providersInvalidCountsTheFilesSkippedAtLoad(t *testing.T) {
+	t.Setenv("SECRET_DOOR_TOKEN", doorSecret)
+	for _, tc := range []struct {
+		fsys fs.FS
+		name string
+		want float64
+	}{
+		{name: "two broken files beside a good one", want: 2, fsys: providers(
+			"broken", "name: broken\nno_such_key: 1\n",
+			"alpha", doorFile("alpha", "door_token", "    match: {provider: testhost}\n"),
+			"testhost", doorFile("testhost", "door_token", "    match: {host: host-a/app}\n"),
+		)},
+		{name: "an unreadable folder", want: 1, fsys: unreadable{}},
+		{name: "every file loads", want: 0, fsys: providers("testhost", doorFile("testhost", "door_token", ""))},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarnessWith(t, store.Options{}, withProviders(tc.fsys))
+			wantSeries(t, h.scrape(), map[string]float64{`grelot_providers_invalid`: tc.want})
+		})
+	}
+}
+
+func TestMetrics_eachPushTryIsCountedByDoorAndOutcome(t *testing.T) {
+	t.Setenv(doorTokenEnv, doorSecret)
+	const door = `door="testhost/push"`
+	for _, tc := range []struct {
+		name    string
+		outcome string
+		reply   pushReply
+		up      float64
+	}{
+		{name: "202", reply: pushReply{status: http.StatusAccepted}, outcome: "accepted", up: 1},
+		{name: "503", reply: pushReply{status: http.StatusServiceUnavailable, header: map[string]string{"Retry-After": "20"}}, outcome: "retry", up: 1},
+		{name: "404 on the gone list", reply: pushReply{status: http.StatusNotFound}, outcome: "gone", up: 1},
+		{name: "400", reply: pushReply{status: http.StatusBadRequest}, outcome: "gave_up", up: 1},
+		{name: "401", reply: pushReply{status: http.StatusUnauthorized}, outcome: "gave_up", up: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rcv := newPushReceiver(t, tc.reply)
+			synctest.Test(t, func(t *testing.T) {
+				h := newPushHarness(t, rcv.kiroDoor()...)
+				h.mustRegisterAlone(sessA, "reader")
+				h.mustRegisterAlone(sessB, "writer")
+				if got := h.scrape()[`grelot_push_door_up{`+door+`}`]; got != 1 {
+					t.Fatalf("door up before any send = %v, want 1", got)
+				}
+				h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
+				synctest.Wait()
+
+				got := h.scrape()
+				wantSeries(t, got, map[string]float64{
+					`grelot_push_door_up{` + door + `}`:                                  tc.up,
+					`grelot_push_sends_total{` + door + `,outcome="` + tc.outcome + `"}`: 1,
+				})
+				sends := 0.0
+				for name, v := range got {
+					if strings.HasPrefix(name, "grelot_push_sends_total{") {
+						sends += v
+					}
+				}
+				if sends != 1 {
+					t.Errorf("push tries counted = %v, want the one try", sends)
+				}
+			})
+		})
 	}
 }

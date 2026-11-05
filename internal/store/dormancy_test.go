@@ -191,7 +191,7 @@ func TestPurge_afterDormantTTLFreesTheName(t *testing.T) {
 func TestDormancy_survivesARestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grelot.db")
 	clk := &clock{t: testNow}
-	s, err := Open(path, Options{Logger: slog.New(newLogSink()), Now: clk.now})
+	s, err := Open(path, &Options{Logger: slog.New(newLogSink()), Now: clk.now})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestDormancy_survivesARestart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s, err = Open(path, Options{Logger: slog.New(newLogSink()), Now: clk.now})
+	s, err = Open(path, &Options{Logger: slog.New(newLogSink()), Now: clk.now})
 	if err != nil {
 		t.Fatal(err)
 	}

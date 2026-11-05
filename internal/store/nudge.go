@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/obs"
 )
 
 // NudgeVia is the layer that sent a nudge, logged as nudge sent's via.
@@ -90,13 +91,22 @@ func (s *Store) RecordNudge(ctx context.Context, n *Nudge, via NudgeVia) (got Nu
 	return got, recorded, err
 }
 
-// recordNudge sets n as me's outstanding nudge, sent now, and logs the
-// send; the caller stores me.
+// recordNudge sets n as me's outstanding nudge, sent now, logs the send
+// and counts it once the transaction commits; the caller stores me.
 func (w *wtx) recordNudge(me *identityRow, n *Nudge, via NudgeVia) {
 	me.Nudged, me.Nudges, me.NudgedAt = n.Seq, n.Attempt, w.now
 	w.wake(me.ID)
+	delay := w.now.Sub(n.Oldest)
 	w.s.log.Info(msgNudgeSent, "via", string(via), "attempt", n.Attempt, "seq", n.Seq,
-		"oldest_delay_ms", w.now.Sub(n.Oldest).Milliseconds())
+		"oldest_delay_ms", delay.Milliseconds())
+	attempt := obs.AttemptFirst
+	if n.Attempt > 1 {
+		attempt = obs.AttemptRepeat
+	}
+	w.tx.AfterCommit(func() {
+		w.s.m.Nudges.Inc(string(via), attempt)
+		w.s.m.NudgeDelay.Observe(delay.Seconds(), string(via))
+	})
 }
 
 // nudging is me's nudge state at now. A nudge is outstanding while read is

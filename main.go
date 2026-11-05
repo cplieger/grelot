@@ -18,6 +18,7 @@ import (
 	"github.com/cplieger/go/slogx"
 	"github.com/cplieger/grelot/internal/cli"
 	"github.com/cplieger/grelot/internal/client"
+	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/proctree"
 	"github.com/cplieger/grelot/internal/provider"
 	"github.com/cplieger/grelot/internal/server"
@@ -102,8 +103,9 @@ func clientCommand(args []string, stdout, stderr io.Writer) int {
 // sweeper commits.
 func serve(ctx context.Context, cfg *server.Config, addr, markerPath string, logger *slog.Logger) error {
 	hub := server.NewHub()
-	st, err := store.Open(cfg.StorePath, store.Options{
-		Logger: logger, MaxBytes: cfg.MaxBytes, ThreadTTL: cfg.ThreadTTL,
+	metrics := obs.New()
+	st, err := store.Open(cfg.StorePath, &store.Options{
+		Logger: logger, Metrics: metrics, MaxBytes: cfg.MaxBytes, ThreadTTL: cfg.ThreadTTL,
 		DormantTTL: cfg.DormantTTL, ReservationMaxTTL: cfg.ReservationMaxTTL, PathRoot: cfg.PathRoot,
 		Woke: hub.Woke,
 	})
@@ -114,7 +116,7 @@ func serve(ctx context.Context, cfg *server.Config, addr, markerPath string, log
 	marker := health.NewMarker(markerPath)
 	marker.Set(true)
 	defer marker.Cleanup()
-	srv := server.New(&server.Options{Store: st, Logger: logger, Hub: hub, Version: version, Config: *cfg})
+	srv := server.New(&server.Options{Store: st, Logger: logger, Hub: hub, Metrics: metrics, Version: version, Config: *cfg})
 	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
 	if err != nil {
 		return err

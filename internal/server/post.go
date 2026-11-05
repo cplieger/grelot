@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cplieger/go/textsafe"
+	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
 )
 
@@ -75,6 +76,7 @@ func (s *Server) post(r *http.Request, c store.Caller) (status int, body any, er
 	if serr == nil {
 		at, retry, ok := s.posts.take(key, s.now())
 		if !ok {
+			s.metrics.PostsRefused.Inc(obs.RefusedRateLimited)
 			return 0, nil, &apiError{
 				status: http.StatusTooManyRequests, code: "rate_limited", retryAfter: retry,
 				msg: "over " + strconv.Itoa(postsPerMinute) + " posts a minute from this identity and its delegates: post again in " + retry.String(),
@@ -91,10 +93,7 @@ func (s *Server) post(r *http.Request, c store.Caller) (status int, body any, er
 		Fields: store.Fields{Name: req.Identity.Name, Description: req.Identity.Description, Paths: req.Identity.Paths},
 	})
 	if err != nil {
-		var se *store.Error
-		if errors.As(err, &se) && se.Kind == store.KindForbidden {
-			s.log.Info("post refused", "sender", sender, "rule", s.redact(se.Msg))
-		}
+		s.postRefused(err, sender)
 		return 0, nil, err
 	}
 	s.log.Info("message posted", "thread_kind", kind, "path", s.redact(to.Path), "sender", got.Identity.Name,
@@ -104,6 +103,20 @@ func (s *Server) post(r *http.Request, c store.Caller) (status int, body any, er
 		Notices: nonNil(got.Notices), Identity: identityOut(&got.Identity), Message: got.Message, Thread: got.Thread,
 		Recipients: recipientsJSON{Total: got.Delivered, SameEnvironment: got.SameEnvironment, Other: got.Other},
 	}, nil
+}
+
+// postRefused logs and counts a post the store refused for its scope, and
+// counts one refused for a full store.
+func (s *Server) postRefused(err error, sender string) {
+	se, ok := errors.AsType[*store.Error](err)
+	switch {
+	case !ok:
+	case se.Kind == store.KindForbidden:
+		s.metrics.PostsRefused.Inc(obs.RefusedScope)
+		s.log.Info("post refused", "sender", sender, "rule", s.redact(se.Msg))
+	case se.Kind == store.KindFull:
+		s.metrics.PostsRefused.Inc(obs.RefusedStoreFull)
+	}
 }
 
 // postTarget reads to: "announce", {"path": p} or {"agent": name}.

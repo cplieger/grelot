@@ -88,7 +88,7 @@ func eventsOf(t *testing.T, s *Store, id uint64, kind string) []deliveryRow {
 func openReservationStore(t *testing.T, maxTTL time.Duration) (*Store, *clock) {
 	t.Helper()
 	clk := &clock{t: testNow}
-	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), Options{
+	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{
 		Logger: slog.New(newLogSink()), Now: clk.now, ReservationMaxTTL: maxTTL,
 	})
 	if err != nil {
@@ -428,7 +428,7 @@ func TestReservationExpiry_whileTheServerWasDown(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grelot.db")
 	clk := &clock{t: testNow}
 	open := func() *Store {
-		s, err := Open(path, Options{Logger: slog.New(newLogSink()), Now: clk.now})
+		s, err := Open(path, &Options{Logger: slog.New(newLogSink()), Now: clk.now})
 		if err != nil {
 			t.Fatalf("Open: %v", err)
 		}

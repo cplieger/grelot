@@ -92,7 +92,7 @@ const testMaxBytes = 32 << 20
 
 func TestMeasure_inUseFallsWhenABurstExpiresThoughTheFileDoesNot(t *testing.T) {
 	clk := &clock{t: testNow}
-	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), Options{
+	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{
 		Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: time.Hour, MaxBytes: testMaxBytes,
 	})
 	if err != nil {
@@ -121,7 +121,7 @@ func TestMeasure_inUseFallsWhenABurstExpiresThoughTheFileDoesNot(t *testing.T) {
 func TestPost_refusedOnAFullStoreAfterARestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grelot.db")
 	o := Options{Logger: slog.New(newLogSink()), Now: func() time.Time { return testNow }, MaxBytes: testMaxBytes}
-	s, err := Open(path, o)
+	s, err := Open(path, &o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestPost_refusedOnAFullStoreAfterARestart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s, err = Open(path, o)
+	s, err = Open(path, &o)
 	if err != nil {
 		t.Fatal(err)
 	}

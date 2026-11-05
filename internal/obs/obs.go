@@ -49,7 +49,8 @@ type Metrics struct {
 	PushDoorUp *measure.LabeledGauge
 	// PushSends counts push tries by door and outcome.
 	PushSends *measure.LabeledCounter
-	// ProvidersInvalid is the number of provider files skipped at load.
+	// ProvidersInvalid is the number of provider files skipped at load, 1
+	// for a folder that cannot be read.
 	ProvidersInvalid *measure.Gauge
 	// Nudges counts recorded nudges by layer and attempt.
 	Nudges *measure.LabeledCounter
@@ -71,7 +72,7 @@ func New() *Metrics {
 		PostsRefused:      measure.NewLabeledCounter("posts_refused_total", "Posts refused, by reason.", []string{"reason"}),
 		PushDoorUp:        measure.NewLabeledGauge("push_door_up", "1 while a push door sends, 0 once a refused credential turned it off.", []string{"door"}),
 		PushSends:         measure.NewLabeledCounter("push_sends_total", "Push tries, by door and outcome.", []string{"door", "outcome"}),
-		ProvidersInvalid:  measure.NewGauge("providers_invalid", "Provider files skipped at load."),
+		ProvidersInvalid:  measure.NewGauge("providers_invalid", "Provider files skipped at load; 1 for a folder that cannot be read."),
 		Nudges:            measure.NewLabeledCounter("nudges_total", "Nudges recorded, by layer and attempt.", []string{"via", "attempt"}),
 		NudgeDelay:        measure.NewLabeledHistogram("nudge_delay_seconds", "Delay from the oldest post in a batch to its nudge, by layer.", []string{"via"}, measure.WithBuckets(measure.APIBuckets())),
 		httpRequests:      measure.NewLabeledCounter("http_requests_total", "HTTP requests, by route and status code.", []string{"route", "code"}),

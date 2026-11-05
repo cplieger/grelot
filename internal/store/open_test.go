@@ -18,7 +18,7 @@ import (
 
 func openAt(t *testing.T, path string, sink logSink) (*Store, error) {
 	t.Helper()
-	s, err := Open(path, Options{Logger: slog.New(sink), Now: func() time.Time { return testNow }})
+	s, err := Open(path, &Options{Logger: slog.New(sink), Now: func() time.Time { return testNow }})
 	if err == nil {
 		t.Cleanup(func() { _ = s.Close() })
 	}
@@ -245,7 +245,7 @@ func TestOpen_compactsAFileMostlyFreeAndKeepsItsRows(t *testing.T) {
 	clk := &clock{t: testNow}
 	path := filepath.Join(t.TempDir(), "grelot.db")
 	o := Options{Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: time.Hour}
-	s, err := Open(path, o)
+	s, err := Open(path, &o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +272,7 @@ func TestOpen_compactsAFileMostlyFreeAndKeepsItsRows(t *testing.T) {
 
 	sink := newLogSink()
 	o.Logger = slog.New(sink)
-	s, err = Open(path, o)
+	s, err = Open(path, &o)
 	if err != nil {
 		t.Fatal(err)
 	}

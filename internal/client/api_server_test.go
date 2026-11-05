@@ -22,7 +22,7 @@ func realServer(t *testing.T) string {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	hub := server.NewHub()
-	st, err := store.Open(filepath.Join(t.TempDir(), "grelot.db"), store.Options{
+	st, err := store.Open(filepath.Join(t.TempDir(), "grelot.db"), &store.Options{
 		Logger: logger, PathRoot: store.DefaultPathRoot, Woke: hub.Woke,
 	})
 	if err != nil {

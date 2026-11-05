@@ -47,7 +47,7 @@ func TestThread_neverExpiresBeforeAnOlderMessage(t *testing.T) {
 	const shared = "/workspace/shared"
 	path := filepath.Join(t.TempDir(), "grelot.db")
 	clk := &clock{t: testNow}
-	s, err := Open(path, Options{Logger: slog.New(newLogSink()), Now: clk.now})
+	s, err := Open(path, &Options{Logger: slog.New(newLogSink()), Now: clk.now})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestThread_neverExpiresBeforeAnOlderMessage(t *testing.T) {
 	}
 
 	clk.advance(time.Minute)
-	s, err = Open(path, Options{Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: time.Hour})
+	s, err = Open(path, &Options{Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: time.Hour})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestSweep_catchesUpAfterARestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grelot.db")
 	clk := &clock{t: testNow}
 	o := Options{Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: time.Hour}
-	s, err := Open(path, o)
+	s, err := Open(path, &o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestSweep_catchesUpAfterARestart(t *testing.T) {
 	}
 
 	clk.set(testNow.Add(23*time.Hour + 40*time.Minute))
-	s, err = Open(path, o)
+	s, err = Open(path, &o)
 	if err != nil {
 		t.Fatal(err)
 	}

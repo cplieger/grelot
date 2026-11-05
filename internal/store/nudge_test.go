@@ -454,7 +454,7 @@ func TestNudge_theStateOutlivesARestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grelot.db")
 	clk := &clock{t: testNow}
 	open := func() *Store {
-		s, err := Open(path, Options{Now: clk.now})
+		s, err := Open(path, &Options{Now: clk.now})
 		if err != nil {
 			t.Fatalf("Open: %v", err)
 		}

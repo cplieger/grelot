@@ -135,6 +135,7 @@ func (w *wtx) post(p *Posting) (Posted, error) {
 	if err != nil {
 		return Posted{}, err
 	}
+	w.countPost(rt.thread.Kind)
 	v, err := w.viewOf(&me)
 	if err != nil {
 		return Posted{}, err
