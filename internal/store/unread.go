@@ -9,9 +9,11 @@ import (
 )
 
 // unreadSummary is an identity's delivery rows past read, kept in its row
-// by every write that adds, passes or deletes one (deliver, Ack, and a
-// delivery's expiry), so no reader of the backlog scans it. It counts a
-// row until the sweep deletes it, so it holds only before Due.
+// so no reader of the backlog scans it. Three writes keep it: deliver adds
+// a row, passRead takes out the rows an ack passes, and recount counts
+// again after a delivery past read expires. It counts a row until the
+// sweep deletes it, so it holds only before Due. A row with no expiry is
+// never due and never moves Due.
 type unreadSummary struct {
 	// Oldest is the write time of the first wake row, Newest the last
 	// one's seq.

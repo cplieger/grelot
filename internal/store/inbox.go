@@ -87,7 +87,13 @@ func (c Counts) Wake() int {
 // Total counts every delivery, quiet ones included.
 func (c Counts) Total() int { return c.Wake() + c.Cards + c.Copies }
 
-func (d *deliveryRow) wakes() bool { return d.Via == "" && d.Kind != kindJoin && d.Kind != kindLeft }
+// wakes reports whether d falls in a count Wake includes, so a kind no
+// count names neither wakes nor counts.
+func (d *deliveryRow) wakes() bool {
+	var c Counts
+	c.bump(d, 1)
+	return c.Wake() == 1
+}
 
 // Page is an inbox fetch: the oldest unread deliveries, and Unread, every
 // delivery past read, the page's included.
