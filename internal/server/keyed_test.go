@@ -28,6 +28,24 @@ func (s *slowCommits) woke([]uint64) {
 	}
 }
 
+// pauseNext is a server clock that, once armed, holds the next request to
+// read it until release closes. A post first reads the server clock at its
+// rate-limit take, after its replay lookup missed.
+type pauseNext struct {
+	now     func() time.Time
+	paused  chan struct{}
+	release chan struct{}
+	armed   atomic.Bool
+}
+
+func (p *pauseNext) read() time.Time {
+	if p.armed.CompareAndSwap(true, false) {
+		close(p.paused)
+		<-p.release
+	}
+	return p.now()
+}
+
 // newInProcessHarness is a harness that serves each request in process,
 // so a request's own context deadline sits under the route's.
 func newInProcessHarness(t *testing.T, o store.Options) *harness {
@@ -278,6 +296,43 @@ func TestKeyedPost_aReSendTakesNoRateLimitToken(t *testing.T) {
 	for i := range postsPerMinute - 1 {
 		if r := h.as(sessA, http.MethodPost, "/v1/posts", body); r.status != http.StatusCreated {
 			t.Fatalf("post %d of the minute after 3 re-sends: %d %s, want 201", i+2, r.status, r.raw)
+		}
+	}
+	if r := h.as(sessA, http.MethodPost, "/v1/posts", body); r.status != http.StatusTooManyRequests {
+		t.Errorf("post %d of the minute: %d %s, want 429", postsPerMinute+1, r.status, r.raw)
+	}
+}
+
+func TestKeyedPost_aConcurrentReSendGivesItsRateLimitTokenBack(t *testing.T) {
+	pause := &pauseNext{paused: make(chan struct{}), release: make(chan struct{})}
+	h := newHarnessWith(t, store.Options{}, func(o *Options) { pause.now, o.Now = o.Now, pause.read })
+	h.mustRegister(sessA, "sender")
+	h.mustRegister(sessB, "reader")
+	body := postBody(map[string]any{"agent": "reader"}, "raced", "a body")
+	headers := keyHeader(sessA, "raced-post-key-01")
+	pause.armed.Store(true)
+	second := make(chan *response, 1)
+	go func() { second <- h.request(http.MethodPost, "/v1/posts", body, headers) }()
+	<-pause.paused
+
+	first := h.request(http.MethodPost, "/v1/posts", body, headers)
+	close(pause.release)
+	var again *response
+	select {
+	case again = <-second:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the re-send held between its replay lookup and its write never answered")
+	}
+
+	if first.status != http.StatusCreated || again.status != http.StatusCreated || again.raw != first.raw {
+		t.Fatalf("post and its concurrent re-send: %d %s and %d %s, want 201 twice with one answer", first.status, first.raw, again.status, again.raw)
+	}
+	if n := h.postsTo(sessB, "raced"); n != 1 {
+		t.Errorf("reader's history holds %d of the post, want 1", n)
+	}
+	for i := range postsPerMinute - 1 {
+		if r := h.as(sessA, http.MethodPost, "/v1/posts", body); r.status != http.StatusCreated {
+			t.Fatalf("post %d of the minute after a concurrent re-send: %d %s, want 201", i+2, r.status, r.raw)
 		}
 	}
 	if r := h.as(sessA, http.MethodPost, "/v1/posts", body); r.status != http.StatusTooManyRequests {
