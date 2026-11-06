@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/provider"
 	"github.com/cplieger/grelot/providers"
 )
@@ -38,11 +39,25 @@ const (
 const registerLine = "grelot: not registered. Register before you start work: run `grelot help`, then `grelot register` as it says."
 
 // kiroShell is a shell of the named provider, kiro-cli or kiro-ide, whose
-// KIRO_SESSION_ID is session, with its own KIRO_HOME.
+// KIRO_SESSION_ID is session, with its own KIRO_HOME. A kiro-ide shell's
+// client config names its provider, as the host page has the user do,
+// because detection alone picks kiro-cli.
 func kiroShell(t *testing.T, srv *testServer, name, session string) *shell {
 	t.Helper()
 	sh := newShell(t, srv, name, map[string]string{"KIRO_SESSION_ID": session, "KIRO_HOME": t.TempDir()})
 	sh.fixtures = "kiro-cli"
+	if name == "kiro-ide" {
+		f, err := os.OpenFile(client.ConfigFile(sh.config), os.O_APPEND|os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.WriteString("provider: kiro-ide\n"); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return sh
 }
 
@@ -341,30 +356,38 @@ func TestKiroCLITangent(t *testing.T) {
 
 // A /rewind goes on as the same agent: its first prompt carries the
 // same-agent note once, and from then on the session it replaced prints
-// nothing, whatever wakes it.
-func TestKiroCLIRewind(t *testing.T) {
-	sh := kiroShell(t, newServer(t), "kiro-cli", rewoundRoot)
-	sh.register("kiro-dev")
-	placeRecord(t, sh, rewindSession)
-	const note = "grelot: this chat is a rewind of an earlier session; a grelot-watch run started before the rewind still wakes the old session, " +
-		"which this chat never sees. Ask the user to stop it (ctrl+g, select the run, ctrl+x twice), then start a new one with the start line below."
+// nothing, whatever wakes it. Each host's note names its own way to stop
+// a grelot-watch run.
+func TestKiroRewind(t *testing.T) {
+	const told = "grelot: this chat is a rewind of an earlier session; a grelot-watch run started before the rewind still wakes the old session, " +
+		"which this chat never sees. "
+	for _, tc := range []struct{ provider, note string }{
+		{"kiro-cli", told + "Ask the user to stop it (ctrl+g, select the run, ctrl+x twice), then start a new one with the start line below."},
+		{"kiro-ide", told + "Ask the user to stop it from the Workflows area above the chat, then start a new one with the start line below."},
+	} {
+		t.Run(tc.provider, func(t *testing.T) {
+			sh := kiroShell(t, newServer(t), tc.provider, rewoundRoot)
+			sh.register("kiro-dev")
+			placeRecord(t, sh, rewindSession)
 
-	got := sh.hook("prompt", sh.fixture("prompt-rewind"))
-	lines := strings.Split(strings.TrimSuffix(got.Stdout, "\n"), "\n")
-	if got.Code != 0 || len(lines) != 2 || lines[0] != note || !strings.HasPrefix(lines[1], "grelot: @kiro-dev · 0 unread · ") {
-		t.Errorf("first prompt: exit %d, stdout %q; want 0, the note, then the turn line", got.Code, got.Stdout)
-	}
-	got = sh.hook("prompt", sh.fixture("prompt-rewind"))
-	if strings.Contains(got.Stdout, "rewind") || !strings.HasPrefix(got.Stdout, "grelot: @kiro-dev · 0 unread · ") {
-		t.Errorf("second prompt: stdout %q, want the turn line alone", got.Stdout)
-	}
-	if got := sh.hook("stop", sh.fixture("stop-rewind")); got.Code != 0 || len(got.Requests) != 1 {
-		t.Errorf("rewind's stop: exit %d, requests %v; want 0 and the one hold", got.Code, got.Requests)
-	}
-	for _, name := range []string{"prompt-replaced", "stop-replaced"} {
-		if got := sh.hook(strings.Split(name, "-")[0], sh.fixture(name)); got.Code != 0 || got.Stdout != "" || len(got.Requests) != 0 {
-			t.Errorf("replaced session's %s: exit %d, stdout %q, %d requests; want 0, nothing and none", name, got.Code, got.Stdout, len(got.Requests))
-		}
+			got := sh.hook("prompt", sh.fixture("prompt-rewind"))
+			lines := strings.Split(strings.TrimSuffix(got.Stdout, "\n"), "\n")
+			if got.Code != 0 || len(lines) != 2 || lines[0] != tc.note || !strings.HasPrefix(lines[1], "grelot: @kiro-dev · 0 unread · ") {
+				t.Errorf("first prompt: exit %d, stdout %q; want 0, the note %q, then the turn line", got.Code, got.Stdout, tc.note)
+			}
+			got = sh.hook("prompt", sh.fixture("prompt-rewind"))
+			if strings.Contains(got.Stdout, "rewind") || !strings.HasPrefix(got.Stdout, "grelot: @kiro-dev · 0 unread · ") {
+				t.Errorf("second prompt: stdout %q, want the turn line alone", got.Stdout)
+			}
+			if got := sh.hook("stop", sh.fixture("stop-rewind")); got.Code != 0 || len(got.Requests) != 1 {
+				t.Errorf("rewind's stop: exit %d, requests %v; want 0 and the one hold", got.Code, got.Requests)
+			}
+			for _, name := range []string{"prompt-replaced", "stop-replaced"} {
+				if got := sh.hook(strings.Split(name, "-")[0], sh.fixture(name)); got.Code != 0 || got.Stdout != "" || len(got.Requests) != 0 {
+					t.Errorf("replaced session's %s: exit %d, stdout %q, %d requests; want 0, nothing and none", name, got.Code, got.Stdout, len(got.Requests))
+				}
+			}
+		})
 	}
 }
 
@@ -389,7 +412,7 @@ func TestKiroIDE(t *testing.T) {
 			t.Errorf("session %+v, want kiro-cli's %+v", ide.Session, cli.Session)
 		}
 		if a, b := ide.Session.Record, cli.Session.Record; a == nil || a.DirEnv != b.DirEnv || a.DirDefault != b.DirDefault || a.Glob != b.Glob ||
-			a.Parent != b.Parent || a.Reason != b.Reason || a.SameAgentNote != b.SameAgentNote || !slices.Equal(a.SameAgent, b.SameAgent) {
+			a.Parent != b.Parent || a.Reason != b.Reason || !slices.Equal(a.SameAgent, b.SameAgent) {
 			t.Errorf("record %+v, want kiro-cli's %+v", a, b)
 		}
 		want := wantWiring(t, "kiro-cli", nil)

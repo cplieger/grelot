@@ -20,7 +20,7 @@ import (
 	"github.com/cplieger/grelot/internal/store"
 )
 
-const listenAddr = ":8080"
+const listenAddr = ":9737"
 
 // serverCommand runs serve or health, the image's two server commands.
 func serverCommand(cmd string, stderr io.Writer) int {

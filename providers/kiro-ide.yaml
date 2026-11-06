@@ -24,6 +24,6 @@ session:
     same_agent_note: >-
       this chat is a rewind of an earlier session; a grelot-watch run started
       before the rewind still wakes the old session, which this chat never sees.
-      Ask the user to stop it (ctrl+g, select the run, ctrl+x twice), then
+      Ask the user to stop it from the Workflows area above the chat, then
       start a new one with the start line below.
 notes: docs/hosts/kiro-ide.md

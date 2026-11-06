@@ -6,9 +6,9 @@ tests:
   - name: GrelotDown fires for a failing target and stays quiet for a healthy one
     interval: 1m
     input_series:
-      - series: 'up{job="grelot",instance="a:8080"}'
+      - series: 'up{job="grelot",instance="a:9737"}'
         values: "0x10"
-      - series: 'up{job="grelot",instance="b:8080"}'
+      - series: 'up{job="grelot",instance="b:9737"}'
         values: "1x10"
     alert_rule_test:
       - eval_time: 4m
@@ -17,7 +17,7 @@ tests:
       - eval_time: 5m
         alertname: GrelotDown
         exp_alerts:
-          - exp_labels: {severity: warning, job: grelot, instance: "a:8080"}
+          - exp_labels: {severity: warning, job: grelot, instance: "a:9737"}
             exp_annotations:
               summary: "grelot is down or no longer scraped"
               description: >
@@ -46,10 +46,10 @@ tests:
     interval: 1m
     input_series:
       # A sweep commits every minute up to 3m, then none.
-      - series: 'grelot_sweep_last_success_timestamp_seconds{job="grelot",instance="a:8080"}'
+      - series: 'grelot_sweep_last_success_timestamp_seconds{job="grelot",instance="a:9737"}'
         values: "0+60x3 180x10"
       # A sweep that keeps committing.
-      - series: 'grelot_sweep_last_success_timestamp_seconds{job="grelot",instance="b:8080"}'
+      - series: 'grelot_sweep_last_success_timestamp_seconds{job="grelot",instance="b:9737"}'
         values: "0+60x13"
     alert_rule_test:
       - eval_time: 7m
@@ -58,7 +58,7 @@ tests:
       - eval_time: 8m
         alertname: GrelotSweepStalled
         exp_alerts:
-          - exp_labels: {severity: warning, job: grelot, instance: "a:8080"}
+          - exp_labels: {severity: warning, job: grelot, instance: "a:9737"}
             exp_annotations:
               summary: "grelot's store sweep has not committed for over two minutes"
               description: >
@@ -69,17 +69,17 @@ tests:
   - name: GrelotStoreStartedEmpty fires for a corrupt file, not a format reset
     interval: 1m
     input_series:
-      - series: 'grelot_store_started_empty_total{job="grelot",instance="a:8080",reason="corrupt"}'
+      - series: 'grelot_store_started_empty_total{job="grelot",instance="a:9737",reason="corrupt"}'
         values: "1x5"
-      - series: 'grelot_store_started_empty_total{job="grelot",instance="b:8080",reason="corrupt"}'
+      - series: 'grelot_store_started_empty_total{job="grelot",instance="b:9737",reason="corrupt"}'
         values: "0x5"
-      - series: 'grelot_store_started_empty_total{job="grelot",instance="b:8080",reason="format"}'
+      - series: 'grelot_store_started_empty_total{job="grelot",instance="b:9737",reason="format"}'
         values: "1x5"
     alert_rule_test:
       - eval_time: 1m
         alertname: GrelotStoreStartedEmpty
         exp_alerts:
-          - exp_labels: {severity: info, job: grelot, instance: "a:8080", reason: corrupt}
+          - exp_labels: {severity: info, job: grelot, instance: "a:9737", reason: corrupt}
             exp_annotations:
               summary: "grelot found its store file corrupt and started empty"
               description: >
@@ -90,13 +90,13 @@ tests:
   - name: GrelotStoreNearlyFull fires after ten minutes above 80 %
     interval: 1m
     input_series:
-      - series: 'grelot_store_in_use_bytes{job="grelot",instance="a:8080"}'
+      - series: 'grelot_store_in_use_bytes{job="grelot",instance="a:9737"}'
         values: "850x15"
-      - series: 'grelot_store_max_bytes{job="grelot",instance="a:8080"}'
+      - series: 'grelot_store_max_bytes{job="grelot",instance="a:9737"}'
         values: "1000x15"
-      - series: 'grelot_store_in_use_bytes{job="grelot",instance="b:8080"}'
+      - series: 'grelot_store_in_use_bytes{job="grelot",instance="b:9737"}'
         values: "800x15"
-      - series: 'grelot_store_max_bytes{job="grelot",instance="b:8080"}'
+      - series: 'grelot_store_max_bytes{job="grelot",instance="b:9737"}'
         values: "1000x15"
     alert_rule_test:
       - eval_time: 9m
@@ -105,7 +105,7 @@ tests:
       - eval_time: 10m
         alertname: GrelotStoreNearlyFull
         exp_alerts:
-          - exp_labels: {severity: warning, job: grelot, instance: "a:8080"}
+          - exp_labels: {severity: warning, job: grelot, instance: "a:9737"}
             exp_annotations:
               summary: "grelot's store is over 80 % of STORE_MAX_BYTES"
               description: >
@@ -115,19 +115,19 @@ tests:
   - name: GrelotStoreFull fires above 90 %, where posts are refused, and not at it
     interval: 1m
     input_series:
-      - series: 'grelot_store_in_use_bytes{job="grelot",instance="a:8080"}'
+      - series: 'grelot_store_in_use_bytes{job="grelot",instance="a:9737"}'
         values: "901x5"
-      - series: 'grelot_store_max_bytes{job="grelot",instance="a:8080"}'
+      - series: 'grelot_store_max_bytes{job="grelot",instance="a:9737"}'
         values: "1000x5"
-      - series: 'grelot_store_in_use_bytes{job="grelot",instance="b:8080"}'
+      - series: 'grelot_store_in_use_bytes{job="grelot",instance="b:9737"}'
         values: "900x5"
-      - series: 'grelot_store_max_bytes{job="grelot",instance="b:8080"}'
+      - series: 'grelot_store_max_bytes{job="grelot",instance="b:9737"}'
         values: "1000x5"
     alert_rule_test:
       - eval_time: 1m
         alertname: GrelotStoreFull
         exp_alerts:
-          - exp_labels: {severity: critical, job: grelot, instance: "a:8080"}
+          - exp_labels: {severity: critical, job: grelot, instance: "a:9737"}
             exp_annotations:
               summary: "grelot's store is full and new posts are refused"
               description: >
@@ -140,7 +140,7 @@ tests:
     input_series:
       # The first sample sits 15m back from 15m on, so only increase() can
       # see the second 500, at 21m.
-      - series: 'grelot_http_requests_total{job="grelot",instance="a:8080",route="/v1/posts",code="500"}'
+      - series: 'grelot_http_requests_total{job="grelot",instance="a:9737",route="/v1/posts",code="500"}'
         values: "1x20 2x30"
     alert_rule_test:
       - eval_time: 20m
@@ -165,7 +165,7 @@ tests:
   - name: GrelotServerErrors fires for the first error on a route and clears after 15m
     interval: 1m
     input_series:
-      - series: 'grelot_http_requests_total{job="grelot",instance="a:8080",route="/v1/inbox",code="500"}'
+      - series: 'grelot_http_requests_total{job="grelot",instance="a:9737",route="/v1/inbox",code="500"}'
         values: "_x2 1x30"
     alert_rule_test:
       - eval_time: 6m
@@ -188,15 +188,15 @@ tests:
     interval: 1m
     input_series:
       # A post past its route timeout, which may still have been stored.
-      - series: 'grelot_http_requests_total{job="grelot",instance="a:8080",route="/v1/posts",code="503"}'
+      - series: 'grelot_http_requests_total{job="grelot",instance="a:9737",route="/v1/posts",code="503"}'
         values: "_x2 1+1x30"
-      - series: 'grelot_http_requests_total{job="grelot",instance="a:8080",route="/v1/posts",code="507"}'
+      - series: 'grelot_http_requests_total{job="grelot",instance="a:9737",route="/v1/posts",code="507"}'
         values: "0+1x30"
-      - series: 'grelot_http_requests_total{job="grelot",instance="a:8080",route="/healthz",code="503"}'
+      - series: 'grelot_http_requests_total{job="grelot",instance="a:9737",route="/healthz",code="503"}'
         values: "0+1x30"
-      - series: 'grelot_http_requests_total{job="grelot",instance="a:8080",route="/v1/posts",code="201"}'
+      - series: 'grelot_http_requests_total{job="grelot",instance="a:9737",route="/v1/posts",code="201"}'
         values: "0+1x30"
-      - series: 'grelot_http_requests_total{job="grelot",instance="a:8080",route="/v1/me",code="404"}'
+      - series: 'grelot_http_requests_total{job="grelot",instance="a:9737",route="/v1/me",code="404"}'
         values: "_x2 1x30"
     alert_rule_test:
       - eval_time: 10m
@@ -207,21 +207,21 @@ tests:
     interval: 1m
     input_series:
       # Every try through this door is retried, then given up.
-      - series: 'grelot_push_sends_total{job="grelot",instance="a:8080",door="host/push",outcome="accepted"}'
+      - series: 'grelot_push_sends_total{job="grelot",instance="a:9737",door="host/push",outcome="accepted"}'
         values: "0x20"
-      - series: 'grelot_push_sends_total{job="grelot",instance="a:8080",door="host/push",outcome="retry"}'
+      - series: 'grelot_push_sends_total{job="grelot",instance="a:9737",door="host/push",outcome="retry"}'
         values: "0 0 1+1x18"
-      - series: 'grelot_push_sends_total{job="grelot",instance="a:8080",door="host/push",outcome="gave_up"}'
+      - series: 'grelot_push_sends_total{job="grelot",instance="a:9737",door="host/push",outcome="gave_up"}'
         values: "0x20"
       # This door fails some tries but accepts others.
-      - series: 'grelot_push_sends_total{job="grelot",instance="a:8080",door="other/push",outcome="accepted"}'
+      - series: 'grelot_push_sends_total{job="grelot",instance="a:9737",door="other/push",outcome="accepted"}'
         values: "0 0 1+1x18"
-      - series: 'grelot_push_sends_total{job="grelot",instance="a:8080",door="other/push",outcome="retry"}'
+      - series: 'grelot_push_sends_total{job="grelot",instance="a:9737",door="other/push",outcome="retry"}'
         values: "0 0 1+1x18"
       # This door only meets closed sessions.
-      - series: 'grelot_push_sends_total{job="grelot",instance="a:8080",door="third/push",outcome="accepted"}'
+      - series: 'grelot_push_sends_total{job="grelot",instance="a:9737",door="third/push",outcome="accepted"}'
         values: "0x20"
-      - series: 'grelot_push_sends_total{job="grelot",instance="a:8080",door="third/push",outcome="gone"}'
+      - series: 'grelot_push_sends_total{job="grelot",instance="a:9737",door="third/push",outcome="gone"}'
         values: "0 0 1+1x18"
     alert_rule_test:
       - eval_time: 6m
@@ -230,7 +230,7 @@ tests:
       - eval_time: 7m
         alertname: GrelotPushFailing
         exp_alerts:
-          - exp_labels: {severity: warning, job: grelot, instance: "a:8080", door: host/push}
+          - exp_labels: {severity: warning, job: grelot, instance: "a:9737", door: host/push}
             exp_annotations:
               summary: "grelot cannot push to door host/push"
               description: >
@@ -241,9 +241,9 @@ tests:
   - name: GrelotPushDoorOff fires for a door turned off
     interval: 1m
     input_series:
-      - series: 'grelot_push_door_up{job="grelot",instance="a:8080",door="host/push"}'
+      - series: 'grelot_push_door_up{job="grelot",instance="a:9737",door="host/push"}'
         values: "1 0x5"
-      - series: 'grelot_push_door_up{job="grelot",instance="a:8080",door="other/push"}'
+      - series: 'grelot_push_door_up{job="grelot",instance="a:9737",door="other/push"}'
         values: "1x5"
     alert_rule_test:
       - eval_time: 0m
@@ -252,7 +252,7 @@ tests:
       - eval_time: 1m
         alertname: GrelotPushDoorOff
         exp_alerts:
-          - exp_labels: {severity: warning, job: grelot, instance: "a:8080", door: host/push}
+          - exp_labels: {severity: warning, job: grelot, instance: "a:9737", door: host/push}
             exp_annotations:
               summary: "grelot turned push door host/push off"
               description: >
@@ -263,15 +263,15 @@ tests:
   - name: GrelotProviderInvalid fires while a provider file is skipped
     interval: 1m
     input_series:
-      - series: 'grelot_providers_invalid{job="grelot",instance="a:8080"}'
+      - series: 'grelot_providers_invalid{job="grelot",instance="a:9737"}'
         values: "2x5"
-      - series: 'grelot_providers_invalid{job="grelot",instance="b:8080"}'
+      - series: 'grelot_providers_invalid{job="grelot",instance="b:9737"}'
         values: "0x5"
     alert_rule_test:
       - eval_time: 1m
         alertname: GrelotProviderInvalid
         exp_alerts:
-          - exp_labels: {severity: warning, job: grelot, instance: "a:8080"}
+          - exp_labels: {severity: warning, job: grelot, instance: "a:9737"}
             exp_annotations:
               summary: "grelot skipped a provider file, or its providers folder, at startup"
               description: >

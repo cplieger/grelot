@@ -19,4 +19,4 @@ services:
 
     ports:
       # Publish this port only to a network you trust, see README "Security".
-      - "8080:8080"
+      - "9737:9737"

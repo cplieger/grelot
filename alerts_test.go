@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -57,7 +58,7 @@ func TestAlerts_everyRuleReadsASeriesTheServerExports(t *testing.T) {
 			}
 			for _, name := range names {
 				// up is the scraper's own series, never on the page.
-				if name != "up" && !exported[name] {
+				if name != "up" && !deployedPageServes(exported, name) {
 					t.Errorf("reads %s, which /metrics does not serve", name)
 				}
 			}
@@ -122,6 +123,22 @@ func servedSeries(t *testing.T) map[string]bool {
 		out[line[:strings.IndexAny(line, "{ ")]] = true
 	}
 	return out
+}
+
+// procFamilies are the families measure reads from /proc and so serves on
+// Linux only; its other process_ families come from the Go runtime on every
+// OS.
+var procFamilies = []string{
+	"process_cpu_seconds_total", "process_resident_memory_bytes",
+	"process_open_fds", "process_max_fds",
+	"process_virtual_memory_bytes", "process_virtual_memory_max_bytes",
+	"process_network_receive_bytes_total", "process_network_transmit_bytes_total",
+}
+
+// deployedPageServes reports whether the image's page, on Linux, serves
+// name, given the names this OS's page serves.
+func deployedPageServes(served map[string]bool, name string) bool {
+	return served[name] || runtime.GOOS != "linux" && slices.Contains(procFamilies, name)
 }
 
 // readRules returns alerts/promql.yaml's expressions by alert name.

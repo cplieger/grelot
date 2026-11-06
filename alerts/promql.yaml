@@ -1,5 +1,5 @@
 # Recommended alert rules for grelot, for Prometheus, Mimir or vmalert.
-# Scrape grelot's /metrics endpoint on port 8080 and load this group into
+# Scrape grelot's /metrics endpoint on port 9737 and load this group into
 # your ruler. Firing alerts go through your Alertmanager. grelot ships no
 # Loki rules: every alert it recommends is in this file.
 #

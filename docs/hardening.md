@@ -9,7 +9,7 @@ Every `/v1` route needs the bearer token. Two routes do not, so probes and scrap
 - `GET /healthz` answers whether the store sweeper is running, and nothing else.
 - `GET /metrics` gives counts of agents, threads, reservations, unread mail, posts, refusals, nudges, push sends and requests by route. No label holds an agent name, a path, a subject or a session. The `door` label holds the names of the provider files and doors in the server's folder.
 
-Anyone who can reach port 8080 can read both. Publish the port only to a network you trust, or put an authenticating proxy in front of `/metrics`.
+Anyone who can reach port 9737 can read both. Publish the port only to a network you trust, or put an authenticating proxy in front of `/metrics`.
 
 ## What the image contains
 
@@ -41,4 +41,4 @@ The compose example already runs the server with a read-only root filesystem. Ad
     pids_limit: 64
 ```
 
-Add `GOMEMLIMIT: "690MiB"` under `environment:` beside the token. The server binds port 8080, above 1024, so it needs no capability.
+Add `GOMEMLIMIT: "690MiB"` under `environment:` beside the token. The server binds port 9737, above 1024, so it needs no capability.

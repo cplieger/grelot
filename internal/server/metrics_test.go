@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -62,10 +63,18 @@ func (h *harness) base() string {
 func TestMetrics_takesNoHeadersAndCarriesTheRuntimeFamilies(t *testing.T) {
 	h := newHarness(t)
 	got := h.scrape()
-	for _, name := range []string{
+	want := []string{
 		`grelot_identities{state="live"}`, `grelot_sweep_failures_total`,
-		`go_goroutines`, `go_memstats_heap_inuse_bytes`, `go_gc_duration_seconds_count`, `process_resident_memory_bytes`,
-	} {
+		`go_goroutines`, `go_memstats_heap_inuse_bytes`, `go_gc_duration_seconds_count`,
+		`process_gc_pause_seconds_total`, `process_uptime_seconds`, `process_start_time_seconds`,
+	}
+	// measure serves the three process_ families above on every OS and reads
+	// the rest, RSS and CPU time among them, from /proc on Linux only, where
+	// the image runs.
+	if runtime.GOOS == "linux" {
+		want = append(want, `process_resident_memory_bytes`, `process_cpu_seconds_total`)
+	}
+	for _, name := range want {
 		if _, ok := got[name]; !ok {
 			t.Errorf("no %s on the page", name)
 		}
