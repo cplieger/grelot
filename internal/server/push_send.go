@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/provider"
 	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/transport"
@@ -81,6 +82,12 @@ func startHostPush(s *Server, doors *provider.ServerDoors) *hostPush {
 	}
 	for i := range all {
 		p.registered(all[i].ID, all[i].Provider, all[i].Host)
+	}
+	for _, d := range doors.All() {
+		s.metrics.PushDoorUp.Set(1, doorLabel(d))
+		for _, o := range []string{obs.SendAccepted, obs.SendRetry, obs.SendGone, obs.SendGaveUp} {
+			s.metrics.PushSends.Add(0, doorLabel(d), o)
+		}
 	}
 	go p.run(ctx)
 	return p
@@ -310,9 +317,11 @@ func (p *hostPush) send(ctx context.Context, id uint64, cur *pushee, due *store.
 		if ctx.Err() != nil {
 			return false, false
 		}
+		p.counted(d, obs.SendGaveUp)
 		p.identityOff(ctx, id, slog.LevelError, msgPushFailed, p.lineAttrs(d, to.Name, 0, err))
 		return false, true
 	}
+	p.counted(d, sendOutcome(res.Outcome))
 	switch res.Outcome {
 	case transport.Accepted:
 		if _, _, err := p.s.store.RecordNudge(ctx, due, store.NudgeByPush); err != nil {
@@ -332,6 +341,29 @@ func (p *hostPush) send(ctx context.Context, id uint64, cur *pushee, due *store.
 	}
 	return false, true
 }
+
+// sendOutcome is o's push_sends_total outcome label; like send, it takes
+// every other outcome as a give up.
+func sendOutcome(o transport.Outcome) string {
+	switch o {
+	case transport.Accepted:
+		return obs.SendAccepted
+	case transport.RetryLater:
+		return obs.SendRetry
+	case transport.Gone:
+		return obs.SendGone
+	}
+	return obs.SendGaveUp
+}
+
+// counted counts one push try through d.
+func (p *hostPush) counted(d provider.ServerDoor, outcome string) {
+	p.s.metrics.PushSends.Inc(doorLabel(d), outcome)
+}
+
+// doorLabel is d's door label value: the provider and door names the
+// operator wrote, never its URL.
+func doorLabel(d provider.ServerDoor) string { return d.File + "/" + d.Door.Name }
 
 // lineAttrs are a push line's attributes: the door and the identity's
 // name, never the URL, which may hold a session id, or a header.
@@ -373,6 +405,7 @@ func (p *hostPush) identityOff(ctx context.Context, id uint64, level slog.Level,
 // restarts, with one line for them all: the credential they share failed.
 func (p *hostPush) doorRefused(d provider.ServerDoor, status int) {
 	p.s.log.Error(msgPushRefused, doorAttrs(d, status)...)
+	p.s.metrics.PushDoorUp.Set(0, doorLabel(d))
 	p.mu.Lock()
 	p.doorOff[d.Door] = true
 	var served []uint64

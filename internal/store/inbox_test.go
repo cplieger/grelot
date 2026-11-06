@@ -1,6 +1,8 @@
 package store
 
 import (
+	"log/slog"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -391,5 +393,29 @@ func TestInbox_clearsEnded(t *testing.T) {
 		if getIdentity(t, s, me.ID).Ended {
 			t.Errorf("%s left ended set, want it cleared", call)
 		}
+	}
+}
+
+func TestAck_pastOnlyExpiredMailRecordsTheRangeFromRead(t *testing.T) {
+	clk := &clock{t: testNow}
+	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{
+		Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: 10 * time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	regAt(t, s, "alpha", "/workspace/alpha")
+	bravo := regAt(t, s, "bravo", "/workspace/bravo")
+	direct(t, s, "alpha", "bravo", 2)
+	ds := deliveriesTo(t, s, bravo.ID)
+	clk.advance(11 * time.Minute)
+
+	acked := mustAck(t, s, sess("bravo"), ds[1].Seq)
+	if acked.Count != 0 || acked.Read != ds[1].Seq {
+		t.Errorf("count %d read %d, want no unexpired row passed and read %d", acked.Count, acked.Read, ds[1].Seq)
+	}
+	if row := getIdentity(t, s, bravo.ID); row.LastPage != (seqRange{From: 1, To: ds[1].Seq}) {
+		t.Errorf("last_page %+v, want from the old read plus one to %d", row.LastPage, ds[1].Seq)
 	}
 }

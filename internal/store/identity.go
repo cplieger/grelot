@@ -578,7 +578,7 @@ func noIdentity() *Error {
 // dormantIdentity is the revive offer a dormant identity's session gets
 // from every route that acts as the identity.
 func (s *Store) dormantIdentity(r *bolttable.ReadTx, row *identityRow, now time.Time) error {
-	n, err := s.unread(r, row.ID, row.Read, now)
+	n, err := s.unread(r, row, now)
 	if err != nil {
 		return err
 	}

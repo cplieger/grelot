@@ -65,15 +65,18 @@ func (s *Store) Post(ctx context.Context, p *Posting) (Posted, error) {
 	if err := checkMessage(p); err != nil {
 		return Posted{}, err
 	}
-	full, err := s.nearlyFull()
-	if err != nil {
-		return Posted{}, err
-	}
-	if full {
-		return Posted{}, refuse(KindFull, "store nearly full: posts resume as older mail expires")
-	}
 	var out Posted
-	err = s.update(ctx, func(w *wtx) error {
+	err := s.update(ctx, func(w *wtx) error {
+		// Measured under the write lock: read before it, concurrent posts
+		// all see the space no other one has filled yet and pass the
+		// ceiling together.
+		full, ferr := s.nearlyFull()
+		if ferr != nil {
+			return ferr
+		}
+		if full {
+			return refuse(KindFull, "store nearly full: posts resume as older mail expires")
+		}
 		var perr error
 		out, perr = w.post(p)
 		return perr
@@ -135,6 +138,7 @@ func (w *wtx) post(p *Posting) (Posted, error) {
 	if err != nil {
 		return Posted{}, err
 	}
+	w.countPost(rt.thread.Kind)
 	v, err := w.viewOf(&me)
 	if err != nil {
 		return Posted{}, err

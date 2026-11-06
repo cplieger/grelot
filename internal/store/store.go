@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/obs"
 	bolterrors "go.etcd.io/bbolt/errors"
 )
 
@@ -40,11 +41,15 @@ const (
 	DefaultPathRoot = "/workspace"
 )
 
-// Options configures Open. A nil Logger discards; a nil Now is time.Now;
-// a zero TTL takes its default.
+// Options configures Open; nil is the zero Options. A nil Logger discards; a nil Now is time.Now;
+// a nil Metrics records to a page nobody serves; a zero TTL takes its
+// default.
 type Options struct {
 	Logger *slog.Logger
 	Now    func() time.Time
+	// Metrics is the /metrics page the store records its opens, sweeps,
+	// posts and nudges into.
+	Metrics *obs.Metrics
 	// Woke, when set, is called after each commit that delivered to an
 	// identity, recorded a nudge for it or moved its read, with those ids.
 	// It runs in commit order and must not start a write transaction.
@@ -70,6 +75,7 @@ type Store struct {
 	t   *tables
 	log *slog.Logger
 	now func() time.Time
+	m   *obs.Metrics
 	// space reads the file's space; tests replace it.
 	space func() (bolttable.Space, error)
 	woke  func(ids []uint64)
@@ -90,8 +96,11 @@ type Store struct {
 // <path>.<UTC stamp>.invalid and replaced by an empty store, with an
 // ERROR; a file at least half and 4 MiB free is compacted, and a failed
 // compaction leaves it whole with a WARN.
-func Open(path string, o Options) (*Store, error) {
-	s := newStore(&o)
+func Open(path string, o *Options) (*Store, error) {
+	if o == nil {
+		o = &Options{}
+	}
+	s := newStore(o)
 	schema, t, err := newSchema()
 	if err != nil {
 		return nil, err
@@ -122,12 +131,14 @@ var openOptions = bolttable.Options{
 	InvalidFile: bolttable.InvalidFileMoveAside,
 }
 
-// logOpen logs each repair Open made to the file.
+// logOpen logs and counts each repair Open made to the file.
 func (s *Store) logOpen(path string, rep *bolttable.OpenReport) {
 	if rep.MovedAside != "" {
 		s.log.Error(msgStoreCorrupt, "path", path, "moved_to", rep.MovedAside, "error", rep.Invalid.Error())
+		s.m.StoreStartedEmpty.Inc(obs.StartedEmptyCorrupt)
 	}
 	if len(rep.Reset) > 0 {
+		s.m.StoreStartedEmpty.Inc(obs.StartedEmptyFormat)
 		names := make([]string, 0, len(rep.Reset))
 		for _, n := range rep.Reset {
 			names = append(names, n.Name)
@@ -141,12 +152,15 @@ func (s *Store) logOpen(path string, rep *bolttable.OpenReport) {
 
 // newStore is a Store configured by o, each zero option taking its default.
 func newStore(o *Options) *Store {
-	s := &Store{log: o.Logger, now: o.Now, woke: o.Woke, threadTTL: o.ThreadTTL, dormantTTL: o.DormantTTL, maxBytes: o.MaxBytes, seen: map[uint64]time.Time{}}
+	s := &Store{log: o.Logger, now: o.Now, m: o.Metrics, woke: o.Woke, threadTTL: o.ThreadTTL, dormantTTL: o.DormantTTL, maxBytes: o.MaxBytes, seen: map[uint64]time.Time{}}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
 	}
 	if s.now == nil {
 		s.now = time.Now
+	}
+	if s.m == nil {
+		s.m = obs.New()
 	}
 	if s.threadTTL == 0 {
 		s.threadTTL = DefaultThreadTTL
@@ -190,6 +204,8 @@ type wtx struct {
 	events []owedEvent
 	// woke is every identity Options.Woke reports once this commits.
 	woke []uint64
+	// recounts are the identities whose unread summary recount rebuilds.
+	recounts []uint64
 }
 
 // wake has Options.Woke report id once this transaction commits.
@@ -208,6 +224,9 @@ func (s *Store) update(ctx context.Context, fn func(*wtx) error) error {
 			return err
 		}
 		if err := w.flushOwed(); err != nil {
+			return err
+		}
+		if err := w.recount(); err != nil {
 			return err
 		}
 		if ids := w.woke; len(ids) > 0 && s.woke != nil {

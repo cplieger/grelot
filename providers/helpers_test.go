@@ -71,7 +71,7 @@ func newServer(t *testing.T) *testServer {
 	ts := &testServer{clock: &clock{now: time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC)}}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	hub := server.NewHub()
-	st, err := store.Open(filepath.Join(t.TempDir(), "grelot.db"), store.Options{
+	st, err := store.Open(filepath.Join(t.TempDir(), "grelot.db"), &store.Options{
 		Logger: logger, PathRoot: store.DefaultPathRoot, Woke: hub.Woke, Now: ts.clock.Now,
 	})
 	if err != nil {

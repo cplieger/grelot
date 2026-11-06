@@ -100,7 +100,7 @@ func (w *wtx) revive(r *Revival, provider string) (Revived, error) {
 	}
 	// The left card told the others it had gone.
 	w.queueCards(kindJoin, &row, row.Paths)
-	unread, err := w.s.unread(w.r, row.ID, row.Read, w.now)
+	unread, err := w.s.unread(w.r, &row, w.now)
 	if err != nil {
 		return Revived{}, err
 	}

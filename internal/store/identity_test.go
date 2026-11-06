@@ -25,7 +25,7 @@ func openIdentityStore(t *testing.T) (*Store, *clock, logSink) {
 	t.Helper()
 	clk := &clock{t: testNow}
 	sink := newLogSink()
-	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), Options{Logger: slog.New(sink), Now: clk.now})
+	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{Logger: slog.New(sink), Now: clk.now})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

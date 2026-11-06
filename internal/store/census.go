@@ -7,7 +7,7 @@ import (
 	"github.com/cplieger/bolttable"
 )
 
-// Census is what the minute state line counts. Unread and Oldest cover
+// Census is what the /metrics gauges read. Unread and Oldest cover
 // the wake deliveries past read of live identities only: a dormant
 // identity's mail waits for a revival, and counting it would hold Oldest
 // at days.
@@ -91,10 +91,11 @@ func (s *Store) censusIdentities(r *bolttable.ReadTx, out *Census, online func(*
 		if online != nil && s.online(online, v) {
 			out.Online++
 		}
-		b, err := s.wakeBatch(r, v, now)
+		u, err := s.pastRead(r, v, now)
 		if err != nil {
 			return err
 		}
+		b := u.wake()
 		out.Unread += b.count
 		if b.count > 0 && (out.Oldest.IsZero() || b.oldest.Before(out.Oldest)) {
 			out.Oldest = b.oldest

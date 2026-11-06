@@ -1,9 +1,10 @@
 package store
 
 // Space is the store file's size and how much of it holds data. bbolt
-// reuses freed pages and never shrinks the file, so FileBytes stays near
-// its high-water mark until the next startup compaction, and only
-// InUseBytes falls when rows expire.
+// grows the file ahead of use, reuses freed pages and never shrinks it, so
+// FileBytes stays at or above its high-water mark until the next startup
+// compaction, and only InUseBytes, the pages written less the free ones,
+// falls when rows expire.
 type Space struct {
 	FileBytes  int64
 	FreeBytes  int64
@@ -17,7 +18,7 @@ func (s *Store) Measure() (Space, error) {
 	if err != nil {
 		return Space{}, closed(err)
 	}
-	return Space{FileBytes: sp.FileBytes, FreeBytes: sp.FreeBytes, InUseBytes: sp.FileBytes - sp.FreeBytes}, nil
+	return Space{FileBytes: sp.FileBytes, FreeBytes: sp.FreeBytes, InUseBytes: sp.InUseBytes}, nil
 }
 
 // nearlyFull reports the bytes in use past 90 % of the ceiling.

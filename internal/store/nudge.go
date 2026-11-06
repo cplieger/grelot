@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/obs"
 )
 
 // NudgeVia is the layer that sent a nudge, logged as nudge sent's via.
@@ -90,13 +91,22 @@ func (s *Store) RecordNudge(ctx context.Context, n *Nudge, via NudgeVia) (got Nu
 	return got, recorded, err
 }
 
-// recordNudge sets n as me's outstanding nudge, sent now, and logs the
-// send; the caller stores me.
+// recordNudge sets n as me's outstanding nudge, sent now, logs the send
+// and counts it once the transaction commits; the caller stores me.
 func (w *wtx) recordNudge(me *identityRow, n *Nudge, via NudgeVia) {
 	me.Nudged, me.Nudges, me.NudgedAt = n.Seq, n.Attempt, w.now
 	w.wake(me.ID)
+	delay := w.now.Sub(n.Oldest)
 	w.s.log.Info(msgNudgeSent, "via", string(via), "attempt", n.Attempt, "seq", n.Seq,
-		"oldest_delay_ms", w.now.Sub(n.Oldest).Milliseconds())
+		"oldest_delay_ms", delay.Milliseconds())
+	attempt := obs.AttemptFirst
+	if n.Attempt > 1 {
+		attempt = obs.AttemptRepeat
+	}
+	w.tx.AfterCommit(func() {
+		w.s.m.Nudges.Inc(string(via), attempt)
+		w.s.m.NudgeDelay.Observe(delay.Seconds(), string(via))
+	})
 }
 
 // nudging is me's nudge state at now. A nudge is outstanding while read is
@@ -108,23 +118,30 @@ func (s *Store) nudging(r *bolttable.ReadTx, me *identityRow, now time.Time) (Nu
 	if me.Parent != 0 || me.Ended {
 		return out, nil
 	}
-	b, err := s.wakeBatch(r, me, now)
+	outstanding := me.Read < me.Nudged
+	if outstanding && me.Nudges > len(reNudgeAfter) {
+		return out, nil
+	}
+	u, err := s.pastRead(r, me, now)
 	if err != nil {
 		return out, err
 	}
-	outstanding := me.Read < me.Nudged
+	b := u.wake()
+	if outstanding {
+		if at := me.NudgedAt.Add(reNudgeAfter[me.Nudges-1]); now.Before(at) {
+			if b.renudges {
+				out.Next = at
+			}
+			return out, nil
+		}
+	}
 	due := &Nudge{Oldest: b.oldest, Identity: me.ID, Seq: b.newest, Read: me.Read, Count: b.count, Attempt: 1}
 	switch {
 	case b.count == 0:
 	case !outstanding:
 		out.Due = due
-	case me.Nudges > len(reNudgeAfter) || !b.renudges:
+	case !b.renudges:
 	default:
-		at := me.NudgedAt.Add(reNudgeAfter[me.Nudges-1])
-		if now.Before(at) {
-			out.Next = at
-			break
-		}
 		due.Attempt = me.Nudges + 1
 		out.Due = due
 	}
@@ -138,15 +155,6 @@ type wakeBatch struct {
 	count  int
 	// renudges is a wake delivery other than identity_expiring.
 	renudges bool
-}
-
-func (s *Store) wakeBatch(r *bolttable.ReadTx, me *identityRow, now time.Time) (wakeBatch, error) {
-	var b wakeBatch
-	err := s.scanUnread(r, me.ID, me.Read, now, func(d *deliveryRow) error {
-		b.add(d)
-		return nil
-	})
-	return b, err
 }
 
 // add counts d when it wakes. Deliveries come in seq order.

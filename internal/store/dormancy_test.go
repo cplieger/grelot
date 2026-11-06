@@ -18,6 +18,8 @@ func editIdentity(t *testing.T, s *Store, id uint64, edit func(*identityRow)) {
 			return err
 		}
 		edit(&row)
+		// An edited read cursor moves what the unread summary counts.
+		w.recounts = append(w.recounts, id)
 		return s.t.identities.table.Put(w.tx, id, &row)
 	})
 }
@@ -191,7 +193,7 @@ func TestPurge_afterDormantTTLFreesTheName(t *testing.T) {
 func TestDormancy_survivesARestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grelot.db")
 	clk := &clock{t: testNow}
-	s, err := Open(path, Options{Logger: slog.New(newLogSink()), Now: clk.now})
+	s, err := Open(path, &Options{Logger: slog.New(newLogSink()), Now: clk.now})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +202,7 @@ func TestDormancy_survivesARestart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s, err = Open(path, Options{Logger: slog.New(newLogSink()), Now: clk.now})
+	s, err = Open(path, &Options{Logger: slog.New(newLogSink()), Now: clk.now})
 	if err != nil {
 		t.Fatal(err)
 	}

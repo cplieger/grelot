@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
 )
 
@@ -114,6 +115,8 @@ type harness struct {
 	http  *httptest.Server
 	clk   *clock
 	push  *fakePush
+	// metrics is the page the store and server record into.
+	metrics *obs.Metrics
 	// open opens the store at dbPath and builds the server over it.
 	open   func()
 	logs   logSink
@@ -153,21 +156,22 @@ func buildHarness(t *testing.T, o store.Options, now func() time.Time, edits ...
 		so := o
 		logger := slog.New(h.logs)
 		hub := NewHub()
-		so.Logger, so.Now, so.PathRoot, so.Woke = logger, now, DefaultPathRoot, hub.Woke
-		st, err := store.Open(h.dbPath, so)
+		m := obs.New()
+		so.Logger, so.Now, so.PathRoot, so.Woke, so.Metrics = logger, now, DefaultPathRoot, hub.Woke, m
+		st, err := store.Open(h.dbPath, &so)
 		if err != nil {
 			t.Fatalf("store.Open: %v", err)
 		}
 		t.Cleanup(func() { _ = st.Close() })
 		h.push = &fakePush{states: map[uint64]pushState{}}
 		opts := &Options{
-			Store: st, Logger: logger, Now: now, Version: testVersion, Push: h.push, Hub: hub,
+			Store: st, Logger: logger, Now: now, Version: testVersion, Push: h.push, Hub: hub, Metrics: m,
 			Config: Config{Token: testToken, PathRoot: DefaultPathRoot},
 		}
 		for _, edit := range edits {
 			edit(opts)
 		}
-		h.store, h.srv = st, New(opts)
+		h.store, h.srv, h.metrics = st, New(opts), m
 		t.Cleanup(h.srv.Release)
 	}
 	h.open()
