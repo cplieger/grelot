@@ -66,9 +66,11 @@ func TestMetrics_takesNoHeadersAndCarriesTheRuntimeFamilies(t *testing.T) {
 	want := []string{
 		`grelot_identities{state="live"}`, `grelot_sweep_failures_total`,
 		`go_goroutines`, `go_memstats_heap_inuse_bytes`, `go_gc_duration_seconds_count`,
+		`process_gc_pause_seconds_total`, `process_uptime_seconds`, `process_start_time_seconds`,
 	}
-	// measure reads the process families from /proc, so only Linux, where
-	// the image runs, serves them.
+	// measure reads RSS and CPU time from /proc, so only Linux, where the
+	// image runs, serves them; its other process families come from the Go
+	// runtime on every OS.
 	if runtime.GOOS == "linux" {
 		want = append(want, `process_resident_memory_bytes`, `process_cpu_seconds_total`)
 	}

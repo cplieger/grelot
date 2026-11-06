@@ -125,11 +125,20 @@ func servedSeries(t *testing.T) map[string]bool {
 	return out
 }
 
+// procFamilies are the families measure reads from /proc and so serves on
+// Linux only; its other process_ families come from the Go runtime on every
+// OS.
+var procFamilies = []string{
+	"process_cpu_seconds_total", "process_resident_memory_bytes",
+	"process_open_fds", "process_max_fds",
+	"process_virtual_memory_bytes", "process_virtual_memory_max_bytes",
+	"process_network_receive_bytes_total", "process_network_transmit_bytes_total",
+}
+
 // deployedPageServes reports whether the image's page, on Linux, serves
-// name, given the names this OS's page serves: measure reads the process
-// families from /proc, so another OS's page lacks some of them.
+// name, given the names this OS's page serves.
 func deployedPageServes(served map[string]bool, name string) bool {
-	return served[name] || runtime.GOOS != "linux" && strings.HasPrefix(name, "process_")
+	return served[name] || runtime.GOOS != "linux" && slices.Contains(procFamilies, name)
 }
 
 // readRules returns alerts/promql.yaml's expressions by alert name.
