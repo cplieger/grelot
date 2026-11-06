@@ -278,11 +278,22 @@ func (h *harness) request(method, path string, body any, headers map[string]stri
 // under only when the harness serves in process.
 func (h *harness) requestCtx(ctx context.Context, method, path string, body any, headers map[string]string) *response {
 	h.t.Helper()
+	r, err := h.send(ctx, method, path, body, headers)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return r
+}
+
+// send is requestCtx returning its error instead of failing the test, so
+// a goroutine other than the test's may call it: t.Fatal must run on the
+// test's goroutine.
+func (h *harness) send(ctx context.Context, method, path string, body any, headers map[string]string) (*response, error) {
 	var rd io.Reader = http.NoBody
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
-			h.t.Fatal(err)
+			return nil, err
 		}
 		rd = bytes.NewReader(b)
 	}
@@ -292,7 +303,7 @@ func (h *harness) requestCtx(ctx context.Context, method, path string, body any,
 	}
 	req, err := http.NewRequestWithContext(ctx, method, base+path, rd)
 	if err != nil {
-		h.t.Fatal(err)
+		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	req.Header.Set(headerVersion, testVersion)
@@ -306,12 +317,64 @@ func (h *harness) requestCtx(ctx context.Context, method, path string, body any,
 			req.Header.Set(k, v)
 		}
 	}
-	resp := h.do(req)
+	resp, err := h.roundTrip(req)
+	if err != nil {
+		return nil, err
+	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	out := &response{status: resp.StatusCode, header: resp.Header, raw: string(raw)}
 	_ = json.Unmarshal(raw, &out.body)
-	return out
+	return out, nil
+}
+
+// pending is a request sent from its own goroutine.
+type pending struct {
+	h       *harness
+	answers chan sendResult
+}
+
+type sendResult struct {
+	r   *response
+	err error
+}
+
+// async sends the request from its own goroutine; answer or now collects
+// its response on the test's goroutine.
+func (h *harness) async(method, path string, body any, headers map[string]string) *pending {
+	p := &pending{h: h, answers: make(chan sendResult, 1)}
+	ctx := h.t.Context()
+	go func() {
+		r, err := h.send(ctx, method, path, body, headers)
+		p.answers <- sendResult{r: r, err: err}
+	}()
+	return p
+}
+
+// answer waits for p's response.
+func (p *pending) answer() *response {
+	p.h.t.Helper()
+	return p.got(<-p.answers)
+}
+
+// now is p's response if it has answered, or nil while it still holds.
+func (p *pending) now() *response {
+	p.h.t.Helper()
+	select {
+	case res := <-p.answers:
+		return p.got(res)
+	default:
+		return nil
+	}
+}
+
+// got is res's response, failing the test on its send error.
+func (p *pending) got(res sendResult) *response {
+	p.h.t.Helper()
+	if res.err != nil {
+		p.h.t.Fatal(res.err)
+	}
+	return res.r
 }
 
 // sentOnce are the write routes that take no Idempotency-Key; request
@@ -326,16 +389,21 @@ func newTestKey() string { return fmt.Sprintf(`"test-key-%016d"`, testKeys.Add(1
 // do sends req over the network, or in process for a bubble harness.
 func (h *harness) do(req *http.Request) *http.Response {
 	h.t.Helper()
-	if h.http == nil {
-		rec := httptest.NewRecorder()
-		h.srv.Handler().ServeHTTP(rec, req)
-		return rec.Result()
-	}
-	resp, err := h.http.Client().Do(req)
+	resp, err := h.roundTrip(req)
 	if err != nil {
 		h.t.Fatal(err)
 	}
 	return resp
+}
+
+// roundTrip is do returning its error instead of failing the test.
+func (h *harness) roundTrip(req *http.Request) (*http.Response, error) {
+	if h.http == nil {
+		rec := httptest.NewRecorder()
+		h.srv.Handler().ServeHTTP(rec, req)
+		return rec.Result(), nil
+	}
+	return h.http.Client().Do(req)
 }
 
 // as sends a request from session.

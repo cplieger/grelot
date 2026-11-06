@@ -311,15 +311,15 @@ func TestKeyedPost_aConcurrentReSendGivesItsRateLimitTokenBack(t *testing.T) {
 	body := postBody(map[string]any{"agent": "reader"}, "raced", "a body")
 	headers := keyHeader(sessA, "raced-post-key-01")
 	pause.armed.Store(true)
-	second := make(chan *response, 1)
-	go func() { second <- h.request(http.MethodPost, "/v1/posts", body, headers) }()
+	second := h.async(http.MethodPost, "/v1/posts", body, headers)
 	<-pause.paused
 
 	first := h.request(http.MethodPost, "/v1/posts", body, headers)
 	close(pause.release)
 	var again *response
 	select {
-	case again = <-second:
+	case res := <-second.answers:
+		again = second.got(res)
 	case <-time.After(10 * time.Second):
 		t.Fatal("the re-send held between its replay lookup and its write never answered")
 	}
