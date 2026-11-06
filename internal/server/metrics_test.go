@@ -68,9 +68,9 @@ func TestMetrics_takesNoHeadersAndCarriesTheRuntimeFamilies(t *testing.T) {
 		`go_goroutines`, `go_memstats_heap_inuse_bytes`, `go_gc_duration_seconds_count`,
 		`process_gc_pause_seconds_total`, `process_uptime_seconds`, `process_start_time_seconds`,
 	}
-	// measure reads RSS and CPU time from /proc, so only Linux, where the
-	// image runs, serves them; its other process families come from the Go
-	// runtime on every OS.
+	// measure serves the three process_ families above on every OS and reads
+	// the rest, RSS and CPU time among them, from /proc on Linux only, where
+	// the image runs.
 	if runtime.GOOS == "linux" {
 		want = append(want, `process_resident_memory_bytes`, `process_cpu_seconds_total`)
 	}
