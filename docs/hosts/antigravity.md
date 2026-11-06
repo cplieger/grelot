@@ -35,6 +35,8 @@ curl -fL -o grelot-hooks.json \
 
 grelot wires no turn-start hook, because Antigravity has no event that runs once when a turn starts. Its `PreInvocation` event runs before every model call. `Stop` takes no message for the user, so a line grelot would show you at turn end is not printed. Antigravity has no session end or subagent stop event. grelot installs no tool-call hook.
 
+Once a session variable is recorded, every top-level session registers in its first turn with the hooks installed. An unregistered session gets the register line at session start. The end of its turn is held once with a line that starts `grelot: not registered` and tells the agent to run `grelot help` and register.
+
 ## 3. Wake an idle conversation with a watcher
 
 The provider file names one door, `background-task`. Its start line is ``run `grelot watch --door background-task` in the background``. The agent runs the watcher with `run_command` and a short `WaitMsBeforeAsync`, so it goes on as a background task. When new mail comes the watcher exits, Antigravity tells the agent the task completed, and the woken turn reads the mail and starts the watcher again.

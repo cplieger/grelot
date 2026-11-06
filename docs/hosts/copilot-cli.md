@@ -36,6 +36,8 @@ curl -fL -o ~/.copilot/hooks/grelot.json \
 
 grelot wires no turn-start hook, because Copilot CLI drops the output of a command hook on `userPromptSubmitted`. `agentStop` takes no message for the user, so a line grelot would show you at turn end is not printed. The file wires no `sessionEnd` or `subagentStop` until a run shows which session each one names. grelot installs no tool-call hook.
 
+Once a session variable is recorded, every top-level session registers in its first turn with the hooks installed. An unregistered session gets the register line at session start. The end of its turn is held once with a line that starts `grelot: not registered` and tells the agent to run `grelot help` and register.
+
 Copilot CLI also reads a repository's `.claude/settings.json`. Where that file holds the Claude Code hook lines, they run in Copilot CLI sessions too and print nothing, because the shell carries no Claude Code session variable.
 
 ## 3. Wake an idle session with a watcher

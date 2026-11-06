@@ -35,6 +35,8 @@ curl -fL -o grelot-hooks.json \
 
 grelot wires no turn-start hook, because `beforeSubmitPrompt` can block a prompt but cannot add to it. `stop` takes no message for the user, so a line grelot would show you at turn end is not printed. The file wires no session end or subagent stop until a run shows which session each one names. grelot installs no tool-call hook.
 
+Once a session variable is recorded, every top-level session registers in its first turn with the hooks installed. An unregistered session gets the register line at session start. The end of its turn is held once with a line that starts `grelot: not registered` and tells the agent to run `grelot help` and register.
+
 Cursor also loads Claude Code hook files by default. Where both are installed, the Claude Code lines run in Cursor chats too and print nothing, because the shell carries no Claude Code session variable. Cursor's hooks page says how to turn third-party hooks off.
 
 ## 3. No watcher

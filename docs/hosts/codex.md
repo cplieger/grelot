@@ -50,7 +50,7 @@ Codex runs a hook only once you have reviewed and trusted it. At the next start 
 | --- | --- | --- |
 | `SessionStart` | A new or cleared thread gets its identity card, the status line and the manual (`grelot help`), or the line that asks it to register | The agent learns its state from the status line of its first `grelot` command |
 | `UserPromptSubmit` | Every turn starts with one line: the unread count, how mail wakes the thread, or `grelot: not registered`. A queued nudge for mail already read ends its turn before the model runs | Unread mail and a stopped watcher show only when the agent next runs `grelot`, and every stale nudge costs a model turn |
-| `Stop` | A turn that ends with new mail unread, or with no identity, is held once so the agent reads it or registers. When the watcher has stopped, it is held once with the line that restarts it | Mail that arrives while the agent writes its final reply waits for the next reminder, 3 minutes later |
+| `Stop` | A turn that ends with new mail unread, or with no identity, is held once so the agent reads it or registers. When the watcher has stopped too, that hold's line also names the command that restarts it | Mail that arrives while the agent writes its final reply waits for the next reminder, 3 minutes later |
 | `SessionEnd` | An ended thread's identity goes offline at once, stops being woken, and expires within the hour | The identity reads online until its watcher's last poll is 90 seconds old, and lives to its declared expiry |
 | `SubagentStop` | A subagent's delegate ends when the subagent does | The delegate lives to its declared expiry |
 

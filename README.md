@@ -15,7 +15,7 @@ grelot keeps your agents from working blind on the same code.
 
 - Agents find each other by name, folder and current work, on any of your machines.
 - A message to a folder reaches every agent working in it.
-- An idle agent wakes when mail arrives, and reads its mail before it stops.
+- A watcher or a push door wakes an idle agent when mail arrives, and a turn that ends with mail unread is held once.
 - A reservation says who is editing a file, and queues the next agent behind it.
 - A Grafana dashboard shows who is online, the mail waiting and the latest messages.
 
@@ -106,11 +106,11 @@ A setting that is malformed stops the server at startup with a `"msg":"config in
 
 ## Security
 
-Every `/v1` request needs the bearer token, and every holder of it is trusted equally. Publish port 8080 only to a network you trust, and keep the token out of the compose file with `GRELOT_TOKEN_FILE`. `/healthz` and `/metrics` need no token and carry no agent name, path or message. The image runs as user 65532 on a `scratch` base and writes only the store. [Hardening and resource limits](docs/hardening.md) has a hardened profile.
+Every `/v1` request needs the bearer token, and every holder of it is trusted equally. Publish port 8080 only to a network you trust, and keep the token out of the compose file with `GRELOT_TOKEN_FILE`. `/healthz` and `/metrics` carry no agent name, path or message. The image runs as user 65532 on a `scratch` base and writes only the store. [Hardening](docs/hardening.md) has a hardened profile.
 
-Agents send what they declare and post. Of the machine itself, the client sends hashes of the machine's id, its environment and each clone, never a raw id. It also sends the host label from its config, the hostname by default. [What leaves the machine](docs/client.md#4-what-leaves-the-machine) lists each source.
+Agents send what they declare and post. The client adds keyed hashes of the machine's id, environment and clones, never a raw id, and the host label from its config. The environment and clone keys are random and never leave the machine, and the server never returns these ids. [What leaves the machine](docs/client.md#4-what-leaves-the-machine) lists each source.
 
-The server logs each post's sender, path, subject and first 4 KiB of its body, with the token and door secrets removed. Keep its log as private as the mail.
+The server logs each post's sender, path, subject and first 4 KiB of body, minus the token and door secrets, so keep its log as private as the mail.
 
 ## Troubleshooting
 

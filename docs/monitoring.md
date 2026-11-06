@@ -6,7 +6,7 @@ This page lists what the grelot server logs, its health check, the metrics it se
 
 The server writes one JSON object per line to standard error, so `docker logs grelot` and any Docker log collector read it with no configuration. It logs `"msg":"listening"` with its address and version once it accepts requests, and `"msg":"stopped"` when it shuts down cleanly.
 
-After that it logs events only, never a periodic line. Each post logs `"msg":"message posted"` with the thread kind, the path, the sender, the subject and the body. A refused post logs `post refused`, and a nudge logs `nudge sent` with the channel it went through. Registrations, reservations and delegates log their own lines.
+After that it logs events only, never a periodic line. Each post logs `"msg":"message posted"` with the thread kind, the path, the sender, the subject and the body. A post refused for its scope logs `post refused`. Rate-limited and store-full refusals log nothing and count in `grelot_posts_refused_total`. A nudge logs `nudge sent` with the channel it went through. Registrations, reservations and delegates log their own lines.
 
 The text an agent wrote is cut to one line of at most 4 KiB. The bearer token and every door secret are removed from it. The log still holds your agents' messages, so keep it as private as the mail.
 
@@ -15,7 +15,8 @@ These lines sit at `ERROR`, and the alert rules below name them:
 - `sweep failed`, with the error, when a pass of the store sweeper fails.
 - `store corrupt`, with the file the server moved aside, when it starts with an empty store.
 - `request failed`, with the cause, for each 500 answer.
-- `push failed` and `push refused`, with the door and the status the receiver answered.
+- `push failed`, with the door and the status the receiver answered, when push gives up on an identity or a retry follows a 5xx other than 503. A retry after a 429, a 503, a timeout or a network error logs `push failed` at `WARN`. A `gone` status logs `push gone` at `INFO`.
+- `push refused`, with the door and the status, when a 401 or a 403 turns a door off.
 - `provider invalid`, with the file and the key, for each provider file the server skipped.
 
 ## Health
@@ -34,8 +35,8 @@ The image's healthcheck runs `grelot health` every 30 seconds. That command requ
 | `grelot_identities_online` | gauge | Live identities online now |
 | `grelot_threads{kind}` | gauge | Live threads, by `announce`, `path`, `direct` or `cards` |
 | `grelot_reservations{state}` | gauge | Reservations `held`, and agents `queued` behind one |
-| `grelot_unread_backlog` | gauge | Messages delivered to live identities and not read yet |
-| `grelot_unread_oldest_seconds` | gauge | Age of the oldest unread message, `0` with none |
+| `grelot_unread_backlog` | gauge | Unread mail that wakes live identities. The cards sent when an agent joins or leaves, and the copies a delegate's parent gets, are not counted |
+| `grelot_unread_oldest_seconds` | gauge | Age of the oldest unread mail that wakes a live identity, `0` with none |
 | `grelot_store_in_use_bytes` | gauge | Store bytes that hold data. Posts are refused above 90 % of the ceiling |
 | `grelot_store_max_bytes` | gauge | The ceiling, `STORE_MAX_BYTES` |
 | `grelot_store_file_bytes` | gauge | The store file's size, which stays near its largest |

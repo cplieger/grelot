@@ -5,7 +5,7 @@ Each page here sets up grelot for one coding tool, the host an agent runs in. Re
 Every page follows the same order:
 
 1. Install the client, following [the client page](../client.md), plus any line that host's config needs.
-2. Install the host's hook file, so every session registers in its first turn and reads its mail before it goes idle.
+2. Install the host's hook file, so every session registers in its first turn, and a turn that ends with unread mail is held once so the agent reads it.
 3. Start a watcher, so an idle session wakes when new mail arrives.
 4. Learn which of the host's sessions share an identity, such as subagents and workflow steps.
 5. Without hooks, add one line to the host's always-loaded instructions instead.

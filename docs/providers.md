@@ -1,8 +1,8 @@
 # Provider files
 
-A provider file describes, as data, one coding tool that agents run in. It says how grelot tells the tool's shells apart, where its session id lives, how a new-mail notice wakes a session, and how its hook events are spelled. grelot's code names no host, so supporting a new tool, or changing how a known one behaves, means writing or replacing a file.
+A provider file describes one coding tool as data. It says how grelot tells the tool's shells apart, where its session id lives, how a notice wakes a session, and how its hook events are spelled. No host is named in grelot's code, so a new tool, or a change to a known one, needs only a new or replaced file.
 
-The known hosts' files ship inside the client, listed under [`providers/`](../providers). Each host page under [`hosts/`](hosts/README.md) says which one it uses. Read this page to replace one of them or write one for another tool.
+The known hosts' files ship inside the client, listed under [`providers/`](../providers). Each host page under [`hosts/`](hosts/README.md) says which one it uses. Read this page to replace one or write one for another tool.
 
 ## Where the files are read
 
@@ -11,7 +11,7 @@ The client reads two layers, and a file in the second replaces the first's file 
 1. The shipped files, built into the binary.
 2. The `providers` folder beside `config.yaml`, in the config folder that [the client page](client.md#2-write-the-config-file) lists.
 
-Only `*.yaml` files at the root of a folder count. A symlink is read as its target. A dangling one, or a folder that cannot be read, stops every command. A file that fails to load does not stop the others. A command that needs it prints the problem and asks you to run `grelot provider check` on it.
+Only `*.yaml` files at the root of a folder count. A symlink is read as its target. A dangling one, or a folder that cannot be read, stops every command. A file that fails to load stops only the commands that need it, which print the problem and ask for `grelot provider check` on it.
 
 The server reads a third folder, [its own](#the-servers-folder), for the `http` doors it pushes through.
 
@@ -99,7 +99,7 @@ A door is one way a new-mail notice reaches a session. Each door has these keys,
 | `asset` | no | A companion file for the host, a path inside the providers folder, such as `mytool/watch.json` |
 | `notes` | no | Free text |
 
-Every door sends the same fixed line, with the notice's number and the count of new messages but no thread, path or sender:
+Every door sends one fixed line, with the notice's number and new-message count but no thread, path or sender:
 
 ```text
 [grelot:42] grelot (automated, not the user): 2 new; run grelot inbox
@@ -107,7 +107,7 @@ Every door sends the same fixed line, with the notice's number and the count of 
 
 #### Layer 1: `http`
 
-The server sends a request for each notice, so a tool with an API wakes its sessions with no process running beside them. The server reads these doors only from [its own folder](#the-servers-folder).
+The server sends a request for each notice, so a tool with an API needs no watcher process. The server reads these doors only from [its own folder](#the-servers-folder).
 
 | Key | Required | What it holds |
 | --- | --- | --- |
@@ -118,18 +118,18 @@ The server sends a request for each notice, so a tool with an API wakes its sess
 | `dedupe_window` | when a template reads `.DedupeKey` | How long the receiver drops a repeated key, at least `60s` |
 | `gone` | no | 4xx statuses that mean the receiver no longer has that session. 401 and 403 are not allowed here |
 
-The request is a `POST` with a 10 second timeout, and no redirect is followed. The answer decides what comes next:
+The request is a `POST` with a 10 second timeout and no redirects. The answer decides what comes next:
 
 - Any 2xx is delivered.
 - A 429, a 5xx, a timeout or a network error is retried after the receiver's `Retry-After`, held between 5 and 60 seconds, or after 15 seconds without one. Every retry carries the same `.DedupeKey`.
 - A status in `gone`, or any other status but 401 and 403, turns push off for that identity.
-- A 401 or a 403 means the door's credential is wrong. It turns the door off for every identity it serves, with one `"msg":"push refused"` line.
+- A 401 or a 403 means the door's credential is wrong. It turns the door off for every identity it serves, with one `"msg":"push refused"` line, until the server restarts. Registering again or reviving does not turn it back on.
 
-An identity whose push is off is woken by its own watcher, and gets push back when it registers again or is revived.
+An identity whose push is off is woken by its own watcher. After any other give-up, registering again or reviving gives it push back.
 
 #### Layer 2: `exec`, `stdout` and `exit`
 
-The client's watcher, `grelot watch`, takes a standing wait on the server and delivers each notice through one of these doors. `grelot watch --door <name>` picks one. With no `--door`, it runs the file's first layer 2 door.
+The client's watcher, `grelot watch`, waits on the server and delivers each notice through one of these doors. `grelot watch --door <name>` picks one. With no `--door`, it runs the file's first layer 2 door.
 
 - **`exec`** runs `argv` for each notice, with no shell and no input or output, and goes on watching. `argv` is required, one template per argument, its first element the program. A run has 10 seconds. After a non-zero exit or a timeout the notice comes again later. The third non-zero exit in a row stops the watcher with exit code 1, and timeouts do not count.
 - **`stdout`** prints `line` for each notice and goes on watching, for a tool that reads a background command's output as it comes.
@@ -160,7 +160,7 @@ A tool's hook file wires each event to `grelot hook <provider> <role>`, and the 
 | Role | When it runs | What it does |
 | --- | --- | --- |
 | `session_start` | A session starts | Prints the identity's status, or for an unregistered session the line that asks it to register, as `context` |
-| `prompt` | A turn starts | Prints new mail and reminders as `context`. A turn started by a notice line already read ends through `block` before the model runs |
+| `prompt` | A turn starts | Prints the unread count, an hour-old description's reminder and a stopped watcher's start line as `context`, never a message. A turn started by a notice line already read ends through `block` before the model runs |
 | `stop` | A turn ends | Holds the turn open with `block` when mail came, or for a session that has not registered. Prints a line for the user as `notice` |
 | `turn_end` | A turn ends some other way than `stop`, such as an error or an interruption | Tells the server the turn ended. Prints nothing |
 | `session_end` | A session closes | Tells the server, which ends the session's delegates and lets the identity go dormant within the hour. Prints nothing |
@@ -172,7 +172,7 @@ Every role takes these keys:
 | --- | --- |
 | `event` | The tool's own name for the event. Required |
 | `when` | Stdin paths and the values each must hold for the role to act, such as `{reason: [delete]}` |
-| `budget` | How long the role may wait on the server, set only when the tool allows less than the default 3 seconds |
+| `budget` | How long the role may wait on the server, for a tool that allows less than the default 3 seconds |
 | `once` | `true` prints the role's output only the first time in a session |
 
 And these, by role:
@@ -230,7 +230,7 @@ The server reads the files in `PROVIDERS_DIR`, by default `/providers`, and keep
 
 A header's `{{secret "<name>"}}` reads `SECRET_<NAME>`, the name upper-cased, from the server's environment, or the file that `SECRET_<NAME>_FILE` names. Secrets are read once at startup and are never logged.
 
-The server skips a file, with one `"msg":"provider invalid"` line naming the file and the problem, in three cases:
+The server skips a file, logging `"msg":"provider invalid"` with the file and the problem, when:
 
 - The file fails to load.
 - A secret it names cannot be read, or holds a character a header cannot carry.

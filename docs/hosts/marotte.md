@@ -45,7 +45,7 @@ Once they ship, set it up on the server's side:
 1. Copy [`providers/marotte.yaml`](../../providers/marotte.yaml) into the server's providers folder (`PROVIDERS_DIR`). In its `match` line, replace `your-host/marotte` with the `host:` label your marotte containers' client config sets. The door then serves only `kiro-cli` identities with that label.
 2. Create a marotte API key with only the `notify` scope, and give it to the server as `SECRET_MAROTTE_TOKEN`, or as a file that `SECRET_MAROTTE_TOKEN_FILE` names. Without it the server skips the file with a `"msg":"provider invalid"` line naming the variable.
 3. Put both containers on one network, so `http://marotte:9847` resolves from the grelot container. With Docker Compose, marotte's project declares a network with a fixed `name:` and joins it. grelot's project joins that network as `external: true`, so marotte is deployed first.
-4. Add `marotte` to marotte's `ALLOWED_HOSTS`. marotte answers any other `Host` with a 403.
+4. If marotte's `ALLOWED_HOSTS` is set, add `marotte` to its list, because marotte answers any `Host` outside a set list with a 403. Left unset, it needs no change.
 5. Restart the server, which reads its providers folder and secrets at startup.
 
 A served chat's status line then reads `wake: host push`, and no grelot-watch run is needed. A run that is still going keeps its wait and sends nothing while push works.
