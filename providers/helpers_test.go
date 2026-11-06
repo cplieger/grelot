@@ -361,6 +361,10 @@ func parseWiring(t *testing.T, name string, data []byte) []wire {
 	case v != "":
 		t.Fatalf("%s/hooks.json: version %s, want v1 or 1", name, v)
 	case head["hooks"] == nil:
+		// Antigravity's named groups. Its schema example lists SessionStart
+		// handlers flat and nests only tool events in matcher groups; the
+		// matcher is ignored for SessionStart and Stop
+		// (https://antigravity.google/docs/hooks, "Schema and file format").
 		var groups map[string]map[string]json.RawMessage
 		strictJSON(t, name, data, &groups)
 		var got []wire
