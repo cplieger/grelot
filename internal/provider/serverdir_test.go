@@ -81,9 +81,7 @@ func TestLoadServerDir(t *testing.T) {
 		if err := os.WriteFile(target, []byte(pushFile("host", "")), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Symlink(target, filepath.Join(dir, "host.yaml")); err != nil {
-			t.Fatal(err)
-		}
+		mustSymlink(t, target, filepath.Join(dir, "host.yaml"))
 		doors, skipped, err := LoadServerDir(os.DirFS(dir))
 		if err != nil {
 			t.Fatalf("LoadServerDir: %v", err)
