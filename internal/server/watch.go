@@ -2,10 +2,13 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
+	"github.com/cplieger/go/httpserver"
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/transport"
 )
 
 type watchRequest struct {
@@ -23,7 +26,7 @@ type nudgeJSON struct {
 // errSessionEnded answers a standing wait while the session's end is
 // reported; its code is the reason word the watcher's end line carries.
 var errSessionEnded = &apiError{
-	status: http.StatusGone, code: "ended",
+	status: http.StatusGone, code: transport.EndEnded,
 	msg: "session ended: its end was reported, so its watcher stops; any other grelot command from this session reopens it",
 }
 
@@ -61,6 +64,27 @@ func (s *Server) standingWait(r *http.Request, c store.Caller) (status int, body
 	}
 }
 
+// endReasons maps the store's refusal of a session with no live identity
+// to the end reason a watcher's end line carries, which transport owns.
+var endReasons = map[string]httpserver.ErrorCode{
+	stateNone:    transport.EndNone,
+	stateDormant: transport.EndDormant,
+}
+
+// waitEnd answers a standing wait the store refused for want of a live
+// identity with its end reason; any other error passes through.
+func waitEnd(err error) error {
+	var se *store.Error
+	if !errors.As(err, &se) || se.Kind != store.KindGone {
+		return err
+	}
+	code, ok := endReasons[se.Why]
+	if !ok {
+		return err
+	}
+	return &apiError{status: http.StatusGone, code: code, msg: se.Msg}
+}
+
 // watchFor reads a standing wait's request: the identity it holds for and
 // how long. A refused wait holds nothing, so it never counts as held.
 func (s *Server) watchFor(r *http.Request, c store.Caller) (id uint64, wait time.Duration, err error) {
@@ -75,7 +99,7 @@ func (s *Server) watchFor(r *http.Request, c store.Caller) (id uint64, wait time
 	me, err := s.store.Watcher(r.Context(), c)
 	switch {
 	case err != nil:
-		return 0, 0, err
+		return 0, 0, waitEnd(err)
 	case me.Ended:
 		return 0, 0, errSessionEnded
 	}
@@ -120,7 +144,7 @@ func (s *Server) due(ctx context.Context, c store.Caller, id uint64, since sendC
 	me, err := s.store.Watcher(ctx, c)
 	switch {
 	case err != nil:
-		return watchStep{}, nil, err
+		return watchStep{}, nil, waitEnd(err)
 	case me.Ended:
 		return watchStep{}, nil, errSessionEnded
 	}

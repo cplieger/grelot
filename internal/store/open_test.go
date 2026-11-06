@@ -262,7 +262,7 @@ func TestOpen_compactsAFileMostlyFreeAndKeepsItsRows(t *testing.T) {
 	clk.advance(time.Hour)
 	mustSweep(t, s)
 	before := mustMeasure(t, s)
-	// The design's thresholds: at least half the file and 4 MiB free.
+	// Open compacts only a file at least half and 4 MiB free.
 	if before.FreeBytes*2 < before.FileBytes || before.FreeBytes < 4<<20 {
 		t.Fatalf("free %d of %d bytes before the restart: the fixture does not reach the thresholds", before.FreeBytes, before.FileBytes)
 	}
