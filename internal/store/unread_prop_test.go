@@ -17,11 +17,20 @@ import (
 // reservations, registrations and retirements, and after every step
 // compares each identity's stored summary, and what its readers see, with
 // a scan of its delivery rows. The seeds together must write every
-// delivery kind and a delegate's copy.
+// delivery kind and a delegate's copy, checked only when -run selects
+// them all.
 func TestUnreadSummary_matchesAScanAfterEveryStep(t *testing.T) {
+	const seeds = 40
 	seen := map[string]bool{}
-	for seed := range uint64(40) {
-		t.Run(fmt.Sprint(seed), func(t *testing.T) { runSummarySequence(t, seed, 160, seen) })
+	ran := 0
+	for seed := range uint64(seeds) {
+		t.Run(fmt.Sprint(seed), func(t *testing.T) {
+			ran++
+			runSummarySequence(t, seed, 160, seen)
+		})
+	}
+	if ran < seeds {
+		return
 	}
 	for _, kind := range []string{
 		kindDirect, kindPath, kindAnnounce, kindJoin, kindLeft, kindIdentityExpiring,

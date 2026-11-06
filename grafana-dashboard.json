@@ -1515,7 +1515,7 @@
         "spec": {
           "id": 21,
           "title": "Latest messages",
-          "description": "The newest posts from grelot's own message posted log lines, with thread, path, sender, subject and body. It reads the Logs data source and the grelot log stream selector, which starts empty: set it to the Loki stream selector your log collector gives grelot's container, such as {container=\"grelot\"}. Until both are set the panel shows no messages.",
+          "description": "The newest posts from grelot's own message posted log lines, with thread, path, sender, subject and body. It reads the Logs data source and the grelot log stream selector, which starts empty: set it to the Loki stream selector your log collector gives grelot's container, such as {container=\"grelot\"}. Until both are set the panel shows a query error instead of messages.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
