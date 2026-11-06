@@ -204,6 +204,8 @@ type wtx struct {
 	events []owedEvent
 	// woke is every identity Options.Woke reports once this commits.
 	woke []uint64
+	// recounts are the identities whose unread summary recount rebuilds.
+	recounts []uint64
 }
 
 // wake has Options.Woke report id once this transaction commits.
@@ -222,6 +224,9 @@ func (s *Store) update(ctx context.Context, fn func(*wtx) error) error {
 			return err
 		}
 		if err := w.flushOwed(); err != nil {
+			return err
+		}
+		if err := w.recount(); err != nil {
 			return err
 		}
 		if ids := w.woke; len(ids) > 0 && s.woke != nil {

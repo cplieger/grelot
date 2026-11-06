@@ -91,10 +91,11 @@ func (s *Store) censusIdentities(r *bolttable.ReadTx, out *Census, online func(*
 		if online != nil && s.online(online, v) {
 			out.Online++
 		}
-		b, err := s.wakeBatch(r, v, now)
+		u, err := s.pastRead(r, v, now)
 		if err != nil {
 			return err
 		}
+		b := u.wake()
 		out.Unread += b.count
 		if b.count > 0 && (out.Oldest.IsZero() || b.oldest.Before(out.Oldest)) {
 			out.Oldest = b.oldest
