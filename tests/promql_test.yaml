@@ -1,6 +1,6 @@
-# Unit tests for alerts/promql.yaml: promtool test rules alerts/promql_test.yaml
+# Unit tests for alerts/promql.yaml: promtool test rules tests/promql_test.yaml
 rule_files:
-  - promql.yaml
+  - ../alerts/promql.yaml
 evaluation_interval: 1m
 tests:
   - name: GrelotDown fires for a failing target and stays quiet for a healthy one
