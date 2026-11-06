@@ -1,0 +1,11 @@
+{
+  "session_id": "cf282512-ceef-4065-8ac9-000a6a72dee7",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-AppData-Local-Temp-work-claude-i\\cf282512-ceef-4065-8ac9-000a6a72dee7.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\work\\claude-i",
+  "hook_event_name": "SessionStart",
+  "source": "resume",
+  "seconds_since_last_response": 18,
+  "context_tokens": 38771,
+  "prompt_cache_likely_expired": false,
+  "estimated_cache_write_usd": 0.1939
+}

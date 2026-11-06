@@ -1,0 +1,6 @@
+{
+  "session_id": "sess_f126e366-693d-43e1-81f8-7b5090d01b35",
+  "hook_event_name": "UserPromptSubmit",
+  "cwd": "/tmp/work",
+  "prompt": "Next step after the rewind. Run one shell command, then end your turn with a one-line reply."
+}

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "command": "grelot hook copilot-cli session_start",
+        "timeout": 10
+      }
+    ],
+    "agentStop": [
+      {
+        "type": "command",
+        "command": "grelot hook copilot-cli stop",
+        "timeout": 10
+      }
+    ]
+  }
+}

@@ -38,8 +38,8 @@ hooks:
 `, f.contentType, f.body, f.line, f.idle, f.end, f.block)
 }
 
-// goodCheck runs every value placed in JSON through json, as the design's
-// template rule asks.
+// goodCheck runs every value placed in JSON through json, so a quote or a
+// newline in a value cannot break the rendered document.
 var goodCheck = checkFile{
 	contentType: "application/json",
 	body:        `{"text":{{json .Line}},"session":{{json .Session}}}`,

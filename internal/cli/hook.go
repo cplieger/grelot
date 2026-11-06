@@ -38,8 +38,11 @@ type hookCall struct {
 	*run
 	in    hook.Input
 	marks *hook.Marks
-	// session is the environment's host session id.
+	// session is the environment's host session id, "" when the hook
+	// process has none.
 	session string
+	// own is the host session the hook acts as: session, or the stdin's.
+	own string
 	// printed are the marks emit sets once it has printed the text that
 	// carries them; a run that prints nothing spends none.
 	printed [][2]string
@@ -59,19 +62,28 @@ func (r *run) hook(ctx context.Context, args []string) error {
 		return nil
 	}
 	p, err := r.Providers.Get(args[0])
-	if err != nil {
-		return nil
-	}
-	session, err := p.SessionID(r.Lookup)
-	if err != nil {
+	if err != nil || p.Session.Env == "" {
 		return nil
 	}
 	in, err := hook.ReadInput(r.Stdin)
 	if err != nil {
 		return nil
 	}
+	// A host that leaves its session variable out of hook processes says
+	// so, and the hook acts as its stdin session, the one the agent's own
+	// shell carries in that variable. Any other hook with no variable is
+	// another host running these hook lines, and prints nothing.
+	session, _ := p.SessionID(r.Lookup)
+	own := session
+	if own == "" && p.Session.HooksWithoutEnv {
+		own = in.String(p.Session.Stdin)
+	}
+	if own == "" {
+		return nil
+	}
 	r.prov = p
-	h := &hookCall{run: r, in: in, session: session, marks: hook.NewMarks(r.ConfigDir, r.now)}
+	r.hookSession = p.Name + ":" + own
+	h := &hookCall{run: r, in: in, session: session, own: own, marks: hook.NewMarks(r.ConfigDir, r.now)}
 	return h.role(ctx, args[1])
 }
 
@@ -103,21 +115,28 @@ func (h *hookCall) role(ctx context.Context, name string) error {
 			return h.stop(ctx, hs.Stop)
 		}
 	case roleTurnEnd, roleSessionEnd, roleSubagentStop:
-		if role := lifecycleRole(hs, name); role != nil && h.in.Matches(role.When) {
-			h.lifecycle(ctx, name, role)
-		}
+		h.report(ctx, name)
 	}
 	return nil
 }
 
-func lifecycleRole(hs *provider.Hooks, name string) *provider.LifecycleRole {
-	switch name {
-	case roleTurnEnd:
-		return hs.TurnEnd
-	case roleSessionEnd:
-		return hs.SessionEnd
+// report runs a lifecycle role when the provider spells it and its when
+// filter passes.
+func (h *hookCall) report(ctx context.Context, name string) {
+	hs := &h.prov.Hooks
+	if name == roleSubagentStop {
+		if hs.SubagentStop != nil && h.in.Matches(hs.SubagentStop.When) {
+			h.subagentStop(ctx, hs.SubagentStop)
+		}
+		return
 	}
-	return hs.SubagentStop
+	role := hs.SessionEnd
+	if name == roleTurnEnd {
+		role = hs.TurnEnd
+	}
+	if role != nil && h.in.Matches(role.When) {
+		h.lifecycle(ctx, name, role)
+	}
 }
 
 func (h *hookCall) classify(agentID string) hook.Class {
@@ -158,7 +177,7 @@ func (h *hookCall) sessionStart(ctx context.Context, role *provider.SessionStart
 
 // parentStart is the session start text of a session that acts for its
 // own identity: the card, the status line and the manual; the revive
-// offer; or the register line with the take-over hint a take_over source
+// offer; or the register line with the take-over hint a take-over start
 // may get. An error is a server that did not answer it.
 func (h *hookCall) parentStart(ctx context.Context, role *provider.SessionStartRole) (string, error) {
 	h.self = true
@@ -166,7 +185,7 @@ func (h *hookCall) parentStart(ctx context.Context, role *provider.SessionStartR
 	if err != nil {
 		return "", err
 	}
-	q, header := h.startRequest(ctx, role.Source)
+	q, header := h.startRequest(ctx, role)
 	me, resp, err := hookMe(ctx, api, role.Budget, q, header)
 	if err != nil {
 		return "", err
@@ -175,16 +194,13 @@ func (h *hookCall) parentStart(ctx context.Context, role *provider.SessionStartR
 }
 
 // startRequest is session start's query and headers: proc only for a
-// take_over source, and the machine and environment in headers, never the
+// take-over start, and the machine and environment in headers, never the
 // query, which access logs keep.
-func (h *hookCall) startRequest(ctx context.Context, s *provider.Source) (url.Values, http.Header) {
+func (h *hookCall) startRequest(ctx context.Context, role *provider.SessionStartRole) (url.Values, http.Header) {
 	q := url.Values{}
-	if s != nil {
-		source := h.in.String(s.Path)
-		if slices.Contains(s.TakeOver, source) && !slices.Contains(s.Fork, source) {
-			if proc := proctree.Proc(h.tree(), h.prov.Session.Process, h.prov.Session.ProcessShared); proc != "" {
-				q.Set("proc", proc)
-			}
+	if h.takesOver(role) {
+		if proc := proctree.Proc(h.tree(), h.prov.Session.Process, h.prov.Session.ProcessShared); proc != "" {
+			q.Set("proc", proc)
 		}
 	}
 	header := http.Header{}
@@ -196,6 +212,20 @@ func (h *hookCall) startRequest(ctx context.Context, s *provider.Source) (url.Va
 		header.Set(client.HeaderMachine, w.Machine)
 	}
 	return q, header
+}
+
+// takesOver says whether this start may get the take-over hint: one whose
+// source is not a fork, and is in take_over unless every start may.
+func (h *hookCall) takesOver(role *provider.SessionStartRole) bool {
+	s := role.Source
+	if s == nil {
+		return role.TakeOverEveryStart
+	}
+	source := h.in.String(s.Path)
+	if slices.Contains(s.Fork, source) {
+		return false
+	}
+	return role.TakeOverEveryStart || slices.Contains(s.TakeOver, source)
 }
 
 func (h *hookCall) startText(me *client.Me, status string) string {

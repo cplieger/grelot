@@ -1,0 +1,8 @@
+{
+  "session_id": "a9c96e81-c3c7-4658-9534-acfd0d061ae6",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-AppData-Local-Temp-work-claude-i\\a9c96e81-c3c7-4658-9534-acfd0d061ae6.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\work\\claude-i",
+  "hook_event_name": "SessionStart",
+  "source": "startup",
+  "model": "global.anthropic.claude-opus-5-5"
+}

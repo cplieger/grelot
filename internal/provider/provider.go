@@ -49,9 +49,9 @@ type Provider struct {
 	Extends  string   `yaml:"extends"`
 	Evidence Evidence `yaml:"evidence"`
 	Notes    string   `yaml:"notes"`
-	Session  Session  `yaml:"session"`
 	Detect   Detect   `yaml:"detect"`
 	Doors    []Door   `yaml:"doors"`
+	Session  Session  `yaml:"session"`
 }
 
 // Detect identifies the host from the agent's shell environment.
@@ -66,6 +66,10 @@ type Session struct {
 	Stdin         string   `yaml:"stdin"`
 	Process       []string `yaml:"process"`
 	ProcessShared []string `yaml:"process_shared"`
+	// HooksWithoutEnv says the host leaves Env out of hook processes, so a
+	// hook acts as its Stdin session. Without it, such a hook is another
+	// host running this provider's hook lines, and it writes nothing.
+	HooksWithoutEnv bool `yaml:"hooks_without_env"`
 }
 
 // Record locates a session's own record in the host's state directory, read
@@ -122,7 +126,7 @@ type Hooks struct {
 	Stop         *StopRole         `yaml:"stop"`
 	TurnEnd      *LifecycleRole    `yaml:"turn_end"`
 	SessionEnd   *LifecycleRole    `yaml:"session_end"`
-	SubagentStop *LifecycleRole    `yaml:"subagent_stop"`
+	SubagentStop *SubagentStopRole `yaml:"subagent_stop"`
 }
 
 // Role holds the keys every hook role takes.
@@ -162,6 +166,10 @@ type SessionStartRole struct {
 	Stdin   Stdin        `yaml:"stdin"`
 	Outputs StartOutputs `yaml:"outputs"`
 	Role    `yaml:",inline"`
+	// TakeOverEveryStart says every start but a fork source may get the
+	// take-over hint, for a host that reports no source and starts a session
+	// in its process only for a chat with no history.
+	TakeOverEveryStart bool `yaml:"take_over_every_start"`
 }
 
 // Source names the stdin path of the start source and which of its values
@@ -213,11 +221,26 @@ type StopOutputs struct {
 	Notice *Output `yaml:"notice"`
 }
 
-// LifecycleRole is turn_end, session_end or subagent_stop: each reports to
-// the server and prints nothing.
+// LifecycleRole is turn_end or session_end: each reports to the server and
+// prints nothing.
 type LifecycleRole struct {
 	Stdin Stdin `yaml:"stdin"`
 	Role  `yaml:",inline"`
+}
+
+// SubagentStopRole is subagent_stop: it ends the delegate a subagent's own
+// session holds and prints nothing.
+type SubagentStopRole struct {
+	Stdin SubagentStdin `yaml:"stdin"`
+	Role  `yaml:",inline"`
+}
+
+// SubagentStdin adds Session, the path of the session the subagent's own
+// shell carries, for a host whose subagent hooks name the parent's at
+// session.stdin; session.stdin when empty.
+type SubagentStdin struct {
+	AgentID string `yaml:"agent_id"`
+	Session string `yaml:"session"`
 }
 
 // Has reports whether the file set the top-level key itself, which extends

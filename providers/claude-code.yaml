@@ -1,0 +1,77 @@
+# Claude Code. Measured on Claude Code 2.1.316 on Windows and 2.1.318 on
+# Linux.
+name: claude-code
+evidence: measured
+detect:
+  env: [CLAUDE_CODE_SESSION_ID]
+session:
+  # Equal to the hooks' session_id: /clear starts a new id, a resume keeps
+  # it, and a subagent's shell and hooks carry its parent's.
+  env: CLAUDE_CODE_SESSION_ID
+  stdin: session_id
+  # One TUI process runs one session at a time, and stays the same process
+  # across /clear. claude.exe is its name on Windows.
+  process: [claude, claude.exe]
+doors:
+  # A background command's exit wakes an idle session in about 3 seconds,
+  # and a local session puts no time limit on a background command, so an
+  # idle session costs nothing until mail comes. The watcher exits at each
+  # nudge; the next turn's grelot line names this start line until it runs
+  # again.
+  - name: background
+    layer: 2
+    transport: exit
+    start: run `grelot watch --door background` with run_in_background
+    notes: >-
+      The watcher exits after each nudge, so the session starts it again in
+      the turn the nudge wakes. In an unattended session (a run with -p, the
+      Agent SDK, CI), a background command stops at a time limit: 30 minutes
+      by default, 10 in a -p run given its prompt as text, 2 hours at most.
+  # Each line a Monitor prints wakes the session, idle or busy, and the
+  # watcher goes on. Every Monitor ends at its deadline, 30 minutes at most,
+  # and the session gets one notice then, so an idle session spends one turn
+  # each half hour starting it again.
+  - name: monitor
+    layer: 2
+    transport: stdout
+    start: "`grelot watch --door monitor` under Monitor, timeout_ms 1800000"
+    notes: >-
+      The Monitor tool needs Git Bash on Windows. A Monitor stops at its
+      deadline (5 minutes unless timeout_ms says up to 30), and the session
+      starts it again when its grelot line names this start line.
+hooks:
+  session_start:
+    event: SessionStart
+    # /clear starts a new session in the same TUI process, which may be the
+    # same agent going on. A fork (source fork) is a second session beside
+    # one that goes on, so it is no take-over.
+    source: {path: source, take_over: [clear]}
+    outputs:
+      context: {text: "{{.Context}}"}
+  prompt:
+    event: UserPromptSubmit
+    stdin: {prompt: prompt}
+    # A Monitor wakes the session with one prompt per line it prints, the
+    # line inside this wrapper, so a stale signal line ends that turn before
+    # the model runs.
+    signal: '(?s)^<task-notification>\n<task-id>[^<\n]*</task-id>\n<summary>Monitor event: [^\n]*</summary>\n<event>(?P<line>[^<\n]*)</event>\n</task-notification>$'
+    outputs:
+      context: {text: "{{.Context}}"}
+      block: {text: '{"decision":"block","reason":{{json .Reason}}}'}
+  stop:
+    event: Stop
+    # A Stop hook's plain stdout reaches nobody, so a line grelot shows the
+    # user at turn end goes out as a systemMessage.
+    outputs:
+      block: {text: '{"decision":"block","reason":{{json .Reason}}}'}
+      notice: {text: '{"systemMessage":{{json .Reason}}}'}
+  session_end:
+    event: SessionEnd
+    # Keeps quitting quick: Claude Code gives its SessionEnd hooks 1.5
+    # seconds between them unless a hook's own timeout is longer.
+    budget: 1s
+# No subagent_stop: a subagent's hooks carry its parent's session, so grelot
+# has no delegate of its own to end there. No turn_end: StopFailure is not
+# wired, so a turn an API error ends stays open until the server's
+# five-minute lapse.
+notes: docs/hosts/claude-code.md
