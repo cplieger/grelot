@@ -130,10 +130,10 @@ func TestReceipts_dormantAndRetiredRecipientsKeptApart(t *testing.T) {
 	regAt(t, s, "rainy-condor", repoSubflux)
 	msg := mustPost(t, s, posting(sess("subflux-dev"), Target{Path: repoSubflux})).Message
 	readAll(t, s, "rainy-condor")
-	if err := s.Retire(t.Context(), plain("quiet-glacier")); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, plain("quiet-glacier")); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Retire(t.Context(), plain("rainy-condor")); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, plain("rainy-condor")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -188,7 +188,7 @@ func TestReceipts_aDelegateRecipientListedOnlyToItsParentAndTheSender(t *testing
 		}
 	})
 	t.Run("retired once it ends", func(t *testing.T) {
-		if err := s.Retire(t.Context(), as(sess("subflux-dev"), d.Name)); err != nil {
+		if _, _, err := s.Retire(t.Context(), Keyed{}, as(sess("subflux-dev"), d.Name)); err != nil {
 			t.Fatal(err)
 		}
 		wantStates(t, mustReceipts(t, s, plain("cloudy-lake"), msg), "quiet-glacier unread", d.Name+" retired")

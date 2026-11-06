@@ -287,7 +287,7 @@ func (h *hookCall) stop(ctx context.Context, role *provider.StopRole) error {
 	last := role.OncePerTurn || role.Outputs.Block == nil
 	bctx, cancel := budgetCtx(ctx, role.Budget)
 	_, err = api.Do(bctx, &client.Request{
-		Method: http.MethodPost, Path: "/v1/events/hold", Body: map[string]any{"for": "stop", "last": last},
+		Method: http.MethodPost, Path: "/v1/events/hold", Body: map[string]any{"for": "stop", "last": last}, Once: true,
 	}, &held)
 	cancel()
 	text, block, err := h.stopText(&held, err)
@@ -383,7 +383,7 @@ func (h *hookCall) subagentStop(ctx context.Context, role *provider.SubagentStop
 func postLifecycle(ctx context.Context, api *client.API, budget time.Duration, body map[string]any) {
 	ctx, cancel := budgetCtx(ctx, budget)
 	defer cancel()
-	_, _ = api.Do(ctx, &client.Request{Method: http.MethodPost, Path: "/v1/lifecycle", Body: body}, nil)
+	_, _ = api.Do(ctx, &client.Request{Method: http.MethodPost, Path: "/v1/lifecycle", Body: body, Once: true}, nil)
 }
 
 // sessionAPI is a hook API acting as the host session stdin, a subagent's

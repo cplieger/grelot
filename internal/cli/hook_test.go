@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -71,12 +70,7 @@ func TestHookSessionStart_failsOpen(t *testing.T) {
 		_, _ = w.Write([]byte(`{"error":"store unavailable","code":"unavailable"}`))
 	}))
 	t.Cleanup(failing.Close)
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	closed := "http://" + l.Addr().String()
-	_ = l.Close()
+	closed := unreachableURL(t)
 
 	budgeted := strings.Replace(hookAlphaFile, "    event: Start\n", "    event: Start\n    budget: 300ms\n", 1)
 	cases := []struct {
@@ -113,12 +107,7 @@ func TestHookSessionStart_aSubagentFailsOpen(t *testing.T) {
 		}
 	}))
 	t.Cleanup(slow.Close)
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	closed := "http://" + l.Addr().String()
-	_ = l.Close()
+	closed := unreachableURL(t)
 
 	budgeted := strings.Replace(hookAlphaFile, "    event: Start\n", "    event: Start\n    budget: 300ms\n", 1)
 	const subagent = `{"session_id":"sub-1","agent_id":"x"}`

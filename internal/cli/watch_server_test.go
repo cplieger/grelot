@@ -169,7 +169,7 @@ func TestWatch_endLineThenEndExit(t *testing.T) {
 	t.Run("session ended", func(t *testing.T) {
 		ts, reader, _ := watchPair(t)
 		ts.call(t, "alpha:s-reader", true, &client.Request{
-			Method: http.MethodPost, Path: "/v1/lifecycle", Body: map[string]string{"event": "session_end"},
+			Method: http.MethodPost, Path: "/v1/lifecycle", Body: map[string]string{"event": "session_end"}, Once: true,
 		}, nil)
 		w := reader.start("watch", "--door", "poll")
 		w.exit(t)

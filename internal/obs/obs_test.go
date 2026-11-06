@@ -60,6 +60,7 @@ func TestNew_servesEverySeriesOfTheSeriesList(t *testing.T) {
 		{"grelot_store_started_empty_total", measure.TypeCounter, []string{"reason"}},
 		{"grelot_posts_total", measure.TypeCounter, []string{"thread_kind"}},
 		{"grelot_posts_refused_total", measure.TypeCounter, []string{"reason"}},
+		{"grelot_writes_replayed_total", measure.TypeCounter, nil},
 		{"grelot_push_door_up", measure.TypeGauge, []string{"door"}},
 		{"grelot_push_sends_total", measure.TypeCounter, []string{"door", "outcome"}},
 		{"grelot_providers_invalid", measure.TypeGauge, nil},

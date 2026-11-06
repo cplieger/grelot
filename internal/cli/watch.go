@@ -215,7 +215,7 @@ func (ws *watcher) poll(ctx context.Context, until time.Time) (polled, error) {
 func (ws *watcher) once(ctx context.Context, hold time.Duration) (got polled, done bool, err error) {
 	req := &client.Request{
 		Method: http.MethodPost, Path: "/v1/events/wait",
-		Body: map[string]string{waitKey: hold.String()}, Timeout: hold + waitMargin,
+		Body: map[string]string{waitKey: hold.String()}, Timeout: hold + waitMargin, Once: true,
 	}
 	resp, err := ws.api.Do(ctx, req, nil)
 	if ae, ok := errors.AsType[*client.APIError](err); ok && ae.HTTP == http.StatusGone {

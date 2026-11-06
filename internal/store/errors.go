@@ -23,6 +23,9 @@ const (
 	KindFull
 	// KindForbidden is a request outside what the caller may do (403).
 	KindForbidden
+	// KindKeyReused is an Idempotency-Key sent with a different request
+	// than its first (422).
+	KindKeyReused
 )
 
 // Error is a refusal the caller sees. Msg names the fix; Why is a fixed

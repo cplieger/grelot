@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -125,23 +126,95 @@ func TestDo_noIdentityHeadersWhenUnset(t *testing.T) {
 	}
 }
 
-func TestDo_retriesAGetAndSendsAPostOnce(t *testing.T) {
+// keyed is a quoted RFC 8941 String of 16 to 64 characters of
+// [A-Za-z0-9_-], the Idempotency-Key the server reads.
+var keyed = regexp.MustCompile(`^"[A-Za-z0-9_-]{16,64}"$`)
+
+func TestDo_retriesAGetAndAKeyedWriteAndSendsAOnceRequestOnce(t *testing.T) {
 	for _, c := range []struct {
+		name   string
 		method string
 		want   int
-	}{{http.MethodGet, 3}, {http.MethodPost, 1}, {http.MethodPatch, 1}, {http.MethodDelete, 1}} {
-		t.Run(c.method, func(t *testing.T) {
-			f := newFake(t, answerJSON(http.StatusServiceUnavailable, `{"error":"the server is shutting down; retry once it is back","code":"shutting_down"}`))
+		once   bool
+	}{
+		{name: "GET", method: http.MethodGet, want: 3},
+		{name: "POST", method: http.MethodPost, want: 3},
+		{name: "PUT", method: http.MethodPut, want: 3},
+		{name: "PATCH", method: http.MethodPatch, want: 3},
+		{name: "DELETE", method: http.MethodDelete, want: 3},
+		{name: "a Once POST", method: http.MethodPost, want: 1, once: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFake(t, answerJSON(http.StatusServiceUnavailable, `{"error":"the request ran out of time before anything was stored; nothing changed: send it again","code":"timeout"}`))
 			a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
-			_, err := a.Do(t.Context(), &Request{Method: c.method, Path: "/v1/me", Body: map[string]int{"n": 1}}, nil)
+			_, err := a.Do(t.Context(), &Request{Method: c.method, Path: "/v1/me", Body: map[string]int{"n": 1}, Once: c.once}, nil)
 			var ae *APIError
 			if !errors.As(err, &ae) || ae.HTTP != http.StatusServiceUnavailable {
 				t.Errorf("err = %v, want the 503 as an *APIError", err)
 			}
-			if n := len(f.requests()); n != c.want {
-				t.Errorf("server saw %d requests, want %d", n, c.want)
+			seen := f.requests()
+			if len(seen) != c.want {
+				t.Fatalf("server saw %d requests, want %d", len(seen), c.want)
+			}
+			first := seen[0].header.Get("Idempotency-Key")
+			switch {
+			case c.method == http.MethodGet || c.once:
+				if _, sent := seen[0].header["Idempotency-Key"]; sent {
+					t.Errorf("Idempotency-Key %q sent, want none", first)
+				}
+			case !keyed.MatchString(first):
+				t.Errorf("Idempotency-Key = %q, want a quoted key of 16 to 64 of [A-Za-z0-9_-]", first)
+			}
+			for i, r := range seen[1:] {
+				if got := r.header.Get("Idempotency-Key"); got != first {
+					t.Errorf("attempt %d sent Idempotency-Key %q, want the first attempt's %q", i+2, got, first)
+				}
 			}
 		})
+	}
+}
+
+func TestDo_aNewCallSendsANewKey(t *testing.T) {
+	f := newFake(t, answerJSON(http.StatusOK, `{}`))
+	a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
+	for range 2 {
+		if _, err := a.Do(t.Context(), &Request{Method: http.MethodPost, Path: "/v1/posts", Body: map[string]int{"n": 1}}, nil); err != nil {
+			t.Fatalf("Do: %v", err)
+		}
+	}
+	seen := f.requests()
+	if len(seen) != 2 || seen[0].header.Get("Idempotency-Key") == seen[1].header.Get("Idempotency-Key") {
+		t.Errorf("two calls sent keys %q and %q, want two different keys", seen[0].header.Get("Idempotency-Key"), seen[len(seen)-1].header.Get("Idempotency-Key"))
+	}
+}
+
+func TestDo_a429IsNotRetried(t *testing.T) {
+	f := newFake(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "1")
+		answerJSON(http.StatusTooManyRequests, `{"error":"over 30 posts a minute from this identity and its delegates: post again in 1s","code":"rate_limited"}`)(w, nil)
+	})
+	a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
+	_, err := a.Do(t.Context(), &Request{Method: http.MethodPost, Path: "/v1/posts", Body: map[string]int{"n": 1}}, nil)
+	var ae *APIError
+	if !errors.As(err, &ae) || ae.HTTP != http.StatusTooManyRequests {
+		t.Errorf("err = %v, want the 429 as an *APIError", err)
+	}
+	if n := len(f.requests()); n != 1 {
+		t.Errorf("server saw %d requests, want 1", n)
+	}
+}
+
+func TestNewHookAPI_sendsAKeyedWriteOnce(t *testing.T) {
+	f := newFake(t, answerJSON(http.StatusServiceUnavailable, `{"error":"store unavailable","code":"unavailable"}`))
+	a, err := NewHookAPI(&Config{Server: f.srv.URL, Token: "test-token"}, "v1.1.0", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Do(t.Context(), &Request{Method: http.MethodPost, Path: "/v1/inbox/ack", Body: map[string]int{"upto": 1}}, nil); err == nil {
+		t.Error("Do answered no error for a 503")
+	}
+	if n := len(f.requests()); n != 1 {
+		t.Errorf("server saw %d requests, want 1", n)
 	}
 }
 

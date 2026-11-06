@@ -85,16 +85,16 @@ type ackResponse struct {
 }
 
 // ack is POST /v1/inbox/ack, which marks read every entry up to upto.
-func (s *Server) ack(r *http.Request, c store.Caller) (status int, body any, err error) {
+func (s *Server) ack(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
 	var req ackRequest
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	got, err := s.store.Ack(r.Context(), c, req.Upto)
+	got, replayed, err := s.store.Ack(r.Context(), k, c, req.Upto)
 	if err != nil {
 		return 0, nil, err
 	}
-	if got.Count > 0 {
+	if got.Count > 0 && !replayed {
 		s.log.Info("inbox read", "name", got.Identity.Name, "count", got.Count,
 			"oldest_delay_ms", s.now().Sub(got.Oldest).Milliseconds())
 	}
@@ -231,8 +231,8 @@ func (s *Server) receipts(r *http.Request, c store.Caller) (status int, body any
 }
 
 // follow is PUT /v1/follows?path=.
-func (s *Server) follow(r *http.Request, c store.Caller) (status int, body any, err error) {
-	got, err := s.store.Follow(r.Context(), c, r.URL.Query().Get("path"))
+func (s *Server) follow(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
+	got, err := s.store.Follow(r.Context(), k, c, r.URL.Query().Get("path"))
 	if err != nil {
 		return 0, nil, err
 	}
@@ -240,8 +240,8 @@ func (s *Server) follow(r *http.Request, c store.Caller) (status int, body any, 
 }
 
 // unfollow is DELETE /v1/follows?path=.
-func (s *Server) unfollow(r *http.Request, c store.Caller) (status int, body any, err error) {
-	got, err := s.store.Unfollow(r.Context(), c, r.URL.Query().Get("path"))
+func (s *Server) unfollow(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
+	got, err := s.store.Unfollow(r.Context(), k, c, r.URL.Query().Get("path"))
 	if err != nil {
 		return 0, nil, err
 	}

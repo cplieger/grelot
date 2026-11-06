@@ -198,18 +198,18 @@ func fillMessage(e *Entry, me *identityRow, m *messageRow) {
 // highest seq, stamps read_at on each delivery it passes and records the
 // range as last_page; a stale upto changes nothing. A session with no
 // live identity is KindGone.
-func (s *Store) Ack(ctx context.Context, c Caller, upto uint64) (Acked, error) {
-	var out Acked
-	err := s.update(ctx, func(w *wtx) error {
+func (s *Store) Ack(ctx context.Context, k Keyed, c Caller, upto uint64) (Acked, bool, error) {
+	return keyed(ctx, s, k, func(w *wtx) (Acked, error) {
+		var out Acked
 		me, err := w.liveAs(c)
 		if err != nil {
-			return err
+			return Acked{}, err
 		}
 		if to := min(upto, me.Seq); to > me.Read {
 			from := me.Read + 1
 			rows, err := w.stampRead(&me, to)
 			if err != nil {
-				return err
+				return Acked{}, err
 			}
 			if len(rows) > 0 {
 				from, out.Count, out.Oldest = rows[0].Seq, len(rows), rows[0].Written
@@ -219,18 +219,17 @@ func (s *Store) Ack(ctx context.Context, c Caller, upto uint64) (Acked, error) {
 		}
 		w.touch(&me)
 		if err := s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {
-			return err
+			return Acked{}, err
 		}
 		v, verr := w.viewOf(&me)
 		if verr != nil {
-			return verr
+			return Acked{}, verr
 		}
 		out.Identity, out.Read = v, me.Read
 		u, perr := s.pastRead(w.r, &me, w.now)
 		out.Left = u.Counts
-		return perr
+		return out, perr
 	})
-	return out, err
 }
 
 // stampRead moves me's read to to, sets read_at on the unexpired

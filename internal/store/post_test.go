@@ -26,7 +26,7 @@ func posting(session string, to Target) Posting {
 
 func mustPost(t *testing.T, s *Store, p Posting) Posted {
 	t.Helper()
-	got, err := s.Post(t.Context(), &p)
+	got, _, err := s.Post(t.Context(), Keyed{}, &p)
 	if err != nil {
 		t.Fatalf("Post(%s, %+v): %v", p.Caller.Session, p.To, err)
 	}
@@ -304,10 +304,10 @@ func TestPost_directThreadIsOneForBothDirections(t *testing.T) {
 		t.Errorf("thread kind %q, want direct", th.Kind)
 	}
 	p := posting(sess("alpha"), Target{Agent: "zulu"})
-	_, err := s.Post(t.Context(), &p)
+	_, _, err := s.Post(t.Context(), Keyed{}, &p)
 	wantRefusal(t, err, KindNotFound, "", "no identity zulu")
 	p = posting(sess("alpha"), Target{Agent: "alpha"})
-	_, err = s.Post(t.Context(), &p)
+	_, _, err = s.Post(t.Context(), Keyed{}, &p)
 	wantRefusal(t, err, KindInvalid, "", "yourself")
 }
 
@@ -334,7 +334,7 @@ func TestPost_dormantRecipientGetsItsMailAndTheSenderIsTold(t *testing.T) {
 		t.Errorf("the dormant identity got %v, want direct, path and announce", kinds)
 	}
 	w := envA()
-	got, err := s.Revive(t.Context(), &Revival{Session: sessB, Where: &w, TTL: time.Hour})
+	got, _, err := s.Revive(t.Context(), Keyed{}, &Revival{Session: sessB, Where: &w, TTL: time.Hour})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,7 +389,7 @@ func TestPost_messageKeepsTheSendersWhereAsItStoodAtThePost(t *testing.T) {
 	}
 	check("at the post")
 	moved := Where{Machine: dmi("2"), Environment: hex32("b")}
-	if _, err := s.Set(t.Context(), Caller{Session: sess("alpha")}, Change{TTL: time.Hour, Where: &moved}); err != nil {
+	if _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("alpha")}, Change{TTL: time.Hour, Where: &moved}); err != nil {
 		t.Fatal(err)
 	}
 	check("after the sender renewed from elsewhere")
@@ -469,7 +469,7 @@ func TestPost_identityFieldRule(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			p := posting(sess("alpha"), Target{Announce: true})
 			tc.edit(&p.Fields)
-			_, err := s.Post(t.Context(), &p)
+			_, _, err := s.Post(t.Context(), Keyed{}, &p)
 			wantRefusal(t, err, KindInvalid, "", "required on every post", tc.flag, `"no change"`)
 		})
 	}
@@ -485,7 +485,7 @@ func TestPost_changesTheIdentityFieldsItCarries(t *testing.T) {
 	clk.advance(10 * time.Minute)
 	p := posting(sess("alpha"), Target{Announce: true})
 	p.Fields = Fields{Name: "alpha-two", Description: "now moving the run surface", Paths: []string{repoSubflux, repoGrelot}}
-	_, err := s.Post(t.Context(), &p)
+	_, _, err := s.Post(t.Context(), Keyed{}, &p)
 	wantRefusal(t, err, KindInvalid, "", "where is required")
 
 	w := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoGrelot, "e")}}
@@ -504,21 +504,21 @@ func TestPost_changesTheIdentityFieldsItCarries(t *testing.T) {
 
 	p = posting(sess("alpha"), Target{Announce: true})
 	p.Fields.Name = "bravo"
-	_, err = s.Post(t.Context(), &p)
+	_, _, err = s.Post(t.Context(), Keyed{}, &p)
 	wantRefusal(t, err, KindConflict, "", "bravo is held")
 }
 
 func TestPost_needsALiveIdentity(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
 	p := posting(sess("alpha"), Target{Announce: true})
-	_, err := s.Post(t.Context(), &p)
+	_, _, err := s.Post(t.Context(), Keyed{}, &p)
 	wantRefusal(t, err, KindGone, "none", "grelot register")
 
 	r := registration(sess("alpha"), "alpha", envA())
 	r.TTL = 15 * time.Minute
 	mustRegister(t, s, r)
 	clk.advance(15 * time.Minute)
-	_, err = s.Post(t.Context(), &p)
+	_, _, err = s.Post(t.Context(), Keyed{}, &p)
 	wantRefusal(t, err, KindGone, "dormant", "grelot revive")
 }
 
@@ -561,7 +561,7 @@ func TestPost_messageLimits(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			p := posting(sess("alpha"), Target{Announce: true})
 			tc.edit(&p)
-			_, err := s.Post(t.Context(), &p)
+			_, _, err := s.Post(t.Context(), Keyed{}, &p)
 			wantRefusal(t, err, KindInvalid, "", tc.want)
 		})
 	}

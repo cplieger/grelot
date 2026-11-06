@@ -39,7 +39,7 @@ func TestPost_refusedOnlyPastNinetyPercentOfTheDefaultCeiling(t *testing.T) {
 
 	s.space = inUse(483_183_821)
 	p := posting(sess("alpha"), Target{Agent: "bravo"})
-	_, err := s.Post(t.Context(), &p)
+	_, _, err := s.Post(t.Context(), Keyed{}, &p)
 	wantRefusal(t, err, KindFull, "", "store nearly full")
 	if n := len(mustInbox(t, s, sess("bravo"), 0).Entries); n != 1 {
 		t.Errorf("bravo has %d messages, want 1: a refused post stores nothing", n)
@@ -47,13 +47,13 @@ func TestPost_refusedOnlyPastNinetyPercentOfTheDefaultCeiling(t *testing.T) {
 
 	mustAck(t, s, sess("bravo"), 1)
 	w := envA()
-	if _, err := s.Set(t.Context(), Caller{Session: sess("alpha")}, Change{TTL: 2 * time.Hour, Where: &w}); err != nil {
+	if _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("alpha")}, Change{TTL: 2 * time.Hour, Where: &w}); err != nil {
 		t.Errorf("a renewal on a nearly full store: %v", err)
 	}
-	if _, err := s.Revive(t.Context(), new(revival(sessA, "", envA()))); err != nil {
+	if _, _, err := s.Revive(t.Context(), Keyed{}, new(revival(sessA, "", envA()))); err != nil {
 		t.Errorf("a revival on a nearly full store: %v", err)
 	}
-	if err := s.Retire(t.Context(), Caller{Session: sess("bravo")}); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("bravo")}); err != nil {
 		t.Errorf("a retirement on a nearly full store: %v", err)
 	}
 }
@@ -67,7 +67,7 @@ func TestPost_atExactlyNinetyPercentStillGoesThrough(t *testing.T) {
 	mustPost(t, s, posting(sess("alpha"), Target{Agent: "bravo"}))
 	s.space = inUse(901)
 	p := posting(sess("alpha"), Target{Agent: "bravo"})
-	_, err := s.Post(t.Context(), &p)
+	_, _, err := s.Post(t.Context(), Keyed{}, &p)
 	wantRefusal(t, err, KindFull, "", "store nearly full")
 }
 
@@ -113,7 +113,7 @@ func TestPost_concurrentPostsStopAtTheFirstPastTheCeiling(t *testing.T) {
 		wg.Go(func() {
 			p := posting(sess("alpha"), Target{Agent: "bravo"})
 			p.Body = strings.Repeat("x", maxBody)
-			_, err := s.Post(t.Context(), &p)
+			_, _, err := s.Post(t.Context(), Keyed{}, &p)
 			var se *Error
 			switch {
 			case err == nil:
@@ -143,7 +143,7 @@ func fillUntilFull(t *testing.T, s *Store, limit int) Space {
 	p := posting(sess("alpha"), Target{Agent: "bravo"})
 	p.Body = strings.Repeat("x", maxBody)
 	for range limit {
-		_, err := s.Post(t.Context(), &p)
+		_, _, err := s.Post(t.Context(), Keyed{}, &p)
 		if err != nil {
 			wantRefusal(t, err, KindFull, "", "store nearly full")
 			return mustMeasure(t, s)
@@ -203,6 +203,6 @@ func TestPost_refusedOnAFullStoreAfterARestart(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	p := posting(sess("alpha"), Target{Agent: "bravo"})
-	_, err = s.Post(t.Context(), &p)
+	_, _, err = s.Post(t.Context(), Keyed{}, &p)
 	wantRefusal(t, err, KindFull, "", "store nearly full")
 }

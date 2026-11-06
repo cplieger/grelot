@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,6 +18,28 @@ import (
 	"github.com/cplieger/grelot/internal/proctree"
 	"github.com/cplieger/grelot/internal/provider"
 )
+
+// unreachableURL is a server that closes every connection before it
+// answers. The test keeps its port: a port freed by closing the listener
+// can be taken by any other listener, which then answers.
+func unreachableURL(t *testing.T) string {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+	return "http://" + l.Addr().String()
+}
 
 // The test providers: alpha keeps its session in ALPHA_ID and names its CLI
 // process; beta keeps it in BETA_ID.

@@ -31,6 +31,13 @@ var errShuttingDown = &apiError{
 	msg: "the server is shutting down; retry once it is back",
 }
 
+// errTimeout answers a request whose route deadline passed. The deadline
+// ends store calls only before they commit, so nothing changed.
+var errTimeout = &apiError{
+	status: http.StatusServiceUnavailable, code: "timeout", retryAfter: time.Second,
+	msg: "the request ran out of time before anything was stored; nothing changed: send it again",
+}
+
 func badRequest(msg string) *apiError {
 	return &apiError{status: http.StatusBadRequest, code: "invalid", msg: msg}
 }
@@ -58,6 +65,7 @@ var kindStatus = map[store.Kind]struct {
 	store.KindGone:      {"gone", http.StatusGone},
 	store.KindFull:      {"store_full", http.StatusInsufficientStorage},
 	store.KindForbidden: {"forbidden", http.StatusForbidden},
+	store.KindKeyReused: {"key_reused", http.StatusUnprocessableEntity},
 }
 
 // fail answers err: a refusal with its status and the fix, anything else
@@ -67,8 +75,11 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, context.Canceled) && r.Context().Err() != nil {
 		return
 	}
-	if errors.Is(err, store.ErrClosed) {
+	switch {
+	case errors.Is(err, store.ErrClosed):
 		err = errShuttingDown
+	case errors.Is(err, context.DeadlineExceeded) && r.Context().Err() != nil:
+		err = errTimeout
 	}
 	body := errorBody{RequestID: httpserver.RequestIDFromContext(r.Context()), PathRoot: s.cfg.PathRoot}
 	status := http.StatusInternalServerError

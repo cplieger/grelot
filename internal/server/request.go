@@ -3,13 +3,17 @@
 package server
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/cplieger/go/httpserver"
+	"github.com/cplieger/go/keyenc"
 	"github.com/cplieger/grelot/internal/store"
 )
 
@@ -77,14 +81,45 @@ func callerOf(r *http.Request, mode callerMode) (store.Caller, error) {
 // body to answer with.
 type identityFunc func(r *http.Request, c store.Caller) (int, any, error)
 
+// keyedFunc is identityFunc for a keyed write, which passes k to the
+// store write it makes and answers a replayed result as it answered it
+// first.
+type keyedFunc func(r *http.Request, c store.Caller, k store.Keyed) (int, any, error)
+
 // identity serves fn with the caller its headers name, and puts the
 // caller's status line on the answer, read after fn so it shows what fn
-// changed.
-func (s *Server) identity(fn identityFunc) http.Handler { return s.identityFor(fn, callerSession) }
+// changed. The route takes no Idempotency-Key.
+func (s *Server) identity(fn identityFunc) http.Handler {
+	return s.identityFor(unkeyed(fn), callerSession)
+}
 
 // anyone is identity for a read any caller may make, with or without a
 // session.
-func (s *Server) anyone(fn identityFunc) http.Handler { return s.identityFor(fn, callerAnyone) }
+func (s *Server) anyone(fn identityFunc) http.Handler {
+	return s.identityFor(unkeyed(fn), callerAnyone)
+}
+
+// keyed is identity for a write that requires an Idempotency-Key.
+func (s *Server) keyed(fn keyedFunc) http.Handler {
+	return s.identityFor(func(r *http.Request, c store.Caller) (int, any, error) {
+		k, err := keyOf(r, c)
+		if err != nil {
+			return 0, nil, err
+		}
+		return fn(r, c, k)
+	}, callerSession)
+}
+
+// unkeyed refuses a key on a route that takes none, so a client that keys
+// a request the route never dedups, and would re-send it, fails at once.
+func unkeyed(fn identityFunc) identityFunc {
+	return func(r *http.Request, c store.Caller) (int, any, error) {
+		if _, sent := r.Header[headerKey]; sent {
+			return 0, nil, badRequest("this route takes no Idempotency-Key")
+		}
+		return fn(r, c)
+	}
+}
 
 func (s *Server) identityFor(fn identityFunc, mode callerMode) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -109,15 +144,73 @@ func (s *Server) identityFor(fn identityFunc, mode callerMode) http.Handler {
 	})
 }
 
+// headerKey is the draft-ietf-httpapi-idempotency-key-header request
+// header, a quoted RFC 8941 String of keyMin to keyMax characters drawn
+// from [A-Za-z0-9_-].
+const (
+	headerKey = "Idempotency-Key"
+	keyMin    = 16
+	keyMax    = 64
+)
+
+// keyOf reads a keyed write's Idempotency-Key and binds it to the request:
+// its route, path, query, Grelot-Self and body, which it reads once under
+// maxBody and puts back for decode.
+func keyOf(r *http.Request, c store.Caller) (store.Keyed, error) {
+	values := r.Header.Values(headerKey)
+	if len(values) == 0 {
+		return store.Keyed{}, badRequest("this route requires an Idempotency-Key: send a new quoted random key with each request, and the same key when you send it again")
+	}
+	key, ok := parseKey(values)
+	if !ok {
+		return store.Keyed{}, badRequest("the Idempotency-Key must be one quoted string of 16 to 64 letters, digits, - or _")
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return store.Keyed{}, bodyError(err)
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	request := sha256.Sum256([]byte(keyenc.Join(r.Pattern, r.URL.EscapedPath(), r.URL.RawQuery, r.Header.Get(headerSelf), string(body))))
+	return store.NewKeyed(c, key, request), nil
+}
+
+// parseKey reads the one Idempotency-Key value: an RFC 8941 String with no
+// escapes, since its characters need none.
+func parseKey(values []string) (string, bool) {
+	if len(values) != 1 {
+		return "", false
+	}
+	v := values[0]
+	if len(v) < keyMin+2 || len(v) > keyMax+2 || v[0] != '"' || v[len(v)-1] != '"' {
+		return "", false
+	}
+	key := v[1 : len(v)-1]
+	if strings.ContainsFunc(key, notKeyChar) {
+		return "", false
+	}
+	return key, true
+}
+
+func notKeyChar(ch rune) bool {
+	return (ch < 'a' || ch > 'z') && (ch < 'A' || ch > 'Z') && (ch < '0' || ch > '9') && ch != '-' && ch != '_'
+}
+
+// bodyError answers a request body that could not be read.
+func bodyError(err error) error {
+	if errors.As(err, new(*http.MaxBytesError)) {
+		return &apiError{status: http.StatusRequestEntityTooLarge, code: "too_large", msg: "the request body is over 128 KiB"}
+	}
+	return badRequest("the request body could not be read: " + err.Error())
+}
+
 // decode reads r's JSON body into v under maxBody.
 func decode(r *http.Request, v any) error {
 	err := httpserver.DecodeJSONInto(nil, r, v, maxBody)
-	var tooLarge *http.MaxBytesError
 	switch {
 	case err == nil:
 		return nil
-	case errors.As(err, &tooLarge):
-		return &apiError{status: http.StatusRequestEntityTooLarge, code: "too_large", msg: "the request body is over 128 KiB"}
+	case errors.As(err, new(*http.MaxBytesError)):
+		return bodyError(err)
 	case errors.As(err, new(*durationError)):
 		return badRequest(err.Error())
 	}

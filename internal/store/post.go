@@ -63,27 +63,23 @@ type Posted struct {
 // identity; KindForbidden outside a delegate's scope, either way;
 // KindNotFound for an unknown @name; KindConflict for a rename to a held
 // name; KindFull past 90 % of Options.MaxBytes; ErrClosed after Close.
-func (s *Store) Post(ctx context.Context, p *Posting) (Posted, error) {
+func (s *Store) Post(ctx context.Context, k Keyed, p *Posting) (Posted, bool, error) {
 	if err := checkMessage(p); err != nil {
-		return Posted{}, err
+		return Posted{}, false, err
 	}
-	var out Posted
-	err := s.update(ctx, func(w *wtx) error {
+	return keyed(ctx, s, k, func(w *wtx) (Posted, error) {
 		// Measured under the write lock: read before it, concurrent posts
 		// all see the space no other one has filled yet and pass the
 		// ceiling together.
 		full, ferr := s.nearlyFull()
 		if ferr != nil {
-			return ferr
+			return Posted{}, ferr
 		}
 		if full {
-			return refuse(KindFull, "store nearly full: posts resume as older mail expires")
+			return Posted{}, refuse(KindFull, "store nearly full: posts resume as older mail expires")
 		}
-		var perr error
-		out, perr = w.post(p)
-		return perr
+		return w.post(p)
 	})
-	return out, err
 }
 
 func checkMessage(p *Posting) error {

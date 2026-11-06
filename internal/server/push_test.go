@@ -284,7 +284,7 @@ func TestPush_aServedIdentitysStandingWaitOnlyHolds(t *testing.T) {
 		if n := len(rcv.requests()); n != 1 {
 			t.Errorf("%d pushes, want 1", n)
 		}
-		if r := <-wait; r.status != http.StatusNoContent {
+		if r := wait.answer(); r.status != http.StatusNoContent {
 			t.Errorf("wait = %d %s, want 204 at its end", r.status, r.raw)
 		}
 		if n := h.sentByWatcher(); n != 0 {
@@ -355,7 +355,7 @@ func TestPush_noFirstPushForMailAnInTurnWaitReturnedUntilTheAckGraceEnds(t *test
 		in := h.inTurn(sessA, 55*time.Second)
 		synctest.Wait()
 		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
-		if r := <-in; r.status != http.StatusOK {
+		if r := in.answer(); r.status != http.StatusOK {
 			t.Fatalf("in-turn wait = %d %s", r.status, r.raw)
 		}
 		synctest.Wait()
@@ -591,7 +591,7 @@ func TestPush_aResumedSessionsInTurnWaitHoldsTheMailItReturnsForItsAck(t *testin
 		}
 		start := time.Now()
 		var got *response
-		held := h.atEachWake(sessA, h.firstNudgeHeld, func() { got = <-h.inTurn(sessA, 55*time.Second) })
+		held := h.atEachWake(sessA, h.firstNudgeHeld, func() { got = h.inTurn(sessA, 55*time.Second).answer() })
 		page := entriesOf(t, got)
 		if len(page) != 1 || time.Since(start) != 0 {
 			t.Fatalf("the in-turn wait = %v after %v, want the waiting mail at once", page, time.Since(start))
@@ -620,7 +620,7 @@ func TestPush_aPromptTheDelegateGateRefusesOpensNoTurn(t *testing.T) {
 		h.mustRegisterAlone(sessA, "reader")
 		h.mustRegisterAlone(sessB, "writer")
 		h.stopHold(sessA, false)
-		if _, err := h.store.Delegate(t.Context(), &store.Grant{Caller: store.Caller{Session: sessA}, Label: "tests", TTL: time.Hour}); err != nil {
+		if _, _, err := h.store.Delegate(t.Context(), store.Keyed{}, &store.Grant{Caller: store.Caller{Session: sessA}, Label: "tests", TTL: time.Hour}); err != nil {
 			t.Fatal(err)
 		}
 		if r := h.as(sessA, http.MethodGet, "/v1/me?turn=start", nil); r.status != http.StatusConflict || r.str("code") != "delegate_gate" {

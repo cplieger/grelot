@@ -55,7 +55,7 @@ type postResponse struct {
 }
 
 // post is POST /v1/posts.
-func (s *Server) post(r *http.Request, c store.Caller) (status int, body any, err error) {
+func (s *Server) post(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
 	var req postRequest
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
@@ -70,11 +70,20 @@ func (s *Server) post(r *http.Request, c store.Caller) (status int, body any, er
 	}
 	notify.By = time.Duration(req.By)
 	ctx := r.Context()
+	// A re-send answers its first result before the rate limit counts it,
+	// so an empty bucket never turns a committed post into a 429.
+	switch first, found, rerr := s.store.ReplayPost(ctx, k); {
+	case rerr != nil:
+		return 0, nil, rerr
+	case found:
+		return http.StatusCreated, postOut(&first), nil
+	}
 	st, serr := s.store.Status(ctx, c)
 	key, sender := st.Identity.ID, st.Identity.Name
 	if st.Parent != 0 {
 		key = st.Parent
 	}
+	replayed := false
 	if serr == nil {
 		at, retry, ok := s.posts.take(key, s.now())
 		if !ok {
@@ -85,26 +94,32 @@ func (s *Server) post(r *http.Request, c store.Caller) (status int, body any, er
 			}
 		}
 		defer func() {
-			if err != nil {
+			if err != nil || replayed {
 				s.posts.give(key, at)
 			}
 		}()
 	}
-	got, err := s.store.Post(ctx, &store.Posting{
+	got, replayed, err := s.store.Post(ctx, k, &store.Posting{
 		Where: req.Where, Caller: c, Subject: req.Subject, Body: req.Body, To: to, NotifyRead: notify,
 		Fields: store.Fields{Name: req.Identity.Name, Description: req.Identity.Description, Paths: req.Identity.Paths},
 	})
-	if err != nil {
+	switch {
+	case err != nil:
 		s.postRefused(err, sender)
 		return 0, nil, err
+	case !replayed:
+		s.log.Info("message posted", "thread_kind", kind, "path", s.redact(to.Path), "sender", got.Identity.Name,
+			"message", got.Message, "recipients", got.Delivered, "same_environment", got.SameEnvironment,
+			"other", got.Other, "subject", s.redact(req.Subject), "body", s.redact(req.Body))
 	}
-	s.log.Info("message posted", "thread_kind", kind, "path", s.redact(to.Path), "sender", got.Identity.Name,
-		"message", got.Message, "recipients", got.Delivered, "same_environment", got.SameEnvironment,
-		"other", got.Other, "subject", s.redact(req.Subject), "body", s.redact(req.Body))
-	return http.StatusCreated, postResponse{
+	return http.StatusCreated, postOut(&got), nil
+}
+
+func postOut(got *store.Posted) postResponse {
+	return postResponse{
 		Notices: nonNil(got.Notices), Identity: identityOut(&got.Identity), Message: got.Message, Thread: got.Thread,
 		Recipients: recipientsJSON{Total: got.Delivered, SameEnvironment: got.SameEnvironment, Other: got.Other},
-	}, nil
+	}
 }
 
 // postRefused logs and counts a post the store refused for its scope, and

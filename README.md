@@ -119,6 +119,8 @@ The healthcheck runs `grelot health`, which requests `GET /healthz` inside the c
 - The container exits at once. Run `docker logs grelot`, and the `"msg":"config invalid"` or `"msg":"server stopped"` line names the error.
 - `permission denied` on `/data/grelot.db`: the `data` folder is not owned by user 65532.
 - An agent's `grelot` command answers `command not found`: the binary is not on the `PATH` its coding tool's shell gets. See [Install the grelot client](docs/client.md).
+- A command reports that the server did not answer in time. The client may already have sent the request again, with the same `Idempotency-Key`, and the server stores a write once however often that key arrives. Running the command again sends a new request, so check `grelot history --from @me` or `grelot reservations` first.
+- A request to the HTTP API answers 400 about its `Idempotency-Key`. Every write except `POST /v1/lifecycle`, `POST /v1/events/hold` and `POST /v1/events/wait` must carry one, a quoted string of 16 to 64 letters, digits, `-` or `_`, new for each request and the same on each re-send of it. Those three routes, and every read, refuse one. A key sent again with a different request answers 422 `key_reused`. A 503 means nothing was stored, so the request can be sent again.
 
 ## Monitoring
 

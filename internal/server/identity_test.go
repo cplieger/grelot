@@ -175,17 +175,17 @@ func TestMe_liveIdentityStatus(t *testing.T) {
 	h.mustRegister(sessA, "grelot-dev")
 	ctx := t.Context()
 	own := store.Caller{Session: sessA, Self: true}
-	if _, err := h.store.Reserve(ctx, &store.Reserving{Path: repoGrelot + "/main.go", Reason: "editing", Caller: own, TTL: time.Hour}); err != nil {
+	if _, _, err := h.store.Reserve(ctx, store.Keyed{}, &store.Reserving{Path: repoGrelot + "/main.go", Reason: "editing", Caller: own, TTL: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
-	g, err := h.store.Delegate(ctx, &store.Grant{Caller: own, Label: "tests", TTL: time.Hour})
+	g, _, err := h.store.Delegate(ctx, store.Keyed{}, &store.Grant{Caller: own, Label: "tests", TTL: time.Hour})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if r := h.as(sessA, http.MethodPost, "/v1/register", map[string]any{"delegate": g.Link, "description": "writing tests"}); r.status != http.StatusCreated {
 		t.Fatalf("register --delegate: %d %s", r.status, r.raw)
 	}
-	if _, err := h.store.Delegate(ctx, &store.Grant{Caller: own, Label: "review", TTL: time.Hour}); err != nil {
+	if _, _, err := h.store.Delegate(ctx, store.Keyed{}, &store.Grant{Caller: own, Label: "review", TTL: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -234,7 +234,7 @@ func TestMe_liveIdentityStatus(t *testing.T) {
 func TestDelegateGate_refusesASessionWithDelegatesNamingNeither(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegister(sessA, "grelot-dev")
-	if _, err := h.store.Delegate(t.Context(), &store.Grant{Caller: store.Caller{Session: sessA}, Label: "tests", TTL: time.Hour}); err != nil {
+	if _, _, err := h.store.Delegate(t.Context(), store.Keyed{}, &store.Grant{Caller: store.Caller{Session: sessA}, Label: "tests", TTL: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {

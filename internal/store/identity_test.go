@@ -48,7 +48,7 @@ func registration(session, name string, w Where, paths ...string) Registration {
 
 func mustRegister(t *testing.T, s *Store, r Registration) Identity {
 	t.Helper()
-	got, err := s.Register(t.Context(), &r)
+	got, _, err := s.Register(t.Context(), Keyed{}, &r)
 	if err != nil {
 		t.Fatalf("Register(%s, %s): %v", r.Session, r.Fields.Name, err)
 	}
@@ -130,7 +130,7 @@ func TestRegister_fieldRule(t *testing.T) {
 			r := registration(sessA, "subflux-dev", envA())
 			tc.edit(&r)
 			r.Where = &Where{Machine: dmi("1"), Environment: hex32("a")}
-			_, err := s.Register(t.Context(), &r)
+			_, _, err := s.Register(t.Context(), Keyed{}, &r)
 			wantRefusal(t, err, KindInvalid, "", tc.want)
 			if _, err := s.Seen(t.Context(), Caller{Session: sessA}); err == nil {
 				t.Error("a refused register left an identity behind")
@@ -164,7 +164,7 @@ func TestRegister_ttlRequiredWithinBounds(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
 		r := registration(sessA, "subflux-dev", envA())
 		r.TTL = ttl
-		_, err := s.Register(t.Context(), &r)
+		_, _, err := s.Register(t.Context(), Keyed{}, &r)
 		wantRefusal(t, err, KindInvalid, "", "--ttl", "15m", "24h")
 	}
 }
@@ -173,18 +173,18 @@ func TestRegister_whereRequiredAndChecked(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	r := registration(sessA, "subflux-dev", envA())
 	r.Where = nil
-	_, err := s.Register(t.Context(), &r)
+	_, _, err := s.Register(t.Context(), Keyed{}, &r)
 	wantRefusal(t, err, KindInvalid, "", "where is required")
 
 	r = registration(sessA, "subflux-dev", Where{Checkouts: []Checkout{co(repoGrelot, "c")}})
-	_, err = s.Register(t.Context(), &r)
+	_, _, err = s.Register(t.Context(), Keyed{}, &r)
 	wantRefusal(t, err, KindInvalid, "", "where.checkouts[0].repo")
 }
 
 func TestRegister_sessionNamesItsProvider(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	for _, sess := range []string{"session-a", ":session-a", "Kiro:session-a", "kiro-cli:", "kiro-cli:a\nb"} {
-		_, err := s.Register(t.Context(), new(registration(sess, "subflux-dev", envA())))
+		_, _, err := s.Register(t.Context(), Keyed{}, new(registration(sess, "subflux-dev", envA())))
 		wantRefusal(t, err, KindInvalid, "", "<provider>:<host session id>")
 	}
 }
@@ -196,7 +196,7 @@ func TestRegister_repeatedReturnsTheIdentityUnchanged(t *testing.T) {
 	clk.advance(time.Hour)
 	r := registration(sessA, "other-name", envA())
 	r.TTL = 24 * time.Hour
-	got, err := s.Register(t.Context(), &r)
+	got, _, err := s.Register(t.Context(), Keyed{}, &r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestRegister_liveNameNamesItsHolder(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s, _, _ := openIdentityStore(t)
 			mustRegister(t, s, registration(sessA, "subflux-dev", envA()))
-			_, err := s.Register(t.Context(), new(registration(sessB, "subflux-dev", tc.caller)))
+			_, _, err := s.Register(t.Context(), Keyed{}, new(registration(sessB, "subflux-dev", tc.caller)))
 			wantRefusal(t, err, KindConflict, "", "subflux-dev", "moving the run surface", "host-a/app",
 				tc.relation, "provider kiro-cli", "last seen 2026-11-04 05:39 UTC", "--take-over")
 		})
@@ -279,7 +279,7 @@ func TestTakeOver_refusedOutsideTheEnvironmentOrProvider(t *testing.T) {
 			orig := mustRegister(t, s, registration(sessA, "subflux-dev", tc.holder))
 			r := registration(tc.session, "subflux-dev", tc.caller)
 			r.TakeOver = true
-			_, err := s.Register(t.Context(), &r)
+			_, _, err := s.Register(t.Context(), Keyed{}, &r)
 			wantRefusal(t, err, KindConflict, tc.why, tc.parts...)
 			lines := sink.lines(slog.LevelInfo, "move refused")
 			if len(lines) != 1 || attr(lines[0], "why") != tc.why {
@@ -317,7 +317,7 @@ func TestTakeOver_movesTheIdentityWithinItsEnvironment(t *testing.T) {
 			clk.advance(10 * time.Minute)
 			r := registration(sessB, "subflux-dev", tc.caller)
 			r.TakeOver, r.TTL = true, 2*time.Hour
-			got, err := s.Register(t.Context(), &r)
+			got, _, err := s.Register(t.Context(), Keyed{}, &r)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -361,7 +361,7 @@ func TestRegister_dormantNameNamesTheRow(t *testing.T) {
 		expireToDormant(t, s, clk, "subflux-dev")
 		r := registration(sessB, "subflux-dev", envA())
 		r.TakeOver = takeOver
-		_, err := s.Register(t.Context(), &r)
+		_, _, err := s.Register(t.Context(), Keyed{}, &r)
 		wantRefusal(t, err, KindConflict, "",
 			"subflux-dev is dormant until 2026-11-07 05:54 UTC; choose another or revive it from its own environment",
 			"host-a/app", "same environment", "provider kiro-cli", "dormant since 2026-11-04 05:54 UTC",
@@ -377,7 +377,7 @@ func TestRegister_aDueNameExpiresBeforeTheWrite(t *testing.T) {
 	r.TTL = 15 * time.Minute
 	mustRegister(t, s, r)
 	clk.advance(15 * time.Minute)
-	_, err := s.Register(t.Context(), new(registration(sessB, "subflux-dev", envA())))
+	_, _, err := s.Register(t.Context(), Keyed{}, new(registration(sessB, "subflux-dev", envA())))
 	wantRefusal(t, err, KindConflict, "", "is dormant until")
 }
 
@@ -409,7 +409,7 @@ func TestRegister_freshFromTheDormantSessionDetachesIt(t *testing.T) {
 	if row.State != stateDormant || row.Session != "" || row.Name != "subflux-dev" {
 		t.Errorf("state %q session %q name %q, want dormant, detached, name kept", row.State, row.Session, row.Name)
 	}
-	_, err := s.Register(t.Context(), new(registration(sessB, "subflux-dev", envA())))
+	_, _, err := s.Register(t.Context(), Keyed{}, new(registration(sessB, "subflux-dev", envA())))
 	wantRefusal(t, err, KindConflict, "", "is dormant until")
 }
 
@@ -420,7 +420,7 @@ func TestSet_renewMovesTheLeaseAndReArmsTheWarning(t *testing.T) {
 	mustRegister(t, s, r)
 	clk.advance(20 * time.Minute)
 	w := envA()
-	got, err := s.Set(t.Context(), Caller{Session: sessA}, Change{TTL: 2 * time.Hour, Where: &w})
+	got, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{TTL: 2 * time.Hour, Where: &w})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,9 +428,9 @@ func TestSet_renewMovesTheLeaseAndReArmsTheWarning(t *testing.T) {
 	if want := clk.now().Add(2 * time.Hour); !got.Expires.Equal(want) || !warn.Equal(want.Add(-30*time.Minute)) {
 		t.Errorf("expires %v warn %v, want %v and 30m before", got.Expires, warn, want)
 	}
-	_, err = s.Set(t.Context(), Caller{Session: sessA}, Change{TTL: 2 * time.Hour})
+	_, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{TTL: 2 * time.Hour})
 	wantRefusal(t, err, KindInvalid, "", "where is required")
-	_, err = s.Set(t.Context(), Caller{Session: sessA}, Change{TTL: 10 * time.Minute, Where: &w})
+	_, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{TTL: 10 * time.Minute, Where: &w})
 	wantRefusal(t, err, KindInvalid, "", "--ttl")
 }
 
@@ -441,7 +441,7 @@ func TestSet_renewMergesTheSentCheckout(t *testing.T) {
 	where := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoSubflux, "c"), co(repoGrelot, "d")}}
 	id := mustRegister(t, s, registration(sessA, "subflux-dev", where, repoSubflux, repoGrelot))
 	sent := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoSubflux, "e")}}
-	if _, err := s.Set(t.Context(), Caller{Session: sessA}, Change{TTL: time.Hour, Where: &sent}); err != nil {
+	if _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{TTL: time.Hour, Where: &sent}); err != nil {
 		t.Fatal(err)
 	}
 	got := getIdentity(t, s, id.ID).Where.Checkouts
@@ -454,11 +454,11 @@ func TestSet_newPathsNeedWhereAndReplaceTheCheckouts(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	where := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoSubflux, "c"), co(repoGrelot, "d")}}
 	id := mustRegister(t, s, registration(sessA, "subflux-dev", where, repoSubflux, repoGrelot))
-	_, err := s.Set(t.Context(), Caller{Session: sessA}, Change{Fields: Fields{Paths: []string{repoSubflux}}})
+	_, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Paths: []string{repoSubflux}}})
 	wantRefusal(t, err, KindInvalid, "", "where is required")
 
 	sent := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoSubflux, "c")}}
-	got, err := s.Set(t.Context(), Caller{Session: sessA}, Change{Fields: Fields{Paths: []string{repoSubflux}}, Where: &sent})
+	got, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Paths: []string{repoSubflux}}, Where: &sent})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -481,7 +481,7 @@ func TestSet_newPathsDropAStoredCheckoutTheClientDidNotSend(t *testing.T) {
 	where := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoSubflux, "c"), co(repoGrelot, "d")}}
 	id := mustRegister(t, s, registration(sessA, "subflux-dev", where, repoSubflux, repoGrelot))
 	sent := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoSubflux, "c")}}
-	if _, err := s.Set(t.Context(), Caller{Session: sessA}, Change{Fields: Fields{Paths: []string{repoSubflux, repoGrelot, "/workspace/sse"}}, Where: &sent}); err != nil {
+	if _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Paths: []string{repoSubflux, repoGrelot, "/workspace/sse"}}, Where: &sent}); err != nil {
 		t.Fatal(err)
 	}
 	if got := getIdentity(t, s, id.ID).Where.Checkouts; !slices.Equal(got, sent.Checkouts) {
@@ -493,21 +493,21 @@ func TestSet_renameAndRefusals(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
 	mustRegister(t, s, registration(sessB, "taken-name", envA()))
 	mustRegister(t, s, registration(sessA, "subflux-dev", envA()))
-	got, err := s.Set(t.Context(), Caller{Session: sessA}, Change{Fields: Fields{Name: "subflux-web", Description: "new work"}})
+	got, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Name: "subflux-web", Description: "new work"}})
 	if err != nil || got.Name != "subflux-web" || got.Description != "new work" {
 		t.Errorf("rename: %+v, %v", got, err)
 	}
-	_, err = s.Set(t.Context(), Caller{Session: sessA}, Change{Fields: Fields{Name: "taken-name"}})
+	_, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Name: "taken-name"}})
 	wantRefusal(t, err, KindConflict, "", "taken-name is held")
-	_, err = s.Set(t.Context(), Caller{Session: sessA}, Change{Fields: Fields{Name: "Bad"}})
+	_, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Name: "Bad"}})
 	wantRefusal(t, err, KindInvalid, "", "lowercase")
-	_, err = s.Set(t.Context(), Caller{Session: sessA}, Change{})
+	_, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{})
 	wantRefusal(t, err, KindInvalid, "", "nothing to set")
 
-	_, err = s.Set(t.Context(), Caller{Session: sessC}, Change{Fields: Fields{Description: "x"}})
+	_, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessC}, Change{Fields: Fields{Description: "x"}})
 	wantRefusal(t, err, KindGone, "none", "grelot register")
 	clk.advance(6 * time.Hour)
-	_, err = s.Set(t.Context(), Caller{Session: sessA}, Change{Fields: Fields{Description: "x"}})
+	_, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Description: "x"}})
 	wantRefusal(t, err, KindGone, "dormant", "grelot revive --ttl")
 }
 
@@ -552,7 +552,7 @@ func TestEndSession_aResumeRestoresNothing(t *testing.T) {
 		t.Errorf("ended %v expires %v, want ended cleared and the capped %v kept", got.Ended, got.Expires, testNow.Add(time.Hour))
 	}
 	w := envA()
-	if got, err = s.Set(t.Context(), Caller{Session: sessA}, Change{TTL: 6 * time.Hour, Where: &w}); err != nil || !got.Expires.Equal(clk.now().Add(6*time.Hour)) {
+	if got, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{TTL: 6 * time.Hour, Where: &w}); err != nil || !got.Expires.Equal(clk.now().Add(6*time.Hour)) {
 		t.Errorf("renew after resume: %v, %v", got.Expires, err)
 	}
 }
@@ -593,7 +593,7 @@ func TestEndSession_aRepeatedRegisterOrWhoClearsEndedAndKeepsTheCap(t *testing.T
 			var err error
 			if call == "register" {
 				var got Registered
-				got, err = s.Register(t.Context(), &r)
+				got, _, err = s.Register(t.Context(), Keyed{}, &r)
 				if !got.Existing {
 					t.Errorf("repeated register %+v, want the existing identity", got)
 				}
@@ -624,7 +624,7 @@ func TestSeen_forgetsAnIdentityOnceItIsGone(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := s.Retire(t.Context(), Caller{Session: sessA}); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sessA}); err != nil {
 		t.Fatal(err)
 	}
 	if got := seenIDs(s); !slices.Equal(got, []uint64{b.ID}) {
@@ -645,7 +645,7 @@ func TestSweep_dropsARequestTimeNotedAfterTheRetirement(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
 	a := mustRegister(t, s, registration(sessA, "agent-a", envA()))
 	b := mustRegister(t, s, registration(sessB, "agent-b", envA()))
-	if err := s.Retire(t.Context(), Caller{Session: sessA}); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sessA}); err != nil {
 		t.Fatal(err)
 	}
 	clk.advance(time.Minute)

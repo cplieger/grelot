@@ -18,7 +18,7 @@ func revival(session, name string, w Where) Revival {
 
 func mustRevive(t *testing.T, s *Store, r Revival) Revived {
 	t.Helper()
-	got, err := s.Revive(t.Context(), &r)
+	got, _, err := s.Revive(t.Context(), Keyed{}, &r)
 	if err != nil {
 		t.Fatalf("Revive(%s, %q): %v", r.Session, r.Name, err)
 	}
@@ -66,7 +66,7 @@ func TestRevive_sameSessionRestoresTheIdentity(t *testing.T) {
 	if row.Nudged != 0 || row.Nudges != 0 || !row.NudgedAt.IsZero() {
 		t.Errorf("nudged %d nudges %d at %v, want the nudge state reset", row.Nudged, row.Nudges, row.NudgedAt)
 	}
-	if _, err := s.Set(t.Context(), Caller{Session: sessA}, Change{Fields: Fields{Description: "back at it"}}); err != nil {
+	if _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Description: "back at it"}}); err != nil {
 		t.Errorf("Set after the revival: %v", err)
 	}
 }
@@ -121,7 +121,7 @@ func TestRevive_leaseAndWhereRequired(t *testing.T) {
 			old := expireToDormant(t, s, clk, "subflux-dev")
 			r := revival(sessA, "", envA())
 			tt.edit(&r)
-			_, err := s.Revive(t.Context(), &r)
+			_, _, err := s.Revive(t.Context(), Keyed{}, &r)
 			wantRefusal(t, err, KindInvalid, "", tt.want)
 			if row := getIdentity(t, s, old.ID); row.State != stateDormant {
 				t.Errorf("state %q, want the refused revive to leave it dormant", row.State)
@@ -133,13 +133,13 @@ func TestRevive_leaseAndWhereRequired(t *testing.T) {
 func TestRevive_sameSessionRefusals(t *testing.T) {
 	t.Run("no dormant identity", func(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
-		_, err := s.Revive(t.Context(), new(revival(sessA, "", envA())))
+		_, _, err := s.Revive(t.Context(), Keyed{}, new(revival(sessA, "", envA())))
 		wantRefusal(t, err, KindNotFound, "", "this session has no dormant identity")
 	})
 	t.Run("a live identity", func(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
 		mustRegister(t, s, registration(sessA, "subflux-dev", envA()))
-		_, err := s.Revive(t.Context(), new(revival(sessA, "", envA())))
+		_, _, err := s.Revive(t.Context(), Keyed{}, new(revival(sessA, "", envA())))
 		wantRefusal(t, err, KindConflict, "", "this session already has the live identity subflux-dev")
 	})
 }
@@ -234,7 +234,7 @@ func TestRevive_byNameRefusalsInOrder(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(t, s)
 			}
-			_, err := s.Revive(t.Context(), new(revival(tt.session, tt.target, tt.caller)))
+			_, _, err := s.Revive(t.Context(), Keyed{}, new(revival(tt.session, tt.target, tt.caller)))
 			wantRefusal(t, err, tt.kind, tt.why, tt.want)
 			lines := sink.lines(slog.LevelInfo, "move refused")
 			if tt.why == "" && len(lines) != 0 {
@@ -275,7 +275,7 @@ func TestRevive_aFreshRegistrationLeavesTheDormantRowRevivableByName(t *testing.
 	s, clk, _ := openIdentityStore(t)
 	old := expireToDormant(t, s, clk, "subflux-dev")
 	mustRegister(t, s, registration(sessA, "subflux-two", envA()))
-	_, err := s.Revive(t.Context(), new(revival(sessA, "subflux-dev", envA())))
+	_, _, err := s.Revive(t.Context(), Keyed{}, new(revival(sessA, "subflux-dev", envA())))
 	wantRefusal(t, err, KindConflict, "", "this session already has the live identity subflux-two")
 	if got := mustRevive(t, s, revival(sessB, "subflux-dev", envA())); got.Identity.ID != old.ID || !got.Moved {
 		t.Errorf("revived %d moved %v, want %d moved to the new session", got.Identity.ID, got.Moved, old.ID)
@@ -314,7 +314,7 @@ func TestRevive_runsTheDueExpiriesItself(t *testing.T) {
 		r.TTL = 15 * time.Minute
 		mustRegister(t, s, r)
 		clk.advance(15*time.Minute + 72*time.Hour)
-		_, err := s.Revive(t.Context(), new(revival(sessB, "subflux-dev", envA())))
+		_, _, err := s.Revive(t.Context(), Keyed{}, new(revival(sessB, "subflux-dev", envA())))
 		wantRefusal(t, err, KindNotFound, "", "no dormant identity subflux-dev")
 	})
 }

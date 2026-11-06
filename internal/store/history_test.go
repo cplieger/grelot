@@ -424,7 +424,7 @@ func TestHistory_keepsARetiredSendersMessagesAndRelation(t *testing.T) {
 	regAt(t, s, "alpha", "/workspace/alpha")
 	regAt(t, s, "bravo", "/workspace/bravo")
 	say(t, s, "alpha", Target{Agent: "bravo"}, "a1")
-	if err := s.Retire(t.Context(), Caller{Session: sess("alpha")}); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("alpha")}); err != nil {
 		t.Fatal(err)
 	}
 

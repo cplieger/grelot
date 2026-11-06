@@ -45,7 +45,7 @@ func whoHarness(t *testing.T) *harness {
 	reg("docs-writer", "writing the install guide", repoDocs, "a")
 	ctx := t.Context()
 	reserve := func(name, path string, queue bool) {
-		if _, err := h.store.Reserve(ctx, &store.Reserving{
+		if _, _, err := h.store.Reserve(ctx, store.Keyed{}, &store.Reserving{
 			Caller: store.Caller{Session: sessOf(name)}, Path: path, Reason: "editing", TTL: time.Hour, Queue: queue,
 		}); err != nil {
 			t.Fatalf("Reserve(%s, %s): %v", name, path, err)
@@ -55,17 +55,17 @@ func whoHarness(t *testing.T) *harness {
 	reserve("docs-writer", guideMD, false)
 	reserve("docs-writer", engineGo, true)
 	nc := store.Fields{Name: store.NoChange, Description: store.NoChange, Paths: []string{store.NoChange}}
-	if _, err := h.store.Post(ctx, &store.Posting{
+	if _, _, err := h.store.Post(ctx, store.Keyed{}, &store.Posting{
 		Caller: store.Caller{Session: sessOf("docs-writer")}, Subject: "install guide", Body: "a body",
 		To: store.Target{Path: repoWTK}, Fields: nc,
 	}); err != nil {
 		t.Fatalf("Post: %v", err)
 	}
-	g, err := h.store.Delegate(ctx, &store.Grant{Caller: store.Caller{Session: sessOf("toolbelt-dev")}, Label: "review", TTL: time.Hour})
+	g, _, err := h.store.Delegate(ctx, store.Keyed{}, &store.Grant{Caller: store.Caller{Session: sessOf("toolbelt-dev")}, Label: "review", TTL: time.Hour})
 	if err != nil {
 		t.Fatalf("Delegate: %v", err)
 	}
-	if _, err := h.store.Register(ctx, &store.Registration{
+	if _, _, err := h.store.Register(ctx, store.Keyed{}, &store.Registration{
 		Session: sessOf("toolbelt-dev"), Link: g.Link, Fields: store.Fields{Description: "reviewing the chooser"},
 	}); err != nil {
 		t.Fatalf("Register delegate: %v", err)
@@ -321,7 +321,7 @@ func TestWho_aDelegateIsOnlineWhileItWasSeenUnder90s(t *testing.T) {
 
 func TestWho_aDelegateWhoseSessionEndedIsOfflineAtOnce(t *testing.T) {
 	h := whoHarness(t)
-	g, err := h.store.Delegate(t.Context(), &store.Grant{Caller: store.Caller{Session: sessOf("toolbelt-dev"), Self: true}, Label: "sub", TTL: time.Hour})
+	g, _, err := h.store.Delegate(t.Context(), store.Keyed{}, &store.Grant{Caller: store.Caller{Session: sessOf("toolbelt-dev"), Self: true}, Label: "sub", TTL: time.Hour})
 	if err != nil {
 		t.Fatalf("Delegate: %v", err)
 	}

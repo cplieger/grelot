@@ -11,7 +11,7 @@ func TestStatus_countsUnreadAndWritesNothing(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	mustRegister(t, s, registration(sessA, "subflux-dev", envA()))
 	mustRegister(t, s, registration(sessB, "store-dev", envA()))
-	if _, err := s.Post(t.Context(), &Posting{
+	if _, _, err := s.Post(t.Context(), Keyed{}, &Posting{
 		Caller: Caller{Session: sessB}, Subject: "hi", Body: "b", To: Target{Agent: "subflux-dev"},
 		Fields: Fields{Name: NoChange, Description: NoChange, Paths: []string{NoChange}},
 	}); err != nil {
@@ -43,7 +43,7 @@ func TestStatus_noIdentityAndDormantAreTheirLines(t *testing.T) {
 func TestStatus_passesTheDelegateGateAndMarksADelegate(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	mustRegister(t, s, registration(sessA, "subflux-dev", envA()))
-	g, err := s.Delegate(t.Context(), &Grant{Caller: Caller{Session: sessA}, Label: "tests", TTL: time.Hour})
+	g, _, err := s.Delegate(t.Context(), Keyed{}, &Grant{Caller: Caller{Session: sessA}, Label: "tests", TTL: time.Hour})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestActing_refusesWhatTheGateRefusesAndWritesNothing(t *testing.T) {
 	_, err := s.Acting(t.Context(), Caller{Session: sessA})
 	wantRefusal(t, err, KindGone, "none", "grelot register")
 	mustRegister(t, s, registration(sessA, "subflux-dev", envA()))
-	g, err := s.Delegate(t.Context(), &Grant{Caller: Caller{Session: sessA}, Label: "tests", TTL: time.Hour})
+	g, _, err := s.Delegate(t.Context(), Keyed{}, &Grant{Caller: Caller{Session: sessA}, Label: "tests", TTL: time.Hour})
 	if err != nil {
 		t.Fatal(err)
 	}

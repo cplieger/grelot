@@ -11,8 +11,12 @@ import (
 	"github.com/cplieger/bolttable"
 )
 
-// namespace is the one bolttable namespace grelot stores everything in.
-const namespace = "grelot"
+// The bolttable namespaces: the keyed writes' first results, and
+// everything else.
+const (
+	namespace         = "grelot"
+	requestsNamespace = "requests"
+)
 
 // Table prefixes are stored bytes: changing one changes the namespace's
 // format digest, and the next start resets the store.
@@ -24,6 +28,7 @@ const (
 	prefixReservations byte = 5
 	prefixLinks        byte = 6
 	prefixWatches      byte = 7
+	prefixRequests     byte = 8
 )
 
 // Identity states.
@@ -256,6 +261,7 @@ type tables struct {
 	linkHash   *bolttable.Index[[]byte, linkRow]
 	watches    *leased[uint64, watchRow]
 	watchBy    *bolttable.Index[uint64, watchRow]
+	requests   *leased[[]byte, requestRow]
 	// leased lists every table above, in the order the sweep walks them.
 	leased []sweeper
 }
@@ -315,10 +321,13 @@ func newSchema() (*bolttable.Schema, *tables, error) {
 	if err := defineWatches(ns, &t); err != nil {
 		return nil, nil, err
 	}
+	if err := defineRequests(s, &t); err != nil {
+		return nil, nil, err
+	}
 	// Identities go first: an identity's expiry hands off its grants and
 	// deletes its links itself, before their own sweeps would reach them
 	// one by one.
-	t.leased = []sweeper{t.identities, t.links, t.resv, t.watches, t.threads, t.messages, t.deliveries}
+	t.leased = []sweeper{t.identities, t.links, t.resv, t.watches, t.threads, t.messages, t.deliveries, t.requests}
 	return s, &t, nil
 }
 
@@ -457,6 +466,23 @@ func defineWatches(ns *bolttable.Namespace, t *tables) error {
 	}
 	t.watchBy, err = bolttable.DefineIndex(watches, "receipt_watches.sender", bolttable.IndexOptions{Version: 1},
 		func(_ uint64, v *watchRow) []bolttable.Entry { return []bolttable.Entry{{Key: be64(v.Sender)}} })
+	return err
+}
+
+// defineRequests declares the keyed writes' first results and their lease,
+// in a namespace of their own, so neither one's format change resets the
+// other's rows.
+func defineRequests(s *bolttable.Schema, t *tables) error {
+	ns, err := s.Namespace(requestsNamespace)
+	if err != nil {
+		return err
+	}
+	requests, err := bolttable.Define(ns, prefixRequests, "requests",
+		bolttable.BytesKey{}, bolttable.JSON[requestRow](1), bolttable.TableOptions{Silent: true})
+	if err != nil {
+		return err
+	}
+	t.requests, err = defineLeased(requests, requestPolicy, func(v *requestRow) *lease { return &v.Lease })
 	return err
 }
 

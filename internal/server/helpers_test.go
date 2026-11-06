@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -132,7 +134,7 @@ func newHarness(t *testing.T) *harness {
 }
 
 // newHarnessWith is newHarness over a store opened with o, its logger,
-// clock and path root set by the harness.
+// clock and path root set by the harness; o.Woke runs before the hub's.
 func newHarnessWith(t *testing.T, o store.Options, edits ...func(*Options)) *harness {
 	t.Helper()
 	clk := &clock{t: testNow}
@@ -161,6 +163,12 @@ func buildHarness(t *testing.T, o store.Options, now func() time.Time, edits ...
 		hub := NewHub()
 		m := obs.New()
 		so.Logger, so.Now, so.PathRoot, so.Woke, so.Metrics = logger, now, protopath.DefaultRoot, hub.Woke, m
+		if before := o.Woke; before != nil {
+			so.Woke = func(ids []uint64) {
+				before(ids)
+				hub.Woke(ids)
+			}
+		}
 		st, err := store.Open(h.dbPath, &so)
 		if err != nil {
 			t.Fatalf("store.Open: %v", err)
@@ -263,11 +271,29 @@ func (r *response) str(key string) string {
 // body encoded as JSON when it is not nil.
 func (h *harness) request(method, path string, body any, headers map[string]string) *response {
 	h.t.Helper()
+	return h.requestCtx(h.t.Context(), method, path, body, headers)
+}
+
+// requestCtx is request under ctx, whose deadline the route's own sits
+// under only when the harness serves in process.
+func (h *harness) requestCtx(ctx context.Context, method, path string, body any, headers map[string]string) *response {
+	h.t.Helper()
+	r, err := h.send(ctx, method, path, body, headers)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return r
+}
+
+// send is requestCtx returning its error instead of failing the test, so
+// a goroutine other than the test's may call it: t.Fatal must run on the
+// test's goroutine.
+func (h *harness) send(ctx context.Context, method, path string, body any, headers map[string]string) (*response, error) {
 	var rd io.Reader = http.NoBody
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
-			h.t.Fatal(err)
+			return nil, err
 		}
 		rd = bytes.NewReader(b)
 	}
@@ -275,12 +301,15 @@ func (h *harness) request(method, path string, body any, headers map[string]stri
 	if h.http != nil {
 		base = h.http.URL
 	}
-	req, err := http.NewRequestWithContext(h.t.Context(), method, base+path, rd)
+	req, err := http.NewRequestWithContext(ctx, method, base+path, rd)
 	if err != nil {
-		h.t.Fatal(err)
+		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	req.Header.Set(headerVersion, testVersion)
+	if route, _, _ := strings.Cut(path, "?"); method != http.MethodGet && !sentOnce[route] {
+		req.Header.Set(headerKey, newTestKey())
+	}
 	for k, v := range headers {
 		if v == "" {
 			req.Header.Del(k)
@@ -288,27 +317,93 @@ func (h *harness) request(method, path string, body any, headers map[string]stri
 			req.Header.Set(k, v)
 		}
 	}
-	resp := h.do(req)
+	resp, err := h.roundTrip(req)
+	if err != nil {
+		return nil, err
+	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	out := &response{status: resp.StatusCode, header: resp.Header, raw: string(raw)}
 	_ = json.Unmarshal(raw, &out.body)
-	return out
+	return out, nil
 }
+
+// pending is a request sent from its own goroutine.
+type pending struct {
+	h       *harness
+	answers chan sendResult
+}
+
+type sendResult struct {
+	r   *response
+	err error
+}
+
+// async sends the request from its own goroutine; answer or now collects
+// its response on the test's goroutine.
+func (h *harness) async(method, path string, body any, headers map[string]string) *pending {
+	p := &pending{h: h, answers: make(chan sendResult, 1)}
+	ctx := h.t.Context()
+	go func() {
+		r, err := h.send(ctx, method, path, body, headers)
+		p.answers <- sendResult{r: r, err: err}
+	}()
+	return p
+}
+
+// answer waits for p's response.
+func (p *pending) answer() *response {
+	p.h.t.Helper()
+	return p.got(<-p.answers)
+}
+
+// now is p's response if it has answered, or nil while it still holds.
+func (p *pending) now() *response {
+	p.h.t.Helper()
+	select {
+	case res := <-p.answers:
+		return p.got(res)
+	default:
+		return nil
+	}
+}
+
+// got is res's response, failing the test on its send error.
+func (p *pending) got(res sendResult) *response {
+	p.h.t.Helper()
+	if res.err != nil {
+		p.h.t.Fatal(res.err)
+	}
+	return res.r
+}
+
+// sentOnce are the write routes that take no Idempotency-Key; request
+// keys every other write with a new key unless headers name one.
+var sentOnce = map[string]bool{"/v1/lifecycle": true, "/v1/events/hold": true, "/v1/events/wait": true}
+
+var testKeys atomic.Uint64
+
+// newTestKey is a key no other request of the test binary sends.
+func newTestKey() string { return fmt.Sprintf(`"test-key-%016d"`, testKeys.Add(1)) }
 
 // do sends req over the network, or in process for a bubble harness.
 func (h *harness) do(req *http.Request) *http.Response {
 	h.t.Helper()
-	if h.http == nil {
-		rec := httptest.NewRecorder()
-		h.srv.Handler().ServeHTTP(rec, req)
-		return rec.Result()
-	}
-	resp, err := h.http.Client().Do(req)
+	resp, err := h.roundTrip(req)
 	if err != nil {
 		h.t.Fatal(err)
 	}
 	return resp
+}
+
+// roundTrip is do returning its error instead of failing the test.
+func (h *harness) roundTrip(req *http.Request) (*http.Response, error) {
+	if h.http == nil {
+		rec := httptest.NewRecorder()
+		h.srv.Handler().ServeHTTP(rec, req)
+		return rec.Result(), nil
+	}
+	return h.http.Client().Do(req)
 }
 
 // as sends a request from session.
@@ -351,7 +446,7 @@ func (h *harness) mustRegister(session, name string) {
 func (h *harness) directPost(session, to string) {
 	h.t.Helper()
 	nc := store.Fields{Name: store.NoChange, Description: store.NoChange, Paths: []string{store.NoChange}}
-	if _, err := h.store.Post(h.t.Context(), &store.Posting{
+	if _, _, err := h.store.Post(h.t.Context(), store.Keyed{}, &store.Posting{
 		Caller: store.Caller{Session: session}, Subject: "hello", Body: "a body",
 		To: store.Target{Agent: to}, Fields: nc,
 	}); err != nil {

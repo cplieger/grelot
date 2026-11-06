@@ -254,6 +254,7 @@ func postedLine(t *testing.T, msg string) map[string]any {
 		req.Header.Set("Authorization", "Bearer test-token")
 		req.Header.Set("Grelot-Version", "v1.1.0")
 		req.Header.Set("Grelot-Session", "host:session-1")
+		req.Header.Set("Idempotency-Key", `"key-for-`+strings.TrimPrefix(call.path, "/v1/")+`-0001"`)
 		rec := httptest.NewRecorder()
 		srv.HTTPServer().Handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusCreated {

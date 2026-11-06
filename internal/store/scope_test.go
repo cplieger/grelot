@@ -41,7 +41,7 @@ func selfPost(name string, to Target) Posting {
 
 func postErr(t *testing.T, s *Store, p Posting) error {
 	t.Helper()
-	_, err := s.Post(t.Context(), &p)
+	_, _, err := s.Post(t.Context(), Keyed{}, &p)
 	return err
 }
 
@@ -227,7 +227,7 @@ func TestScope_aDelegatePostStoresItsParentsWhereAndItsRelationFollowsIt(t *test
 	}
 
 	moved := Where{Machine: dmi("1"), Environment: hex32("b")}
-	if _, err := s.Set(t.Context(), Caller{Session: sess("subflux-dev"), Self: true}, Change{Where: &moved, TTL: 6 * time.Hour}); err != nil {
+	if _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("subflux-dev"), Self: true}, Change{Where: &moved, TTL: 6 * time.Hour}); err != nil {
 		t.Fatal(err)
 	}
 	second := mustPost(t, s, asPost("subflux-dev", d.Name, Target{Agent: "cloudy-lake"}))
@@ -256,7 +256,7 @@ func TestScope_aDelegateWritesAndReceivesNoCards(t *testing.T) {
 	if n := len(allDeliveriesTo(t, s, d.ID)); n != 0 {
 		t.Errorf("delegate got %d deliveries, want no card", n)
 	}
-	if err := s.Retire(t.Context(), as(sess("subflux-dev"), d.Name)); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, as(sess("subflux-dev"), d.Name)); err != nil {
 		t.Fatal(err)
 	}
 	cards := 0
@@ -275,11 +275,11 @@ func TestScope_aDelegateCannotReserveQueueOrFollow(t *testing.T) {
 	_, d := delegateOf(t, s, "subflux-dev", "review")
 	for _, queue := range []bool{false, true} {
 		r := Reserving{Caller: as(sess("subflux-dev"), d.Name), Path: repoSubflux, Reason: "review", TTL: time.Hour, Queue: queue}
-		_, err := s.Reserve(t.Context(), &r)
+		_, _, err := s.Reserve(t.Context(), Keyed{}, &r)
 		wantRefusal(t, err, KindForbidden, "", "delegate")
 	}
 	mustPost(t, s, selfPost("subflux-dev", Target{Path: repoSubflux}))
-	_, err := s.Follow(t.Context(), as(sess("subflux-dev"), d.Name), repoSubflux)
+	_, err := s.Follow(t.Context(), Keyed{}, as(sess("subflux-dev"), d.Name), repoSubflux)
 	wantRefusal(t, err, KindForbidden, "", "scope")
 }
 
@@ -334,7 +334,7 @@ func TestScope_aDelegateIsShownWithItsParentsWhere(t *testing.T) {
 	known("register", d)
 	posted := mustPost(t, s, asPost("subflux-dev", d.Name, Target{Agent: "subflux-dev"}))
 	known("post", posted.Identity)
-	acked, err := s.Ack(t.Context(), as(sess("subflux-dev"), d.Name), 0)
+	acked, _, err := s.Ack(t.Context(), Keyed{}, as(sess("subflux-dev"), d.Name), 0)
 	if err != nil {
 		t.Fatal(err)
 	}

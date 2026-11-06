@@ -194,24 +194,39 @@ func startServe(t *testing.T) (addr string, logs *syncBuffer, cancel context.Can
 	return addr, logs, cancel, out
 }
 
-// call sends one /v1 request from session and returns its status and code.
-func call(t *testing.T, addr, method, path, session, body string) (status int, code string) {
+// call sends one /v1 request from session, with key as its
+// Idempotency-Key when not empty, and returns its status and code.
+func call(t *testing.T, addr, method, path, session, key, body string) (status int, code string) {
 	t.Helper()
-	req, err := http.NewRequestWithContext(t.Context(), method, "http://"+addr+path, strings.NewReader(body))
+	status, code, err := callErr(t.Context(), addr, method, path, session, key, body)
 	if err != nil {
 		t.Fatal(err)
+	}
+	return status, code
+}
+
+// callErr is call returning its error instead of failing the test, so a
+// goroutine other than the test's may call it: t.Fatal must run on the
+// test's goroutine.
+func callErr(ctx context.Context, addr, method, path, session, key, body string) (status int, code string, err error) {
+	req, err := http.NewRequestWithContext(ctx, method, "http://"+addr+path, strings.NewReader(body))
+	if err != nil {
+		return 0, "", err
 	}
 	req.Header.Set("Authorization", "Bearer test-token")
 	req.Header.Set("Grelot-Version", "dev")
 	req.Header.Set("Grelot-Session", session)
+	if key != "" {
+		req.Header.Set("Idempotency-Key", key)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		t.Fatalf("%s %s: %v", method, path, err)
+		return 0, "", err
 	}
 	defer resp.Body.Close()
 	var out struct{ Code string }
 	_ = json.NewDecoder(resp.Body).Decode(&out)
-	return resp.StatusCode, out.Code
+	return resp.StatusCode, out.Code, nil
 }
 
 func TestServe_aStopAnswersAnOpenWaitAndDrains(t *testing.T) {
@@ -221,22 +236,27 @@ func TestServe_aStopAnswersAnOpenWaitAndDrains(t *testing.T) {
 	register := `{"name":"reader","paths":["/workspace/grelot"],"description":"reading","host":"host-a/app",` +
 		`"os":"linux","arch":"amd64","ttl":"1h","where":{"machine":"dmi:` + strings.Repeat("1", 32) +
 		`","environment":"` + strings.Repeat("a", 32) + `","checkouts":[]}}`
-	if status, code := call(t, addr, http.MethodPost, "/v1/register", session, register); status != http.StatusCreated {
+	if status, code := call(t, addr, http.MethodPost, "/v1/register", session, `"register-key-0001"`, register); status != http.StatusCreated {
 		t.Fatalf("register: %d %s", status, code)
 	}
 	type answer struct {
+		err    error
 		code   string
 		status int
 	}
 	waited := make(chan answer, 1)
+	ctx := t.Context()
 	go func() {
-		status, code := call(t, addr, http.MethodPost, "/v1/events/wait", session, `{"wait":"55s"}`)
-		waited <- answer{code: code, status: status}
+		status, code, err := callErr(ctx, addr, http.MethodPost, "/v1/events/wait", session, "", `{"wait":"55s"}`)
+		waited <- answer{err: err, code: code, status: status}
 	}()
 	time.Sleep(200 * time.Millisecond)
 	cancel()
 	select {
 	case a := <-waited:
+		if a.err != nil {
+			t.Fatalf("the open wait: %v", a.err)
+		}
 		if a.status != http.StatusServiceUnavailable || a.code != "shutting_down" {
 			t.Errorf("the open wait = %d %s, want 503 shutting_down", a.status, a.code)
 		}

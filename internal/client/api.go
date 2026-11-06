@@ -3,6 +3,8 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,6 +23,7 @@ const (
 	headerAs      = "Grelot-As"
 	headerSelf    = "Grelot-Self"
 	headerStatus  = "Grelot-Status"
+	headerKey     = "Idempotency-Key"
 	// HeaderEnvironment and HeaderMachine carry the caller's where values to
 	// GET /v1/me for the take-over hint; the server never reads them from a
 	// URL, which access logs keep.
@@ -55,11 +58,22 @@ type API struct {
 }
 
 // NewAPI builds the API for cfg. version goes out as Grelot-Version; the
-// path root an answer names is cached under configDir. GET requests are
-// retried with backoff, every other method is sent once, and no redirect
-// is followed, since one would carry the bearer elsewhere.
+// path root an answer names is cached under configDir. A GET, and a write
+// carrying its Idempotency-Key (every one but a Request.Once), is retried
+// with backoff on a network error or a retryable status other than 429,
+// which answers at once naming its wait. No redirect is followed, since
+// one would carry the bearer and the key elsewhere.
 func NewAPI(cfg *Config, version, configDir string) (*API, error) {
-	return newAPI(cfg, version, configDir, httpclient.TransportConfig{BaseDelay: retryDelay})
+	return newAPI(cfg, version, configDir, httpclient.TransportConfig{BaseDelay: retryDelay, CheckRetry: checkRetry})
+}
+
+// checkRetry is the library's verdict less 429: a rate-limited post's wait
+// is up to a minute, past a call's budget.
+func checkRetry(_ context.Context, resp *http.Response, err error) (bool, error) {
+	if err != nil {
+		return httpclient.IsTransient(err), nil
+	}
+	return resp.StatusCode != http.StatusTooManyRequests && httpclient.IsRetryableStatus(resp.StatusCode), nil
 }
 
 // NewHookAPI is NewAPI sending every request once, since a hook makes at
@@ -78,14 +92,16 @@ func newAPI(cfg *Config, version, configDir string, retry httpclient.TransportCo
 	return &API{http: c, server: cfg.Server, token: cfg.Token, version: version, configDir: configDir}, nil
 }
 
-// retryDelay is the first backoff of a retried GET: a command waits on it,
-// and a hook's budget bounds the whole call.
+// retryDelay is the first backoff of a retried call: a command waits on
+// it, and a hook's budget bounds the whole call.
 const retryDelay = 250 * time.Millisecond
 
 // Request is one API call. Path is the route under the server URL, such as
 // /v1/me; Header adds to the identity headers; Body, when not nil, goes out
 // as JSON. Timeout bounds the call with its retries, DefaultTimeout when
-// zero.
+// zero. A write other than a GET carries a new Idempotency-Key, which every
+// retry of the call re-sends, unless Once is set: the route takes no key
+// and the call is sent once.
 type Request struct {
 	Query   url.Values
 	Header  http.Header
@@ -93,6 +109,7 @@ type Request struct {
 	Method  string
 	Path    string
 	Timeout time.Duration
+	Once    bool
 }
 
 // Response is a 2xx answer: its status line, sanitized to one line, and its
@@ -209,7 +226,18 @@ func (a *API) request(ctx context.Context, r *Request) (*http.Request, error) {
 	if a.Self {
 		req.Header.Set(headerSelf, "1")
 	}
+	if r.Method != http.MethodGet && !r.Once {
+		req.Header.Set(headerKey, newKey())
+	}
 	return req, nil
+}
+
+// newKey is a fresh Idempotency-Key: 16 random bytes as base64url, quoted
+// as the RFC 8941 String the header carries.
+func newKey() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b) // crypto/rand.Read never returns an error.
+	return `"` + base64.RawURLEncoding.EncodeToString(b) + `"`
 }
 
 // errorBody is the server's error answer.

@@ -163,7 +163,7 @@ func TestRepoCollision_anotherRemoteUnderOneRootIsRefused(t *testing.T) {
 	}
 	mustRegister(t, s, registration(sess("docs-a"), "docs-a", docs("1", "e"), repoDocs))
 
-	_, err := s.Register(t.Context(), new(registration(sess("docs-b"), "docs-b", docs("2", "f"), repoDocs)))
+	_, _, err := s.Register(t.Context(), Keyed{}, new(registration(sess("docs-b"), "docs-b", docs("2", "f"), repoDocs)))
 	wantRefusal(t, err, KindConflict, "other_repository", "/workspace/docs is another repository for docs-a", "repos:")
 
 	t.Run("the same remote elsewhere", func(t *testing.T) {
@@ -175,7 +175,7 @@ func TestRepoCollision_anotherRemoteUnderOneRootIsRefused(t *testing.T) {
 	})
 	t.Run("a set moving onto the root", func(t *testing.T) {
 		w := docs("4", "f")
-		_, err := s.Set(t.Context(), Caller{Session: sess("docs-b")}, Change{Where: &w, Fields: Fields{Paths: []string{repoDocs}}})
+		_, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("docs-b")}, Change{Where: &w, Fields: Fields{Paths: []string{repoDocs}}})
 		wantRefusal(t, err, KindConflict, "other_repository", "another repository")
 	})
 	t.Run("a revive onto the root", func(t *testing.T) {
@@ -184,7 +184,7 @@ func TestRepoCollision_anotherRemoteUnderOneRootIsRefused(t *testing.T) {
 		mustRegister(t, s, r)
 		clk.advance(15 * time.Minute)
 		w := docs("6", "f")
-		_, err := s.Revive(t.Context(), &Revival{Session: sess("docs-d"), Where: &w, TTL: time.Hour})
+		_, _, err := s.Revive(t.Context(), Keyed{}, &Revival{Session: sess("docs-d"), Where: &w, TTL: time.Hour})
 		wantRefusal(t, err, KindConflict, "other_repository", "another repository")
 	})
 }

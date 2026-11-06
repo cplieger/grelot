@@ -122,7 +122,7 @@ func TestHold_thatShowsMailRecordsTheNudgeAndNoWatcherLineFollows(t *testing.T) 
 		if r := h.stopHold(sessA, true); r.body["block"] != true {
 			t.Fatalf("hold = %s, want a block", r.raw)
 		}
-		if r := <-wait; r.status != http.StatusNoContent {
+		if r := wait.answer(); r.status != http.StatusNoContent {
 			t.Errorf("the standing wait = %d %s, want 204 with no nudge", r.status, r.raw)
 		}
 		if hook, watcher := h.nudgesVia("hook"), h.sentByWatcher(); hook != 1 || watcher != 0 {
@@ -341,16 +341,14 @@ func TestLifecycle_turnEndClosesTheTurnAndTheDueNudgeGoesOutAtOnce(t *testing.T)
 		seq := h.newestWake(sessA)
 		h.self(sessA, http.MethodPost, "/v1/lifecycle", map[string]any{"event": eventTurnEnd, "agent_id": "sub-1"})
 		synctest.Wait()
-		select {
-		case r := <-wait:
+		if r := wait.now(); r != nil {
 			t.Fatalf("the wait returned %d %s after a subagent's turn_end, want it still deferred", r.status, r.raw)
-		default:
 		}
 		start := time.Now()
 		if r := h.self(sessA, http.MethodPost, "/v1/lifecycle", map[string]any{"event": eventTurnEnd}); r.status != http.StatusOK {
 			t.Fatalf("turn_end: %d %s", r.status, r.raw)
 		}
-		wantNudge(t, <-wait, seq, 1, 1)
+		wantNudge(t, wait.answer(), seq, 1, 1)
 		if d := time.Since(start); d != 0 {
 			t.Errorf("the nudge went out %v after turn_end, want at once", d)
 		}
@@ -368,13 +366,13 @@ func TestLifecycle_turnEndInsideTheAckGraceSendsTheNudgeAtOnce(t *testing.T) {
 		wait := h.inTurn(sessA, 55*time.Second)
 		synctest.Wait()
 		h.mustPost(sessB, map[string]any{"agent": "reader"}, "reply")
-		page := entriesOf(t, <-wait)
+		page := entriesOf(t, wait.answer())
 		synctest.Wait()
 		start := time.Now()
 		if r := h.self(sessA, http.MethodPost, "/v1/lifecycle", map[string]any{"event": eventTurnEnd}); r.status != http.StatusOK {
 			t.Fatalf("turn_end: %d %s", r.status, r.raw)
 		}
-		wantNudge(t, <-watch, page[0]["seq"].(float64), 1, 1)
+		wantNudge(t, watch.answer(), page[0]["seq"].(float64), 1, 1)
 		if d := time.Since(start); d != 0 {
 			t.Errorf("the nudge went out %v after turn_end, want at once", d)
 		}
@@ -395,14 +393,12 @@ func TestInTurnWait_closingWithNoMailWakesAStandingWaitItDeferred(t *testing.T) 
 		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
 		seq := h.newestWake(sessA)
 		synctest.Wait()
-		select {
-		case r := <-watch:
+		if r := watch.now(); r != nil {
 			t.Fatalf("the standing wait returned %d %s while the in-turn wait was open, want it deferred", r.status, r.raw)
-		default:
 		}
 		start := time.Now()
 		h.srv.inTurnEnded(id, 0)
-		wantNudge(t, <-watch, seq, 1, 1)
+		wantNudge(t, watch.answer(), seq, 1, 1)
 		if d := time.Since(start); d != 0 {
 			t.Errorf("the nudge went out %v after the in-turn wait closed, want at once", d)
 		}
@@ -410,10 +406,8 @@ func TestInTurnWait_closingWithNoMailWakesAStandingWaitItDeferred(t *testing.T) 
 }
 
 // inTurn holds GET /v1/inbox?wait= from session in its own goroutine.
-func (h *harness) inTurn(session string, wait time.Duration) <-chan *response {
-	out := make(chan *response, 1)
-	go func() { out <- h.as(session, http.MethodGet, "/v1/inbox?wait="+wait.String(), nil) }()
-	return out
+func (h *harness) inTurn(session string, wait time.Duration) *pending {
+	return h.async(http.MethodGet, "/v1/inbox?wait="+wait.String(), nil, map[string]string{headerSession: session})
 }
 
 func TestInTurnWait_returnsMailPastReadWhateverTheNudgeState(t *testing.T) {
@@ -425,7 +419,7 @@ func TestInTurnWait_returnsMailPastReadWhateverTheNudgeState(t *testing.T) {
 		seq := h.newestWake(sessA)
 		wantNudge(t, h.watch(sessA, 55*time.Second), seq, 1, 1)
 
-		page := entriesOf(t, <-h.inTurn(sessA, 55*time.Second))
+		page := entriesOf(t, h.inTurn(sessA, 55*time.Second).answer())
 		if len(page) != 1 || page[0]["subject"] != "first" {
 			t.Fatalf("the in-turn wait beside the watcher's nudge = %v, want the first post", page)
 		}
@@ -434,7 +428,7 @@ func TestInTurnWait_returnsMailPastReadWhateverTheNudgeState(t *testing.T) {
 		synctest.Wait()
 		start := time.Now()
 		h.mustPost(sessB, map[string]any{"agent": "reader"}, "second")
-		page = entriesOf(t, <-wait)
+		page = entriesOf(t, wait.answer())
 		if len(page) != 1 || page[0]["subject"] != "second" || time.Since(start) != 0 {
 			t.Errorf("the in-turn wait = %v after %v, want the second post at once", page, time.Since(start))
 		}
@@ -450,7 +444,7 @@ func TestInTurnWait_aCardDoesNotReturnIt(t *testing.T) {
 		wait := h.inTurn(sessA, 55*time.Second)
 		synctest.Wait()
 		h.mustRegister(sessC, "late-joiner")
-		page := entriesOf(t, <-wait)
+		page := entriesOf(t, wait.answer())
 		if d := time.Since(start); d != 55*time.Second {
 			t.Errorf("the in-turn wait returned after %v with only cards, want the whole 55s", d)
 		}
@@ -469,10 +463,10 @@ func TestInTurnWait_holdsTheFirstNudgeForItsAck(t *testing.T) {
 		wait := h.inTurn(sessA, 55*time.Second)
 		synctest.Wait()
 		h.mustPost(sessB, map[string]any{"agent": "reader"}, "reply")
-		page := entriesOf(t, <-wait)
+		page := entriesOf(t, wait.answer())
 		synctest.Wait()
 		h.ack(sessA, page[0]["seq"].(float64))
-		if r := <-watch; r.status != http.StatusNoContent {
+		if r := watch.answer(); r.status != http.StatusNoContent {
 			t.Errorf("the standing wait beside the in-turn wait = %d %s, want 204", r.status, r.raw)
 		}
 		if n := h.sentByWatcher(); n != 0 {
@@ -489,7 +483,7 @@ func TestInTurnWait_mailLeftUnackedIsNudgedAfterTheGrace(t *testing.T) {
 		wait := h.inTurn(sessA, 55*time.Second)
 		synctest.Wait()
 		h.mustPost(sessB, map[string]any{"agent": "reader"}, "reply")
-		page := entriesOf(t, <-wait)
+		page := entriesOf(t, wait.answer())
 		returned := time.Now()
 		wantNudge(t, h.watch(sessA, 55*time.Second), page[0]["seq"].(float64), 1, 1)
 		if d := time.Since(returned); d != ackGrace {

@@ -32,7 +32,7 @@ func mustInbox(t *testing.T, s *Store, session string, limit int) Page {
 
 func mustAck(t *testing.T, s *Store, session string, upto uint64) Acked {
 	t.Helper()
-	a, err := s.Ack(t.Context(), Caller{Session: session}, upto)
+	a, _, err := s.Ack(t.Context(), Keyed{}, Caller{Session: session}, upto)
 	if err != nil {
 		t.Fatalf("Ack(%s, %d): %v", session, upto, err)
 	}
@@ -205,7 +205,7 @@ func TestInbox_relationIsReadFromTheMessageSnapshot(t *testing.T) {
 	mustRegister(t, s, registration(sess("alpha"), "alpha", sender, repoSubflux+"/cmd"))
 	mustRegister(t, s, registration(sess("bravo"), "bravo", reader, repoSubflux))
 	mustPost(t, s, posting(sess("alpha"), Target{Path: repoSubflux + "/internal"}))
-	if err := s.Retire(t.Context(), Caller{Session: sess("alpha")}); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("alpha")}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -237,7 +237,7 @@ func TestInbox_aCardIsQuietAndRelatedAtItsPath(t *testing.T) {
 		t.Errorf("unread %+v, want one card and no wake event", p.Unread)
 	}
 
-	if err := s.Retire(t.Context(), Caller{Session: sess("charlie")}); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("charlie")}); err != nil {
 		t.Fatal(err)
 	}
 	p = mustInbox(t, s, sess("bravo"), 0)
@@ -338,11 +338,14 @@ func TestReads_neverMoveTheLease(t *testing.T) {
 		call func() error
 	}{
 		{"inbox", func() error { _, err := s.Inbox(ctx, Caller{Session: me}, 0); return err }},
-		{"ack", func() error { _, err := s.Ack(ctx, Caller{Session: me}, 1); return err }},
+		{"ack", func() error { _, _, err := s.Ack(ctx, Keyed{}, Caller{Session: me}, 1); return err }},
 		{"hold", func() error { _, err := s.Hold(ctx, Caller{Session: me}); return err }},
 		{"history", func() error { _, err := s.History(ctx, Caller{Session: me}, &HistoryQuery{}); return err }},
-		{"follow", func() error { _, err := s.Follow(ctx, Caller{Session: me}, "/workspace/alpha"); return err }},
-		{"unfollow", func() error { _, err := s.Unfollow(ctx, Caller{Session: me}, "/workspace/alpha"); return err }},
+		{"follow", func() error { _, err := s.Follow(ctx, Keyed{}, Caller{Session: me}, "/workspace/alpha"); return err }},
+		{"unfollow", func() error {
+			_, err := s.Unfollow(ctx, Keyed{}, Caller{Session: me}, "/workspace/alpha")
+			return err
+		}},
 	}
 	for _, c := range calls {
 		clk.advance(10 * time.Minute)
@@ -365,7 +368,7 @@ func TestInbox_aDormantSessionGetsTheReviveOffer(t *testing.T) {
 
 	_, err := s.Inbox(t.Context(), Caller{Session: sess("bravo")}, 0)
 	wantRefusal(t, err, KindGone, "dormant", want)
-	_, err = s.Ack(t.Context(), Caller{Session: sess("bravo")}, 1)
+	_, _, err = s.Ack(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, 1)
 	wantRefusal(t, err, KindGone, "dormant", want)
 	_, err = s.Hold(t.Context(), Caller{Session: sess("bravo")})
 	wantRefusal(t, err, KindGone, "dormant", want)
@@ -385,7 +388,7 @@ func TestInbox_clearsEnded(t *testing.T) {
 		case "inbox":
 			_, err = s.Inbox(t.Context(), Caller{Session: sess("bravo")}, 0)
 		case "ack":
-			_, err = s.Ack(t.Context(), Caller{Session: sess("bravo")}, 0)
+			_, _, err = s.Ack(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, 0)
 		case "hold":
 			_, err = s.Hold(t.Context(), Caller{Session: sess("bravo")})
 		}

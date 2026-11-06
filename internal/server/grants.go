@@ -31,12 +31,12 @@ type reserveResponse struct {
 
 // reserve is POST /v1/reservations: a grant, or with queue a queue entry
 // when the path is taken.
-func (s *Server) reserve(r *http.Request, c store.Caller) (status int, body any, err error) {
+func (s *Server) reserve(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
 	var req reserveRequest
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	got, err := s.store.Reserve(r.Context(), &store.Reserving{
+	got, _, err := s.store.Reserve(r.Context(), k, &store.Reserving{
 		Path: req.Path, Reason: req.Reason, Caller: c, TTL: time.Duration(req.TTL), Queue: req.Queue,
 	})
 	if err != nil {
@@ -59,7 +59,7 @@ type reservationResponse struct {
 }
 
 // renewReservation is PATCH /v1/reservations/{id}.
-func (s *Server) renewReservation(r *http.Request, c store.Caller) (status int, body any, err error) {
+func (s *Server) renewReservation(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
 	id, err := reservationID(r)
 	if err != nil {
 		return 0, nil, err
@@ -68,7 +68,7 @@ func (s *Server) renewReservation(r *http.Request, c store.Caller) (status int, 
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	got, err := s.store.RenewReservation(r.Context(), c, id, time.Duration(req.TTL))
+	got, err := s.store.RenewReservation(r.Context(), k, c, id, time.Duration(req.TTL))
 	if err != nil {
 		return 0, nil, err
 	}
@@ -77,12 +77,12 @@ func (s *Server) renewReservation(r *http.Request, c store.Caller) (status int, 
 
 // release is DELETE /v1/reservations/{id}: a grant freed or a queue entry
 // cancelled.
-func (s *Server) release(r *http.Request, c store.Caller) (status int, body any, err error) {
+func (s *Server) release(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
 	id, err := reservationID(r)
 	if err != nil {
 		return 0, nil, err
 	}
-	got, err := s.store.Release(r.Context(), c, id)
+	got, err := s.store.Release(r.Context(), k, c, id)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -128,12 +128,12 @@ type delegateResponse struct {
 
 // grant is POST /v1/delegates: a single-use link a subagent registers
 // with.
-func (s *Server) grant(r *http.Request, c store.Caller) (status int, body any, err error) {
+func (s *Server) grant(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
 	var req delegateRequest
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	got, err := s.store.Delegate(r.Context(), &store.Grant{
+	got, _, err := s.store.Delegate(r.Context(), k, &store.Grant{
 		Caller: c, Label: req.Label, AllowThreads: req.AllowThreads, AllowAgents: req.AllowAgents,
 		DenyThreads: req.DenyThreads, DenyAgents: req.DenyAgents, TTL: time.Duration(req.TTL),
 	})
@@ -150,8 +150,8 @@ type revokeResponse struct {
 
 // revoke is DELETE /v1/delegates/{label}: the label's unused link revoked
 // and its delegate ended.
-func (s *Server) revoke(r *http.Request, c store.Caller) (status int, body any, err error) {
-	got, err := s.store.Revoke(r.Context(), c, r.PathValue("label"))
+func (s *Server) revoke(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
+	got, err := s.store.Revoke(r.Context(), k, c, r.PathValue("label"))
 	if err != nil {
 		return 0, nil, err
 	}

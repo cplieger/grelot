@@ -5,7 +5,6 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -156,7 +155,7 @@ func TestHookPrompt_underThirtyWords(t *testing.T) {
 	_, lines["dormant"] = a.prompt("x")
 	u := hooked(t, newAgent(t, ts, "s-9", ""), "alpha", hookTurnFile)
 	_, lines["unregistered"], _ = u.hook("prompt", `{"session_id":"s-9"}`)
-	down := hooked(t, newAgent(t, &testServer{URL: closedURL(t)}, "s-1", ""), "alpha", hookTurnFile)
+	down := hooked(t, newAgent(t, &testServer{URL: unreachableURL(t)}, "s-1", ""), "alpha", hookTurnFile)
 	_, lines["the server unreachable"], _ = down.hook("prompt", `{"session_id":"s-1"}`)
 	old := hooked(t, newAgent(t, ts, "s-9", ""), "alpha", hookTurnFile)
 	old.env.Version = "v0.0.1"
@@ -171,17 +170,6 @@ func TestHookPrompt_underThirtyWords(t *testing.T) {
 	if !strings.Contains(lines["live, with the reminder and the start line"], "still true?") {
 		t.Errorf("live line %q lacks the reminder it was meant to measure", lines["live, with the reminder and the start line"])
 	}
-}
-
-func closedURL(t *testing.T) string {
-	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	u := "http://" + l.Addr().String()
-	_ = l.Close()
-	return u
 }
 
 func TestHookPrompt_sendsTheSignalItCarries(t *testing.T) {
@@ -357,7 +345,7 @@ func TestHook_onceSpendsOnlyAnAnswer(t *testing.T) {
 			ts := newServer(t)
 			a := hooked(t, newAgent(t, ts, "s-1", ""), "alpha", onceFile)
 			stdin := `{"session_id":"s-1","prompt":"x"}`
-			a.pointAt(closedURL(t))
+			a.pointAt(unreachableURL(t))
 			if _, out, _ := a.hook(role, stdin); !strings.Contains(out, noCheck) {
 				t.Fatalf("down: stdout %q, want the could-not-check line", out)
 			}
@@ -382,7 +370,7 @@ func TestHookPrompt_aFailedCheckSpendsNoMark(t *testing.T) {
 	a.record("r-1", `{"parent":"s-1","reason":"rewind"}`)
 	ts.clock.advance(61 * time.Minute)
 	t.Run("the reminder", func(t *testing.T) {
-		a.pointAt(closedURL(t))
+		a.pointAt(unreachableURL(t))
 		if _, out := a.prompt("x"); strings.Contains(out, reminder) || !strings.Contains(out, "could not check") {
 			t.Fatalf("down: stdout %q, want only the could-not-check line", out)
 		}
@@ -392,7 +380,7 @@ func TestHookPrompt_aFailedCheckSpendsNoMark(t *testing.T) {
 		}
 	})
 	t.Run("the note", func(t *testing.T) {
-		a.pointAt(closedURL(t))
+		a.pointAt(unreachableURL(t))
 		if _, out, _ := a.hook("prompt", `{"session_id":"r-1"}`); strings.Contains(out, "rewind") || !strings.Contains(out, "could not check") {
 			t.Fatalf("down: stdout %q, want only the could-not-check line", out)
 		}
@@ -405,7 +393,7 @@ func TestHookPrompt_aFailedCheckSpendsNoMark(t *testing.T) {
 
 func TestHookPrompt_failsOpenAndThe426(t *testing.T) {
 	t.Run("unreachable", func(t *testing.T) {
-		a := hooked(t, newAgent(t, &testServer{URL: closedURL(t)}, "s-1", ""), "alpha", hookTurnFile)
+		a := hooked(t, newAgent(t, &testServer{URL: unreachableURL(t)}, "s-1", ""), "alpha", hookTurnFile)
 		want := "grelot: could not check this session's identity (the server cannot be reached); nothing is held\n"
 		if code, out := a.prompt("x"); code != 0 || out != want {
 			t.Errorf("exit %d, stdout %q; want 0 and %q", code, out, want)
@@ -530,7 +518,7 @@ func TestHookStop_aDownWakeAloneHoldsNothing(t *testing.T) {
 	ts := newServer(t)
 	a := turnAgent(t, ts, hookTurnFile)
 	ts.clock.run()
-	ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodPost, Path: "/v1/events/wait", Body: map[string]string{"wait": "10ms"}}, nil)
+	ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodPost, Path: "/v1/events/wait", Body: map[string]string{"wait": "10ms"}, Once: true}, nil)
 	ts.clock.advance(5 * time.Minute)
 	a.prompt("x")
 	if _, out := a.stopHook(); out != "" {

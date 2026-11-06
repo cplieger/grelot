@@ -115,22 +115,17 @@ type Change struct {
 // Register creates session's identity, takes a live one over, or returns
 // the session's live identity unchanged. Refusals: KindInvalid for a bad
 // field, ttl or where; KindConflict for a held name or a refused take-over.
-func (s *Store) Register(ctx context.Context, r *Registration) (Registered, error) {
+func (s *Store) Register(ctx context.Context, k Keyed, r *Registration) (Registered, bool, error) {
 	provider, err := checkSession(r.Session)
 	if err != nil {
-		return Registered{}, err
+		return Registered{}, false, err
 	}
-	var out Registered
-	err = s.update(ctx, func(w *wtx) error {
-		var uerr error
+	return keyed(ctx, s, k, func(w *wtx) (Registered, error) {
 		if r.Link != "" {
-			out, uerr = w.registerDelegate(r)
-		} else {
-			out, uerr = w.register(r, provider)
+			return w.registerDelegate(r)
 		}
-		return uerr
+		return w.register(r, provider)
 	})
-	return out, err
 }
 
 func (w *wtx) register(r *Registration, provider string) (Registered, error) {
@@ -158,7 +153,7 @@ func (w *wtx) register(r *Registration, provider string) (Registered, error) {
 		if err := w.capDelegates(&row); err != nil {
 			return Registered{}, err
 		}
-		w.s.log.Info("identity moved", "name", row.Name, "id", row.ID, "provider", provider)
+		w.logInfo("identity moved", "name", row.Name, "id", row.ID, "provider", provider)
 	}
 	return Registered{Identity: w.s.view(&row), Moved: moved}, nil
 }
@@ -242,27 +237,24 @@ func (w *wtx) registerRow(r *Registration, provider string) (row identityRow, ad
 // Set applies ch to c's live identity and returns it. Refusals: KindGone
 // for a session with no live identity, KindInvalid for a bad change,
 // KindConflict for a name another identity holds.
-func (s *Store) Set(ctx context.Context, c Caller, ch Change) (Identity, error) {
-	var out Identity
-	err := s.update(ctx, func(w *wtx) error {
+func (s *Store) Set(ctx context.Context, k Keyed, c Caller, ch Change) (Identity, error) {
+	return keyedResult(ctx, s, k, func(w *wtx) (Identity, error) {
 		row, err := w.liveAs(c)
 		if err != nil {
-			return err
+			return Identity{}, err
 		}
 		notice, err := w.applyChange(&row, ch)
 		if err != nil {
-			return err
+			return Identity{}, err
 		}
 		w.touch(&row)
-		if err := s.t.identities.table.Put(w.tx, row.ID, &row); err != nil {
-			return err
+		if perr := s.t.identities.table.Put(w.tx, row.ID, &row); perr != nil {
+			return Identity{}, perr
 		}
-		var verr error
-		out, verr = w.viewOf(&row)
+		out, err := w.viewOf(&row)
 		out.Notice = notice
-		return verr
+		return out, err
 	})
-	return out, err
 }
 
 // applyChange applies c to row and returns the notice a delegate's renewal
@@ -379,34 +371,35 @@ func (s *Store) EndSession(ctx context.Context, session string) error {
 // paths, frees its name, hands its reservations to their queues, and ends
 // its delegates and unused links; a delegate's retirement ends only it.
 // It ends the receipt watches it sent and leaves, counted retired, those
-// waiting for it. Its delivery rows stay until their own expiry. A
-// session with no live identity is KindGone.
-func (s *Store) Retire(ctx context.Context, c Caller) error {
-	return s.update(ctx, func(w *wtx) error {
+// waiting for it. Its delivery rows stay until their own expiry. It
+// returns the retired identity's id. A session with no live identity is
+// KindGone.
+func (s *Store) Retire(ctx context.Context, k Keyed, c Caller) (id uint64, replayed bool, err error) {
+	return keyed(ctx, s, k, func(w *wtx) (uint64, error) {
 		row, err := w.liveAs(c)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		if row.Parent != 0 {
-			return w.endDelegate(&row, endBye)
+			return row.ID, w.endDelegate(&row, endBye)
 		}
 		if err := w.leaveWatches(&row); err != nil {
-			return err
+			return 0, err
 		}
 		if err := w.freeHolder(row.ID); err != nil {
-			return err
+			return 0, err
 		}
 		if err := w.endDelegates(row.ID, endParent); err != nil {
-			return err
+			return 0, err
 		}
 		w.queueCards(kindLeft, &row, row.Paths)
 		// The row's delete cascades to its unused links.
 		if err := deleteRow(w, s.t.identities, row.ID); err != nil {
-			return err
+			return 0, err
 		}
-		s.forgetSeen(row.ID)
-		s.log.Info("identity retired", "name", row.Name, "id", row.ID, "provider", row.Provider)
-		return nil
+		w.forgetSeen(row.ID)
+		w.logInfo("identity retired", "name", row.Name, "id", row.ID, "provider", row.Provider)
+		return row.ID, nil
 	})
 }
 
@@ -836,6 +829,12 @@ func (s *Store) forgetSeen(id uint64) {
 	s.seenMu.Lock()
 	defer s.seenMu.Unlock()
 	delete(s.seen, id)
+}
+
+// forgetSeen drops id's request time once this transaction commits, so a
+// rollback keeps a live identity's.
+func (w *wtx) forgetSeen(id uint64) {
+	w.tx.AfterCommit(func() { w.s.forgetSeen(id) })
 }
 
 // pruneSeen drops every request time whose identity row is gone, which

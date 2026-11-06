@@ -17,15 +17,13 @@ import (
 // it.
 func (h *harness) watch(session string, d time.Duration) *response {
 	h.t.Helper()
-	return h.request(http.MethodPost, "/v1/events/wait", map[string]any{"wait": d.String()},
-		map[string]string{headerSession: session, headerSelf: "1"})
+	return h.watchAsync(session, d).answer()
 }
 
 // watchAsync starts a standing wait from session in its own goroutine.
-func (h *harness) watchAsync(session string, d time.Duration) <-chan *response {
-	out := make(chan *response, 1)
-	go func() { out <- h.watch(session, d) }()
-	return out
+func (h *harness) watchAsync(session string, d time.Duration) *pending {
+	return h.async(http.MethodPost, "/v1/events/wait", map[string]any{"wait": d.String()},
+		map[string]string{headerSession: session, headerSelf: "1"})
 }
 
 // newestWake is the seq of the newest wake entry in session's inbox,
@@ -100,8 +98,8 @@ func TestWait_twoRacingWaitsSendOneNudgeAndBothReturnIt(t *testing.T) {
 		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
 		seq := h.newestWake(sessA)
 
-		wantNudge(t, <-first, seq, 1, 1)
-		wantNudge(t, <-second, seq, 1, 1)
+		wantNudge(t, first.answer(), seq, 1, 1)
+		wantNudge(t, second.answer(), seq, 1, 1)
 		if d := time.Since(start); d != 0 {
 			t.Errorf("the waits returned %v after the post, want at once", d)
 		}
@@ -144,7 +142,7 @@ func TestWait_aWaitThatLostTheRaceReturnsTheWinnersNudge(t *testing.T) {
 		synctest.Wait()
 		start := time.Now()
 		h.srv.watcherSent(id, nudgeJSON{Seq: got.Seq, Count: got.Count, Attempt: got.Attempt})
-		wantNudge(t, <-wait, seq, 1, 1)
+		wantNudge(t, wait.answer(), seq, 1, 1)
 		if d := time.Since(start); d != 0 {
 			t.Errorf("the losing wait returned %v after the winner told the server, want at once", d)
 		}
@@ -242,7 +240,7 @@ func TestWait_aHoldThatShowsTheMailLeavesTheWaitHolding(t *testing.T) {
 		if _, err := h.store.Hold(t.Context(), store.Caller{Session: sessA, Self: true}); err != nil {
 			t.Fatalf("Hold: %v", err)
 		}
-		if r := <-wait; r.status != http.StatusNoContent {
+		if r := wait.answer(); r.status != http.StatusNoContent {
 			t.Errorf("the wait after a hold showed the mail = %d %s, want 204", r.status, r.raw)
 		}
 		if n := h.sentByWatcher(); n != 0 {
@@ -270,7 +268,7 @@ func TestWait_aPushServedIdentitysWaitOnlyHoldsWhilePushIsOK(t *testing.T) {
 		if _, ok, err := h.store.RecordNudge(t.Context(), st.Due, store.NudgeByPush); err != nil || !ok {
 			t.Fatalf("RecordNudge by push: %v, %v", ok, err)
 		}
-		if r := <-wait; r.status != http.StatusNoContent {
+		if r := wait.answer(); r.status != http.StatusNoContent {
 			t.Errorf("the wait while push works = %d %s, want 204", r.status, r.raw)
 		}
 		if n := h.sentByWatcher(); n != 0 {
@@ -289,7 +287,7 @@ func TestWait_aPushServedIdentitysWaitOnlyHoldsWhilePushIsOK(t *testing.T) {
 			start := time.Now()
 			h.push.set(id, state)
 			h.srv.hub.Woke([]uint64{id})
-			if r := <-wait; r.status != http.StatusOK || r.body["seq"] != seq {
+			if r := wait.answer(); r.status != http.StatusOK || r.body["seq"] != seq {
 				t.Errorf("the wait once push is %s = %d %s, want the nudge", state, r.status, r.raw)
 			}
 			if d := time.Since(start); d != 0 {
@@ -317,7 +315,7 @@ func TestWait_sessionEndedAnswersEndedAndLeavesItSet(t *testing.T) {
 			}
 			return id.Ended
 		}
-		if r := <-wait; r.status != http.StatusGone || r.str("code") != "ended" || time.Since(start) != 0 {
+		if r := wait.answer(); r.status != http.StatusGone || r.str("code") != "ended" || time.Since(start) != 0 {
 			t.Errorf("the open wait at session_end = %d %s after %v, want 410 ended at once", r.status, r.raw, time.Since(start))
 		}
 		if r := h.watch(sessA, 55*time.Second); r.status != http.StatusGone || r.str("code") != "ended" {
@@ -366,7 +364,7 @@ func TestWait_410ReasonWords(t *testing.T) {
 			if r := h.self(sessA, http.MethodDelete, "/v1/me", nil); r.status != http.StatusOK {
 				t.Fatalf("bye: %d %s", r.status, r.raw)
 			}
-			if r := <-wait; r.status != http.StatusGone || r.str("code") != "none" || time.Since(start) != 0 {
+			if r := wait.answer(); r.status != http.StatusGone || r.str("code") != "none" || time.Since(start) != 0 {
 				t.Errorf("the open wait = %d %s after %v, want 410 none at once", r.status, r.raw, time.Since(start))
 			}
 			if r := h.watch(sessA, 55*time.Second); r.status != http.StatusGone || r.str("code") != "none" {
@@ -386,7 +384,7 @@ func TestWait_410ReasonWords(t *testing.T) {
 			if r := h.as(sessB, http.MethodPost, "/v1/register", body); r.body["moved"] != true {
 				t.Fatalf("take-over: %d %s", r.status, r.raw)
 			}
-			if r := <-wait; r.status != http.StatusGone || r.str("code") != "none" || time.Since(start) != 0 {
+			if r := wait.answer(); r.status != http.StatusGone || r.str("code") != "none" || time.Since(start) != 0 {
 				t.Errorf("the open wait = %d %s after %v, want 410 none at once", r.status, r.raw, time.Since(start))
 			}
 			if r := h.watch(sessA, 55*time.Second); r.status != http.StatusGone || r.str("code") != "none" {
@@ -457,10 +455,10 @@ func TestRelease_answersEveryHeldWaitAtOnce(t *testing.T) {
 		synctest.Wait()
 		start := time.Now()
 		h.srv.Release()
-		if r := <-standing; r.status != http.StatusServiceUnavailable || r.str("code") != "shutting_down" || time.Since(start) != 0 {
+		if r := standing.answer(); r.status != http.StatusServiceUnavailable || r.str("code") != "shutting_down" || time.Since(start) != 0 {
 			t.Errorf("the held standing wait = %d %s after %v, want 503 shutting_down at once", r.status, r.raw, time.Since(start))
 		}
-		if r := <-inTurn; r.status != http.StatusOK || r.body["entries"] == nil || time.Since(start) != 0 {
+		if r := inTurn.answer(); r.status != http.StatusOK || r.body["entries"] == nil || time.Since(start) != 0 {
 			t.Errorf("the held in-turn wait = %d %s after %v, want 200 with the page at once", r.status, r.raw, time.Since(start))
 		}
 		if r := h.watch(sessA, 55*time.Second); r.status != http.StatusServiceUnavailable || time.Since(start) != 0 {

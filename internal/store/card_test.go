@@ -112,10 +112,10 @@ func TestJoinCard_onlyForThePathsASetOrAPostAdds(t *testing.T) {
 	reader := regAt(t, s, "reader", "/workspace")
 	newbie := regAt(t, s, "newbie", repoSubflux)
 	w := envA()
-	if _, err := s.Set(t.Context(), Caller{Session: sess("newbie")}, Change{Where: &w, Fields: Fields{Paths: []string{repoSubflux, repoGrelot}}}); err != nil {
+	if _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("newbie")}, Change{Where: &w, Fields: Fields{Paths: []string{repoSubflux, repoGrelot}}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Set(t.Context(), Caller{Session: sess("newbie")}, Change{Fields: Fields{Description: "a new description"}}); err != nil {
+	if _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("newbie")}, Change{Fields: Fields{Description: "a new description"}}); err != nil {
 		t.Fatal(err)
 	}
 	p := posting(sess("newbie"), Target{Announce: true})
@@ -207,7 +207,7 @@ func TestRetire_deletesTheIdentityAndWritesLeftCards(t *testing.T) {
 	reader := regAt(t, s, "reader", "/workspace")
 	leaver := regAt(t, s, "leaver", repoSubflux, repoGrelot)
 	mustPost(t, s, posting(sess("reader"), Target{Agent: "leaver"}))
-	if err := s.Retire(t.Context(), Caller{Session: sess("leaver")}); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("leaver")}); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"join " + repoSubflux, "join " + repoGrelot, "left " + repoSubflux, "left " + repoGrelot}
@@ -238,10 +238,10 @@ func TestRetire_deletesTheIdentityAndWritesLeftCards(t *testing.T) {
 
 func TestRetire_needsALiveIdentity(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
-	err := s.Retire(t.Context(), Caller{Session: sess("nobody")})
+	_, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("nobody")})
 	wantRefusal(t, err, KindGone, "none")
 	expireToDormant(t, s, clk, "subflux-dev")
-	err = s.Retire(t.Context(), Caller{Session: sessA})
+	_, _, err = s.Retire(t.Context(), Keyed{}, Caller{Session: sessA})
 	wantRefusal(t, err, KindGone, "dormant", "grelot revive --ttl <d>")
 }
 

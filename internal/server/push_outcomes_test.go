@@ -24,15 +24,14 @@ func (h *harness) pushLines(level slog.Level, msg string) []map[string]string {
 }
 
 // mustReturnNow fails unless wait has already answered with a nudge.
-func mustReturnNow(t *testing.T, wait <-chan *response) {
+func mustReturnNow(t *testing.T, wait *pending) {
 	t.Helper()
-	select {
-	case r := <-wait:
-		if r.status != http.StatusOK || r.body["seq"] == nil {
-			t.Errorf("wait = %d %s, want the nudge", r.status, r.raw)
-		}
-	default:
+	r := wait.now()
+	switch {
+	case r == nil:
 		t.Error("the standing wait still holds, want it to send the nudge at once")
+	case r.status != http.StatusOK || r.body["seq"] == nil:
+		t.Errorf("wait = %d %s, want the nudge", r.status, r.raw)
 	}
 }
 

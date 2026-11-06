@@ -325,13 +325,13 @@ func TestPost_onAClosedStoreReportsErrClosed(t *testing.T) {
 	}
 
 	p := posting(sess("alpha"), Target{Agent: "bravo"})
-	_, err := s.Post(t.Context(), &p)
+	_, _, err := s.Post(t.Context(), Keyed{}, &p)
 
 	if !errors.Is(err, ErrClosed) {
 		t.Errorf("Post after Close: %v, want ErrClosed", err)
 	}
 	w := envA()
-	if _, err := s.Set(t.Context(), Caller{Session: sess("alpha")}, Change{TTL: 2 * time.Hour, Where: &w}); !errors.Is(err, ErrClosed) {
+	if _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("alpha")}, Change{TTL: 2 * time.Hour, Where: &w}); !errors.Is(err, ErrClosed) {
 		t.Errorf("Set after Close: %v, want ErrClosed", err)
 	}
 }
