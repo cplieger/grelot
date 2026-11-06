@@ -85,7 +85,7 @@ func TestDormant_isNeverWarned(t *testing.T) {
 func TestDormant_itsSessionOnlyReadsItsStatus(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
 	expireToDormant(t, s, clk, "subflux-dev")
-	_, _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Description: "new work"}})
+	_, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Description: "new work"}})
 	wantRefusal(t, err, KindGone, "dormant", "your identity subflux-dev expired 0 h ago with 0 unread; `grelot revive --ttl <d>` restores it")
 	wantRefusal(t, s.EndSession(t.Context(), sessA), KindGone, "dormant")
 	got, err := s.Seen(t.Context(), Caller{Session: sessA})

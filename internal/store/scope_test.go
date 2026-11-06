@@ -227,7 +227,7 @@ func TestScope_aDelegatePostStoresItsParentsWhereAndItsRelationFollowsIt(t *test
 	}
 
 	moved := Where{Machine: dmi("1"), Environment: hex32("b")}
-	if _, _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("subflux-dev"), Self: true}, Change{Where: &moved, TTL: 6 * time.Hour}); err != nil {
+	if _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("subflux-dev"), Self: true}, Change{Where: &moved, TTL: 6 * time.Hour}); err != nil {
 		t.Fatal(err)
 	}
 	second := mustPost(t, s, asPost("subflux-dev", d.Name, Target{Agent: "cloudy-lake"}))
@@ -279,7 +279,7 @@ func TestScope_aDelegateCannotReserveQueueOrFollow(t *testing.T) {
 		wantRefusal(t, err, KindForbidden, "", "delegate")
 	}
 	mustPost(t, s, selfPost("subflux-dev", Target{Path: repoSubflux}))
-	_, _, err := s.Follow(t.Context(), Keyed{}, as(sess("subflux-dev"), d.Name), repoSubflux)
+	_, err := s.Follow(t.Context(), Keyed{}, as(sess("subflux-dev"), d.Name), repoSubflux)
 	wantRefusal(t, err, KindForbidden, "", "scope")
 }
 

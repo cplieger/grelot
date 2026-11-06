@@ -28,7 +28,7 @@ func openShortThreadStore(t *testing.T) (*Store, *clock) {
 
 func mustFollow(t *testing.T, s *Store, session, path string) Identity {
 	t.Helper()
-	got, _, err := s.Follow(t.Context(), Keyed{}, Caller{Session: session}, path)
+	got, err := s.Follow(t.Context(), Keyed{}, Caller{Session: session}, path)
 	if err != nil {
 		t.Fatalf("Follow(%s, %s): %v", session, path, err)
 	}
@@ -61,22 +61,22 @@ func TestFollow_needsALiveThread(t *testing.T) {
 	const p = "/workspace/marotte/web"
 	regAt(t, s, "alpha", repoGrelot)
 	b := regAt(t, s, "bravo", repoSubflux)
-	_, _, err := s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
+	_, err := s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
 	wantRefusal(t, err, KindNotFound, "", "no thread at "+p+"; post there to start one")
 	// A direct thread's key is no path, and the announcements are no path
 	// thread either.
 	mustPost(t, s, posting(sess("alpha"), Target{Agent: "bravo"}))
-	_, _, err = s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, "/workspace")
+	_, err = s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, "/workspace")
 	wantRefusal(t, err, KindNotFound, "", "no thread at /workspace")
 	mustPost(t, s, posting(sess("alpha"), Target{Path: p}))
 	// The thread is past its expiry, unswept.
 	clk.advance(shortThreadTTL)
-	_, _, err = s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
+	_, err = s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
 	wantRefusal(t, err, KindNotFound, "", "no thread at "+p)
 	if f := getIdentity(t, s, b.ID).Follows; len(f) != 0 {
 		t.Errorf("follows %v after refusals, want none", f)
 	}
-	_, _, err = s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, "workspace/x")
+	_, err = s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, "workspace/x")
 	wantRefusal(t, err, KindInvalid, "", "canonical")
 }
 
@@ -91,7 +91,7 @@ func TestFollow_refusedAtTheCap(t *testing.T) {
 		full[i] = fmt.Sprintf("/workspace/thread-%02d", i)
 	}
 	editIdentity(t, s, b.ID, func(r *identityRow) { r.Follows = full })
-	_, _, err := s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
+	_, err := s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
 	wantRefusal(t, err, KindConflict, "", "32", "grelot unfollow")
 	if f := getIdentity(t, s, b.ID).Follows; !slices.Equal(f, full) {
 		t.Errorf("follows changed to %d entries, want the 32 kept", len(f))
@@ -102,14 +102,14 @@ func TestFollowAndUnfollow_needALiveIdentity(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
 	regAt(t, s, "alpha", repoGrelot)
 	mustPost(t, s, posting(sess("alpha"), Target{Path: repoSubflux}))
-	_, _, err := s.Follow(t.Context(), Keyed{}, Caller{Session: sess("nobody")}, repoSubflux)
+	_, err := s.Follow(t.Context(), Keyed{}, Caller{Session: sess("nobody")}, repoSubflux)
 	wantRefusal(t, err, KindGone, "none")
-	_, _, err = s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("nobody")}, repoSubflux)
+	_, err = s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("nobody")}, repoSubflux)
 	wantRefusal(t, err, KindGone, "none")
 	expireToDormant(t, s, clk, "subflux-dev")
-	_, _, err = s.Follow(t.Context(), Keyed{}, Caller{Session: sessA}, repoSubflux)
+	_, err = s.Follow(t.Context(), Keyed{}, Caller{Session: sessA}, repoSubflux)
 	wantRefusal(t, err, KindGone, "dormant", "grelot revive --ttl <d>")
-	_, _, err = s.Unfollow(t.Context(), Keyed{}, Caller{Session: sessA}, repoSubflux)
+	_, err = s.Unfollow(t.Context(), Keyed{}, Caller{Session: sessA}, repoSubflux)
 	wantRefusal(t, err, KindGone, "dormant", "grelot revive --ttl <d>")
 }
 
@@ -122,7 +122,7 @@ func TestUnfollow_stopsTheThread(t *testing.T) {
 	mustPost(t, s, posting(sess("alpha"), Target{Path: repoGrelot}))
 	mustFollow(t, s, sess("bravo"), p)
 	mustFollow(t, s, sess("bravo"), repoGrelot)
-	got, _, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
+	got, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestUnfollow_stopsTheThread(t *testing.T) {
 	if ds := deliveriesTo(t, s, b.ID); len(ds) != 0 {
 		t.Errorf("an unfollowed thread delivered %d posts", len(ds))
 	}
-	if _, _, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p); err != nil {
+	if _, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p); err != nil {
 		t.Errorf("unfollowing a thread not followed: %v, want nothing to do", err)
 	}
 	if f := getIdentity(t, s, b.ID).Follows; !slices.Equal(f, []string{repoGrelot}) {
@@ -148,13 +148,13 @@ func TestUnfollow_refusedUnderAWorkPath(t *testing.T) {
 	follows := []string{work, work + "/web", "/workspace/marotte-old"}
 	editIdentity(t, s, b.ID, func(r *identityRow) { r.Follows = follows })
 	for _, p := range []string{work, work + "/web", work + "/never-followed"} {
-		_, _, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
+		_, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
 		wantRefusal(t, err, KindConflict, "", p, work, "narrow your paths")
 	}
 	if f := getIdentity(t, s, b.ID).Follows; !slices.Equal(f, follows) {
 		t.Errorf("follows %v after refusals, want %v", f, follows)
 	}
-	got, _, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, "/workspace/marotte-old")
+	got, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, "/workspace/marotte-old")
 	if err != nil {
 		t.Fatalf("a name-prefix sibling is not under the work path: %v", err)
 	}

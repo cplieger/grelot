@@ -182,8 +182,8 @@ func (w *wtx) conflict(me *identityRow, path string, b *reservationRow) (*Error,
 // re-arming its warning. Refusals: KindInvalid for a bad ttl or a queued
 // entry; KindGone for a session with no live identity; KindNotFound for an
 // id that is not one of its rows, an expired or released one included.
-func (s *Store) RenewReservation(ctx context.Context, k Keyed, c Caller, id uint64, ttl time.Duration) (Reservation, bool, error) {
-	return keyed(ctx, s, k, func(w *wtx) (Reservation, error) {
+func (s *Store) RenewReservation(ctx context.Context, k Keyed, c Caller, id uint64, ttl time.Duration) (Reservation, error) {
+	return keyedResult(ctx, s, k, func(w *wtx) (Reservation, error) {
 		me, row, err := w.ownReservation(c, id)
 		if err != nil {
 			return Reservation{}, err
@@ -207,8 +207,8 @@ func (s *Store) RenewReservation(ctx context.Context, k Keyed, c Caller, id uint
 // hands the freed paths to the queue in the same transaction. Refusals:
 // KindGone for a session with no live identity; KindNotFound for an id
 // that is not one of its rows, an expired or released one included.
-func (s *Store) Release(ctx context.Context, k Keyed, c Caller, id uint64) (Reservation, bool, error) {
-	return keyed(ctx, s, k, func(w *wtx) (Reservation, error) {
+func (s *Store) Release(ctx context.Context, k Keyed, c Caller, id uint64) (Reservation, error) {
+	return keyedResult(ctx, s, k, func(w *wtx) (Reservation, error) {
 		me, row, err := w.ownReservation(c, id)
 		if err != nil {
 			return Reservation{}, err

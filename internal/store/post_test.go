@@ -389,7 +389,7 @@ func TestPost_messageKeepsTheSendersWhereAsItStoodAtThePost(t *testing.T) {
 	}
 	check("at the post")
 	moved := Where{Machine: dmi("2"), Environment: hex32("b")}
-	if _, _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("alpha")}, Change{TTL: time.Hour, Where: &moved}); err != nil {
+	if _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("alpha")}, Change{TTL: time.Hour, Where: &moved}); err != nil {
 		t.Fatal(err)
 	}
 	check("after the sender renewed from elsewhere")

@@ -68,7 +68,7 @@ func (s *Server) renewReservation(r *http.Request, c store.Caller, k store.Keyed
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	got, _, err := s.store.RenewReservation(r.Context(), k, c, id, time.Duration(req.TTL))
+	got, err := s.store.RenewReservation(r.Context(), k, c, id, time.Duration(req.TTL))
 	if err != nil {
 		return 0, nil, err
 	}
@@ -82,7 +82,7 @@ func (s *Server) release(r *http.Request, c store.Caller, k store.Keyed) (status
 	if err != nil {
 		return 0, nil, err
 	}
-	got, _, err := s.store.Release(r.Context(), k, c, id)
+	got, err := s.store.Release(r.Context(), k, c, id)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -151,7 +151,7 @@ type revokeResponse struct {
 // revoke is DELETE /v1/delegates/{label}: the label's unused link revoked
 // and its delegate ended.
 func (s *Server) revoke(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
-	got, _, err := s.store.Revoke(r.Context(), k, c, r.PathValue("label"))
+	got, err := s.store.Revoke(r.Context(), k, c, r.PathValue("label"))
 	if err != nil {
 		return 0, nil, err
 	}

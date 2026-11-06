@@ -47,7 +47,7 @@ func TestPost_refusedOnlyPastNinetyPercentOfTheDefaultCeiling(t *testing.T) {
 
 	mustAck(t, s, sess("bravo"), 1)
 	w := envA()
-	if _, _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("alpha")}, Change{TTL: 2 * time.Hour, Where: &w}); err != nil {
+	if _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("alpha")}, Change{TTL: 2 * time.Hour, Where: &w}); err != nil {
 		t.Errorf("a renewal on a nearly full store: %v", err)
 	}
 	if _, _, err := s.Revive(t.Context(), Keyed{}, new(revival(sessA, "", envA()))); err != nil {

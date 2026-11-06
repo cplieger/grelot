@@ -364,7 +364,7 @@ func TestNotifyRead_aDelegateRecipientsEndCountsRetired(t *testing.T) {
 	regAt(t, s, "subflux-dev", repoGrelot)
 	scopedDelegate(t, s, "subflux-dev", "review", func(g *Grant) { g.AllowThreads = []string{pathInternal} })
 	msg := mustPost(t, s, watchedPost("alpha", Target{Path: pathInternal}, NotifyRead{All: true})).Message
-	if _, _, err := s.Revoke(t.Context(), Keyed{}, self("subflux-dev"), "review"); err != nil {
+	if _, err := s.Revoke(t.Context(), Keyed{}, self("subflux-dev"), "review"); err != nil {
 		t.Fatal(err)
 	}
 	wantEvents(t, s, sender.ID, kindReceiptsComplete,
@@ -379,7 +379,7 @@ func TestNotifyRead_aParentKeepsContiguousSeqsWhenItsDelegatesEndCompletesItsWat
 			}
 		},
 		"revoke": func(t *testing.T, s *Store) {
-			if _, _, err := s.Revoke(t.Context(), Keyed{}, self("subflux-dev"), "review"); err != nil {
+			if _, err := s.Revoke(t.Context(), Keyed{}, self("subflux-dev"), "review"); err != nil {
 				t.Fatal(err)
 			}
 		},

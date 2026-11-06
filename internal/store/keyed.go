@@ -24,8 +24,8 @@ import (
 const requestTTL = 5 * time.Minute
 
 // Keyed is one write's Idempotency-Key, scoped to its caller and bound to
-// the request it came with. Every write method that takes one also
-// reports whether it replayed: a key whose first result is stored, for
+// the request it came with. A write whose caller skips work on a replay
+// also reports whether it replayed. A key whose first result is stored, for
 // requestTTL, answers that result and changes nothing, ahead of any
 // refusal the write would make now; a key sent with another request is
 // KindKeyReused; a refusal records nothing. The zero Keyed is an unkeyed
@@ -84,6 +84,13 @@ func keyed[T any](ctx context.Context, s *Store, k Keyed, fn func(*wtx) (T, erro
 		return zero, false, err
 	}
 	return out, false, nil
+}
+
+// keyedResult is keyed for a write whose caller does the same whether it
+// replayed or not.
+func keyedResult[T any](ctx context.Context, s *Store, k Keyed, fn func(*wtx) (T, error)) (T, error) {
+	out, _, err := keyed(ctx, s, k, fn)
+	return out, err
 }
 
 // keyedRun is keyed's transaction for a key: errReplay with out set to the

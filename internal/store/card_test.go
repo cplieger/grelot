@@ -112,10 +112,10 @@ func TestJoinCard_onlyForThePathsASetOrAPostAdds(t *testing.T) {
 	reader := regAt(t, s, "reader", "/workspace")
 	newbie := regAt(t, s, "newbie", repoSubflux)
 	w := envA()
-	if _, _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("newbie")}, Change{Where: &w, Fields: Fields{Paths: []string{repoSubflux, repoGrelot}}}); err != nil {
+	if _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("newbie")}, Change{Where: &w, Fields: Fields{Paths: []string{repoSubflux, repoGrelot}}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("newbie")}, Change{Fields: Fields{Description: "a new description"}}); err != nil {
+	if _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("newbie")}, Change{Fields: Fields{Description: "a new description"}}); err != nil {
 		t.Fatal(err)
 	}
 	p := posting(sess("newbie"), Target{Announce: true})

@@ -357,7 +357,7 @@ func (s *Server) patchMe(r *http.Request, c store.Caller, k store.Keyed) (status
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	got, _, err := s.store.Set(r.Context(), k, c, store.Change{
+	got, err := s.store.Set(r.Context(), k, c, store.Change{
 		Where: req.Where, TTL: time.Duration(req.TTL),
 		Fields: store.Fields{Name: req.Name, Description: req.Description, Paths: req.Paths},
 	})

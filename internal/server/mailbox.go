@@ -232,7 +232,7 @@ func (s *Server) receipts(r *http.Request, c store.Caller) (status int, body any
 
 // follow is PUT /v1/follows?path=.
 func (s *Server) follow(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
-	got, _, err := s.store.Follow(r.Context(), k, c, r.URL.Query().Get("path"))
+	got, err := s.store.Follow(r.Context(), k, c, r.URL.Query().Get("path"))
 	if err != nil {
 		return 0, nil, err
 	}
@@ -241,7 +241,7 @@ func (s *Server) follow(r *http.Request, c store.Caller, k store.Keyed) (status 
 
 // unfollow is DELETE /v1/follows?path=.
 func (s *Server) unfollow(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
-	got, _, err := s.store.Unfollow(r.Context(), k, c, r.URL.Query().Get("path"))
+	got, err := s.store.Unfollow(r.Context(), k, c, r.URL.Query().Get("path"))
 	if err != nil {
 		return 0, nil, err
 	}

@@ -515,7 +515,7 @@ func TestDelegate_endsWithItsParent(t *testing.T) {
 		clk.advance(time.Minute)
 		_, err := s.Inbox(t.Context(), as(sess("parent"), d.Name), 0)
 		wantRefusal(t, err, KindGone, "delegate_ended", "")
-		_, _, err = s.Set(t.Context(), Keyed{}, as(sess("parent"), d.Name), Change{Fields: Fields{Description: "x"}})
+		_, err = s.Set(t.Context(), Keyed{}, as(sess("parent"), d.Name), Change{Fields: Fields{Description: "x"}})
 		wantRefusal(t, err, KindGone, "delegate_ended", "")
 	})
 	t.Run("expiry seen from the delegate's own session", func(t *testing.T) {

@@ -341,9 +341,9 @@ func TestReads_neverMoveTheLease(t *testing.T) {
 		{"ack", func() error { _, _, err := s.Ack(ctx, Keyed{}, Caller{Session: me}, 1); return err }},
 		{"hold", func() error { _, err := s.Hold(ctx, Caller{Session: me}); return err }},
 		{"history", func() error { _, err := s.History(ctx, Caller{Session: me}, &HistoryQuery{}); return err }},
-		{"follow", func() error { _, _, err := s.Follow(ctx, Keyed{}, Caller{Session: me}, "/workspace/alpha"); return err }},
+		{"follow", func() error { _, err := s.Follow(ctx, Keyed{}, Caller{Session: me}, "/workspace/alpha"); return err }},
 		{"unfollow", func() error {
-			_, _, err := s.Unfollow(ctx, Keyed{}, Caller{Session: me}, "/workspace/alpha")
+			_, err := s.Unfollow(ctx, Keyed{}, Caller{Session: me}, "/workspace/alpha")
 			return err
 		}},
 	}

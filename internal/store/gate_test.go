@@ -48,7 +48,7 @@ func TestGate_unnamedRequestsFromASessionHoldingALinkMoveNothing(t *testing.T) {
 		wantGate(t, err, "parent/review")
 	})
 	t.Run("set", func(t *testing.T) {
-		_, _, err := s.Set(t.Context(), Keyed{}, plain("parent"), Change{Fields: Fields{Description: "a subagent's task"}})
+		_, err := s.Set(t.Context(), Keyed{}, plain("parent"), Change{Fields: Fields{Description: "a subagent's task"}})
 		wantGate(t, err, "parent/review")
 	})
 	t.Run("bye", func(t *testing.T) {

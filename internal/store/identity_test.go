@@ -420,7 +420,7 @@ func TestSet_renewMovesTheLeaseAndReArmsTheWarning(t *testing.T) {
 	mustRegister(t, s, r)
 	clk.advance(20 * time.Minute)
 	w := envA()
-	got, _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{TTL: 2 * time.Hour, Where: &w})
+	got, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{TTL: 2 * time.Hour, Where: &w})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,9 +428,9 @@ func TestSet_renewMovesTheLeaseAndReArmsTheWarning(t *testing.T) {
 	if want := clk.now().Add(2 * time.Hour); !got.Expires.Equal(want) || !warn.Equal(want.Add(-30*time.Minute)) {
 		t.Errorf("expires %v warn %v, want %v and 30m before", got.Expires, warn, want)
 	}
-	_, _, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{TTL: 2 * time.Hour})
+	_, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{TTL: 2 * time.Hour})
 	wantRefusal(t, err, KindInvalid, "", "where is required")
-	_, _, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{TTL: 10 * time.Minute, Where: &w})
+	_, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{TTL: 10 * time.Minute, Where: &w})
 	wantRefusal(t, err, KindInvalid, "", "--ttl")
 }
 
@@ -441,7 +441,7 @@ func TestSet_renewMergesTheSentCheckout(t *testing.T) {
 	where := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoSubflux, "c"), co(repoGrelot, "d")}}
 	id := mustRegister(t, s, registration(sessA, "subflux-dev", where, repoSubflux, repoGrelot))
 	sent := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoSubflux, "e")}}
-	if _, _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{TTL: time.Hour, Where: &sent}); err != nil {
+	if _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{TTL: time.Hour, Where: &sent}); err != nil {
 		t.Fatal(err)
 	}
 	got := getIdentity(t, s, id.ID).Where.Checkouts
@@ -454,11 +454,11 @@ func TestSet_newPathsNeedWhereAndReplaceTheCheckouts(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	where := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoSubflux, "c"), co(repoGrelot, "d")}}
 	id := mustRegister(t, s, registration(sessA, "subflux-dev", where, repoSubflux, repoGrelot))
-	_, _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Paths: []string{repoSubflux}}})
+	_, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Paths: []string{repoSubflux}}})
 	wantRefusal(t, err, KindInvalid, "", "where is required")
 
 	sent := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoSubflux, "c")}}
-	got, _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Paths: []string{repoSubflux}}, Where: &sent})
+	got, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Paths: []string{repoSubflux}}, Where: &sent})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -481,7 +481,7 @@ func TestSet_newPathsDropAStoredCheckoutTheClientDidNotSend(t *testing.T) {
 	where := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoSubflux, "c"), co(repoGrelot, "d")}}
 	id := mustRegister(t, s, registration(sessA, "subflux-dev", where, repoSubflux, repoGrelot))
 	sent := Where{Machine: dmi("1"), Environment: hex32("a"), Checkouts: []Checkout{co(repoSubflux, "c")}}
-	if _, _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Paths: []string{repoSubflux, repoGrelot, "/workspace/sse"}}, Where: &sent}); err != nil {
+	if _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Paths: []string{repoSubflux, repoGrelot, "/workspace/sse"}}, Where: &sent}); err != nil {
 		t.Fatal(err)
 	}
 	if got := getIdentity(t, s, id.ID).Where.Checkouts; !slices.Equal(got, sent.Checkouts) {
@@ -493,21 +493,21 @@ func TestSet_renameAndRefusals(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
 	mustRegister(t, s, registration(sessB, "taken-name", envA()))
 	mustRegister(t, s, registration(sessA, "subflux-dev", envA()))
-	got, _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Name: "subflux-web", Description: "new work"}})
+	got, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Name: "subflux-web", Description: "new work"}})
 	if err != nil || got.Name != "subflux-web" || got.Description != "new work" {
 		t.Errorf("rename: %+v, %v", got, err)
 	}
-	_, _, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Name: "taken-name"}})
+	_, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Name: "taken-name"}})
 	wantRefusal(t, err, KindConflict, "", "taken-name is held")
-	_, _, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Name: "Bad"}})
+	_, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Name: "Bad"}})
 	wantRefusal(t, err, KindInvalid, "", "lowercase")
-	_, _, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{})
+	_, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{})
 	wantRefusal(t, err, KindInvalid, "", "nothing to set")
 
-	_, _, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessC}, Change{Fields: Fields{Description: "x"}})
+	_, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessC}, Change{Fields: Fields{Description: "x"}})
 	wantRefusal(t, err, KindGone, "none", "grelot register")
 	clk.advance(6 * time.Hour)
-	_, _, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Description: "x"}})
+	_, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Description: "x"}})
 	wantRefusal(t, err, KindGone, "dormant", "grelot revive --ttl")
 }
 
@@ -552,7 +552,7 @@ func TestEndSession_aResumeRestoresNothing(t *testing.T) {
 		t.Errorf("ended %v expires %v, want ended cleared and the capped %v kept", got.Ended, got.Expires, testNow.Add(time.Hour))
 	}
 	w := envA()
-	if got, _, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{TTL: 6 * time.Hour, Where: &w}); err != nil || !got.Expires.Equal(clk.now().Add(6*time.Hour)) {
+	if got, err = s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{TTL: 6 * time.Hour, Where: &w}); err != nil || !got.Expires.Equal(clk.now().Add(6*time.Hour)) {
 		t.Errorf("renew after resume: %v, %v", got.Expires, err)
 	}
 }

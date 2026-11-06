@@ -13,11 +13,11 @@ import (
 // Refusals: KindInvalid for a bad path; KindGone for a session with no
 // live identity; KindForbidden for a delegate; KindNotFound for no live
 // thread there; KindConflict at the follow cap.
-func (s *Store) Follow(ctx context.Context, k Keyed, c Caller, path string) (Identity, bool, error) {
+func (s *Store) Follow(ctx context.Context, k Keyed, c Caller, path string) (Identity, error) {
 	if _, err := checkPaths([]string{path}); err != nil {
-		return Identity{}, false, err
+		return Identity{}, err
 	}
-	return keyed(ctx, s, k, func(w *wtx) (Identity, error) {
+	return keyedResult(ctx, s, k, func(w *wtx) (Identity, error) {
 		_, live, err := w.thread(path)
 		if err != nil {
 			return Identity{}, err
@@ -51,11 +51,11 @@ func (s *Store) Follow(ctx context.Context, k Keyed, c Caller, path string) (Ide
 // delivers it. Refusals: KindInvalid for a bad path; KindGone for a
 // session with no live identity; KindConflict under a work path or a held
 // reservation.
-func (s *Store) Unfollow(ctx context.Context, k Keyed, c Caller, path string) (Identity, bool, error) {
+func (s *Store) Unfollow(ctx context.Context, k Keyed, c Caller, path string) (Identity, error) {
 	if _, err := checkPaths([]string{path}); err != nil {
-		return Identity{}, false, err
+		return Identity{}, err
 	}
-	return keyed(ctx, s, k, func(w *wtx) (Identity, error) {
+	return keyedResult(ctx, s, k, func(w *wtx) (Identity, error) {
 		held, err := w.heldOverlapping(path)
 		if err != nil {
 			return Identity{}, err

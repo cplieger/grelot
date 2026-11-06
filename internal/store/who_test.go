@@ -175,7 +175,7 @@ func TestRepoCollision_anotherRemoteUnderOneRootIsRefused(t *testing.T) {
 	})
 	t.Run("a set moving onto the root", func(t *testing.T) {
 		w := docs("4", "f")
-		_, _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("docs-b")}, Change{Where: &w, Fields: Fields{Paths: []string{repoDocs}}})
+		_, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("docs-b")}, Change{Where: &w, Fields: Fields{Paths: []string{repoDocs}}})
 		wantRefusal(t, err, KindConflict, "other_repository", "another repository")
 	})
 	t.Run("a revive onto the root", func(t *testing.T) {

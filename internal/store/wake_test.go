@@ -162,7 +162,7 @@ func TestWoke_reportsARequestThatClearsEnded(t *testing.T) {
 			return err
 		},
 		"Set": func(t *testing.T, s *Store) error {
-			_, _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, Change{Fields: Fields{Name: NoChange, Description: "resumed", Paths: []string{NoChange}}})
+			_, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, Change{Fields: Fields{Name: NoChange, Description: "resumed", Paths: []string{NoChange}}})
 			return err
 		},
 		"Post": func(t *testing.T, s *Store) error {

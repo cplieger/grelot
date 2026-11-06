@@ -66,7 +66,7 @@ func TestRevive_sameSessionRestoresTheIdentity(t *testing.T) {
 	if row.Nudged != 0 || row.Nudges != 0 || !row.NudgedAt.IsZero() {
 		t.Errorf("nudged %d nudges %d at %v, want the nudge state reset", row.Nudged, row.Nudges, row.NudgedAt)
 	}
-	if _, _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Description: "back at it"}}); err != nil {
+	if _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Description: "back at it"}}); err != nil {
 		t.Errorf("Set after the revival: %v", err)
 	}
 }

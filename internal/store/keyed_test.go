@@ -270,7 +270,7 @@ func TestReserve_conflictRecordsNothingSoItsReSendRuns(t *testing.T) {
 
 	_, _, err := s.Reserve(t.Context(), k, &r)
 	wantRefusal(t, err, KindConflict, "")
-	if _, _, err := s.Release(t.Context(), Keyed{}, plain("holder"), held.Reservation.ID); err != nil {
+	if _, err := s.Release(t.Context(), Keyed{}, plain("holder"), held.Reservation.ID); err != nil {
 		t.Fatal(err)
 	}
 	got, replayed, err := s.Reserve(t.Context(), k, &r)

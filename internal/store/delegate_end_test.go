@@ -33,7 +33,7 @@ func TestDelegate_revoke(t *testing.T) {
 		s, _, sink := openIdentityStore(t)
 		p, d := delegateOf(t, s, "parent", "review")
 		link := mustGrant(t, s, Grant{Caller: self("parent"), Label: "next", TTL: time.Hour}).Link
-		got, _, err := s.Revoke(t.Context(), Keyed{}, self("parent"), "review")
+		got, err := s.Revoke(t.Context(), Keyed{}, self("parent"), "review")
 		if err != nil || len(got.Handles) != 1 || got.Handles[0] != d.Name || got.Link {
 			t.Fatalf("Revoke(review): %+v, %v; want the delegate %s and no link", got, err, d.Name)
 		}
@@ -43,7 +43,7 @@ func TestDelegate_revoke(t *testing.T) {
 		if why := endedWhy(sink, d.Name); len(why) != 1 || why[0] != "revoke" {
 			t.Errorf("delegate ended lines %v, want one revoke", why)
 		}
-		got, _, err = s.Revoke(t.Context(), Keyed{}, self("parent"), "next")
+		got, err = s.Revoke(t.Context(), Keyed{}, self("parent"), "next")
 		if err != nil || len(got.Handles) != 0 || !got.Link {
 			t.Fatalf("Revoke(next): %+v, %v; want only the unused link", got, err)
 		}
@@ -56,11 +56,11 @@ func TestDelegate_revoke(t *testing.T) {
 	t.Run("a label with a delegate and an unused link", func(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
 		_, d := delegateOf(t, s, "parent", "review")
-		if _, _, err := s.Set(t.Context(), Keyed{}, self("parent"), Change{Fields: Fields{Name: "renamed"}}); err != nil {
+		if _, err := s.Set(t.Context(), Keyed{}, self("parent"), Change{Fields: Fields{Name: "renamed"}}); err != nil {
 			t.Fatal(err)
 		}
 		link := mustGrant(t, s, Grant{Caller: self("parent"), Label: "review", TTL: time.Hour}).Link
-		got, _, err := s.Revoke(t.Context(), Keyed{}, self("parent"), "review")
+		got, err := s.Revoke(t.Context(), Keyed{}, self("parent"), "review")
 		if err != nil || len(got.Handles) != 1 || got.Handles[0] != d.Name || !got.Link {
 			t.Fatalf("Revoke(review): %+v, %v; want %s and the unused link", got, err, d.Name)
 		}
@@ -70,13 +70,13 @@ func TestDelegate_revoke(t *testing.T) {
 	t.Run("a label with neither", func(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
 		regAt(t, s, "parent", repoSubflux)
-		_, _, err := s.Revoke(t.Context(), Keyed{}, self("parent"), "review")
+		_, err := s.Revoke(t.Context(), Keyed{}, self("parent"), "review")
 		wantRefusal(t, err, KindNotFound, "", "review")
 	})
 	t.Run("from a delegate", func(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
 		_, d := delegateOf(t, s, "parent", "review")
-		_, _, err := s.Revoke(t.Context(), Keyed{}, as(sess("parent"), d.Name), "review")
+		_, err := s.Revoke(t.Context(), Keyed{}, as(sess("parent"), d.Name), "review")
 		wantRefusal(t, err, KindForbidden, "", "")
 	})
 }
@@ -147,7 +147,7 @@ func TestDelegate_renewal(t *testing.T) {
 	}
 	t.Run("by its parent through as", func(t *testing.T) {
 		s, clk, _, d := setup(t)
-		got, _, err := s.Set(t.Context(), Keyed{}, as(sess("parent"), d.Name), Change{TTL: 2 * time.Hour})
+		got, err := s.Set(t.Context(), Keyed{}, as(sess("parent"), d.Name), Change{TTL: 2 * time.Hour})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -161,7 +161,7 @@ func TestDelegate_renewal(t *testing.T) {
 	t.Run("by itself, capped at its parent's expiry", func(t *testing.T) {
 		s, _, p, _ := setup(t)
 		own := mustRegisterDelegate(t, s, "codex:thread-1", mustGrant(t, s, grantFrom("parent", "codex")).Link)
-		got, _, err := s.Set(t.Context(), Keyed{}, Caller{Session: "codex:thread-1"}, Change{TTL: 24 * time.Hour})
+		got, err := s.Set(t.Context(), Keyed{}, Caller{Session: "codex:thread-1"}, Change{TTL: 24 * time.Hour})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -177,7 +177,7 @@ func TestDelegate_renewal(t *testing.T) {
 	})
 	t.Run("outside the bounds", func(t *testing.T) {
 		s, _, _, d := setup(t)
-		_, _, err := s.Set(t.Context(), Keyed{}, as(sess("parent"), d.Name), Change{TTL: 14 * time.Minute})
+		_, err := s.Set(t.Context(), Keyed{}, as(sess("parent"), d.Name), Change{TTL: 14 * time.Minute})
 		wantRefusal(t, err, KindInvalid, "", "15m")
 	})
 }
@@ -187,7 +187,7 @@ func TestDelegate_aParentsShorterLeaseCapsItsDelegates(t *testing.T) {
 		s, clk, _ := openIdentityStore(t)
 		p, d := delegateOf(t, s, "parent", "review")
 		w := envA()
-		renewed, _, err := s.Set(t.Context(), Keyed{}, self("parent"), Change{TTL: time.Hour, Where: &w})
+		renewed, err := s.Set(t.Context(), Keyed{}, self("parent"), Change{TTL: time.Hour, Where: &w})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -217,7 +217,7 @@ func TestDelegate_aParentsShorterLeaseCapsItsDelegates(t *testing.T) {
 		_, d := delegateOf(t, s, "parent", "review")
 		before := getIdentity(t, s, d.ID).Lease
 		w := envA()
-		if _, _, err := s.Set(t.Context(), Keyed{}, self("parent"), Change{TTL: 24 * time.Hour, Where: &w}); err != nil {
+		if _, err := s.Set(t.Context(), Keyed{}, self("parent"), Change{TTL: 24 * time.Hour, Where: &w}); err != nil {
 			t.Fatal(err)
 		}
 		if got := getIdentity(t, s, d.ID).Lease; got != before {

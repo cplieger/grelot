@@ -331,7 +331,7 @@ func TestPost_onAClosedStoreReportsErrClosed(t *testing.T) {
 		t.Errorf("Post after Close: %v, want ErrClosed", err)
 	}
 	w := envA()
-	if _, _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("alpha")}, Change{TTL: 2 * time.Hour, Where: &w}); !errors.Is(err, ErrClosed) {
+	if _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("alpha")}, Change{TTL: 2 * time.Hour, Where: &w}); !errors.Is(err, ErrClosed) {
 		t.Errorf("Set after Close: %v, want ErrClosed", err)
 	}
 }

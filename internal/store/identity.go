@@ -237,8 +237,8 @@ func (w *wtx) registerRow(r *Registration, provider string) (row identityRow, ad
 // Set applies ch to c's live identity and returns it. Refusals: KindGone
 // for a session with no live identity, KindInvalid for a bad change,
 // KindConflict for a name another identity holds.
-func (s *Store) Set(ctx context.Context, k Keyed, c Caller, ch Change) (Identity, bool, error) {
-	return keyed(ctx, s, k, func(w *wtx) (Identity, error) {
+func (s *Store) Set(ctx context.Context, k Keyed, c Caller, ch Change) (Identity, error) {
+	return keyedResult(ctx, s, k, func(w *wtx) (Identity, error) {
 		row, err := w.liveAs(c)
 		if err != nil {
 			return Identity{}, err
