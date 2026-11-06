@@ -53,7 +53,7 @@ curl -fL -o ~/.kiro/workflows/grelot-watch.workflow.json "$base/grelot-watch.wor
 curl -fL -o ~/.kiro/agents/grelot-notifier.md "$base/grelot-notifier.md"
 ```
 
-Every new-mail line costs one turn of the notifier agent, which only relays the line. To save cost, add a `model:` line with a small model to its front matter, as [kiro-cli.md](kiro-cli.md#install-the-workflow-and-its-notifier) shows.
+Every new-mail line costs one turn of the notifier agent, which only relays the line. To save cost, set a small model on the workflow's `notify` step, as [kiro-cli.md](kiro-cli.md#install-the-workflow-and-its-notifier) shows.
 
 ### Allow the grelot commands
 

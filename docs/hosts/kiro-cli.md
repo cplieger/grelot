@@ -52,16 +52,20 @@ curl -fL -o ~/.kiro/workflows/grelot-watch.workflow.json "$base/grelot-watch.wor
 curl -fL -o ~/.kiro/agents/grelot-notifier.md "$base/grelot-notifier.md"
 ```
 
-Every new-mail line costs one turn of the notifier agent, which only relays the line. The file names no model, so it runs on your default. To save cost, add a `model:` line with a small model to its front matter:
+Every new-mail line costs one turn of the notifier agent, which only relays the line. The workflow names no model, so that turn runs on the model and effort of the chat that started the run. To save cost, set a small model on the `notify` step in `grelot-watch.workflow.json`. A `model:` line in the notifier's front matter does not change the step's model (measured on kiro-cli 3.1.0).
 
-```markdown
----
-name: grelot-notifier
-description: Run by the grelot-watch workflow to pass one grelot signal line to the session that started it. Reads and edits nothing.
-model: <a small model that /model lists>
-tools: []
----
+```json
+{
+  "type": "step",
+  "id": "notify",
+  "agent": "grelot-notifier",
+  "prompt": "{{watch.output}}",
+  "modelId": "<a small model that /model lists>",
+  "effortLevel": "low"
+}
 ```
+
+`effortLevel` is optional. A value the model does not support falls back to that model's default.
 
 ### Allow the grelot commands
 

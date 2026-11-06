@@ -446,8 +446,10 @@ func jsonNumber(n uint64) string {
 func TestBye(t *testing.T) {
 	ts := newServer(t)
 	a, _ := registerAgent(t, ts, "s-1")
-	if out := a.must("bye"); !strings.Contains(out, "grelot: identity retired") {
-		t.Errorf("output = %q, want the retirement", out)
+	// The answer is the retirement alone: the no-identity status line that
+	// follows a retirement would ask the agent that just left to register.
+	if out := a.must("bye"); out != "grelot: identity retired: its reservations went to their queues and its delegates ended\n" {
+		t.Errorf("output = %q, want only the retirement line", out)
 	}
 	if out := a.must("me"); !strings.Contains(out, "this session has no identity") {
 		t.Errorf("me after bye = %q, want no identity", out)

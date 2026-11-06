@@ -329,7 +329,9 @@ func (r *run) bye(ctx context.Context, args []string) error {
 	if len(rest) > 0 {
 		return usagef(r.verb, "grelot bye takes no arguments")
 	}
-	if err := r.call(ctx, &client.Request{Method: http.MethodDelete, Path: "/v1/me"}, nil); err != nil {
+	// The answer's status line is read after the retirement, so it could
+	// only ask the agent that just left to register: this line replaces it.
+	if err := r.peek(ctx, &client.Request{Method: http.MethodDelete, Path: "/v1/me"}, nil); err != nil {
 		return err
 	}
 	fmt.Fprintln(r.Stdout, "grelot: identity retired: its reservations went to their queues and its delegates ended")
