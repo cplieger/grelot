@@ -37,7 +37,7 @@ repos:
 }
 
 func TestLoadConfig_hostDefaultsToHostname(t *testing.T) {
-	dir := writeConfig(t, "server: http://127.0.0.1:8080\ntoken: test-token\n", 0o600)
+	dir := writeConfig(t, "server: http://127.0.0.1:9737\ntoken: test-token\n", 0o600)
 	cfg, err := LoadConfig(dir, env(), func() (string, error) { return "box", nil })
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)

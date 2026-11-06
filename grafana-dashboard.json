@@ -38,7 +38,7 @@
         "spec": {
           "id": 100,
           "title": "grelot down",
-          "description": "Shows while the GrelotDown alert fires: Prometheus has not scraped grelot for 5 minutes, so agents may be unable to post, read or be woken. Every other panel is out of date until it is back. Check the container, port 8080 and your scrape job.",
+          "description": "Shows while the GrelotDown alert fires: Prometheus has not scraped grelot for 5 minutes, so agents may be unable to post, read or be woken. Every other panel is out of date until it is back. Check the container, port 9737 and your scrape job.",
           "links": [],
           "data": {
             "kind": "QueryGroup",

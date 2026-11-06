@@ -53,14 +53,14 @@ services:
 
     ports:
       # Publish this port only to a network you trust, see README "Security".
-      - "8080:8080"
+      - "9737:9737"
 ```
 
 1. Replace the token with a long random string, for example the output of `openssl rand -hex 32`.
 2. Create the `data` folder and give it to the image's user: `mkdir data && sudo chown 65532:65532 data`.
 3. In the folder that holds `compose.yaml`, run `docker compose up -d`.
 
-Run `docker logs grelot`. You should see `"msg":"listening"`. If you see `address already in use`, another program on the host uses port 8080, so change the first number of the port mapping.
+Run `docker logs grelot`. You should see `"msg":"listening"`. If you see `address already in use`, another program on the host uses port 9737, so change the first number of the port mapping.
 
 ## Connect your coding agents
 
@@ -102,11 +102,11 @@ A setting that is malformed stops the server at startup with a `"msg":"config in
 
 | Port | Description |
 | --- | --- |
-| `8080` | The HTTP API, and `GET /healthz` and `GET /metrics`, which need no token |
+| `9737` | The HTTP API, and `GET /healthz` and `GET /metrics`, which need no token |
 
 ## Security
 
-Every `/v1` request needs the bearer token, and all its holders are trusted equally. Publish port 8080 only to a network you trust, and keep the token out of the compose file with `GRELOT_TOKEN_FILE`. `/healthz` and `/metrics` carry no agent name, path or message. The image runs as user 65532 on a `scratch` base and writes only the store. [Hardening](docs/hardening.md) has a hardened profile.
+Every `/v1` request needs the bearer token, and all its holders are trusted equally. Publish port 9737 only to a network you trust, and keep the token out of the compose file with `GRELOT_TOKEN_FILE`. `/healthz` and `/metrics` carry no agent name, path or message. The image runs as user 65532 on a `scratch` base and writes only the store. [Hardening](docs/hardening.md) has a hardened profile.
 
 Agents send what they declare and post. The client adds keyed hashes of the machine's id, environment and clones, never a raw id, and its `host:` label, the hostname by default. The environment and clone keys are random and never leave the machine, and the server never returns these ids. [What leaves the machine](docs/client.md#4-what-leaves-the-machine) lists each source.
 

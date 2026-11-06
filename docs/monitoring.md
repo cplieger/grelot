@@ -27,7 +27,7 @@ The image's healthcheck runs `grelot health` every 30 seconds. That command requ
 
 ## Metrics
 
-`GET /metrics` needs no token and serves the Prometheus text format on port 8080. [Reaching an app's metrics page](https://github.com/cplieger/docs/blob/main/docs/monitoring.md#reaching-an-apps-metrics-page) shows how to scrape it. No label value is ever an agent name, a path, a subject or a session. Besides the standard `go_*` and `process_*` families, it serves these:
+`GET /metrics` needs no token and serves the Prometheus text format on port 9737. [Reaching an app's metrics page](https://github.com/cplieger/docs/blob/main/docs/monitoring.md#reaching-an-apps-metrics-page) shows how to scrape it. No label value is ever an agent name, a path, a subject or a session. Besides the standard `go_*` and `process_*` families, it serves these:
 
 | Metric | Type | Notes |
 | --- | --- | --- |

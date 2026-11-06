@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -146,10 +147,25 @@ func TestProbeHealth(t *testing.T) {
 	t.Run("an address with no port fails", func(t *testing.T) {
 		t.Parallel()
 		var stderr bytes.Buffer
-		if code := probeHealth(&stderr, "8080", time.Second); code != 1 || !strings.Contains(stderr.String(), "8080") {
+		if code := probeHealth(&stderr, "9737", time.Second); code != 1 || !strings.Contains(stderr.String(), "9737") {
 			t.Errorf("exit %d, stderr %q, want 1 naming the address", code, stderr.String())
 		}
 	})
+}
+
+func TestListenAddr_theImageAndComposeExampleNameItsPort(t *testing.T) {
+	if listenAddr != ":9737" {
+		t.Errorf("listenAddr %q, want :9737", listenAddr)
+	}
+	for file, want := range map[string]string{"Dockerfile": "\nEXPOSE 9737\n", "compose.yaml": `- "9737:9737"`} {
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("%s does not contain %q", file, want)
+		}
+	}
 }
 
 // startServe runs serve on a free port until the returned cancel or the
