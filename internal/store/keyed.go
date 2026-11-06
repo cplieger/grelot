@@ -150,7 +150,7 @@ func (k *Keyed) record(w *wtx, v any) error {
 		return err
 	}
 	id := k.id()
-	nonce := make([]byte, aead.NonceSize(), aead.NonceSize()+len(plain)+aead.Overhead())
+	nonce := make([]byte, aead.NonceSize())
 	_, _ = rand.Read(nonce) // crypto/rand.Read never returns an error.
 	row := requestRow{
 		Lease:   serverLease(w.now, requestTTL),
