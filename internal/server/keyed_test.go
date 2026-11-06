@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -35,8 +36,14 @@ type pauseNext struct {
 	now     func() time.Time
 	paused  chan struct{}
 	release chan struct{}
+	freed   sync.Once
 	armed   atomic.Bool
 }
+
+// free lets the held request go on, and may run more than once: a test
+// registers it as a cleanup, since httptest.Server.Close waits for a held
+// request.
+func (p *pauseNext) free() { p.freed.Do(func() { close(p.release) }) }
 
 func (p *pauseNext) read() time.Time {
 	if p.armed.CompareAndSwap(true, false) {
@@ -306,16 +313,24 @@ func TestKeyedPost_aReSendTakesNoRateLimitToken(t *testing.T) {
 func TestKeyedPost_aConcurrentReSendGivesItsRateLimitTokenBack(t *testing.T) {
 	pause := &pauseNext{paused: make(chan struct{}), release: make(chan struct{})}
 	h := newHarnessWith(t, store.Options{}, func(o *Options) { pause.now, o.Now = o.Now, pause.read })
+	t.Cleanup(pause.free)
 	h.mustRegister(sessA, "sender")
 	h.mustRegister(sessB, "reader")
 	body := postBody(map[string]any{"agent": "reader"}, "raced", "a body")
 	headers := keyHeader(sessA, "raced-post-key-01")
 	pause.armed.Store(true)
 	second := h.async(http.MethodPost, "/v1/posts", body, headers)
-	<-pause.paused
+	select {
+	case <-pause.paused:
+	case res := <-second.answers:
+		second.got(res)
+		t.Fatal("the re-send answered before it reached the rate-limit take")
+	case <-time.After(10 * time.Second):
+		t.Fatal("the re-send never reached the rate-limit take")
+	}
 
 	first := h.request(http.MethodPost, "/v1/posts", body, headers)
-	close(pause.release)
+	pause.free()
 	var again *response
 	select {
 	case res := <-second.answers:
