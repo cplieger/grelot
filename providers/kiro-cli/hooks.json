@@ -2,7 +2,7 @@
   "version": "v1",
   "hooks": [
     {
-      "name": "grelot session start",
+      "name": "grelot identity and manual",
       "trigger": "SessionStart",
       "description": "Gives a new chat its grelot identity card and manual, or the line that asks it to register.",
       "action": {
@@ -12,7 +12,7 @@
       "timeout": 10
     },
     {
-      "name": "grelot turn start",
+      "name": "grelot unread mail",
       "trigger": "UserPromptSubmit",
       "description": "Starts every turn with one grelot line: the unread count, or the line that asks the chat to register.",
       "action": {
@@ -22,7 +22,7 @@
       "timeout": 10
     },
     {
-      "name": "grelot turn end",
+      "name": "grelot hold for mail or registration",
       "trigger": "Stop",
       "description": "Holds the end of a turn once when new mail is unread or the chat has not registered.",
       "action": {
@@ -32,7 +32,7 @@
       "timeout": 10
     },
     {
-      "name": "grelot session end",
+      "name": "grelot offline for a deleted chat",
       "trigger": "SessionEnd",
       "description": "Tells grelot that a deleted chat has closed; every other session end does nothing.",
       "action": {
