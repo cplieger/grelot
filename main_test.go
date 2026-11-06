@@ -20,10 +20,25 @@ func TestRun_unknownCommand(t *testing.T) {
 	}
 }
 
-func TestRun_clientLoadsTheShippedProvidersUnderTheUsersOwn(t *testing.T) {
+// isolateConfig points os.UserConfigDir at a temporary folder on every
+// system: HOME covers macOS, XDG_CONFIG_HOME Linux and AppData Windows.
+func isolateConfig(t *testing.T) {
+	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AppData", filepath.Join(home, "AppData", "Roaming"))
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(dir, home) {
+		t.Fatalf("os.UserConfigDir() = %s, outside the temporary home %s", dir, home)
+	}
+}
+
+func TestRun_clientLoadsTheShippedProvidersUnderTheUsersOwn(t *testing.T) {
+	isolateConfig(t)
 	t.Setenv("KIRO_SESSION_ID", "")
 	t.Setenv("GRELOT_TOKEN_FILE", "")
 	configDir, err := os.UserConfigDir()
@@ -62,9 +77,7 @@ func TestRun_clientLoadsTheShippedProvidersUnderTheUsersOwn(t *testing.T) {
 }
 
 func TestRun_clientVerbs(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	isolateConfig(t)
 	cases := []struct {
 		name     string
 		args     []string

@@ -191,11 +191,12 @@ func TestExecSuccessResetsFailures(t *testing.T) {
 }
 
 // Not parallel: it shortens the shipped command timeout. A timeout is retry
-// later and neither counts as nor clears a failure.
+// later and neither counts as nor clears a failure. Only the sleeping run
+// gets the short timeout: a process start can take over a second on a
+// managed Windows machine, so the failing runs keep the shipped one.
 func TestExecTimeout(t *testing.T) {
-	old := execTimeout
-	execTimeout = 300 * time.Millisecond
-	t.Cleanup(func() { execTimeout = old })
+	shipped := execTimeout
+	t.Cleanup(func() { execTimeout = shipped })
 	f := newFakeExec(t)
 	var out bytes.Buffer
 	var logs logLines
@@ -206,7 +207,10 @@ func TestExecTimeout(t *testing.T) {
 	}
 	nudge("fail")
 	start := time.Now()
-	if got := nudge("sleep"); got != retry {
+	execTimeout = 300 * time.Millisecond
+	got := nudge("sleep")
+	execTimeout = shipped
+	if got != retry {
 		t.Errorf("timeout: Nudge = %+v, want %+v", got, retry)
 	}
 	if took := time.Since(start); took > 10*time.Second {
