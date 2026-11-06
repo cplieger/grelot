@@ -854,7 +854,7 @@ func TestHookSubagentStop_endsTheDelegateOfItsOwnSession(t *testing.T) {
 // session in the subagent's agent_id.
 const hookBareFile = `name: alpha
 detect: {env: [ALPHA_ID]}
-session: {env: ALPHA_ID, stdin: session_id}
+session: {env: ALPHA_ID, stdin: session_id, hooks_without_env: true}
 hooks:
   prompt:
     event: Prompt

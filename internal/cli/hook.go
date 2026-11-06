@@ -69,12 +69,13 @@ func (r *run) hook(ctx context.Context, args []string) error {
 	if err != nil {
 		return nil
 	}
-	// A host may leave its session variable out of hook processes; the
-	// hook then acts as its stdin session, the one the agent's own shell
-	// carries in that variable.
+	// A host that leaves its session variable out of hook processes says
+	// so, and the hook acts as its stdin session, the one the agent's own
+	// shell carries in that variable. Any other hook with no variable is
+	// another host running these hook lines, and prints nothing.
 	session, _ := p.SessionID(r.Lookup)
 	own := session
-	if own == "" && p.Session.Stdin != "" {
+	if own == "" && p.Session.HooksWithoutEnv {
 		own = in.String(p.Session.Stdin)
 	}
 	if own == "" {

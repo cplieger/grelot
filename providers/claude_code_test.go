@@ -229,6 +229,30 @@ func TestClaudeCodeStop(t *testing.T) {
 	})
 }
 
+// Copilot CLI reads a repository's .claude/settings.json and Cursor loads
+// Claude Code hook files, so the claude-code hook lines can run with a
+// stdin session_id and no CLAUDE_CODE_SESSION_ID. That shell cannot
+// register, so the hooks print and ask nothing rather than demand it.
+func TestClaudeCode_anotherHostRunningItsHooks(t *testing.T) {
+	for _, c := range []struct{ role, fixture string }{
+		{"session_start", "session_start-startup-tui"},
+		{"prompt", "prompt-typed"},
+		{"stop", "stop-first"},
+	} {
+		t.Run(c.role, func(t *testing.T) {
+			sh := newShell(t, newServer(t), "claude-code", map[string]string{})
+			in := sh.fixture(c.fixture)
+			if !bytes.Contains(in, []byte(`"session_id"`)) {
+				t.Fatalf("fixture %s has no session_id", c.fixture)
+			}
+			got := sh.hook(c.role, in)
+			if got.Code != 0 || got.Stdout != "" || got.Stderr != "" || len(got.Requests) != 0 {
+				t.Errorf("exit %d, stdout %q, stderr %q, requests %v; want 0, nothing and none", got.Code, got.Stdout, got.Stderr, got.Requests)
+			}
+		})
+	}
+}
+
 // Claude Code's StopFailure and SubagentStop reach no shipped role: the
 // hook file wires neither, and the hook prints and asks nothing.
 func TestClaudeCodeUnwiredEvents(t *testing.T) {

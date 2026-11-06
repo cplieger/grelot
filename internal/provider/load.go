@@ -196,6 +196,19 @@ func (s *Session) check() error {
 	if s.Stdin != "" && !stdinPathRE.MatchString(s.Stdin) {
 		return &LoadError{Key: "session.stdin", Problem: "not a stdin field path"}
 	}
+	if s.HooksWithoutEnv && (s.Env == "" || s.Stdin == "") {
+		return &LoadError{Key: "session.hooks_without_env", Problem: "needs session.env and session.stdin"}
+	}
+	if err := s.checkProcesses(); err != nil {
+		return err
+	}
+	if s.Record != nil {
+		return s.Record.check()
+	}
+	return nil
+}
+
+func (s *Session) checkProcesses() error {
 	for i, proc := range s.Process {
 		if proc == "" || strings.ContainsAny(proc, `/\`) {
 			return &LoadError{Key: fmt.Sprintf("session.process[%d]", i), Problem: "must be a process name with no directory"}
@@ -208,9 +221,6 @@ func (s *Session) check() error {
 		if arg == "" {
 			return &LoadError{Key: fmt.Sprintf("session.process_shared[%d]", i), Problem: problemNotEmpty}
 		}
-	}
-	if s.Record != nil {
-		return s.Record.check()
 	}
 	return nil
 }

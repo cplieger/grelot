@@ -9,6 +9,7 @@ session:
   # for a root thread.
   env: CODEX_THREAD_ID
   stdin: session_id
+  hooks_without_env: true
   # A TUI or codex exec runs its threads in its own process, or in the
   # shared codex app-server that a daemon starts, which serves every TUI
   # attached to it; that one never counts as one session's process.

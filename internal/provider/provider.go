@@ -49,9 +49,9 @@ type Provider struct {
 	Extends  string   `yaml:"extends"`
 	Evidence Evidence `yaml:"evidence"`
 	Notes    string   `yaml:"notes"`
-	Session  Session  `yaml:"session"`
 	Detect   Detect   `yaml:"detect"`
 	Doors    []Door   `yaml:"doors"`
+	Session  Session  `yaml:"session"`
 }
 
 // Detect identifies the host from the agent's shell environment.
@@ -66,6 +66,10 @@ type Session struct {
 	Stdin         string   `yaml:"stdin"`
 	Process       []string `yaml:"process"`
 	ProcessShared []string `yaml:"process_shared"`
+	// HooksWithoutEnv says the host leaves Env out of hook processes, so a
+	// hook acts as its Stdin session. Without it, such a hook is another
+	// host running this provider's hook lines, and it writes nothing.
+	HooksWithoutEnv bool `yaml:"hooks_without_env"`
 }
 
 // Record locates a session's own record in the host's state directory, read

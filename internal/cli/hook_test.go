@@ -320,6 +320,11 @@ func TestHook_writesNothing(t *testing.T) {
 			delete(a.vars, "ALPHA_ID")
 			return []string{"hook", "alpha", "session_start"}
 		},
+		"no variable in the shell, a session in the input, no hooks_without_env": func(a *agent) []string {
+			delete(a.vars, "ALPHA_ID")
+			a.env.Stdin = strings.NewReader(`{"session_id":"s-1","source":"startup"}`)
+			return []string{"hook", "alpha", "session_start"}
+		},
 		"a provider with no session.env": func(a *agent) []string {
 			hooked(t, a, "alpha", strings.Replace(hookAlphaFile, "  env: ALPHA_ID\n", "", 1))
 			return []string{"hook", "alpha", "session_start"}

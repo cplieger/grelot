@@ -19,6 +19,7 @@ session:
   stdin: session_id
   process: [example, example.exe]
   process_shared: [app-server]
+  hooks_without_env: true
   record:
     dir_env: EXAMPLE_HOME
     dir_default: ~/.example
@@ -123,7 +124,7 @@ func TestLoadFull(t *testing.T) {
 	})
 	t.Run("session", func(t *testing.T) {
 		s := p.Session
-		if s.Env != "EXAMPLE_SESSION_ID" || s.Stdin != "session_id" || !slices.Equal(s.ProcessShared, []string{"app-server"}) {
+		if s.Env != "EXAMPLE_SESSION_ID" || s.Stdin != "session_id" || !slices.Equal(s.ProcessShared, []string{"app-server"}) || !s.HooksWithoutEnv {
 			t.Errorf("session = %+v", s)
 		}
 		if s.Record == nil || s.Record.Glob != "sessions/*/{{.HookSession}}/session.json" || !slices.Equal(s.Record.SameAgent, []string{"rewind"}) {
@@ -245,6 +246,8 @@ func TestLoadRefuses(t *testing.T) {
 		{"detect env name", "name: example\ndetect: {env: [BAD-NAME]}\n", []string{"detect.env[0]"}},
 		{"session env name", "name: example\nsession: {env: 'A B'}\n", []string{"session.env"}},
 		{"process with a directory", "name: example\nsession: {process: [/usr/bin/x]}\n", []string{"session.process[0]"}},
+		{"hooks_without_env without env", "name: example\nsession: {stdin: session_id, hooks_without_env: true}\n", []string{"session.hooks_without_env", "needs session.env and session.stdin"}},
+		{"hooks_without_env without stdin", "name: example\nsession: {env: A, hooks_without_env: true}\n", []string{"session.hooks_without_env", "needs session.env and session.stdin"}},
 		{"process_shared without process", "name: example\nsession: {process_shared: [app-server]}\n", []string{"session.process_shared", "needs session.process"}},
 		{"record without a directory", "name: example\nsession: {record: {glob: g, parent: p, reason: r}}\n", []string{"session.record", "dir_env or dir_default"}},
 		{"record without glob", "name: example\nsession: {record: {dir_default: d, parent: p, reason: r}}\n", []string{"session.record.glob"}},
