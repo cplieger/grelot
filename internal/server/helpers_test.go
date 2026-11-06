@@ -1,3 +1,5 @@
+//go:build !windows
+
 package server
 
 import (
@@ -14,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/store"
 )
 
@@ -153,7 +156,7 @@ func buildHarness(t *testing.T, o store.Options, now func() time.Time, edits ...
 		so := o
 		logger := slog.New(h.logs)
 		hub := NewHub()
-		so.Logger, so.Now, so.PathRoot, so.Woke = logger, now, DefaultPathRoot, hub.Woke
+		so.Logger, so.Now, so.PathRoot, so.Woke = logger, now, protopath.DefaultRoot, hub.Woke
 		st, err := store.Open(h.dbPath, so)
 		if err != nil {
 			t.Fatalf("store.Open: %v", err)
@@ -162,7 +165,7 @@ func buildHarness(t *testing.T, o store.Options, now func() time.Time, edits ...
 		h.push = &fakePush{states: map[uint64]pushState{}}
 		opts := &Options{
 			Store: st, Logger: logger, Now: now, Version: testVersion, Push: h.push, Hub: hub,
-			Config: Config{Token: testToken, PathRoot: DefaultPathRoot},
+			Config: Config{Token: testToken, PathRoot: protopath.DefaultRoot},
 		}
 		for _, edit := range edits {
 			edit(opts)

@@ -1,3 +1,5 @@
+//go:build !windows
+
 package client
 
 import (
@@ -10,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/server"
 	"github.com/cplieger/grelot/internal/store"
 )
@@ -23,7 +26,7 @@ func realServer(t *testing.T) string {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	hub := server.NewHub()
 	st, err := store.Open(filepath.Join(t.TempDir(), "grelot.db"), store.Options{
-		Logger: logger, PathRoot: store.DefaultPathRoot, Woke: hub.Woke,
+		Logger: logger, PathRoot: protopath.DefaultRoot, Woke: hub.Woke,
 	})
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
@@ -31,7 +34,7 @@ func realServer(t *testing.T) string {
 	t.Cleanup(func() { _ = st.Close() })
 	srv := server.New(&server.Options{
 		Store: st, Logger: logger, Hub: hub, Version: serverVersion,
-		Config: server.Config{Token: "test-token", PathRoot: store.DefaultPathRoot},
+		Config: server.Config{Token: "test-token", PathRoot: protopath.DefaultRoot},
 	})
 	h := httptest.NewServer(srv.Handler())
 	t.Cleanup(h.Close)

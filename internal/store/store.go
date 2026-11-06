@@ -1,6 +1,9 @@
+//go:build !windows
+
 // Package store holds grelot's state in one bolttable file: identities
 // and their delegate links, threads, messages and their deliveries,
-// reservations, receipt watches, and the leases that expire them.
+// reservations, receipt watches, and the leases that expire them. It does
+// not build on Windows, where bolttable does not run.
 package store
 
 import (
@@ -13,6 +16,7 @@ import (
 	"time"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/protopath"
 	bolterrors "go.etcd.io/bbolt/errors"
 )
 
@@ -36,8 +40,6 @@ const (
 	DefaultMaxBytes   = 512 << 20
 	// DefaultReservationMaxTTL is RESERVATION_MAX_TTL's default.
 	DefaultReservationMaxTTL = 8 * time.Hour
-	// DefaultPathRoot is GRELOT_PATH_ROOT's default.
-	DefaultPathRoot = "/workspace"
 )
 
 // Options configures Open. A nil Logger discards; a nil Now is time.Now;
@@ -159,7 +161,7 @@ func newStore(o *Options) *Store {
 	}
 	s.pathRoot = o.PathRoot
 	if s.pathRoot == "" {
-		s.pathRoot = DefaultPathRoot
+		s.pathRoot = protopath.DefaultRoot
 	}
 	s.resvPolicy = reservationPolicy
 	if o.ReservationMaxTTL != 0 {

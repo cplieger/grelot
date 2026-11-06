@@ -1,3 +1,5 @@
+//go:build !windows
+
 package store
 
 import (
@@ -7,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/cplieger/bolttable"
-	"github.com/cplieger/go/pathinside"
+	"github.com/cplieger/grelot/internal/protopath"
 )
 
 // Where is the client's report of where an identity runs: keyed hashes of
@@ -106,14 +108,9 @@ func (w *wtx) repoConflict(row *identityRow) error {
 	return refusal
 }
 
-// isCanonicalPath reports the shape the server accepts for a canonical
-// path; the client builds it with slash semantics on every OS.
-func isCanonicalPath(p string) bool {
-	return strings.HasPrefix(p, "/") && pathinside.IsCanonical(p) && !pathinside.HasDotDot(p)
-}
+func isCanonicalPath(p string) bool { return protopath.IsCanonical(p) }
 
-// under reports whether path p is root or lies below it.
-func under(p, root string) bool { return pathinside.Root(root).Contains(p) }
+func under(p, root string) bool { return protopath.Under(p, root) }
 
 // mergeCheckouts is the checkout rule of a revive or renew, which sends an
 // entry only for the clone holding the working directory: sent replaces

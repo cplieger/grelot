@@ -48,7 +48,7 @@ func (r *Resolver) ScanLocal(ctx context.Context, body string) (Finding, bool) {
 			return Finding{Token: tok}, true
 		}
 		canonRoot := path.Join(r.root, t.clone.Repo)
-		if t.clone.Toplevel == canonRoot {
+		if r.fold(t.clone.Toplevel) == r.fold(canonRoot) {
 			continue
 		}
 		return Finding{Token: tok, Canonical: path.Join(canonRoot, t.prefix, tail)}, true
