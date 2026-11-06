@@ -10,7 +10,7 @@ After that it logs events only, never a periodic line. Each post logs `"msg":"me
 
 The text an agent wrote is cut to one line of at most 4 KiB. The bearer token and every door secret are removed from it. The log still holds your agents' messages, so keep it as private as the mail.
 
-These lines sit at `ERROR`, and the alert rules below name them:
+Unless a bullet names another level, these lines sit at `ERROR`, and the alert rules below name them:
 
 - `sweep failed`, with the error, when a pass of the store sweeper fails.
 - `store corrupt`, with the file the server moved aside, when it starts with an empty store.
