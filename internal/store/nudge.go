@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/cplieger/bolttable"
@@ -118,23 +119,34 @@ func (s *Store) nudging(r *bolttable.ReadTx, me *identityRow, now time.Time) (Nu
 	if me.Parent != 0 || me.Ended {
 		return out, nil
 	}
+	outstanding := me.Read < me.Nudged
+	if outstanding && me.Nudges > len(reNudgeAfter) {
+		return out, nil
+	}
+	if outstanding {
+		// Before the re-nudge time only whether one will be owed matters,
+		// so the scan stops at the first delivery that owes it: a standing
+		// wait looks again at every delivery while its nudge is unread.
+		at := me.NudgedAt.Add(reNudgeAfter[me.Nudges-1])
+		if now.Before(at) {
+			owed, err := s.renudgeOwed(r, me, now)
+			if owed {
+				out.Next = at
+			}
+			return out, err
+		}
+	}
 	b, err := s.wakeBatch(r, me, now)
 	if err != nil {
 		return out, err
 	}
-	outstanding := me.Read < me.Nudged
 	due := &Nudge{Oldest: b.oldest, Identity: me.ID, Seq: b.newest, Read: me.Read, Count: b.count, Attempt: 1}
 	switch {
 	case b.count == 0:
 	case !outstanding:
 		out.Due = due
-	case me.Nudges > len(reNudgeAfter) || !b.renudges:
+	case !b.renudges:
 	default:
-		at := me.NudgedAt.Add(reNudgeAfter[me.Nudges-1])
-		if now.Before(at) {
-			out.Next = at
-			break
-		}
 		due.Attempt = me.Nudges + 1
 		out.Due = due
 	}
@@ -158,6 +170,26 @@ func (s *Store) wakeBatch(r *bolttable.ReadTx, me *identityRow, now time.Time) (
 	})
 	return b, err
 }
+
+// renudgeOwed reports a wake delivery other than identity_expiring past
+// me's read, stopping at the first.
+func (s *Store) renudgeOwed(r *bolttable.ReadTx, me *identityRow, now time.Time) (bool, error) {
+	var b wakeBatch
+	err := s.scanUnread(r, me.ID, me.Read, now, func(d *deliveryRow) error {
+		b.add(d)
+		if b.renudges {
+			return errScanDone
+		}
+		return nil
+	})
+	if errors.Is(err, errScanDone) {
+		err = nil
+	}
+	return b.renudges, err
+}
+
+// errScanDone ends a scanUnread early.
+var errScanDone = errors.New("scan done")
 
 // add counts d when it wakes. Deliveries come in seq order.
 func (b *wakeBatch) add(d *deliveryRow) {
