@@ -1,8 +1,8 @@
 {
   "session_id": "01a1a4bc-787d-7423-a284-cc692ac519a0",
   "turn_id": "01a1a4be-0ea2-7810-9512-895a73f76b21",
-  "transcript_path": "/tmp/p10c/home/sessions/2026/11/04/rollout-2026-11-04T05-06-17-01a1a4bc-787d-7423-a284-cc692ac519a0.jsonl",
-  "cwd": "/tmp/p10c/work",
+  "transcript_path": "/tmp/cx/home/sessions/2026/11/04/rollout-2026-11-04T05-06-17-01a1a4bc-787d-7423-a284-cc692ac519a0.jsonl",
+  "cwd": "/tmp/cx/work",
   "hook_event_name": "Interrupt",
   "model": "gpt-5.5",
   "permission_mode": "default"

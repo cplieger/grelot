@@ -5,10 +5,10 @@
   "title": "tangent",
   "agentMode": "vibe",
   "workspacePaths": [
-    "/workspace"
+    "/home/user/work"
   ],
   "rootPaths": [
-    "/workspace"
+    "/home/user/work"
   ],
   "createdAt": "2026-11-04T02:27:42.597Z",
   "lastModifiedAt": "2026-11-04T02:27:44.083Z",

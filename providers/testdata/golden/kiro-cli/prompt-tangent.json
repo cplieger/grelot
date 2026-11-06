@@ -1,6 +1,6 @@
 {
   "session_id": "sess_5be813c2-3090-4b45-8c90-9c592f946395",
   "hook_event_name": "UserPromptSubmit",
-  "cwd": "/workspace",
-  "prompt": "Probe step in this tangent. Run one shell command, then end your turn with a one-line reply."
+  "cwd": "/home/user/work",
+  "prompt": "A step in this tangent. Run one shell command, then end your turn with a one-line reply."
 }

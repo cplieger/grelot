@@ -1,6 +1,6 @@
 {
   "session_id": "sess_fcd984d7-fd4e-4051-bbea-b41fd81e9391",
   "hook_event_name": "SessionEnd",
-  "cwd": "/tmp/p10",
+  "cwd": "/tmp/work",
   "reason": "client_disconnect"
 }

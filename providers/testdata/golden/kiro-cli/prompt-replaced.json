@@ -1,6 +1,6 @@
 {
   "session_id": "sess_dd97485d-a96a-44bc-ba17-eb8230525c06",
   "hook_event_name": "UserPromptSubmit",
-  "cwd": "/tmp/p3tui",
-  "prompt": "The grelot-probe-notifier step sent you the message below."
+  "cwd": "/tmp/work",
+  "prompt": "The grelot-notifier step sent you the message below."
 }

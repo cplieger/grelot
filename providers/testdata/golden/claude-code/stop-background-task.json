@@ -1,7 +1,7 @@
 {
   "session_id": "cf282512-ceef-4065-8ac9-000a6a72dee7",
-  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-AppData-Local-Temp-probe-claude-i\\cf282512-ceef-4065-8ac9-000a6a72dee7.jsonl",
-  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\probe\\claude-i",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-AppData-Local-Temp-work-claude-i\\cf282512-ceef-4065-8ac9-000a6a72dee7.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\work\\claude-i",
   "prompt_id": "675d9ccb-145f-4d31-bd47-39317726259d",
   "permission_mode": "default",
   "effort": {
@@ -15,7 +15,7 @@
       "id": "bgva38piz",
       "type": "shell",
       "status": "running",
-      "description": "c3.sh probe events",
+      "description": "watch.sh events",
       "command": "bash ./c3.sh"
     }
   ],

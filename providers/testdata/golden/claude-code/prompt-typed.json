@@ -1,9 +1,9 @@
 {
   "session_id": "a9c96e81-c3c7-4658-9534-acfd0d061ae6",
-  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-AppData-Local-Temp-probe-claude-i\\a9c96e81-c3c7-4658-9534-acfd0d061ae6.jsonl",
-  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\probe\\claude-i",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-AppData-Local-Temp-work-claude-i\\a9c96e81-c3c7-4658-9534-acfd0d061ae6.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\work\\claude-i",
   "prompt_id": "4af2d3f9-f3b8-4ab1-bb08-4f36619d5f33",
   "permission_mode": "default",
   "hook_event_name": "UserPromptSubmit",
-  "prompt": "This is a probe prompt."
+  "prompt": "Summarize the open pull requests."
 }
