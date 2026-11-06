@@ -32,7 +32,7 @@ Until the server can reach marotte directly, an idle chat is woken by the Kiro C
 - Install the workflow and its notifier into the container's `$KIRO_HOME`, as [kiro-cli.md, section 3](kiro-cli.md#install-the-workflow-and-its-notifier) shows.
 - When the chat first asks to run a `grelot` command, allow it for every `grelot` command, so the workflow's polls do not wait on approval. The rule is written to `permissions.yaml` under `$KIRO_HOME/settings`, as on the Kiro CLI.
 
-When the status line reads `wake: down, start: start the grelot-watch workflow (...)`, the agent starts it. The status line then reads `wake: watcher`. To stop a run, cancel it from **Workflows** on marotte's `/docs` page.
+When the turn's grelot line reads `wake: down, start: start the grelot-watch workflow (...)`, the agent starts it; a command's status line names the same workflow after `wake: down`. The status line then reads `wake: watcher`. To stop a run, cancel it from **Workflows** on marotte's `/docs` page.
 
 A run outlives the browser tab that started it, because marotte keeps the agent server running. It keeps the identity online only until the lease the agent declared when it registered.
 

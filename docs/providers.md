@@ -37,7 +37,7 @@ doors:
   - name: background
     layer: 2
     transport: exit
-    start: run `grelot watch --door background` as a background command
+    start: run `grelot watch --door background` in the background
 hooks:
   session_start:
     event: SessionStart
