@@ -109,8 +109,8 @@ func startServe(t *testing.T, marker string) (addr string, logs *syncBuffer, can
 		out <- serve(ctx, cfg, "127.0.0.1:0", marker, slog.New(slog.NewJSONHandler(logs, nil)))
 		close(stopped)
 	}()
-	// Registered after the TempDir calls, so it runs before their removal:
-	// Windows cannot delete a store file serve still holds open.
+	// Registered after the TempDir calls, so serve has returned and closed
+	// the store before they are removed.
 	t.Cleanup(func() { cancel(); <-stopped })
 	for deadline := time.Now().Add(5 * time.Second); addr == ""; time.Sleep(10 * time.Millisecond) {
 		if m := listeningAddr.FindStringSubmatch(logs.String()); m != nil {

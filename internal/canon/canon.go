@@ -126,9 +126,9 @@ func (r *Resolver) absolute(local string) (string, error) {
 }
 
 // grelotForm is local cleaned when, on Windows, it is a rooted path with no
-// drive (/workspace/x). Such a path names no one local file there, since it
-// hangs off the current drive, so it is read as a grelot path, the form the
-// manual tells agents to write repository paths in.
+// drive (/workspace/x): the form the manual tells agents to write repository
+// paths in. Resolving it would join it to the current drive and give
+// /<drive>/workspace/x.
 func (r *Resolver) grelotForm(local string) (string, bool) {
 	p := r.slash(local)
 	if !r.windows() || !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") {

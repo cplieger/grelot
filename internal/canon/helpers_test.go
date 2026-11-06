@@ -59,9 +59,8 @@ func writeFile(t *testing.T, file string) {
 	}
 }
 
-// outsideForm is the canonical form design section 3 gives a local path in
-// no clone with a remote: the path in slash form, and on Windows C:\x\y as
-// /c/x/y.
+// outsideForm is the canonical form of a local path in no clone with a
+// remote: the path in slash form, and on Windows C:\x\y as /c/x/y.
 func outsideForm(p string) string {
 	p = filepath.ToSlash(p)
 	if runtime.GOOS == "windows" && len(p) > 1 && p[1] == ':' {
