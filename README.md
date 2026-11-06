@@ -17,7 +17,7 @@ grelot keeps your agents from working blind on the same code.
 - A message to a folder reaches every agent working in it.
 - An idle agent wakes when mail arrives, and reads its mail before it stops.
 - A reservation says who is editing a file, and queues the next agent behind it.
-- Each agent learns the rules from `grelot help`, the manual built into the client.
+- A Grafana dashboard shows who is online, the mail waiting and the latest messages.
 
 ## Who it is for
 
@@ -38,9 +38,8 @@ services:
     image: ghcr.io/cplieger/grelot:latest
     container_name: grelot
     restart: unless-stopped
+    # The server writes only its store under /data, so the rest stays read-only with no tmpfs.
     read_only: true
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
 
     environment:
       # The bearer token every client sends. Prefer GRELOT_TOKEN_FILE pointing at a mounted secret.
@@ -103,23 +102,19 @@ A setting that is malformed stops the server at startup with a `"msg":"config in
 
 | Port | Description |
 | --- | --- |
-| `8080` | The HTTP API, and `GET /healthz`, which needs no token |
+| `8080` | The HTTP API, and `GET /healthz` and `GET /metrics`, which need no token |
 
 ## Security
 
-Every `/v1` request needs the bearer token, and every holder of it is trusted equally. Publish port 8080 only to a network you trust, and keep the token out of the compose file with `GRELOT_TOKEN_FILE`. The image runs as user 65532 on a `scratch` base and writes only the store and its health marker.
+Every `/v1` request needs the bearer token, and every holder of it is trusted equally. Publish port 8080 only to a network you trust, and keep the token out of the compose file with `GRELOT_TOKEN_FILE`. `/healthz` and `/metrics` need no token and carry no agent name, path or message. The image runs as user 65532 on a `scratch` base and writes only the store. [Hardening and resource limits](docs/hardening.md) has a hardened profile.
 
-Agents send what they declare and post, such as names, descriptions, paths, messages and reservations. Of the machine itself, the client sends only keyed hashes, never a raw id:
+Agents send what they declare and post. Of the machine itself, the client sends hashes of the machine's id, its environment and each clone, never a raw id. It also sends the host label from its config, the hostname by default. [What leaves the machine](docs/client.md#4-what-leaves-the-machine) lists each source.
 
-- the machine's id, hashed
-- an environment id, keyed by a random file that never leaves the machine, which the server never returns
-- for each clone, a checkout id keyed by a random file in its git folder
-
-The host label is whatever the client config's `host:` says, the hostname by default. [What leaves the machine](docs/client.md#4-what-leaves-the-machine) lists each source.
+The server logs each post's sender, path, subject and first 4 KiB of its body, with the token and door secrets removed. Keep its log as private as the mail.
 
 ## Troubleshooting
 
-The healthcheck runs `grelot health`, which checks the marker file the server refreshes after each pass of its store sweeper, every 15 seconds. Unhealthy means the server has stopped sweeping, or never opened its store. `GET /healthz` answers 200 under the same condition.
+The healthcheck runs `grelot health`, which requests `GET /healthz` inside the container. It answers 200 while the store sweeper, which runs every 15 seconds, has committed a pass in the last minute. Unhealthy means the server stopped answering or sweeping, or never opened its store.
 
 - The container exits at once. Run `docker logs grelot`, and the `"msg":"config invalid"` or `"msg":"server stopped"` line names the error.
 - `permission denied` on `/data/grelot.db`: the `data` folder is not owned by user 65532.
@@ -127,13 +122,15 @@ The healthcheck runs `grelot health`, which checks the marker file the server re
 
 ## Monitoring
 
-The server writes JSON log lines. Once a minute a `"msg":"state"` line gives the live, dormant and online agents, the threads, reservations and unread mail, and the store's file, free and in-use bytes.
+The server writes JSON log lines for its events and serves Prometheus metrics on `/metrics`. Nine alert rules ship in [`alerts/promql.yaml`](alerts/promql.yaml), and the bundled Grafana dashboard needs Grafana 13.2 or newer. [Monitoring and alerts](docs/monitoring.md) lists every metric and rule and shows how to load them.
 
 ## Documentation
 
 - [Install the grelot client](docs/client.md) covers the binary, its config file and what it sends, for every machine that runs an agent.
 - [Set up grelot in your coding tools](docs/hosts/README.md) has one page per coding tool.
 - [Provider files](docs/providers.md) is for replacing a shipped provider file or writing one for another tool.
+- [Monitoring and alerts](docs/monitoring.md) lists the logs, metrics, dashboard and alert rules.
+- [Hardening and resource limits](docs/hardening.md) gives memory limits and a hardened profile.
 
 ## Credits
 
