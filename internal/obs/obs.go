@@ -45,6 +45,9 @@ type Metrics struct {
 	Posts *measure.LabeledCounter
 	// PostsRefused counts refused posts by reason.
 	PostsRefused *measure.LabeledCounter
+	// WritesReplayed counts keyed writes that answered their stored first
+	// result.
+	WritesReplayed *measure.Counter
 	// PushDoorUp is 1 for a door that pushes, 0 for one turned off.
 	PushDoorUp *measure.LabeledGauge
 	// PushSends counts push tries by door and outcome.
@@ -70,6 +73,7 @@ func New() *Metrics {
 		StoreStartedEmpty: measure.NewLabeledCounter("store_started_empty_total", "Store opens that started with no rows: a corrupt file moved aside, or a namespace of another format reset.", []string{"reason"}),
 		Posts:             measure.NewLabeledCounter("posts_total", "Posts stored, by thread kind.", []string{"thread_kind"}),
 		PostsRefused:      measure.NewLabeledCounter("posts_refused_total", "Posts refused, by reason.", []string{"reason"}),
+		WritesReplayed:    measure.NewCounter("writes_replayed_total", "Writes sent again with their Idempotency-Key and answered their first result, changing nothing."),
 		PushDoorUp:        measure.NewLabeledGauge("push_door_up", "1 while a push door sends, 0 once a refused credential turned it off.", []string{"door"}),
 		PushSends:         measure.NewLabeledCounter("push_sends_total", "Push tries, by door and outcome.", []string{"door", "outcome"}),
 		ProvidersInvalid:  measure.NewGauge("providers_invalid", "Provider files skipped at load; 1 for a folder that cannot be read."),
@@ -78,7 +82,7 @@ func New() *Metrics {
 		httpRequests:      measure.NewLabeledCounter("http_requests_total", "HTTP requests, by route and status code.", []string{"route", "code"}),
 		httpDuration:      measure.NewLabeledHistogram("http_request_duration_seconds", "HTTP request latency, by route.", []string{"route"}),
 	}
-	m.reg.MustRegister(m.SweepLastSuccess, m.SweepFailures, m.StoreStartedEmpty, m.Posts, m.PostsRefused,
+	m.reg.MustRegister(m.SweepLastSuccess, m.SweepFailures, m.StoreStartedEmpty, m.Posts, m.PostsRefused, m.WritesReplayed,
 		m.PushDoorUp, m.PushSends, m.ProvidersInvalid, m.Nudges, m.NudgeDelay, m.httpRequests, m.httpDuration)
 	for _, r := range []string{StartedEmptyCorrupt, StartedEmptyFormat} {
 		m.StoreStartedEmpty.Add(0, r)

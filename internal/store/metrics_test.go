@@ -167,6 +167,29 @@ func TestMetrics_eachStoredPostIsCountedByItsThreadKind(t *testing.T) {
 	})
 }
 
+func TestMetrics_eachReplayIsCountedAndAFreshWriteIsNot(t *testing.T) {
+	s, _, m := openMetricsStore(t)
+	regAt(t, s, "alpha")
+	regAt(t, s, "bravo")
+	p := posting(sess("alpha"), Target{Agent: "bravo"})
+	sent := keyFor(plain("alpha"), "key-one", "post to bravo")
+	mustKeyedPost(t, s, sent, p)
+	mustPost(t, s, p)
+	if _, replayed, err := s.Post(t.Context(), sent, &p); err != nil || !replayed {
+		t.Fatalf("re-sent Post = replayed %v, %v; want a replay", replayed, err)
+	}
+	if _, found, err := s.ReplayPost(t.Context(), sent); err != nil || !found {
+		t.Fatalf("ReplayPost of the sent key = found %v, %v; want found", found, err)
+	}
+	if _, found, err := s.ReplayPost(t.Context(), keyFor(plain("alpha"), "key-two", "post to bravo")); err != nil || found {
+		t.Fatalf("ReplayPost of an unsent key = found %v, %v; want not found", found, err)
+	}
+	wantSeries(t, page(t, m), map[string]float64{
+		`grelot_writes_replayed_total`:             2,
+		`grelot_posts_total{thread_kind="direct"}`: 2,
+	})
+}
+
 func TestMetrics_aPostTheStoreRefusesCountsNothing(t *testing.T) {
 	m := obs.New()
 	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{Logger: slog.New(newLogSink()), Now: func() time.Time { return testNow }, Metrics: m, MaxBytes: 1})

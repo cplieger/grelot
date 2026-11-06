@@ -6,6 +6,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -121,6 +123,17 @@ type loadReport struct {
 	// HostLoad is the host's one-minute load at the start and the end: the
 	// client shares the server's CPUs, so a busy host slows both.
 	HostLoad [2]string `json:"host_load_start_end"`
+	// Timeouts counts 503 timeout answers, and Resends the writes sent
+	// again with their key after one.
+	Timeouts int64 `json:"timeouts"`
+	Resends  int64 `json:"resends"`
+	// ReplaysAfterTimeout is the server's replay count: the client sends a
+	// write again only after a timeout, so each replay is a write that
+	// committed and answered 503.
+	ReplaysAfterTimeout float64 `json:"replays_after_timeout"`
+	// StoredUnanswered is the posts the server stored less those it
+	// answered 201.
+	StoredUnanswered float64 `json:"stored_unanswered"`
 }
 
 func TestLoad(t *testing.T) {
@@ -145,10 +158,11 @@ func TestLoad(t *testing.T) {
 	var bg sync.WaitGroup
 	bg.Go(func() { child.sample(ctx, c, rep) })
 
+	var cnt loadCounts
 	agents := make([]*loadAgent, n)
 	for i := range agents {
 		agents[i] = &loadAgent{i: i, name: fmt.Sprintf("agent-%03d", i), session: "load:session-" + strconv.Itoa(i)}
-		agents[i].register(t, c)
+		agents[i].register(t, c, &cnt)
 	}
 
 	var (
@@ -156,11 +170,10 @@ func TestLoad(t *testing.T) {
 		fullAt    time.Time
 		stopOnce  sync.Once
 		latencies = make(chan time.Duration, 1<<16)
-		cnt       loadCounts
 	)
 	body := strings.Repeat("0123456789abcdef", loadBodyLen/16)
 	subject := strings.Repeat("s", loadSubjectLen)
-	checkPastTheLimits(t, c, agents[0], subject, body)
+	checkPastTheLimits(t, c, &cnt, agents[0], subject, body)
 	start := time.Now()
 	stopPosting := make(chan struct{})
 	stop := func(atFull bool) {
@@ -195,10 +208,10 @@ func TestLoad(t *testing.T) {
 	}
 
 	// Writes that free space or keep state honest still go through.
-	if code := agents[0].renew(t.Context(), c); code != http.StatusOK {
+	if code := agents[0].renew(t.Context(), c, &cnt); code != http.StatusOK {
 		t.Errorf("a renewal past the ceiling answered %d, want 200", code)
 	}
-	if got, _ := agents[1].postOnce(t.Context(), c, n, 0, subject, body); full.Load() && got.status != http.StatusInsufficientStorage {
+	if got, _ := agents[1].postOnce(t.Context(), c, &cnt, n, 0, subject, body); full.Load() && got.status != http.StatusInsufficientStorage {
 		t.Errorf("a post past the ceiling answered %d, want 507", got.status)
 	}
 	for end := time.Now().Add(turn + 10*time.Second); cnt.acksAfterFull.Load() == 0 && time.Now().Before(end); {
@@ -207,6 +220,12 @@ func TestLoad(t *testing.T) {
 	cancel()
 	readers.Wait()
 	bg.Wait()
+	end := c.scrape(t.Context())
+	rep.ReplaysAfterTimeout = end["grelot_writes_replayed_total"]
+	rep.StoredUnanswered = -float64(cnt.posts.Load())
+	for _, kind := range []string{"announce", "path", "direct"} {
+		rep.StoredUnanswered += end[`grelot_posts_total{thread_kind="`+kind+`"}`]
+	}
 	rep.HostLoad[1] = hostLoad()
 	child.stop(t)
 
@@ -222,6 +241,7 @@ func TestLoad(t *testing.T) {
 	}
 	rep.InboxPages, rep.Acks, rep.AcksAfterFull, rep.Nudges = cnt.pages.Load(), cnt.acks.Load(), cnt.acksAfterFull.Load(), cnt.nudges.Load()
 	rep.RateLimited, rep.UnexpectedReplies, rep.Unexpected = cnt.rateLimited.Load(), cnt.unexpected.Load(), cnt.unexpectedBy
+	rep.Timeouts, rep.Resends = cnt.timeouts.Load(), cnt.resends.Load()
 	rep.ErrorLines = int64(len(child.errorLines))
 	for _, line := range child.errorLines[:min(5, len(child.errorLines))] {
 		t.Logf("server: %s", line)
@@ -259,6 +279,12 @@ func TestLoad(t *testing.T) {
 	if rep.UnexpectedReplies != 0 {
 		t.Errorf("%d unexpected replies", rep.UnexpectedReplies)
 	}
+	if rep.ReplaysAfterTimeout != 0 {
+		t.Errorf("%.0f writes answered 503 timeout had committed: their re-send replayed the first result", rep.ReplaysAfterTimeout)
+	}
+	if rep.StoredUnanswered != 0 {
+		t.Errorf("%.0f posts stored that were never answered 201", rep.StoredUnanswered)
+	}
 	if rep.HealthzFailures != 0 {
 		t.Errorf("/healthz failed %d times under load", rep.HealthzFailures)
 	}
@@ -273,6 +299,7 @@ func TestLoad(t *testing.T) {
 type loadCounts struct {
 	unexpectedBy                                                                   map[string]int64
 	posts, deliveries, pages, acks, acksAfterFull, nudges, rateLimited, unexpected atomic.Int64
+	timeouts, resends                                                              atomic.Int64
 	byKind                                                                         [3]atomic.Int64
 	mu                                                                             sync.Mutex
 }
@@ -295,36 +322,77 @@ type loadClient struct {
 // do sends one request as session, or with no session when it is empty,
 // and decodes a JSON reply into out when out is not nil.
 func (c *loadClient) do(ctx context.Context, method, path, session string, in, out any) (int, error) {
+	code, _, err := c.send(ctx, method, path, session, "", in, out)
+	return code, err
+}
+
+// write sends a keyed write with a new key, and once more with the same
+// key a second after a 503 timeout, as grelot's client does.
+func (c *loadClient) write(ctx context.Context, cnt *loadCounts, method, path, session string, in, out any) (int, error) {
+	raw := make([]byte, 16)
+	_, _ = rand.Read(raw)
+	key := `"` + base64.RawURLEncoding.EncodeToString(raw) + `"`
+	for sent := 0; ; sent++ {
+		code, why, err := c.send(ctx, method, path, session, key, in, out)
+		if code != http.StatusServiceUnavailable || why != "timeout" {
+			return code, err
+		}
+		cnt.timeouts.Add(1)
+		if sent == 1 {
+			return code, err
+		}
+		cnt.resends.Add(1)
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		case <-time.After(time.Second):
+		}
+	}
+}
+
+// send is do with key as the Idempotency-Key when it is not empty, and
+// returns an error answer's code.
+func (c *loadClient) send(ctx context.Context, method, path, session, key string, in, out any) (int, string, error) {
 	var body io.Reader = http.NoBody
 	if in != nil {
 		raw, err := json.Marshal(in)
 		if err != nil {
-			return 0, err
+			return 0, "", err
 		}
 		body = bytes.NewReader(raw)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, body)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	req.Header.Set("Authorization", "Bearer "+loadToken)
 	req.Header.Set("Grelot-Version", "v1.1.0")
 	if session != "" {
 		req.Header.Set("Grelot-Session", session)
 	}
+	if key != "" {
+		req.Header.Set("Idempotency-Key", key)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	defer resp.Body.Close()
-	if out != nil && resp.StatusCode/100 == 2 && resp.StatusCode != http.StatusNoContent {
+	var refusal struct {
+		Code string `json:"code"`
+	}
+	switch {
+	case resp.StatusCode >= 400:
+		_ = json.NewDecoder(resp.Body).Decode(&refusal)
+	case out != nil && resp.StatusCode/100 == 2 && resp.StatusCode != http.StatusNoContent:
 		err = json.NewDecoder(resp.Body).Decode(out)
 	}
 	_, _ = io.Copy(io.Discard, resp.Body)
-	return resp.StatusCode, err
+	return resp.StatusCode, refusal.Code, err
 }
 
-// scrape reads the unlabelled series of /metrics.
+// scrape reads every series of /metrics, its labels included as the page
+// prints them.
 func (c *loadClient) scrape(ctx context.Context) map[string]float64 {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/metrics", http.NoBody)
 	if err != nil {
@@ -338,12 +406,13 @@ func (c *loadClient) scrape(ctx context.Context) map[string]float64 {
 	out := map[string]float64{}
 	sc := bufio.NewScanner(resp.Body)
 	for sc.Scan() {
-		name, value, ok := strings.Cut(sc.Text(), " ")
-		if !ok || strings.HasPrefix(name, "#") || strings.Contains(name, "{") {
+		line := sc.Text()
+		i := strings.LastIndexByte(line, ' ')
+		if i < 0 || strings.HasPrefix(line, "#") {
 			continue
 		}
-		if v, err := strconv.ParseFloat(value, 64); err == nil {
-			out[name] = v
+		if v, err := strconv.ParseFloat(line[i+1:], 64); err == nil {
+			out[line[:i]] = v
 		}
 	}
 	return out
@@ -362,9 +431,9 @@ func (a *loadAgent) where() map[string]any {
 	}
 }
 
-func (a *loadAgent) register(t *testing.T, c *loadClient) {
+func (a *loadAgent) register(t *testing.T, c *loadClient, cnt *loadCounts) {
 	t.Helper()
-	code, err := c.do(t.Context(), http.MethodPost, "/v1/register", a.session, map[string]any{
+	code, err := c.write(t.Context(), cnt, http.MethodPost, "/v1/register", a.session, map[string]any{
 		"name": a.name, "paths": []string{a.repo()}, "description": "load", "host": "load", "os": "linux",
 		"arch": "amd64", "ttl": "6h", "where": a.where(),
 	}, nil)
@@ -373,8 +442,8 @@ func (a *loadAgent) register(t *testing.T, c *loadClient) {
 	}
 }
 
-func (a *loadAgent) renew(ctx context.Context, c *loadClient) int {
-	code, _ := c.do(ctx, http.MethodPatch, "/v1/me", a.session, map[string]any{"ttl": "6h", "where": a.where()}, nil)
+func (a *loadAgent) renew(ctx context.Context, c *loadClient, cnt *loadCounts) int {
+	code, _ := c.write(ctx, cnt, http.MethodPatch, "/v1/me", a.session, map[string]any{"ttl": "6h", "where": a.where()}, nil)
 	return code
 }
 
@@ -424,7 +493,7 @@ func (a *loadAgent) read(ctx context.Context, c *loadClient, turn, offset time.D
 			if len(page.Entries) == 0 {
 				break
 			}
-			code, err = c.do(ctx, http.MethodPost, "/v1/inbox/ack", a.session, map[string]uint64{"upto": page.Entries[len(page.Entries)-1].Seq}, nil)
+			code, err = c.write(ctx, cnt, http.MethodPost, "/v1/inbox/ack", a.session, map[string]uint64{"upto": page.Entries[len(page.Entries)-1].Seq}, nil)
 			if ctx.Err() != nil {
 				return
 			}
@@ -461,7 +530,7 @@ func (a *loadAgent) post(ctx context.Context, c *loadClient, stop <-chan struct{
 		}
 		timer.Reset(loadPostEvery)
 		began := time.Now()
-		got, kind := a.postOnce(ctx, c, n, k, subject, body)
+		got, kind := a.postOnce(ctx, c, cnt, n, k, subject, body)
 		switch got.status {
 		case http.StatusCreated:
 			select {
@@ -487,7 +556,7 @@ func (a *loadAgent) post(ctx context.Context, c *loadClient, stop <-chan struct{
 // checkPastTheLimits posts one character of subject, one byte of message
 // body and one byte of request body past the API's limits, and requires
 // each refused. A refused post gives its rate-limit slot back.
-func checkPastTheLimits(t *testing.T, c *loadClient, a *loadAgent, subject, body string) {
+func checkPastTheLimits(t *testing.T, c *loadClient, cnt *loadCounts, a *loadAgent, subject, body string) {
 	t.Helper()
 	for _, tc := range []struct {
 		name string
@@ -501,7 +570,7 @@ func checkPastTheLimits(t *testing.T, c *loadClient, a *loadAgent, subject, body
 		// Everything else is what every accepted post below sends.
 		tc.post["to"] = "announce"
 		tc.post["identity"] = map[string]any{"name": "no change", "description": "no change", "paths": []string{"no change"}}
-		code, err := c.do(t.Context(), http.MethodPost, "/v1/posts", a.session, tc.post, nil)
+		code, err := c.write(t.Context(), cnt, http.MethodPost, "/v1/posts", a.session, tc.post, nil)
 		if err != nil || code != tc.want {
 			t.Errorf("%s answered %d (%v), want %d", tc.name, code, err, tc.want)
 		}
@@ -514,7 +583,7 @@ type postReply struct {
 
 // postOnce sends the agent's kth post: an announcement every tenth, else a
 // path post to one of the repos or a direct post to another agent in turn.
-func (a *loadAgent) postOnce(ctx context.Context, c *loadClient, n, k int, subject, body string) (postReply, int) {
+func (a *loadAgent) postOnce(ctx context.Context, c *loadClient, cnt *loadCounts, n, k int, subject, body string) (postReply, int) {
 	var to any
 	kind := 0
 	switch {
@@ -534,7 +603,7 @@ func (a *loadAgent) postOnce(ctx context.Context, c *loadClient, n, k int, subje
 			Total int `json:"total"`
 		} `json:"recipients"`
 	}
-	code, err := c.do(ctx, http.MethodPost, "/v1/posts", a.session, map[string]any{
+	code, err := c.write(ctx, cnt, http.MethodPost, "/v1/posts", a.session, map[string]any{
 		"to": to, "subject": subject, "body": body,
 		"identity": map[string]any{"name": "no change", "description": "no change", "paths": []string{"no change"}},
 	}, &out)

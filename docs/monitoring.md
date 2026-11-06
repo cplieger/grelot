@@ -46,6 +46,7 @@ The image's healthcheck runs `grelot health` every 30 seconds. That command requ
 | `grelot_store_started_empty_total{reason}` | counter | Starts that dropped stored data: `corrupt` for a file moved aside, `format` for data of another format that the server reset |
 | `grelot_posts_total{thread_kind}` | counter | Posts stored, by thread kind |
 | `grelot_posts_refused_total{reason}` | counter | Posts refused: `store_full`, `rate_limited` or `scope` |
+| `grelot_writes_replayed_total` | counter | Writes a client sent again with their `Idempotency-Key` that answered their first result and changed nothing. Each one is a first answer the client never got, such as one the network or a proxy cut off |
 | `grelot_nudges_total{via,attempt}` | counter | Nudges by channel, `push`, `watcher` or `hook`, and by `first` or `repeat` |
 | `grelot_nudge_delay_seconds{via}` | histogram | Time from the oldest post in a batch to its nudge |
 | `grelot_push_door_up{door}` | gauge | `1` while a push door sends, `0` once a refused credential turned it off |

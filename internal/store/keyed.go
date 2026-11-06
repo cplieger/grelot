@@ -77,6 +77,7 @@ func keyed[T any](ctx context.Context, s *Store, k Keyed, fn func(*wtx) (T, erro
 	})
 	switch {
 	case errors.Is(err, errReplay):
+		s.m.WritesReplayed.Inc()
 		return out, true, nil
 	case err != nil:
 		var zero T
@@ -119,6 +120,7 @@ func replay[T any](ctx context.Context, s *Store, k *Keyed) (out T, found bool, 
 		var zero T
 		return zero, false, err
 	}
+	s.m.WritesReplayed.Inc()
 	return out, true, nil
 }
 
