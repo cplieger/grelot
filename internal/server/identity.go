@@ -81,12 +81,12 @@ const noEnvironmentLine = "this session has no environment id: another session c
 // register is POST /v1/register: a new identity (201), a take-over (201),
 // the session's live identity unchanged (200), or with delegate a
 // delegate's registration from its link (201).
-func (s *Server) register(r *http.Request, c store.Caller) (status int, body any, err error) {
+func (s *Server) register(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
 	var req registerRequest
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	got, _, err := s.store.Register(r.Context(), store.Keyed{}, &store.Registration{
+	got, replayed, err := s.store.Register(r.Context(), k, &store.Registration{
 		Where: req.Where, Session: c.Session, Link: req.Delegate,
 		Host: req.Host, OS: req.OS, Arch: req.Arch, Proc: req.Proc,
 		Fields: store.Fields{Name: req.Name, Description: req.Description, Paths: req.Paths},
@@ -98,14 +98,17 @@ func (s *Server) register(r *http.Request, c store.Caller) (status int, body any
 	status = http.StatusCreated
 	if got.Existing {
 		status = http.StatusOK
-	} else {
-		s.presence.registered(got.Identity.ID)
 	}
-	if req.Delegate == "" {
-		s.push.registered(got.Identity.ID, got.Identity.Provider, got.Identity.Host)
-	}
-	if got.Moved {
-		s.rewait(got.Identity.ID)
+	if !replayed {
+		if !got.Existing {
+			s.presence.registered(got.Identity.ID)
+		}
+		if req.Delegate == "" {
+			s.push.registered(got.Identity.ID, got.Identity.Provider, got.Identity.Host)
+		}
+		if got.Moved {
+			s.rewait(got.Identity.ID)
+		}
 	}
 	out := registerResponse{Identity: identityOut(&got.Identity), Existing: got.Existing, Moved: got.Moved}
 	if req.Delegate == "" && !got.Identity.EnvironmentKnown {
@@ -133,22 +136,24 @@ type reviveResponse struct {
 
 // revive is POST /v1/revive: this session's dormant identity, or with name
 // a dormant one of this environment and provider moved to this session.
-func (s *Server) revive(r *http.Request, c store.Caller) (status int, body any, err error) {
+func (s *Server) revive(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
 	var req reviveRequest
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	got, _, err := s.store.Revive(r.Context(), store.Keyed{}, &store.Revival{
+	got, replayed, err := s.store.Revive(r.Context(), k, &store.Revival{
 		Where: req.Where, Session: c.Session, Name: req.Name,
 		Host: req.Host, OS: req.OS, Arch: req.Arch, Proc: req.Proc, TTL: time.Duration(req.TTL),
 	})
 	if err != nil {
 		return 0, nil, err
 	}
-	s.presence.registered(got.Identity.ID)
-	s.push.registered(got.Identity.ID, got.Identity.Provider, got.Identity.Host)
-	if got.Moved {
-		s.rewait(got.Identity.ID)
+	if !replayed {
+		s.presence.registered(got.Identity.ID)
+		s.push.registered(got.Identity.ID, got.Identity.Provider, got.Identity.Host)
+		if got.Moved {
+			s.rewait(got.Identity.ID)
+		}
 	}
 	out := reviveResponse{Identity: identityOut(&got.Identity), Unread: got.Unread, Moved: got.Moved}
 	if !got.Identity.EnvironmentKnown {
@@ -347,12 +352,12 @@ type identityResponse struct {
 
 // patchMe is PATCH /v1/me: new fields, with where when paths change, or
 // with {ttl, where} a renewal of the lease.
-func (s *Server) patchMe(r *http.Request, c store.Caller) (status int, body any, err error) {
+func (s *Server) patchMe(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
 	var req patchRequest
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	got, _, err := s.store.Set(r.Context(), store.Keyed{}, c, store.Change{
+	got, _, err := s.store.Set(r.Context(), k, c, store.Change{
 		Where: req.Where, TTL: time.Duration(req.TTL),
 		Fields: store.Fields{Name: req.Name, Description: req.Description, Paths: req.Paths},
 	})
@@ -363,16 +368,14 @@ func (s *Server) patchMe(r *http.Request, c store.Caller) (status int, body any,
 }
 
 // deleteMe is DELETE /v1/me, grelot bye.
-func (s *Server) deleteMe(r *http.Request, c store.Caller) (status int, body any, err error) {
-	ctx := r.Context()
-	st, err := s.store.Status(ctx, c)
+func (s *Server) deleteMe(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
+	id, replayed, err := s.store.Retire(r.Context(), k, c)
 	if err != nil {
 		return 0, nil, err
 	}
-	if _, err := s.store.Retire(ctx, store.Keyed{}, c); err != nil {
-		return 0, nil, err
+	if !replayed {
+		s.rewait(id)
 	}
-	s.rewait(st.Identity.ID)
 	return http.StatusOK, map[string]bool{"retired": true}, nil
 }
 

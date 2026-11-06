@@ -212,13 +212,13 @@ func TestReplayPost_readsTheStoredFirstResult(t *testing.T) {
 func TestKeyedWrites_reSendAnswersTheFirstResultWhereARunWouldRefuse(t *testing.T) {
 	t.Run("retire", func(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
-		regAt(t, s, "alpha")
+		alpha := regAt(t, s, "alpha").ID
 		k := keyFor(plain("alpha"), "key-one", "retire")
-		if replayed, err := s.Retire(t.Context(), k, plain("alpha")); err != nil || replayed {
-			t.Fatalf("Retire = replayed %v, %v; want a fresh retirement", replayed, err)
+		if id, replayed, err := s.Retire(t.Context(), k, plain("alpha")); err != nil || replayed || id != alpha {
+			t.Fatalf("Retire = %d, replayed %v, %v; want a fresh retirement of %d", id, replayed, err, alpha)
 		}
-		if replayed, err := s.Retire(t.Context(), k, plain("alpha")); err != nil || !replayed {
-			t.Errorf("re-sent Retire = replayed %v, %v; want a replay, not KindGone", replayed, err)
+		if id, replayed, err := s.Retire(t.Context(), k, plain("alpha")); err != nil || !replayed || id != alpha {
+			t.Errorf("re-sent Retire = %d, replayed %v, %v; want a replay of %d, not KindGone", id, replayed, err, alpha)
 		}
 	})
 	t.Run("delegate link", func(t *testing.T) {

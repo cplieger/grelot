@@ -53,7 +53,7 @@ func TestPost_refusedOnlyPastNinetyPercentOfTheDefaultCeiling(t *testing.T) {
 	if _, _, err := s.Revive(t.Context(), Keyed{}, new(revival(sessA, "", envA()))); err != nil {
 		t.Errorf("a revival on a nearly full store: %v", err)
 	}
-	if _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("bravo")}); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("bravo")}); err != nil {
 		t.Errorf("a retirement on a nearly full store: %v", err)
 	}
 }

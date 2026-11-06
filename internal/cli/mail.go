@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/cplieger/grelot/internal/canon"
 	"github.com/cplieger/grelot/internal/client"
@@ -207,21 +206,15 @@ func notifyRead(names list) any {
 	return out
 }
 
-// unknownOutcome reads a post's or reservation's timeout: the request is
-// sent once, and the server may have done it.
+// unknownOutcome reads a post's or reservation's timeout: no attempt of
+// the call was answered in its budget, and the server may have done it.
+// Running the command again sends a new key, so it would do it twice.
 func unknownOutcome(err error) error {
 	if ue, ok := errors.AsType[*client.UnreachableError](err); ok && ue.Timeout {
 		return errors.New("grelot: the server did not answer in time, so the outcome is unknown: check grelot history --from @me or grelot reservations before you try again")
 	}
 	return err
 }
-
-// ackTries is how many times an inbox ack is sent before the page is
-// reported as liable to show again; ackBackoff is the first wait.
-const (
-	ackTries   = 4
-	ackBackoff = 100 * time.Millisecond
-)
 
 func (r *run) inbox(ctx context.Context, args []string) error {
 	fs := flags(r.verb)
@@ -271,24 +264,7 @@ func (r *run) showPage(ctx context.Context, page *client.Inbox) error {
 // ack sends POST /v1/inbox/ack, retried, since read only moves forward.
 func (r *run) ack(ctx context.Context, upto uint64) (client.Acked, error) {
 	var got client.Acked
-	var err error
-	wait := ackBackoff
-	for try := range ackTries {
-		if try > 0 {
-			t := time.NewTimer(wait)
-			select {
-			case <-ctx.Done():
-				t.Stop()
-				return got, ctx.Err()
-			case <-t.C:
-			}
-			wait *= 2
-		}
-		req := &client.Request{Method: http.MethodPost, Path: "/v1/inbox/ack", Body: map[string]uint64{"upto": upto}}
-		if err = r.peek(ctx, req, &got); err == nil || ctx.Err() != nil {
-			return got, err
-		}
-	}
+	err := r.peek(ctx, &client.Request{Method: http.MethodPost, Path: "/v1/inbox/ack", Body: map[string]uint64{"upto": upto}}, &got)
 	return got, err
 }
 

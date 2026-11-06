@@ -8,8 +8,11 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/cplieger/grelot/internal/protopath"
@@ -120,5 +123,98 @@ func TestDo_wrongTokenIsRefused(t *testing.T) {
 	var ae *APIError
 	if !errors.As(err, &ae) || ae.HTTP != http.StatusUnauthorized || !strings.Contains(ae.Msg, "token") {
 		t.Errorf("err = %v, want the 401 naming the token", err)
+	}
+}
+
+// dropFirstPost fronts server and answers its first POST /v1/posts by
+// letting the server commit it and then closing the connection unanswered,
+// keeping each post's Idempotency-Key.
+func dropFirstPost(t *testing.T, server string) (front string, keys func() []string) {
+	t.Helper()
+	target, err := url.Parse(server)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	var mu sync.Mutex
+	var seen []string
+	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// One request per connection: net/http re-sends a keyed request
+		// itself when a reused connection drops, which would leave the
+		// client's own retry untested.
+		w.Header().Set("Connection", "close")
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/posts" {
+			proxy.ServeHTTP(w, r)
+			return
+		}
+		mu.Lock()
+		seen = append(seen, r.Header.Get("Idempotency-Key"))
+		first := len(seen) == 1
+		mu.Unlock()
+		if !first {
+			proxy.ServeHTTP(w, r)
+			return
+		}
+		proxy.ServeHTTP(httptest.NewRecorder(), r)
+		conn, _, err := http.NewResponseController(w).Hijack()
+		if err != nil {
+			t.Errorf("hijack: %v", err)
+			return
+		}
+		_ = conn.Close()
+	}))
+	t.Cleanup(hs.Close)
+	return hs.URL, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), seen...)
+	}
+}
+
+func TestDo_aPostCommittedButUnansweredIsReSentWithItsKeyAndAnswersItsFirstResult(t *testing.T) {
+	front, keys := dropFirstPost(t, realServer(t))
+	sender, _ := newTestAPI(t, front, "v1.1.0")
+	sender.Session = "alpha:s-1"
+	reader, _ := newTestAPI(t, front, "v1.1.0")
+	reader.Session = "alpha:s-2"
+	for _, r := range []struct {
+		api  *API
+		name string
+	}{{sender, "sender-dev"}, {reader, "reader-dev"}} {
+		if _, err := r.api.Do(t.Context(), &Request{Method: http.MethodPost, Path: "/v1/register", Body: registerBody(r.name)}, nil); err != nil {
+			t.Fatalf("register %s: %v", r.name, err)
+		}
+	}
+	noChange := map[string]any{"name": store.NoChange, "description": store.NoChange, "paths": []string{store.NoChange}}
+
+	var posted struct {
+		Message uint64 `json:"message"`
+	}
+	_, err := sender.Do(t.Context(), &Request{Method: http.MethodPost, Path: "/v1/posts", Body: map[string]any{
+		"to": map[string]string{"agent": "reader-dev"}, "subject": "once", "body": "a body", "identity": noChange,
+	}}, &posted)
+	if err != nil {
+		t.Fatalf("post: %v, want the first result", err)
+	}
+	if k := keys(); len(k) != 2 || k[0] == "" || k[1] != k[0] {
+		t.Errorf("the post's attempts sent keys %q, want two attempts with one key", k)
+	}
+	var history struct {
+		Entries []struct {
+			Subject string `json:"subject"`
+			Message uint64 `json:"message"`
+		} `json:"entries"`
+	}
+	if _, err := reader.Do(t.Context(), &Request{Method: http.MethodGet, Path: "/v1/history"}, &history); err != nil {
+		t.Fatalf("history: %v", err)
+	}
+	var stored []uint64
+	for _, e := range history.Entries {
+		if e.Subject == "once" {
+			stored = append(stored, e.Message)
+		}
+	}
+	if len(stored) != 1 || stored[0] != posted.Message || posted.Message == 0 {
+		t.Errorf("reader's history holds messages %v of the post, want only the answered %d", stored, posted.Message)
 	}
 }

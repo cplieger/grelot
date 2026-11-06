@@ -58,7 +58,7 @@ func TestAddressee_leavesOutWhatIsNeverPushed(t *testing.T) {
 	s, clk := openClockStore(t)
 	parent, delegate := delegateOf(t, s, "alpha", "review")
 	retired := regAt(t, s, "bravo")
-	if _, err := s.Retire(t.Context(), Keyed{}, plain("bravo")); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, plain("bravo")); err != nil {
 		t.Fatal(err)
 	}
 	short := registration(sess("charlie"), "charlie", envA())

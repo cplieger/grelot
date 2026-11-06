@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -132,7 +134,7 @@ func newHarness(t *testing.T) *harness {
 }
 
 // newHarnessWith is newHarness over a store opened with o, its logger,
-// clock and path root set by the harness.
+// clock and path root set by the harness; o.Woke runs before the hub's.
 func newHarnessWith(t *testing.T, o store.Options, edits ...func(*Options)) *harness {
 	t.Helper()
 	clk := &clock{t: testNow}
@@ -161,6 +163,12 @@ func buildHarness(t *testing.T, o store.Options, now func() time.Time, edits ...
 		hub := NewHub()
 		m := obs.New()
 		so.Logger, so.Now, so.PathRoot, so.Woke, so.Metrics = logger, now, protopath.DefaultRoot, hub.Woke, m
+		if before := o.Woke; before != nil {
+			so.Woke = func(ids []uint64) {
+				before(ids)
+				hub.Woke(ids)
+			}
+		}
 		st, err := store.Open(h.dbPath, &so)
 		if err != nil {
 			t.Fatalf("store.Open: %v", err)
@@ -263,6 +271,13 @@ func (r *response) str(key string) string {
 // body encoded as JSON when it is not nil.
 func (h *harness) request(method, path string, body any, headers map[string]string) *response {
 	h.t.Helper()
+	return h.requestCtx(h.t.Context(), method, path, body, headers)
+}
+
+// requestCtx is request under ctx, whose deadline the route's own sits
+// under only when the harness serves in process.
+func (h *harness) requestCtx(ctx context.Context, method, path string, body any, headers map[string]string) *response {
+	h.t.Helper()
 	var rd io.Reader = http.NoBody
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -275,12 +290,15 @@ func (h *harness) request(method, path string, body any, headers map[string]stri
 	if h.http != nil {
 		base = h.http.URL
 	}
-	req, err := http.NewRequestWithContext(h.t.Context(), method, base+path, rd)
+	req, err := http.NewRequestWithContext(ctx, method, base+path, rd)
 	if err != nil {
 		h.t.Fatal(err)
 	}
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	req.Header.Set(headerVersion, testVersion)
+	if route, _, _ := strings.Cut(path, "?"); method != http.MethodGet && !sentOnce[route] {
+		req.Header.Set(headerKey, newTestKey())
+	}
 	for k, v := range headers {
 		if v == "" {
 			req.Header.Del(k)
@@ -295,6 +313,15 @@ func (h *harness) request(method, path string, body any, headers map[string]stri
 	_ = json.Unmarshal(raw, &out.body)
 	return out
 }
+
+// sentOnce are the write routes that take no Idempotency-Key; request
+// keys every other write with a new key unless headers name one.
+var sentOnce = map[string]bool{"/v1/lifecycle": true, "/v1/events/hold": true, "/v1/events/wait": true}
+
+var testKeys atomic.Uint64
+
+// newTestKey is a key no other request of the test binary sends.
+func newTestKey() string { return fmt.Sprintf(`"test-key-%016d"`, testKeys.Add(1)) }
 
 // do sends req over the network, or in process for a bubble harness.
 func (h *harness) do(req *http.Request) *http.Response {

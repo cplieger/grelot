@@ -624,7 +624,7 @@ func TestSeen_forgetsAnIdentityOnceItIsGone(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sessA}); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sessA}); err != nil {
 		t.Fatal(err)
 	}
 	if got := seenIDs(s); !slices.Equal(got, []uint64{b.ID}) {
@@ -645,7 +645,7 @@ func TestSweep_dropsARequestTimeNotedAfterTheRetirement(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
 	a := mustRegister(t, s, registration(sessA, "agent-a", envA()))
 	b := mustRegister(t, s, registration(sessB, "agent-b", envA()))
-	if _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sessA}); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sessA}); err != nil {
 		t.Fatal(err)
 	}
 	clk.advance(time.Minute)

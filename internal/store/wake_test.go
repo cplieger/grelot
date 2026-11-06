@@ -208,7 +208,7 @@ func TestLive_keepsOnlyTheLiveIdentities(t *testing.T) {
 	mustSweep(t, s)
 	live := regAt(t, s, "bravo")
 	retired := regAt(t, s, "charlie")
-	if _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("charlie")}); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("charlie")}); err != nil {
 		t.Fatalf("Retire: %v", err)
 	}
 	got, err := s.Live(t.Context(), []uint64{dormant.ID, live.ID, retired.ID, 999})

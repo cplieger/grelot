@@ -49,7 +49,9 @@ func (s *Server) eventHold(r *http.Request, c store.Caller) (status int, body an
 	}
 	id := held.Identity.ID
 	s.presence.sawStop(id)
-	st, err := s.store.Status(ctx, c)
+	// Hold may have committed: a deadline passing now must not answer an
+	// error for it.
+	st, err := s.store.Status(context.WithoutCancel(ctx), c)
 	if err != nil {
 		return 0, nil, err
 	}

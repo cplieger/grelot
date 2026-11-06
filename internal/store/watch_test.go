@@ -90,7 +90,7 @@ func TestNotifyRead_retiredRecipientsCountApartAndComplete(t *testing.T) {
 	msg := mustPost(t, s, watchedPost("alpha", Target{Path: repoSubflux}, NotifyRead{All: true})).Message
 	readAll(t, s, "bravo")
 	readAll(t, s, "delta")
-	if _, err := s.Retire(t.Context(), Keyed{}, plain("charlie")); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, plain("charlie")); err != nil {
 		t.Fatal(err)
 	}
 	wantEvents(t, s, sender.ID, kindReceiptsComplete,
@@ -186,7 +186,7 @@ func TestNotifyRead_byFiresReceiptsDueWithTheStragglers(t *testing.T) {
 	regAt(t, s, "echo")
 	msg := mustPost(t, s, watchedPost("alpha", Target{Path: repoSubflux}, NotifyRead{All: true, By: time.Hour})).Message
 	readAll(t, s, "bravo")
-	if _, err := s.Retire(t.Context(), Keyed{}, plain("echo")); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, plain("echo")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -272,7 +272,7 @@ func TestNotifyRead_endsWithItsSendersRetirementOrPurge(t *testing.T) {
 		regAt(t, s, "alpha")
 		regAt(t, s, "bravo")
 		mustPost(t, s, watchedPost("alpha", Target{Agent: "bravo"}, NotifyRead{All: true, By: time.Hour}))
-		if _, err := s.Retire(t.Context(), Keyed{}, plain("alpha")); err != nil {
+		if _, _, err := s.Retire(t.Context(), Keyed{}, plain("alpha")); err != nil {
 			t.Fatal(err)
 		}
 		if n := watchCount(t, s); n != 0 {

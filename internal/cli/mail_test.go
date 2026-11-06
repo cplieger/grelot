@@ -12,7 +12,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -345,24 +347,37 @@ func TestPost_anUnreachableServerIsNoUnknownOutcome(t *testing.T) {
 }
 
 // flakyAcks fronts ts and answers its first fails inbox acks 503,
-// counting every ack it sees.
-func flakyAcks(t *testing.T, ts *testServer, fails int32) (string, *atomic.Int32) {
+// counting every ack it sees and keeping each one's Idempotency-Key.
+func flakyAcks(t *testing.T, ts *testServer, fails int32) (front string, acks *atomic.Int32, keys func() []string) {
 	t.Helper()
 	target, err := url.Parse(ts.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	proxy := httputil.NewSingleHostReverseProxy(target)
-	var acks atomic.Int32
+	acks = &atomic.Int32{}
+	var mu sync.Mutex
+	var seen []string
 	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost && r.URL.Path == "/v1/inbox/ack" && acks.Add(1) <= fails {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/inbox/ack" {
+			proxy.ServeHTTP(w, r)
+			return
+		}
+		mu.Lock()
+		seen = append(seen, r.Header.Get("Idempotency-Key"))
+		mu.Unlock()
+		if acks.Add(1) <= fails {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
 		proxy.ServeHTTP(w, r)
 	}))
 	t.Cleanup(hs.Close)
-	return hs.URL, &acks
+	return hs.URL, acks, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(seen)
+	}
 }
 
 func TestInbox_printsEachEntryWithItsSenderThenMarksItRead(t *testing.T) {
@@ -445,7 +460,10 @@ func TestInbox_aPageSmallerThanTheUnreadCountSaysWhatIsLeft(t *testing.T) {
 	}
 }
 
-func TestInbox_retriesAFailedAck(t *testing.T) {
+// TestInbox_theAckIsOneKeyedCall pins the ack as one call: the transport
+// sends it at most 3 times (httpclient.DefaultMaxAttempts), each with the
+// call's one Idempotency-Key.
+func TestInbox_theAckIsOneKeyedCall(t *testing.T) {
 	cases := []struct {
 		name      string
 		fails     int32
@@ -453,8 +471,8 @@ func TestInbox_retriesAFailedAck(t *testing.T) {
 		wantLine  bool
 		wantAgain bool
 	}{
-		{"recovered", 3, 4, false, false},
-		{"failed", 4, 4, true, true},
+		{"recovered", 2, 3, false, false},
+		{"failed", 3, 3, true, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -463,12 +481,15 @@ func TestInbox_retriesAFailedAck(t *testing.T) {
 			b, _ := registerAt(t, ts, "s-2", "bee-dev")
 			a.must("inbox")
 			id := b.mustPost("x", append([]string{"@ant-dev", "Hello"}, keep...)...)
-			front, acks := flakyAcks(t, ts, c.fails)
+			front, acks, keys := flakyAcks(t, ts, c.fails)
 			writeClientConfig(t, a.env.ConfigDir, "server: "+front+"\ntoken: test-token\nhost: box\n")
 
 			out := a.must("inbox")
 			if got := acks.Load(); got != c.wantAcks {
 				t.Errorf("acks sent = %d, want %d", got, c.wantAcks)
+			}
+			if k := keys(); len(k) == 0 || k[0] == "" || slices.ContainsFunc(k, func(v string) bool { return v != k[0] }) {
+				t.Errorf("ack keys = %q, want one key on every attempt", k)
 			}
 			if got := strings.Contains(out, "grelot: the ack failed; this page may show again\n"); got != c.wantLine {
 				t.Errorf("output = %q, want the ack failure line: %v", out, c.wantLine)

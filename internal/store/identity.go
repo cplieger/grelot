@@ -371,36 +371,36 @@ func (s *Store) EndSession(ctx context.Context, session string) error {
 // paths, frees its name, hands its reservations to their queues, and ends
 // its delegates and unused links; a delegate's retirement ends only it.
 // It ends the receipt watches it sent and leaves, counted retired, those
-// waiting for it. Its delivery rows stay until their own expiry. A
-// session with no live identity is KindGone.
-func (s *Store) Retire(ctx context.Context, k Keyed, c Caller) (bool, error) {
-	_, replayed, err := keyed(ctx, s, k, func(w *wtx) (struct{}, error) {
+// waiting for it. Its delivery rows stay until their own expiry. It
+// returns the retired identity's id. A session with no live identity is
+// KindGone.
+func (s *Store) Retire(ctx context.Context, k Keyed, c Caller) (id uint64, replayed bool, err error) {
+	return keyed(ctx, s, k, func(w *wtx) (uint64, error) {
 		row, err := w.liveAs(c)
 		if err != nil {
-			return struct{}{}, err
+			return 0, err
 		}
 		if row.Parent != 0 {
-			return struct{}{}, w.endDelegate(&row, endBye)
+			return row.ID, w.endDelegate(&row, endBye)
 		}
 		if err := w.leaveWatches(&row); err != nil {
-			return struct{}{}, err
+			return 0, err
 		}
 		if err := w.freeHolder(row.ID); err != nil {
-			return struct{}{}, err
+			return 0, err
 		}
 		if err := w.endDelegates(row.ID, endParent); err != nil {
-			return struct{}{}, err
+			return 0, err
 		}
 		w.queueCards(kindLeft, &row, row.Paths)
 		// The row's delete cascades to its unused links.
 		if err := deleteRow(w, s.t.identities, row.ID); err != nil {
-			return struct{}{}, err
+			return 0, err
 		}
 		w.forgetSeen(row.ID)
 		w.logInfo("identity retired", "name", row.Name, "id", row.ID, "provider", row.Provider)
-		return struct{}{}, nil
+		return row.ID, nil
 	})
-	return replayed, err
 }
 
 // Live returns, in the order given, the ids among ids whose identity is

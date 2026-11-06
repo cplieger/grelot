@@ -207,7 +207,7 @@ func TestRetire_deletesTheIdentityAndWritesLeftCards(t *testing.T) {
 	reader := regAt(t, s, "reader", "/workspace")
 	leaver := regAt(t, s, "leaver", repoSubflux, repoGrelot)
 	mustPost(t, s, posting(sess("reader"), Target{Agent: "leaver"}))
-	if _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("leaver")}); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("leaver")}); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"join " + repoSubflux, "join " + repoGrelot, "left " + repoSubflux, "left " + repoGrelot}
@@ -238,10 +238,10 @@ func TestRetire_deletesTheIdentityAndWritesLeftCards(t *testing.T) {
 
 func TestRetire_needsALiveIdentity(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
-	_, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("nobody")})
+	_, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("nobody")})
 	wantRefusal(t, err, KindGone, "none")
 	expireToDormant(t, s, clk, "subflux-dev")
-	_, err = s.Retire(t.Context(), Keyed{}, Caller{Session: sessA})
+	_, _, err = s.Retire(t.Context(), Keyed{}, Caller{Session: sessA})
 	wantRefusal(t, err, KindGone, "dormant", "grelot revive --ttl <d>")
 }
 

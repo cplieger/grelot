@@ -109,7 +109,7 @@ func summaryStep(t *testing.T, s *Store, clk *clock, r *rand.Rand) string {
 		})
 	case k == 12:
 		op = "retire"
-		_, err = s.Retire(t.Context(), Keyed{}, c)
+		_, _, err = s.Retire(t.Context(), Keyed{}, c)
 	case k == 13:
 		op = "register"
 		summaryRegister(t, s, r, name)

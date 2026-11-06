@@ -96,7 +96,7 @@ func TestRetire_cancelledAfterItsChangeRanStoresAndLogsNothing(t *testing.T) {
 		return clk.now()
 	}
 
-	_, err := s.Retire(ctx, k, plain("alpha"))
+	_, _, err := s.Retire(ctx, k, plain("alpha"))
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Retire err = %v, want context.Canceled", err)
 	}
@@ -111,7 +111,7 @@ func TestRetire_cancelledAfterItsChangeRanStoresAndLogsNothing(t *testing.T) {
 		t.Errorf("%d identity retired lines for a retirement that rolled back, want 0", len(lines))
 	}
 	s.now = clk.now
-	if replayed, err := s.Retire(t.Context(), k, plain("alpha")); err != nil || replayed {
+	if _, replayed, err := s.Retire(t.Context(), k, plain("alpha")); err != nil || replayed {
 		t.Errorf("re-sent Retire = replayed %v, %v; want a fresh retirement", replayed, err)
 	}
 }

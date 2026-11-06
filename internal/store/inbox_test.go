@@ -205,7 +205,7 @@ func TestInbox_relationIsReadFromTheMessageSnapshot(t *testing.T) {
 	mustRegister(t, s, registration(sess("alpha"), "alpha", sender, repoSubflux+"/cmd"))
 	mustRegister(t, s, registration(sess("bravo"), "bravo", reader, repoSubflux))
 	mustPost(t, s, posting(sess("alpha"), Target{Path: repoSubflux + "/internal"}))
-	if _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("alpha")}); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("alpha")}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -237,7 +237,7 @@ func TestInbox_aCardIsQuietAndRelatedAtItsPath(t *testing.T) {
 		t.Errorf("unread %+v, want one card and no wake event", p.Unread)
 	}
 
-	if _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("charlie")}); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("charlie")}); err != nil {
 		t.Fatal(err)
 	}
 	p = mustInbox(t, s, sess("bravo"), 0)

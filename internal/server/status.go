@@ -61,9 +61,10 @@ func (s *Server) wakeState(st *store.Status, now time.Time) string {
 	return wakeDown
 }
 
-// setStatus writes c's status line on w, before the body.
+// setStatus writes c's status line on w, before the body. It reads past
+// the route deadline, which must not take the line off a committed write.
 func (s *Server) setStatus(w http.ResponseWriter, r *http.Request, c store.Caller) {
-	if line := s.statusLine(r.Context(), c); line != "" {
+	if line := s.statusLine(context.WithoutCancel(r.Context()), c); line != "" {
 		w.Header().Set(headerStatus, line)
 	}
 }

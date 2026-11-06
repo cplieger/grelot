@@ -747,7 +747,7 @@ func TestRetire_freesEveryOwnRowBeforeTheQueueWalk(t *testing.T) {
 	mustQueue(t, s, reserving("leaving", pathAPI, time.Hour))
 	third := mustQueue(t, s, reserving("third", pathAPI, time.Hour))
 
-	if _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("leaving")}); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("leaving")}); err != nil {
 		t.Fatal(err)
 	}
 	if rows := rowsHeldBy(t, s, leaving.ID); len(rows) != 0 {
@@ -766,7 +766,7 @@ func TestRetire_handsItsGrantToTheAgentQueuedBehindIt(t *testing.T) {
 	held := mustReserve(t, s, reserving("leaving", pathMarotte, time.Hour))
 	q := mustQueue(t, s, reserving("waiter", pathMarotte, 2*time.Hour))
 
-	if _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("leaving")}); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("leaving")}); err != nil {
 		t.Fatal(err)
 	}
 	if _, found := getReservation(t, s, held.Reservation.ID); found {

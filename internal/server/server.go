@@ -137,11 +137,16 @@ const (
 	reasonStale = "the store sweep has not committed for over a minute"
 )
 
-// Route timeouts. waitRouteTimeout sits above maxWait, so a held wait
-// answers itself before the timeout cuts it.
+// Route deadlines, which end a request's store calls before they commit,
+// never after (fail answers a passed one with errTimeout).
 const (
-	routeTimeout     = 15 * time.Second
-	waitRouteTimeout = maxWait + 10*time.Second
+	// routeDeadline sits below the client's 15 s call budget, so the
+	// server's answer, success or timeout, reaches the client before it
+	// gives up.
+	routeDeadline = 10 * time.Second
+	// waitRouteDeadline sits above maxWait, so a held wait answers itself
+	// and the deadline only ends one whose store calls stall.
+	waitRouteDeadline = maxWait + 10*time.Second
 	// maxWait is the longest a standing or in-turn wait holds.
 	maxWait = 55 * time.Second
 )
@@ -150,7 +155,7 @@ const (
 // the connection while the handler runs and cancels the request's context
 // when its background read hits it (net/http connReader.backgroundRead),
 // so it must outlast the longest route, a held wait.
-const readTimeout = waitRouteTimeout + 10*time.Second
+const readTimeout = waitRouteDeadline + 10*time.Second
 
 // HTTPServer is the http.Server for Handler. It sets no write timeout, so
 // a held wait can answer at maxWait.
@@ -175,32 +180,33 @@ func (s *Server) Handler() http.Handler {
 // routes registers every /v1 route on the one mux the access log reads
 // its route label from: a nested mux would label every route /v1/.
 func (s *Server) routes(mux *http.ServeMux) {
-	handle := func(pattern string, h http.Handler) {
-		mux.Handle(pattern, s.authorize(httpserver.RouteTimeout(h, routeTimeout, "")))
+	handleFor := func(pattern string, h http.Handler, d time.Duration) {
+		mux.Handle(pattern, s.authorize(httpserver.RouteDeadline(h, d)))
 	}
-	handle("POST /v1/register", s.identity(s.register))
-	handle("POST /v1/revive", s.identity(s.revive))
+	handle := func(pattern string, h http.Handler) { handleFor(pattern, h, routeDeadline) }
+	handle("POST /v1/register", s.keyed(s.register))
+	handle("POST /v1/revive", s.keyed(s.revive))
 	handle("GET /v1/me", s.identity(s.me))
-	handle("PATCH /v1/me", s.identity(s.patchMe))
-	handle("DELETE /v1/me", s.identity(s.deleteMe))
+	handle("PATCH /v1/me", s.keyed(s.patchMe))
+	handle("DELETE /v1/me", s.keyed(s.deleteMe))
 	handle("GET /v1/identities", s.anyone(s.who))
-	handle("POST /v1/posts", s.identity(s.post))
+	handle("POST /v1/posts", s.keyed(s.post))
 	handle("GET /v1/threads", s.identity(s.threads))
 	handle("GET /v1/messages/{id}/receipts", s.identity(s.receipts))
 	handle("GET /v1/history", s.identity(s.history))
-	handle("PUT /v1/follows", s.identity(s.follow))
-	handle("DELETE /v1/follows", s.identity(s.unfollow))
-	handle("POST /v1/inbox/ack", s.identity(s.ack))
-	handle("POST /v1/reservations", s.identity(s.reserve))
+	handle("PUT /v1/follows", s.keyed(s.follow))
+	handle("DELETE /v1/follows", s.keyed(s.unfollow))
+	handle("POST /v1/inbox/ack", s.keyed(s.ack))
+	handle("POST /v1/reservations", s.keyed(s.reserve))
 	handle("GET /v1/reservations", s.identity(s.reservations))
-	handle("PATCH /v1/reservations/{id}", s.identity(s.renewReservation))
-	handle("DELETE /v1/reservations/{id}", s.identity(s.release))
-	handle("POST /v1/delegates", s.identity(s.grant))
-	handle("DELETE /v1/delegates/{label}", s.identity(s.revoke))
+	handle("PATCH /v1/reservations/{id}", s.keyed(s.renewReservation))
+	handle("DELETE /v1/reservations/{id}", s.keyed(s.release))
+	handle("POST /v1/delegates", s.keyed(s.grant))
+	handle("DELETE /v1/delegates/{label}", s.keyed(s.revoke))
 	handle("POST /v1/lifecycle", s.identity(s.lifecycle))
 	handle("POST /v1/events/hold", s.identity(s.eventHold))
-	mux.Handle("POST /v1/events/wait", s.authorize(httpserver.RouteTimeout(s.identity(s.standingWait), waitRouteTimeout, "")))
-	mux.Handle("GET /v1/inbox", s.authorize(httpserver.RouteTimeout(s.identity(s.inbox), waitRouteTimeout, "")))
+	handleFor("POST /v1/events/wait", s.identity(s.standingWait), waitRouteDeadline)
+	handleFor("GET /v1/inbox", s.identity(s.inbox), waitRouteDeadline)
 	mux.Handle("/v1/", s.authorize(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, &apiError{status: http.StatusNotFound, code: "not_found", msg: "no such route: " + r.Method + " " + r.URL.Path})
 	})))

@@ -274,7 +274,7 @@ func TestDelegate_linkGoneAnswers410(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
 		regAt(t, s, "parent", repoSubflux)
 		g := mustGrant(t, s, grantFrom("parent", "review"))
-		if _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("parent"), Self: true}); err != nil {
+		if _, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("parent"), Self: true}); err != nil {
 			t.Fatal(err)
 		}
 		_, _, err := s.Register(t.Context(), Keyed{}, new(delegateReg(sess("other"), g.Link)))
@@ -449,7 +449,7 @@ func TestDelegate_endsWithItsParent(t *testing.T) {
 		p, d := delegateOf(t, s, "parent", "review")
 		mustGrant(t, s, grantFrom("parent", "unused"))
 		before := commitCount(t, s)
-		if _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("parent"), Self: true}); err != nil {
+		if _, _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("parent"), Self: true}); err != nil {
 			t.Fatal(err)
 		}
 		if n := commitCount(t, s) - before; n != 1 {
@@ -567,7 +567,7 @@ func TestDelegate_ownLeaseDeletesItNeverDormant(t *testing.T) {
 func TestDelegate_byeEndsOnlyTheDelegate(t *testing.T) {
 	s, _, sink := openIdentityStore(t)
 	p, d := delegateOf(t, s, "parent", "review")
-	if _, err := s.Retire(t.Context(), Keyed{}, as(sess("parent"), d.Name)); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, as(sess("parent"), d.Name)); err != nil {
 		t.Fatal(err)
 	}
 	if identityExists(t, s, d.ID) {

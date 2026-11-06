@@ -530,7 +530,7 @@ func TestHookStop_aDownWakeAloneHoldsNothing(t *testing.T) {
 	ts := newServer(t)
 	a := turnAgent(t, ts, hookTurnFile)
 	ts.clock.run()
-	ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodPost, Path: "/v1/events/wait", Body: map[string]string{"wait": "10ms"}}, nil)
+	ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodPost, Path: "/v1/events/wait", Body: map[string]string{"wait": "10ms"}, Once: true}, nil)
 	ts.clock.advance(5 * time.Minute)
 	a.prompt("x")
 	if _, out := a.stopHook(); out != "" {

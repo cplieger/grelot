@@ -194,8 +194,9 @@ func startServe(t *testing.T) (addr string, logs *syncBuffer, cancel context.Can
 	return addr, logs, cancel, out
 }
 
-// call sends one /v1 request from session and returns its status and code.
-func call(t *testing.T, addr, method, path, session, body string) (status int, code string) {
+// call sends one /v1 request from session, with key as its
+// Idempotency-Key when not empty, and returns its status and code.
+func call(t *testing.T, addr, method, path, session, key, body string) (status int, code string) {
 	t.Helper()
 	req, err := http.NewRequestWithContext(t.Context(), method, "http://"+addr+path, strings.NewReader(body))
 	if err != nil {
@@ -204,6 +205,9 @@ func call(t *testing.T, addr, method, path, session, body string) (status int, c
 	req.Header.Set("Authorization", "Bearer test-token")
 	req.Header.Set("Grelot-Version", "dev")
 	req.Header.Set("Grelot-Session", session)
+	if key != "" {
+		req.Header.Set("Idempotency-Key", key)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("%s %s: %v", method, path, err)
@@ -221,7 +225,7 @@ func TestServe_aStopAnswersAnOpenWaitAndDrains(t *testing.T) {
 	register := `{"name":"reader","paths":["/workspace/grelot"],"description":"reading","host":"host-a/app",` +
 		`"os":"linux","arch":"amd64","ttl":"1h","where":{"machine":"dmi:` + strings.Repeat("1", 32) +
 		`","environment":"` + strings.Repeat("a", 32) + `","checkouts":[]}}`
-	if status, code := call(t, addr, http.MethodPost, "/v1/register", session, register); status != http.StatusCreated {
+	if status, code := call(t, addr, http.MethodPost, "/v1/register", session, `"register-key-0001"`, register); status != http.StatusCreated {
 		t.Fatalf("register: %d %s", status, code)
 	}
 	type answer struct {
@@ -230,7 +234,7 @@ func TestServe_aStopAnswersAnOpenWaitAndDrains(t *testing.T) {
 	}
 	waited := make(chan answer, 1)
 	go func() {
-		status, code := call(t, addr, http.MethodPost, "/v1/events/wait", session, `{"wait":"55s"}`)
+		status, code := call(t, addr, http.MethodPost, "/v1/events/wait", session, "", `{"wait":"55s"}`)
 		waited <- answer{code: code, status: status}
 	}()
 	time.Sleep(200 * time.Millisecond)

@@ -256,7 +256,7 @@ func TestScope_aDelegateWritesAndReceivesNoCards(t *testing.T) {
 	if n := len(allDeliveriesTo(t, s, d.ID)); n != 0 {
 		t.Errorf("delegate got %d deliveries, want no card", n)
 	}
-	if _, err := s.Retire(t.Context(), Keyed{}, as(sess("subflux-dev"), d.Name)); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, as(sess("subflux-dev"), d.Name)); err != nil {
 		t.Fatal(err)
 	}
 	cards := 0

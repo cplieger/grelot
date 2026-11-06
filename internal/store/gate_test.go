@@ -52,7 +52,7 @@ func TestGate_unnamedRequestsFromASessionHoldingALinkMoveNothing(t *testing.T) {
 		wantGate(t, err, "parent/review")
 	})
 	t.Run("bye", func(t *testing.T) {
-		_, err := s.Retire(t.Context(), Keyed{}, plain("parent"))
+		_, _, err := s.Retire(t.Context(), Keyed{}, plain("parent"))
 		wantGate(t, err, "parent/review")
 	})
 	t.Run("register", func(t *testing.T) {
@@ -90,7 +90,7 @@ func TestGate_selfPasses(t *testing.T) {
 	}); err != nil || !got.Existing || got.Identity.ID != parent.ID {
 		t.Errorf("register with --self: %+v, %v; want the parent returned unchanged", got, err)
 	}
-	if _, err := s.Retire(t.Context(), Keyed{}, self("parent")); err != nil {
+	if _, _, err := s.Retire(t.Context(), Keyed{}, self("parent")); err != nil {
 		t.Errorf("bye with --self: %v", err)
 	}
 }
@@ -104,7 +104,7 @@ func TestGate_aDelegateRegisteredFromTheSessionHoldsIt(t *testing.T) {
 		t.Errorf("as %s: %d, %v; want the delegate %d", d.Name, got.ID, err, d.ID)
 	}
 	t.Run("lifts when the last delegate ends", func(t *testing.T) {
-		if _, err := s.Retire(t.Context(), Keyed{}, as(sess("parent"), d.Name)); err != nil {
+		if _, _, err := s.Retire(t.Context(), Keyed{}, as(sess("parent"), d.Name)); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := s.Inbox(t.Context(), plain("parent"), 0); err != nil {
