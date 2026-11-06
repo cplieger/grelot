@@ -58,7 +58,7 @@ func TestHealthz_takesNoHeadersAndFollowsTheSweeperBeat(t *testing.T) {
 	t.Run("down before the first sweeper pass", wantDown)
 	h.srv.Beat(t.Context())
 	t.Run("up after a pass, with no bearer and no version", wantUp)
-	t.Run("the fleet headers", func(t *testing.T) {
+	t.Run("the shared response headers", func(t *testing.T) {
 		_, header, _ := get(t, http.MethodGet)
 		for k, v := range map[string]string{
 			"Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
