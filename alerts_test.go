@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -57,7 +58,7 @@ func TestAlerts_everyRuleReadsASeriesTheServerExports(t *testing.T) {
 			}
 			for _, name := range names {
 				// up is the scraper's own series, never on the page.
-				if name != "up" && !exported[name] {
+				if name != "up" && !deployedPageServes(exported, name) {
 					t.Errorf("reads %s, which /metrics does not serve", name)
 				}
 			}
@@ -122,6 +123,13 @@ func servedSeries(t *testing.T) map[string]bool {
 		out[line[:strings.IndexAny(line, "{ ")]] = true
 	}
 	return out
+}
+
+// deployedPageServes reports whether the image's page, on Linux, serves
+// name, given the names this OS's page serves: measure reads the process
+// families from /proc, so another OS's page lacks some of them.
+func deployedPageServes(served map[string]bool, name string) bool {
+	return served[name] || runtime.GOOS != "linux" && strings.HasPrefix(name, "process_")
 }
 
 // readRules returns alerts/promql.yaml's expressions by alert name.

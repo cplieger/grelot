@@ -100,7 +100,7 @@ func TestDashboard_everyMetricsQueryReadsASeriesTheServerExports(t *testing.T) {
 		}
 		for _, name := range names {
 			// ALERTS is the ruler's own series for the shipped rules.
-			if name != "ALERTS" && !exported[name] {
+			if name != "ALERTS" && !deployedPageServes(exported, name) {
 				t.Errorf("%s reads %s, which /metrics does not serve", q.where, name)
 			}
 		}
