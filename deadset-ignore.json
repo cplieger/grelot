@@ -201,12 +201,6 @@
     },
     {
       "code": "DS1301",
-      "symbol": "go://github.com/cplieger/grelot/internal/cli#postBody.To",
-      "path": "internal/cli/mail.go",
-      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
-    },
-    {
-      "code": "DS1301",
       "symbol": "go://github.com/cplieger/grelot/internal/cli#postBody.NotifyRead",
       "path": "internal/cli/mail.go",
       "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
@@ -238,12 +232,6 @@
     {
       "code": "DS1301",
       "symbol": "go://github.com/cplieger/grelot/internal/cli#postBody.Identity",
-      "path": "internal/cli/mail.go",
-      "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
-    },
-    {
-      "code": "DS1301",
-      "symbol": "go://github.com/cplieger/grelot/internal/cli#postTo.Path",
       "path": "internal/cli/mail.go",
       "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
     },

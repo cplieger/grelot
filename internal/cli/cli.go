@@ -159,9 +159,6 @@ type exitError struct{ code int }
 
 func (e *exitError) Error() string { return fmt.Sprintf("exit %d", e.code) }
 
-// codeNoIdentity is the refusal code for a session with no identity.
-const codeNoIdentity = "none"
-
 // fail prints err and answers its exit code. A refusal leads with the
 // status line it carried, unless that line already says the same.
 func (r *run) fail(err error) int {
@@ -172,10 +169,7 @@ func (r *run) fail(err error) int {
 	if ae, ok := errors.AsType[*client.APIError](err); ok {
 		line := r.statusLine(ae.Status)
 		msg := "grelot: " + ae.Msg
-		switch {
-		case ae.Code == codeNoIdentity:
-			msg += ", then read what it prints"
-		case ae.HTTP == http.StatusUnauthorized:
+		if ae.HTTP == http.StatusUnauthorized {
 			msg += fmt.Sprintf(" (%s, or the file %s names), then run grelot me", client.ConfigFile(r.ConfigDir), client.EnvTokenFile)
 		}
 		if line != "" && line != "grelot: "+ae.Msg && !r.statusShown {

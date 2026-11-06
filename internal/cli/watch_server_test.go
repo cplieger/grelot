@@ -285,8 +285,8 @@ func TestWait_printsTheFirstMailAndReadsIt(t *testing.T) {
 	if !strings.HasPrefix(lines[0], "grelot: @reader-dev") {
 		t.Errorf("first line %q, want the status line", lines[0])
 	}
-	if !strings.Contains(out, "the answer"+label) {
-		t.Errorf("output %q, want the body with the data label", out)
+	if !strings.Contains(out, "  | the answer\n") {
+		t.Errorf("output %q, want the body quoted", out)
 	}
 	if got := reader.must("inbox"); !strings.Contains(got, "no new mail") {
 		t.Errorf("inbox after wait printed %q, want no new mail", got)

@@ -573,7 +573,7 @@ func (s *Store) lookupIdentity(r *bolttable.ReadTx, ix *bolttable.Index[uint64, 
 func noIdentity() *Error {
 	return &Error{
 		Kind: KindGone, Why: "none",
-		Msg: "this session has no identity: run grelot register <name> --paths <path> --desc <what and why> --ttl <d>",
+		Msg: "this session has no identity: read grelot help, then run grelot register <name> --paths <path> --desc <what and why> --ttl <d>",
 	}
 }
 

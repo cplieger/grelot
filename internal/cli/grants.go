@@ -105,7 +105,7 @@ func (r *run) reservations(ctx context.Context, args []string) error {
 			until = "for " + safe(v.TTL) + " once granted"
 		}
 		fmt.Fprintf(r.Stdout, "reservation %d · %s · %s · @%s%s · %s · reason: %s%s\n",
-			v.ID, safe(v.State), safe(v.Path), safe(v.Holder), origin(v.Host, v.Relation), until, safe(v.Reason), dataLabel)
+			v.ID, safe(v.State), safe(v.Path), safe(v.Holder), origin(v.Host, v.Relation), until, safe(v.Reason), labelFor(v.Relation))
 	}
 	return nil
 }

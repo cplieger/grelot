@@ -90,8 +90,8 @@ func (r *run) writePeers(body []byte) error {
 	return nil
 }
 
-// writePeer prints one identity's block; every line carries text its
-// agent chose, so each ends with the data label.
+// writePeer prints one identity's block, with the data label on its
+// header line.
 func writePeer(w io.Writer, p *client.Peer) {
 	head := []string{"@" + safe(p.Name)}
 	if p.Host != "" {
@@ -111,10 +111,10 @@ func writePeer(w io.Writer, p *client.Peer) {
 	case !p.LastSeen.IsZero():
 		head = append(head, "last seen "+stamp(p.LastSeen))
 	}
-	fmt.Fprintln(w, strings.Join(head, " · ")+dataLabel)
+	fmt.Fprintln(w, strings.Join(head, " · ")+labelFor(p.Relation))
 	line := func(label, text string) {
 		if text != "" {
-			fmt.Fprintf(w, "  %s: %s%s\n", label, text, dataLabel)
+			fmt.Fprintf(w, "  %s: %s\n", label, text)
 		}
 	}
 	line("description", safe(p.Description))
@@ -131,6 +131,6 @@ func writePeer(w io.Writer, p *client.Peer) {
 		if !d.Online {
 			seen = "last seen " + stamp(d.LastSeen)
 		}
-		fmt.Fprintf(w, "    @%s · %s · %s%s\n", safe(d.Name), seen, safe(d.Description), dataLabel)
+		fmt.Fprintf(w, "    @%s · %s · %s\n", safe(d.Name), seen, safe(d.Description))
 	}
 }

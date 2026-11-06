@@ -89,7 +89,11 @@ func (r *run) post(ctx context.Context, args []string) error {
 	if *desc != noChange {
 		r.descSent()
 	}
-	r.posted(&got, rest[0], finding, local)
+	thread := ""
+	if to, ok := req.To.(*postTo); ok {
+		thread = to.Path
+	}
+	r.posted(&got, rest[0], thread, finding, local)
 	return nil
 }
 
@@ -112,11 +116,16 @@ func (r *run) postPaths(ctx context.Context, req *postBody, paths list) error {
 }
 
 // posted prints a post's answer, and the local-path warning when a
-// recipient outside the sender's environment cannot read the path.
-func (r *run) posted(got *client.Posted, to string, finding canon.Finding, local bool) {
+// recipient outside the sender's environment cannot read the path. thread
+// is the path of a path-thread post, empty for any other target.
+func (r *run) posted(got *client.Posted, to, thread string, finding canon.Finding, local bool) {
 	n := got.Recipients
 	fmt.Fprintf(r.Stdout, "grelot: message %d posted to %s (thread %d): delivered to %d: %d same environment, %d other\n",
 		got.Message, safe(to), got.Thread, n.Total, n.SameEnvironment, n.Other)
+	if thread != "" && n.Total == 0 {
+		fmt.Fprintf(r.Stdout, "grelot: no other agent works in or follows %s, so nobody got this post: "+
+			"reach one agent with grelot post @<name> (grelot who lists them), or everyone with grelot post announce\n", safe(thread))
+	}
 	if local && n.Other > 0 {
 		fix := "send its content or a pushed ref"
 		if finding.Canonical != "" {
@@ -358,9 +367,8 @@ func days(v string) string {
 // maxDays bounds a day count well past any message's retention.
 const maxDays = 3650
 
-// writeEntry prints one inbox or history entry. Every line carries text
-// another agent chose, or a path it named, so each ends with the data
-// label.
+// writeEntry prints one inbox or history entry, with the data label on
+// its header line and the body quoted with "|".
 func writeEntry(w io.Writer, e *client.Entry) {
 	var head []string
 	if e.Message != 0 {
@@ -385,12 +393,12 @@ func writeEntry(w io.Writer, e *client.Entry) {
 		at = e.Written
 	}
 	head = append(head, stamp(at))
-	fmt.Fprintln(w, strings.Join(head, " · ")+dataLabel)
+	fmt.Fprintln(w, strings.Join(head, " · ")+labelFor(e.Relation))
 	if e.Subject != "" {
-		fmt.Fprintf(w, "  subject: %s%s\n", safe(e.Subject), dataLabel)
+		fmt.Fprintf(w, "  subject: %s\n", safe(e.Subject))
 	}
 	if e.Text != "" {
-		fmt.Fprintf(w, "  %s%s\n", safe(e.Text), dataLabel)
+		fmt.Fprintf(w, "  %s\n", safe(e.Text))
 	}
 	if body := strings.TrimRight(strings.ReplaceAll(e.Body, "\r\n", "\n"), "\n"); body != "" {
 		for line := range strings.SplitSeq(body, "\n") {
@@ -398,7 +406,7 @@ func writeEntry(w io.Writer, e *client.Entry) {
 				fmt.Fprintln(w, "  |")
 				continue
 			}
-			fmt.Fprintf(w, "  | %s%s\n", line, dataLabel)
+			fmt.Fprintf(w, "  | %s\n", line)
 		}
 	}
 	if e.Truncated {
@@ -442,7 +450,7 @@ func (r *run) receipts(ctx context.Context, args []string) error {
 		if v.State == client.ReceiptRead {
 			state = "read at " + stamp(v.ReadAt)
 		}
-		fmt.Fprintf(r.Stdout, "  @%s%s · %s%s\n", safe(v.Name), origin(v.Host, v.Relation), state, dataLabel)
+		fmt.Fprintf(r.Stdout, "  @%s%s · %s\n", safe(v.Name), origin(v.Host, v.Relation), state)
 	}
 	fmt.Fprintf(r.Stdout, "grelot: %d of %d have read; %d unread, %d dormant, %d retired\n", count[client.ReceiptRead],
 		len(got.Recipients), count[client.ReceiptUnread], count[client.ReceiptDormant], count[client.ReceiptRetired])

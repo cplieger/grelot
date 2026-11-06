@@ -50,7 +50,7 @@ type sentRegister struct {
 	TakeOver *bool        `json:"take_over"`
 }
 
-func TestRegister_printsTheStatusLineTheCardThenTheManual(t *testing.T) {
+func TestRegister_printsTheStatusLineTheCardThenThePointerToTheManual(t *testing.T) {
 	isolateGit(t)
 	ts := newServer(t)
 	a := newAgent(t, ts, "s-1", "")
@@ -65,9 +65,13 @@ func TestRegister_printsTheStatusLineTheCardThenTheManual(t *testing.T) {
 		"  description: testing the client\n" +
 		"  paths: /workspace/toolbelt/internal\n" +
 		"  lease: 2h0m0s, until 2026-11-05 11:00 UTC\n"
-	i, j := strings.Index(out, card), strings.Index(out, "# grelot help\n")
-	if i < 0 || j < i {
-		t.Errorf("output does not hold the card, then the manual:\n%s", out)
+	// Every path to a first register sends the agent to grelot help first,
+	// so the answer points back to it instead of printing it again.
+	if !strings.HasSuffix(out, card+manualPointer) {
+		t.Errorf("output does not end with the card, then the pointer to the manual:\n%s", out)
+	}
+	if strings.Contains(out, "# grelot help\n") {
+		t.Errorf("output holds the manual:\n%s", out)
 	}
 }
 
@@ -204,6 +208,8 @@ func TestRegister_aDelegate(t *testing.T) {
 	if !strings.Contains(out, "@toolbelt-dev/review · ") || !strings.Contains(out, "description: reviewing the diff") {
 		t.Errorf("output = %q, want the delegate's card", out)
 	}
+	// Nothing sends a subagent to grelot help before its link, so a
+	// delegate's registration teaches it.
 	if !strings.Contains(out, "# grelot help\n") {
 		t.Errorf("output = %q, want the manual after the card", out)
 	}
@@ -274,8 +280,8 @@ func TestRevive(t *testing.T) {
 		b := newAgent(t, ts, "s-2", "")
 		b.env.ConfigDir, b.wd = a.env.ConfigDir, clone
 		out := b.must("revive", "toolbelt-dev", "--ttl", "1h")
-		if !strings.Contains(out, "lease: 1h0m0s, until 2026-11-05 13:00 UTC") || !strings.Contains(out, "# grelot help\n") {
-			t.Errorf("output = %q, want the card with the new lease, then the manual", out)
+		if !strings.Contains(out, "lease: 1h0m0s, until 2026-11-05 13:00 UTC\n"+manualPointer) || strings.Contains(out, "# grelot help\n") {
+			t.Errorf("output = %q, want the card with the new lease, then the pointer to the manual and not the manual", out)
 		}
 		var body struct {
 			Where client.Where `json:"where"`
@@ -336,8 +342,8 @@ func TestMe_unregistered(t *testing.T) {
 	code, out, _ := a.run("me")
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	if code != 0 || len(lines) != 2 || !strings.Contains(lines[0], "grelot register <name>") ||
-		!strings.Contains(lines[1], "then read what it prints") {
-		t.Errorf("exit %d, output %q; want 0, the register command, then the line to read what it prints", code, out)
+		lines[1] != "grelot: read grelot help first, then register as the line above says" {
+		t.Errorf("exit %d, output %q; want 0, the register command, then the line to read grelot help first", code, out)
 	}
 }
 
@@ -346,7 +352,7 @@ func TestUnregistered_aCommandAnswersTheRegisterCommand(t *testing.T) {
 	for _, args := range [][]string{{"set", "--desc", "x"}, {"renew", "--ttl", "1h"}, {"bye"}} {
 		t.Run(args[0], func(t *testing.T) {
 			code, out, errOut := a.run(args...)
-			want := "grelot: this session has no identity: run grelot register <name> --paths <path> --desc <what and why> --ttl <d>, then read what it prints\n"
+			want := "grelot: this session has no identity: read grelot help, then run grelot register <name> --paths <path> --desc <what and why> --ttl <d>\n"
 			if code != 1 || out != "" || errOut != want {
 				t.Errorf("exit %d, stdout %q, stderr %q; want 1, nothing, and %q", code, out, errOut, want)
 			}
@@ -438,6 +444,9 @@ func TestRenew(t *testing.T) {
 	})
 }
 
+// manualPointer is the line a register or revive prints after the card.
+const manualPointer = "\ngrelot: grelot help is the manual, if you have not read it\n"
+
 func jsonNumber(n uint64) string {
 	b, _ := json.Marshal(n)
 	return string(b)
@@ -446,8 +455,10 @@ func jsonNumber(n uint64) string {
 func TestBye(t *testing.T) {
 	ts := newServer(t)
 	a, _ := registerAgent(t, ts, "s-1")
-	if out := a.must("bye"); !strings.Contains(out, "grelot: identity retired") {
-		t.Errorf("output = %q, want the retirement", out)
+	// The answer is the retirement alone: the no-identity status line that
+	// follows a retirement would ask the agent that just left to register.
+	if out := a.must("bye"); out != "grelot: identity retired: its reservations went to their queues and its delegates ended\n" {
+		t.Errorf("output = %q, want only the retirement line", out)
 	}
 	if out := a.must("me"); !strings.Contains(out, "this session has no identity") {
 		t.Errorf("me after bye = %q, want no identity", out)

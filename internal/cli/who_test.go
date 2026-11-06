@@ -65,15 +65,19 @@ func TestWho_plainPrintsOneBlockPerIdentity(t *testing.T) {
 	out := b.must("who")
 	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
 	if i := slices.IndexFunc(lines, func(l string) bool { return strings.HasPrefix(l, "@zeta-dev ") }); i > 0 {
+		// The reader's own entry is its own text, so it carries no label.
+		if own := lines[i]; strings.Contains(own, dataLabel) {
+			t.Errorf("own entry = %q, want no label", own)
+		}
 		lines = lines[:i]
 	}
 	want := []string{
 		"@toolbelt-dev · box · " + goosArch() + " · same machine, other environment · last seen 2026-11-05 09:00 UTC" + dataLabel,
-		"  description: testing the client" + dataLabel,
-		"  paths: /workspace/toolbelt" + dataLabel,
-		"  follows: /workspace/docs" + dataLabel,
-		"  holds: /workspace/toolbelt/engine.go until 2026-11-05 09:30 UTC, 0 queued" + dataLabel,
-		"    @toolbelt-dev/review · online · reviewing the diff" + dataLabel,
+		"  description: testing the client",
+		"  paths: /workspace/toolbelt",
+		"  follows: /workspace/docs",
+		"  holds: /workspace/toolbelt/engine.go until 2026-11-05 09:30 UTC, 0 queued",
+		"    @toolbelt-dev/review · online · reviewing the diff",
 	}
 	if len(lines) != len(want)+1 || !strings.HasPrefix(lines[0], "grelot: ") {
 		t.Fatalf("who printed:\n%s\nwant the status line, then:\n%s", out, strings.Join(want, "\n"))

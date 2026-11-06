@@ -59,7 +59,7 @@ func TestReserve_holdsQueuesAndHandsOff(t *testing.T) {
 	out = b.must("reservations", adir)
 	for _, w := range []string{
 		"reservation " + held + " · held · " + file + " · @ant-dev (box · same machine, other environment) · until 2026-11-05 10:00 UTC · reason: splitting the engine" + label + "\n",
-		"reservation " + queued + " · queued · " + adir + " · @bee-dev (box · you) · for 30m0s once granted · reason: renaming" + label + "\n",
+		"reservation " + queued + " · queued · " + adir + " · @bee-dev (box · you) · for 30m0s once granted · reason: renaming\n",
 	} {
 		if !strings.Contains(out, w) {
 			t.Errorf("reservations printed %q, want %q", out, w)
