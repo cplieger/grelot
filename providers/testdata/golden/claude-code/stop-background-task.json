@@ -16,7 +16,7 @@
       "type": "shell",
       "status": "running",
       "description": "watch.sh events",
-      "command": "bash ./c3.sh"
+      "command": "bash ./watch.sh"
     }
   ],
   "session_crons": []
