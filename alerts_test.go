@@ -18,7 +18,7 @@ import (
 	"github.com/cplieger/go/httpserver"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 )
 
 // shippedAlerts holds every alert name alerts/promql.yaml has carried: ""
