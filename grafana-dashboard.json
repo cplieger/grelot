@@ -1515,7 +1515,7 @@
         "spec": {
           "id": 21,
           "title": "Latest messages",
-          "description": "The newest posts from grelot's own message posted log lines, with thread, path, sender, subject and body. It reads the Logs data source and the grelot log stream selector, so it shows no messages without Loki or with a selector that matches no stream.",
+          "description": "The newest posts from grelot's own message posted log lines, with thread, path, sender, subject and body. It reads the Logs data source and the grelot log stream selector, which starts empty: set it to the Loki stream selector your log collector gives grelot's container, such as {container=\"grelot\"}. Until both are set the panel shows no messages.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -3618,11 +3618,11 @@
         "spec": {
           "name": "stream",
           "label": "grelot log stream",
-          "description": "The Loki stream selector that matches grelot's container logs. Change it if your log collector labels the stream another way.",
-          "query": "{container=\"grelot\"}",
+          "description": "The Loki stream selector of grelot's container logs, which depends on how your log collector labels them, such as {container=\"grelot\"}. It is empty until you set it, and only Latest messages reads it.",
+          "query": "",
           "current": {
-            "text": "{container=\"grelot\"}",
-            "value": "{container=\"grelot\"}"
+            "text": "",
+            "value": ""
           },
           "hide": "dontHide",
           "skipUrlSync": false
