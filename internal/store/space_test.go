@@ -1,9 +1,12 @@
 package store
 
 import (
+	"errors"
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -64,6 +67,66 @@ func TestPost_atExactlyNinetyPercentStillGoesThrough(t *testing.T) {
 	p := posting(sess("alpha"), Target{Agent: "bravo"})
 	_, err := s.Post(t.Context(), &p)
 	wantRefusal(t, err, KindFull, "", "store nearly full")
+}
+
+func TestPost_concurrentPostsStopAtTheFirstPastTheCeiling(t *testing.T) {
+	s, _ := openClockStore(t)
+	regAt(t, s, "alpha", "/workspace/alpha")
+	regAt(t, s, "bravo", "/workspace/bravo")
+	s.maxBytes = 1000
+
+	// The reading is at the ceiling until a commit moves the file's free
+	// and pending pages, which every post does: bbolt writes each page it
+	// changes to a new one. The barrier holds every reading until all the
+	// posters read, so readings taken before any commit all pass; readings
+	// the write lock serializes wait out its 300 ms once.
+	const posters = 8
+	measure := s.space
+	before, err := measure()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var arrived atomic.Int32
+	gate := make(chan struct{})
+	open := sync.OnceFunc(func() { close(gate) })
+	s.space = func() (bolttable.Space, error) {
+		if arrived.Add(1) == posters {
+			open()
+		}
+		select {
+		case <-gate:
+		case <-time.After(300 * time.Millisecond):
+			open()
+		}
+		now, err := measure()
+		if now == before {
+			return bolttable.Space{FileBytes: 900}, err
+		}
+		return bolttable.Space{FileBytes: 901}, err
+	}
+
+	var landed, refused atomic.Int32
+	var wg sync.WaitGroup
+	for range posters {
+		wg.Go(func() {
+			p := posting(sess("alpha"), Target{Agent: "bravo"})
+			p.Body = strings.Repeat("x", maxBody)
+			_, err := s.Post(t.Context(), &p)
+			var se *Error
+			switch {
+			case err == nil:
+				landed.Add(1)
+			case errors.As(err, &se) && se.Kind == KindFull:
+				refused.Add(1)
+			default:
+				t.Errorf("post: %v", err)
+			}
+		})
+	}
+	wg.Wait()
+	if landed.Load() != 1 || refused.Load() != posters-1 {
+		t.Errorf("%d posts landed and %d were refused, want 1 and %d", landed.Load(), refused.Load(), posters-1)
+	}
 }
 
 // inUse is a space reading of n bytes in use.
