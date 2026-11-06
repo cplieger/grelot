@@ -230,6 +230,25 @@ func TestNudge_identityExpiringTakesPartInAFirstNudgeButIsNeverReNudged(t *testi
 	})
 }
 
+func TestNudge_mailBehindTheWarningKeepsTheReNudgeTime(t *testing.T) {
+	s, clk, _ := openIdentityStore(t)
+	regAt(t, s, "alpha")
+	r := registration(sess("bravo"), "bravo", envA())
+	r.TTL = time.Hour
+	bravo := mustRegister(t, s, r)
+	clk.advance(30 * time.Minute)
+	mustSweep(t, s)
+	mustSend(t, s, bravo.ID)
+	sentAt := clk.now()
+	directTo(t, s, "alpha", "bravo", bravo.ID)
+	clk.advance(time.Minute)
+	st := nudgeOf(t, s, bravo.ID)
+	wantNoNudge(t, st)
+	if want := sentAt.Add(3 * time.Minute); !st.Next.Equal(want) {
+		t.Errorf("next %v, want %v: unread mail behind the warning owes a re-nudge", st.Next, want)
+	}
+}
+
 func TestNudge_aClosedSessionIsNotNudged(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
 	regAt(t, s, "alpha")
@@ -456,7 +475,7 @@ func TestNudge_theStateOutlivesARestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grelot.db")
 	clk := &clock{t: testNow}
 	open := func() *Store {
-		s, err := Open(path, Options{Now: clk.now})
+		s, err := Open(path, &Options{Now: clk.now})
 		if err != nil {
 			t.Fatalf("Open: %v", err)
 		}

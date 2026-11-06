@@ -91,7 +91,7 @@ func (c *clock) advance(d time.Duration) { c.set(c.now().Add(d)) }
 func openClockStore(t *testing.T) (*Store, *clock) {
 	t.Helper()
 	clk := &clock{t: testNow}
-	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), Options{
+	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{
 		Logger: slog.New(newLogSink()),
 		Now:    clk.now,
 	})
@@ -142,7 +142,7 @@ func getIdentity(t *testing.T, s *Store, id uint64) identityRow {
 func openTestStore(t *testing.T) (*Store, logSink) {
 	t.Helper()
 	sink := newLogSink()
-	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), Options{
+	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{
 		Logger: slog.New(sink),
 		Now:    func() time.Time { return testNow },
 	})

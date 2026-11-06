@@ -4,6 +4,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -54,26 +55,29 @@ type Counts struct {
 	Direct, Path, Announce, Identity, Reservation, Receipts, Cards, Copies int
 }
 
-func (c *Counts) add(d *deliveryRow) {
+func (c *Counts) add(d *deliveryRow) { c.bump(d, 1) }
+
+// bump adds n to d's kind.
+func (c *Counts) bump(d *deliveryRow, n int) {
 	if d.Via != "" {
-		c.Copies++
+		c.Copies += n
 		return
 	}
 	switch d.Kind {
 	case kindDirect:
-		c.Direct++
+		c.Direct += n
 	case kindPath:
-		c.Path++
+		c.Path += n
 	case kindAnnounce:
-		c.Announce++
+		c.Announce += n
 	case kindIdentityExpiring:
-		c.Identity++
+		c.Identity += n
 	case kindReservationGranted, kindReservationExpiring, kindReservationExpired:
-		c.Reservation++
+		c.Reservation += n
 	case kindReceiptsComplete, kindReceiptsDue:
-		c.Receipts++
+		c.Receipts += n
 	case kindJoin, kindLeft:
-		c.Cards++
+		c.Cards += n
 	}
 }
 
@@ -85,7 +89,13 @@ func (c Counts) Wake() int {
 // Total counts every delivery, quiet ones included.
 func (c Counts) Total() int { return c.Wake() + c.Cards + c.Copies }
 
-func (d *deliveryRow) wakes() bool { return d.Via == "" && d.Kind != kindJoin && d.Kind != kindLeft }
+// wakes reports whether d falls in a count Wake includes, so a kind no
+// count names neither wakes nor counts.
+func (d *deliveryRow) wakes() bool {
+	var c Counts
+	c.bump(d, 1)
+	return c.Wake() == 1
+}
 
 // Page is an inbox fetch: the oldest unread deliveries, and Unread, every
 // delivery past read, the page's included.
@@ -134,15 +144,23 @@ func (s *Store) Inbox(ctx context.Context, c Caller, limit int) (Page, error) {
 		if err != nil {
 			return err
 		}
-		return s.scanUnread(r, me.ID, me.Read, now, func(d *deliveryRow) error {
-			out.Unread.add(d)
-			if len(out.Entries) == limit {
-				return nil
-			}
-			e, err := s.entry(r, &me, d)
-			out.Entries = append(out.Entries, e)
+		u, err := s.pastRead(r, &me, now)
+		if err != nil {
 			return err
+		}
+		out.Unread = u.Counts
+		err = s.scanUnread(r, me.ID, me.Read, now, func(d *deliveryRow) error {
+			if len(out.Entries) == limit {
+				return errScanDone
+			}
+			e, eerr := s.entry(r, &me, d)
+			out.Entries = append(out.Entries, e)
+			return eerr
 		})
+		if errors.Is(err, errScanDone) {
+			err = nil
+		}
+		return err
 	})
 	return out, err
 }
@@ -188,15 +206,15 @@ func (s *Store) Ack(ctx context.Context, c Caller, upto uint64) (Acked, error) {
 			return err
 		}
 		if to := min(upto, me.Seq); to > me.Read {
+			from := me.Read + 1
 			rows, err := w.stampRead(&me, to)
 			if err != nil {
 				return err
 			}
-			from := me.Read + 1
 			if len(rows) > 0 {
 				from, out.Count, out.Oldest = rows[0].Seq, len(rows), rows[0].Written
 			}
-			me.Read, me.LastPage = to, seqRange{From: from, To: to}
+			me.LastPage = seqRange{From: from, To: to}
 			w.wake(me.ID)
 		}
 		w.touch(&me)
@@ -208,25 +226,18 @@ func (s *Store) Ack(ctx context.Context, c Caller, upto uint64) (Acked, error) {
 			return verr
 		}
 		out.Identity, out.Read = v, me.Read
-		return s.scanUnread(w.r, me.ID, me.Read, w.now, func(d *deliveryRow) error {
-			out.Left.add(d)
-			return nil
-		})
+		u, perr := s.pastRead(w.r, &me, w.now)
+		out.Left = u.Counts
+		return perr
 	})
 	return out, err
 }
 
-// stampRead sets read_at on me's unexpired deliveries past read up to to,
-// takes me out of each receipt watch they name, and returns them in seq
-// order.
+// stampRead moves me's read to to, sets read_at on the unexpired
+// deliveries it passes, takes me out of each receipt watch they name, and
+// returns them in seq order.
 func (w *wtx) stampRead(me *identityRow, to uint64) ([]deliveryRow, error) {
-	var rows []deliveryRow
-	err := w.s.scanUnread(w.r, me.ID, me.Read, w.now, func(d *deliveryRow) error {
-		if d.Seq <= to {
-			rows = append(rows, *d)
-		}
-		return nil
-	})
+	rows, err := w.passRead(me, to)
 	if err != nil {
 		return nil, err
 	}
@@ -326,14 +337,4 @@ func (s *Store) scanUnread(r *bolttable.ReadTx, id, after uint64, now time.Time,
 			}
 			return true, fn(d)
 		})
-}
-
-// unread counts identity id's unexpired deliveries past read.
-func (s *Store) unread(r *bolttable.ReadTx, id, read uint64, now time.Time) (int, error) {
-	n := 0
-	err := s.scanUnread(r, id, read, now, func(*deliveryRow) error {
-		n++
-		return nil
-	})
-	return n, err
 }

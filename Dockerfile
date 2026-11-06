@@ -18,18 +18,13 @@ COPY scripts/collect-licenses.sh scripts/
 RUN --mount=type=cache,target=/go/pkg/mod \
     sh scripts/collect-licenses.sh --name grelot .
 
-# Directory skeleton for the scratch stage: /tmp for the health marker and
-# /data for the store, owned by the runtime user.
-RUN mkdir -p /outfs/tmp /outfs/data
+# The store's directory for the scratch stage, owned by the runtime user.
+RUN mkdir -p /outfs/data
 
 FROM scratch
 
 # CA bundle for a provider door that pushes over https.
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-# A plain COPY recreates the target dir 0755 whatever the source mode, and an
-# engine that copies the image dir's mode onto a tmpfs then leaves /tmp
-# unwritable for the non-root user, so the mode is baked here.
-COPY --from=builder --chmod=1777 /outfs/tmp /tmp
 COPY --from=builder --chown=65532:65532 --chmod=700 /outfs/data /data
 COPY --from=builder --chmod=755 /grelot /grelot
 COPY --from=builder /out/usr/share/licenses /usr/share/licenses
@@ -37,7 +32,9 @@ COPY --from=builder /out/usr/share/licenses /usr/share/licenses
 USER 65532:65532
 VOLUME /data
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=15s \
+# `grelot health` GETs /healthz on loopback and gives up at 5 s with its
+# reason, so the timeout sits above that budget and Docker never cuts it first.
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=15s \
     CMD ["/grelot", "health"]
 ENTRYPOINT ["/grelot"]
 CMD ["serve"]

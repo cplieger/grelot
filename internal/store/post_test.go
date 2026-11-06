@@ -101,7 +101,7 @@ func findThread(t *testing.T, s *Store, id uint64) (threadRow, bool) {
 func TestOpen_createsTheServerThreadsOnce(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grelot.db")
 	for range 2 {
-		s, err := Open(path, Options{Now: func() time.Time { return testNow }})
+		s, err := Open(path, &Options{Now: func() time.Time { return testNow }})
 		if err != nil {
 			t.Fatal(err)
 		}

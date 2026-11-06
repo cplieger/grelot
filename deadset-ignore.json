@@ -282,24 +282,6 @@
       "symbol": "go://github.com/cplieger/grelot/internal/client#Checkout.Remote",
       "path": "internal/client/wire.go",
       "reason": "Sent as JSON through client.Request.Body. deadset-go v1.28.0 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/transport#EndDormant",
-      "path": "internal/transport/line.go",
-      "reason": "the server's standing wait, not built on these words yet, answers them as its end reasons."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/transport#EndNone",
-      "path": "internal/transport/line.go",
-      "reason": "the server's standing wait, not built on these words yet, answers them as its end reasons."
-    },
-    {
-      "code": "DS1004",
-      "symbol": "go://github.com/cplieger/grelot/internal/transport#EndEnded",
-      "path": "internal/transport/line.go",
-      "reason": "the server's standing wait, not built on these words yet, answers them as its end reasons."
     }
   ]
 }

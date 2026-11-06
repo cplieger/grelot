@@ -3,6 +3,7 @@
 package server
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,5 +101,17 @@ func TestLoadConfig_refusalsNameTheKey(t *testing.T) {
 				t.Errorf("err %q carries the token", err)
 			}
 		})
+	}
+}
+
+// A fresh file is bbolt's first 16 MiB growth step, nearly all unwritten,
+// so the ceiling must count only the pages written.
+func TestStoreMaxBytes_aSmallCeilingTakesPostsOnAFreshStore(t *testing.T) {
+	h := newHarnessWith(t, store.Options{MaxBytes: 16 << 20})
+	h.mustRegister(sessA, "writer")
+	h.mustRegister(sessB, "reader")
+	r := h.as(sessA, http.MethodPost, "/v1/posts", postBody(map[string]any{"agent": "reader"}, "first", "a body"))
+	if r.status != http.StatusCreated {
+		t.Errorf("first post on a fresh store under a 16 MiB ceiling: %d %s, want 201", r.status, r.raw)
 	}
 }

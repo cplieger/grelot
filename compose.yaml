@@ -4,9 +4,8 @@ services:
     image: ghcr.io/cplieger/grelot:latest
     container_name: grelot
     restart: unless-stopped
+    # The server writes only its store under /data, so the rest stays read-only with no tmpfs.
     read_only: true
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
 
     environment:
       # The bearer token every client sends. Prefer GRELOT_TOKEN_FILE pointing at a mounted secret.

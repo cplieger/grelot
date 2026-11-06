@@ -145,5 +145,12 @@ func (w *wtx) storeCard(c *card) (*messageRow, error) {
 	if err := w.s.t.messages.table.Put(w.tx, pairKey(th.ID, id), &m); err != nil {
 		return nil, err
 	}
+	w.countPost(kindCards)
 	return &m, nil
+}
+
+// countPost counts a stored post in a thread of kind once its transaction
+// commits.
+func (w *wtx) countPost(kind string) {
+	w.tx.AfterCommit(func() { w.s.m.Posts.Inc(kind) })
 }

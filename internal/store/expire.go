@@ -16,7 +16,7 @@ func (s *Store) wireLeases() {
 	t.identities.onExpire = expireIdentity
 	t.threads.onExpire = expireThread
 	t.messages.onExpire = func(w *wtx, k []byte, _ *messageRow) error { return deleteRow(w, t.messages, k) }
-	t.deliveries.onExpire = func(w *wtx, k []byte, _ *deliveryRow) error { return deleteRow(w, t.deliveries, k) }
+	t.deliveries.onExpire = expireDelivery
 	t.resv.onWarn = warnReservation
 	t.resv.onExpire = expireReservation
 	t.links.onExpire = func(w *wtx, k []byte, _ *linkRow) error { return deleteRow(w, t.links, k) }
@@ -113,6 +113,7 @@ func (w *wtx) writeEvent(id uint64, kind, text string) error {
 func (w *wtx) deliver(row *identityRow, d *deliveryRow) error {
 	row.Seq++
 	d.Agent, d.Seq, d.Written = row.ID, row.Seq, w.now
+	row.Unread.add(d)
 	w.wake(row.ID)
 	if err := w.s.t.identities.table.Put(w.tx, row.ID, row); err != nil {
 		return err

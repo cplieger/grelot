@@ -21,7 +21,7 @@ import (
 func openBubbleStore(t *testing.T) (*Store, logSink) {
 	t.Helper()
 	sink := newLogSink()
-	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), Options{Logger: slog.New(sink)})
+	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{Logger: slog.New(sink)})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestSweep_afterARestartServesReservationsDelegatesLinksAndWatches(t *testin
 	clk := &clock{t: testNow}
 	sink := newLogSink()
 	open := func() *Store {
-		s, err := Open(path, Options{Logger: slog.New(sink), Now: clk.now})
+		s, err := Open(path, &Options{Logger: slog.New(sink), Now: clk.now})
 		if err != nil {
 			t.Fatalf("Open: %v", err)
 		}

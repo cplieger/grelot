@@ -34,10 +34,9 @@ func (s *Store) Status(ctx context.Context, c Caller) (Status, error) {
 			return err
 		}
 		out.Identity, out.Parent = s.view(&me), me.Parent
-		return s.scanUnread(r, me.ID, me.Read, now, func(d *deliveryRow) error {
-			out.Unread.add(d)
-			return nil
-		})
+		u, err := s.pastRead(r, &me, now)
+		out.Unread = u.Counts
+		return err
 	})
 	return out, err
 }

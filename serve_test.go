@@ -8,17 +8,20 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
-	"os"
+	"net/http/httptest"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/server"
+	"github.com/cplieger/grelot/internal/store"
 )
 
 // syncBuffer is a bytes.Buffer safe for serve's goroutine to write while the
@@ -52,12 +55,11 @@ func testConfig(t *testing.T) *server.Config {
 
 func TestServe(t *testing.T) {
 	t.Parallel()
-	marker := filepath.Join(t.TempDir(), ".healthy")
-	addr, logs, cancel, done := startServe(t, marker)
+	addr, logs, cancel, done := startServe(t)
 
-	t.Run("healthz answers up once the sweeper has passed", func(t *testing.T) {
+	t.Run("healthz answers ok once the sweeper has passed", func(t *testing.T) {
 		var status string
-		for deadline := time.Now().Add(5 * time.Second); status != "up"; time.Sleep(10 * time.Millisecond) {
+		for deadline := time.Now().Add(5 * time.Second); status != "ok"; time.Sleep(10 * time.Millisecond) {
 			resp, err := http.Get("http://" + addr + "/healthz")
 			if err != nil {
 				t.Fatal(err)
@@ -67,14 +69,15 @@ func TestServe(t *testing.T) {
 			resp.Body.Close()
 			status = body.Status
 			if time.Now().After(deadline) {
-				t.Fatalf("healthz status %q after 5 s, want up", status)
+				t.Fatalf("healthz status %q after 5 s, want ok", status)
 			}
 		}
 	})
 
-	t.Run("the health marker exists while serving", func(t *testing.T) {
-		if _, err := os.Stat(marker); err != nil {
-			t.Errorf("marker: %v", err)
+	t.Run("grelot health passes while serving", func(t *testing.T) {
+		var stderr bytes.Buffer
+		if code := probeHealth(&stderr, addr, time.Second); code != 0 {
+			t.Errorf("exit %d, want 0; stderr %q", code, stderr.String())
 		}
 	})
 
@@ -90,15 +93,68 @@ func TestServe(t *testing.T) {
 	if !strings.Contains(logs.String(), `"msg":"stopped"`) {
 		t.Errorf("no stopped line; logs: %s", logs.String())
 	}
-	if _, err := os.Stat(marker); !os.IsNotExist(err) {
-		t.Errorf("marker after stop: %v, want it removed", err)
+	var stderr bytes.Buffer
+	if code := probeHealth(&stderr, addr, time.Second); code != 1 || !strings.Contains(stderr.String(), "unhealthy") {
+		t.Errorf("grelot health after stop: exit %d, stderr %q, want 1 and unhealthy", code, stderr.String())
 	}
 }
 
-// startServe runs serve on a free port, its health marker at marker, until
-// the returned cancel or the test's end, and returns its address, its logs
-// and serve's result.
-func startServe(t *testing.T, marker string) (addr string, logs *syncBuffer, cancel context.CancelFunc, done <-chan error) {
+func TestProbeHealth(t *testing.T) {
+	t.Parallel()
+	t.Run("a stale sweep with a live listener fails", func(t *testing.T) {
+		t.Parallel()
+		var at atomic.Int64
+		at.Store(time.Now().UnixNano())
+		now := func() time.Time { return time.Unix(0, at.Load()) }
+		st, err := store.Open(filepath.Join(t.TempDir(), "grelot.db"), &store.Options{Now: now})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = st.Close() })
+		srv := server.New(&server.Options{
+			Store: st, Logger: slog.New(slog.DiscardHandler), Now: now, Config: *testConfig(t),
+		})
+		ts := httptest.NewServer(srv.Handler())
+		t.Cleanup(ts.Close)
+		addr := ts.Listener.Addr().String()
+		srv.Beat(t.Context())
+		var stderr bytes.Buffer
+		if code := probeHealth(&stderr, addr, time.Second); code != 0 {
+			t.Fatalf("fresh sweep: exit %d, want 0; stderr %q", code, stderr.String())
+		}
+		at.Add(int64(4*store.SweepEvery + time.Second))
+		if code := probeHealth(&stderr, addr, time.Second); code != 1 || !strings.Contains(stderr.String(), "503") {
+			t.Errorf("stale sweep: exit %d, stderr %q, want 1 naming the 503", code, stderr.String())
+		}
+	})
+	t.Run("a listener that accepts but never answers fails within the budget", func(t *testing.T) {
+		t.Parallel()
+		ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = ln.Close() })
+		start := time.Now()
+		var stderr bytes.Buffer
+		if code := probeHealth(&stderr, ln.Addr().String(), 200*time.Millisecond); code != 1 {
+			t.Errorf("exit %d, want 1", code)
+		}
+		if took := time.Since(start); took > 2*time.Second {
+			t.Errorf("the probe took %v, want it cut at its 200 ms budget", took)
+		}
+	})
+	t.Run("an address with no port fails", func(t *testing.T) {
+		t.Parallel()
+		var stderr bytes.Buffer
+		if code := probeHealth(&stderr, "8080", time.Second); code != 1 || !strings.Contains(stderr.String(), "8080") {
+			t.Errorf("exit %d, stderr %q, want 1 naming the address", code, stderr.String())
+		}
+	})
+}
+
+// startServe runs serve on a free port until the returned cancel or the
+// test's end, and returns its address, its logs and serve's result.
+func startServe(t *testing.T) (addr string, logs *syncBuffer, cancel context.CancelFunc, done <-chan error) {
 	t.Helper()
 	logs = &syncBuffer{}
 	cfg := testConfig(t)
@@ -106,7 +162,7 @@ func startServe(t *testing.T, marker string) (addr string, logs *syncBuffer, can
 	out := make(chan error, 1)
 	stopped := make(chan struct{})
 	go func() {
-		out <- serve(ctx, cfg, "127.0.0.1:0", marker, slog.New(slog.NewJSONHandler(logs, nil)))
+		out <- serve(ctx, cfg, "127.0.0.1:0", slog.New(slog.NewJSONHandler(logs, nil)))
 		close(stopped)
 	}()
 	// Registered after the TempDir calls, so serve has returned and closed
@@ -144,7 +200,7 @@ func call(t *testing.T, addr, method, path, session, body string) (status int, c
 
 func TestServe_aStopAnswersAnOpenWaitAndDrains(t *testing.T) {
 	t.Parallel()
-	addr, logs, cancel, done := startServe(t, filepath.Join(t.TempDir(), ".healthy"))
+	addr, logs, cancel, done := startServe(t)
 	const session = "test:session-a"
 	register := `{"name":"reader","paths":["/workspace/grelot"],"description":"reading","host":"host-a/app",` +
 		`"os":"linux","arch":"amd64","ttl":"1h","where":{"machine":"dmi:` + strings.Repeat("1", 32) +
@@ -189,7 +245,7 @@ func TestServe_aStopAnswersAnOpenWaitAndDrains(t *testing.T) {
 
 func TestServe_listenError(t *testing.T) {
 	t.Parallel()
-	err := serve(context.Background(), testConfig(t), "256.0.0.1:0", filepath.Join(t.TempDir(), ".healthy"), slog.New(slog.DiscardHandler))
+	err := serve(context.Background(), testConfig(t), "256.0.0.1:0", slog.New(slog.DiscardHandler))
 	if err == nil {
 		t.Fatal("serve on an invalid address returned nil")
 	}

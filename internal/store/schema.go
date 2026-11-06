@@ -82,12 +82,13 @@ type identityRow struct {
 	Arch         string    `json:"arch"`
 	Provider     string    `json:"provider"`
 	// Session is empty on a dormant row a fresh registration detached.
-	Session  string   `json:"session,omitempty"`
-	Proc     string   `json:"proc,omitempty"`
-	Paths    []string `json:"paths"`
-	Follows  []string `json:"follows,omitempty"`
-	LastPage seqRange `json:"last_page"`
-	ID       uint64   `json:"id"`
+	Session  string        `json:"session,omitempty"`
+	Proc     string        `json:"proc,omitempty"`
+	Paths    []string      `json:"paths"`
+	Follows  []string      `json:"follows,omitempty"`
+	Unread   unreadSummary `json:"unread"`
+	LastPage seqRange      `json:"last_page"`
+	ID       uint64        `json:"id"`
 	// Seq is the highest delivery seq written to this identity.
 	Seq    uint64        `json:"seq"`
 	Read   uint64        `json:"read"`
@@ -269,7 +270,7 @@ func newSchema() (*bolttable.Schema, *tables, error) {
 	silent := bolttable.TableOptions{Silent: true}
 	var t tables
 	ids, err := bolttable.Define(ns, prefixIdentities, "identities",
-		bolttable.Uint64Key{}, bolttable.JSON[identityRow](1), silent)
+		bolttable.Uint64Key{}, bolttable.JSON[identityRow](2), silent)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -18,7 +18,7 @@ const shortThreadTTL = 2 * time.Hour
 func openShortThreadStore(t *testing.T) (*Store, *clock) {
 	t.Helper()
 	clk := &clock{t: testNow}
-	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), Options{Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: shortThreadTTL})
+	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: shortThreadTTL})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

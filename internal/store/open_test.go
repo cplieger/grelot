@@ -20,7 +20,7 @@ import (
 
 func openAt(t *testing.T, path string, sink logSink) (*Store, error) {
 	t.Helper()
-	s, err := Open(path, Options{Logger: slog.New(sink), Now: func() time.Time { return testNow }})
+	s, err := Open(path, &Options{Logger: slog.New(sink), Now: func() time.Time { return testNow }})
 	if err == nil {
 		t.Cleanup(func() { _ = s.Close() })
 	}
@@ -247,7 +247,7 @@ func TestOpen_compactsAFileMostlyFreeAndKeepsItsRows(t *testing.T) {
 	clk := &clock{t: testNow}
 	path := filepath.Join(t.TempDir(), "grelot.db")
 	o := Options{Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: time.Hour}
-	s, err := Open(path, o)
+	s, err := Open(path, &o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestOpen_compactsAFileMostlyFreeAndKeepsItsRows(t *testing.T) {
 	clk.advance(time.Hour)
 	mustSweep(t, s)
 	before := mustMeasure(t, s)
-	// The design's thresholds: at least half the file and 4 MiB free.
+	// Open compacts only a file at least half and 4 MiB free.
 	if before.FreeBytes*2 < before.FileBytes || before.FreeBytes < 4<<20 {
 		t.Fatalf("free %d of %d bytes before the restart: the fixture does not reach the thresholds", before.FreeBytes, before.FileBytes)
 	}
@@ -274,7 +274,7 @@ func TestOpen_compactsAFileMostlyFreeAndKeepsItsRows(t *testing.T) {
 
 	sink := newLogSink()
 	o.Logger = slog.New(sink)
-	s, err = Open(path, o)
+	s, err = Open(path, &o)
 	if err != nil {
 		t.Fatal(err)
 	}

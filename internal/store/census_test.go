@@ -44,7 +44,9 @@ func censusFixture(t *testing.T) (s *Store, clk *clock, firstWake time.Time) {
 
 func TestCensus_countsWhatTheStateLineReports(t *testing.T) {
 	s, _, firstWake := censusFixture(t)
-	s.space = func() (bolttable.Space, error) { return bolttable.Space{FileBytes: 4096, FreeBytes: 1024}, nil }
+	s.space = func() (bolttable.Space, error) {
+		return bolttable.Space{FileBytes: 16384, InUseBytes: 3072, FreeBytes: 1024}, nil
+	}
 
 	c := mustCensus(t, s, func(id *Identity) bool { return id.Name == "alpha" })
 
@@ -73,7 +75,7 @@ func TestCensus_countsWhatTheStateLineReports(t *testing.T) {
 		}
 	})
 	t.Run("space", func(t *testing.T) {
-		want := Space{FileBytes: 4096, FreeBytes: 1024, InUseBytes: 3072}
+		want := Space{FileBytes: 16384, FreeBytes: 1024, InUseBytes: 3072}
 		if c.Space != want {
 			t.Errorf("space %+v, want %+v", c.Space, want)
 		}

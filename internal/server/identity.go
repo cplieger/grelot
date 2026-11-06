@@ -212,7 +212,10 @@ type linkJSON struct {
 	Handle  string    `json:"handle"`
 }
 
-const stateNone = "none"
+const (
+	stateNone    = "none"
+	stateDormant = "dormant"
+)
 
 // The headers the session start hook sends its machine and environment
 // in, for the take-over hint; never the query, which access logs keep.

@@ -15,7 +15,7 @@ import (
 func openDormancyStore(t *testing.T) (*Store, *clock) {
 	t.Helper()
 	clk := &clock{t: testNow}
-	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), Options{Logger: slog.New(newLogSink()), Now: clk.now, DormantTTL: time.Hour})
+	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{Logger: slog.New(newLogSink()), Now: clk.now, DormantTTL: time.Hour})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

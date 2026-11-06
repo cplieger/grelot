@@ -42,7 +42,7 @@ func openWokeStore(t *testing.T) (*Store, *clock, *wokeLog) {
 	t.Helper()
 	clk := &clock{t: testNow}
 	wl := &wokeLog{}
-	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), Options{
+	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{
 		Logger: slog.New(newLogSink()), Now: clk.now, Woke: wl.woke,
 	})
 	if err != nil {
