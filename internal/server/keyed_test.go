@@ -216,7 +216,7 @@ func TestKeyedWrite_aMissingOrMalformedKeyIs400(t *testing.T) {
 		{name: "unquoted", key: "abcdefghijklmnop"},
 		{name: "15 characters", key: `"abcdefghijklmno"`},
 		{name: "65 characters", key: `"` + strings.Repeat("a", 65) + `"`},
-		{name: "a character outside the set", key: `"abcdefghijklmno+"`},
+		{name: "a character outside the set", key: `"abcdefghijklmno+"`}, // gitleaks:allow
 		{name: "a list of two", key: `"abcdefghijklmnop", "bcdefghijklmnopq"`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
