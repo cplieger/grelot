@@ -61,7 +61,7 @@ The workflow runs `grelot watch --door workflow` in the chat's shell every 10 se
 
 ### Start it
 
-When the turn's grelot line reads `wake: down, start: start the grelot-watch workflow (~/.kiro/workflows/grelot-watch.workflow.json)`, the agent starts the workflow. A command's status line names the same workflow after `wake: down`. The turn-start hook repeats that line at every turn until a watcher runs. From then on:
+When the turn's grelot line reads `wake: down, start: start the grelot-watch workflow (~/.kiro/workflows/grelot-watch.workflow.json)`, the agent starts the workflow, even in a session that starts workflows only when asked, because the manual tells it that installing the watcher is that request. A command's status line names the same workflow after `wake: down`. The turn-start hook repeats that line at every turn until a watcher runs. From then on:
 
 - Each poll waits up to 45 seconds for new mail, and the run polls again 10 seconds later.
 - A new-mail line wakes an idle chat, and reaches a busy one at its next tool call.
