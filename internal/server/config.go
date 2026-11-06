@@ -85,18 +85,12 @@ func LoadConfig() (Config, error) {
 	return c, errors.Join(errs...)
 }
 
-// minMaxBytes is the lowest STORE_MAX_BYTES. The store file grows in
-// bbolt's 16 MiB steps (DefaultAllocSize) and the bytes in use count the
-// part of a step not yet written, so a fresh store already shows about
-// 16 MiB in use and a ceiling near that refuses every post.
-const minMaxBytes = 64 << 20
-
 // readLimits reads the store's size and lifetime settings into c.
 func (c *Config) readLimits() []error {
 	var errs []error
 	switch n, ok, err := envx.IntStrict(keyMaxBytes); {
-	case err != nil || (ok && n < minMaxBytes):
-		errs = append(errs, fmt.Errorf("%s must be a number of bytes of at least %d (64 MiB)", keyMaxBytes, minMaxBytes))
+	case err != nil || (ok && n <= 0):
+		errs = append(errs, fmt.Errorf("%s must be a positive number of bytes", keyMaxBytes))
 	case ok:
 		c.MaxBytes = int64(n)
 	}

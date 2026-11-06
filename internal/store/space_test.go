@@ -19,8 +19,8 @@ func mustMeasure(t *testing.T, s *Store) Space {
 	if err != nil {
 		t.Fatalf("Measure: %v", err)
 	}
-	if sp.InUseBytes != sp.FileBytes-sp.FreeBytes {
-		t.Errorf("in use %d, want file %d minus free %d", sp.InUseBytes, sp.FileBytes, sp.FreeBytes)
+	if sp.InUseBytes <= 0 || sp.InUseBytes+sp.FreeBytes > sp.FileBytes {
+		t.Errorf("in use %d and free %d, want both within the %d byte file", sp.InUseBytes, sp.FreeBytes, sp.FileBytes)
 	}
 	return sp
 }
@@ -100,9 +100,9 @@ func TestPost_concurrentPostsStopAtTheFirstPastTheCeiling(t *testing.T) {
 		}
 		now, err := measure()
 		if now == before {
-			return bolttable.Space{FileBytes: 900}, err
+			return bolttable.Space{InUseBytes: 900}, err
 		}
-		return bolttable.Space{FileBytes: 901}, err
+		return bolttable.Space{InUseBytes: 901}, err
 	}
 
 	var landed, refused atomic.Int32
@@ -131,7 +131,7 @@ func TestPost_concurrentPostsStopAtTheFirstPastTheCeiling(t *testing.T) {
 
 // inUse is a space reading of n bytes in use.
 func inUse(n int64) func() (bolttable.Space, error) {
-	return func() (bolttable.Space, error) { return bolttable.Space{FileBytes: n}, nil }
+	return func() (bolttable.Space, error) { return bolttable.Space{FileBytes: n, InUseBytes: n}, nil }
 }
 
 // fillUntilFull posts 64 KiB messages from alpha to bravo until a post is

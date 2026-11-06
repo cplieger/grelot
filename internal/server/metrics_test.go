@@ -107,8 +107,8 @@ func TestMetrics_gaugesCountTheStoreAtTheScrape(t *testing.T) {
 			}
 		}
 		file, free, inUse := got["grelot_store_file_bytes"], got["grelot_store_free_bytes"], got["grelot_store_in_use_bytes"]
-		if file <= 0 || inUse != file-free {
-			t.Errorf("bytes: file %v free %v in use %v, want a file and in use = file - free", file, free, inUse)
+		if inUse <= 0 || inUse+free > file {
+			t.Errorf("bytes: file %v free %v in use %v, want in use and free within the file", file, free, inUse)
 		}
 
 		time.Sleep(time.Minute)

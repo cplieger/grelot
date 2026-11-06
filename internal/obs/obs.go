@@ -119,7 +119,7 @@ func (m *Metrics) ServeState(read func(context.Context) (State, bool), now func(
 	reservations := measure.NewGaugeDesc("reservations", "Reservations held, and queue entries waiting.", []string{"state"})
 	unread := measure.NewGaugeDesc("unread_backlog", "Unread wake deliveries of live identities.", nil)
 	oldest := measure.NewGaugeDesc("unread_oldest_seconds", "Age of the oldest unread wake delivery, 0 with none.", nil)
-	inUse := measure.NewGaugeDesc("store_in_use_bytes", "Store bytes holding data: the file's bytes minus its free pages.", nil)
+	inUse := measure.NewGaugeDesc("store_in_use_bytes", "Store bytes holding data: the pages written, less the free ones.", nil)
 	file := measure.NewGaugeDesc("store_file_bytes", "Store file size, which stays near its high-water mark.", nil)
 	free := measure.NewGaugeDesc("store_free_bytes", "Store bytes in free and pending pages.", nil)
 	maxBytes := measure.NewGaugeDesc("store_max_bytes", "STORE_MAX_BYTES, the ceiling on bytes in use; posts are refused past 90 % of it.", nil)

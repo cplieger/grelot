@@ -248,10 +248,8 @@ func TestLoad(t *testing.T) {
 	}
 
 	// Each post measures the store under the write lock, so the refusal
-	// starts past 90 % of the ceiling with at most one request over it;
-	// the measure also counts the unwritten part of the file's last 16 MiB
-	// growth step (see minMaxBytes).
-	if limit := 0.9*float64(maxBytes) + 16<<20 + 128<<10; rep.InUseAtFull*10 <= float64(maxBytes)*9 || rep.InUseAtFull > limit {
+	// starts past 90 % of the ceiling with at most one request over it.
+	if limit := 0.9*float64(maxBytes) + 128<<10; rep.InUseAtFull*10 <= float64(maxBytes)*9 || rep.InUseAtFull > limit {
 		t.Errorf("bytes in use at the first 507 are %.0f, want above 90 %% of %d and at most %.0f", rep.InUseAtFull, maxBytes, limit)
 	}
 	if rep.RateLimited != 0 {
