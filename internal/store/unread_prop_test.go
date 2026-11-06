@@ -57,7 +57,7 @@ func summaryStep(t *testing.T, s *Store, clk *clock, r *rand.Rand) string {
 	name := summaryNames[r.IntN(len(summaryNames))]
 	c := Caller{Session: sess(name)}
 	var err error
-	op := ""
+	var op string
 	switch k := r.IntN(14); {
 	case k < 4:
 		op = "direct"
