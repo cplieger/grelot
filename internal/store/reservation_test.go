@@ -26,7 +26,7 @@ func reserving(name, path string, ttl time.Duration) Reserving {
 
 func mustReserve(t *testing.T, s *Store, r Reserving) Reserved {
 	t.Helper()
-	got, err := s.Reserve(t.Context(), &r)
+	got, _, err := s.Reserve(t.Context(), Keyed{}, &r)
 	if err != nil {
 		t.Fatalf("Reserve(%s, %s): %v", r.Caller.Session, r.Path, err)
 	}
@@ -45,7 +45,7 @@ func mustQueue(t *testing.T, s *Store, r Reserving) Reserved {
 
 func mustRelease(t *testing.T, s *Store, name string, id uint64) {
 	t.Helper()
-	if _, err := s.Release(t.Context(), Caller{Session: sess(name)}, id); err != nil {
+	if _, _, err := s.Release(t.Context(), Keyed{}, Caller{Session: sess(name)}, id); err != nil {
 		t.Fatalf("Release(%s, %d): %v", name, id, err)
 	}
 }
@@ -123,18 +123,18 @@ func TestReserve_ttlBounds(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	regAt(t, s, "holder")
 	for _, ttl := range []time.Duration{0, 59 * time.Second, 8*time.Hour + time.Second} {
-		_, err := s.Reserve(t.Context(), new(reserving("holder", pathMarotte, ttl)))
+		_, _, err := s.Reserve(t.Context(), Keyed{}, new(reserving("holder", pathMarotte, ttl)))
 		wantRefusal(t, err, KindInvalid, "", "--ttl", "1m", "8h")
 	}
 	mustReserve(t, s, reserving("holder", pathMarotte, 8*time.Hour))
 	queued := reserving("holder", pathWeb, 0)
 	queued.Queue = true
-	_, err := s.Reserve(t.Context(), &queued)
+	_, _, err := s.Reserve(t.Context(), Keyed{}, &queued)
 	wantRefusal(t, err, KindInvalid, "", "a ttl is required")
 
 	short, _ := openReservationStore(t, 2*time.Hour)
 	regAt(t, short, "holder")
-	_, err = short.Reserve(t.Context(), new(reserving("holder", pathMarotte, 3*time.Hour)))
+	_, _, err = short.Reserve(t.Context(), Keyed{}, new(reserving("holder", pathMarotte, 3*time.Hour)))
 	wantRefusal(t, err, KindInvalid, "", "1m to 2h")
 }
 
@@ -149,13 +149,13 @@ func TestReserve_reasonAndPathChecked(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			r := reserving("holder", pathMarotte, time.Hour)
 			edit(&r)
-			_, err := s.Reserve(t.Context(), &r)
+			_, _, err := s.Reserve(t.Context(), Keyed{}, &r)
 			wantRefusal(t, err, KindInvalid, "", "--reason")
 		})
 	}
-	_, err := s.Reserve(t.Context(), new(reserving("holder", "workspace/marotte", time.Hour)))
+	_, _, err := s.Reserve(t.Context(), Keyed{}, new(reserving("holder", "workspace/marotte", time.Hour)))
 	wantRefusal(t, err, KindInvalid, "", "canonical")
-	_, err = s.Reserve(t.Context(), new(reserving("nobody", pathMarotte, time.Hour)))
+	_, _, err = s.Reserve(t.Context(), Keyed{}, new(reserving("nobody", pathMarotte, time.Hour)))
 	wantRefusal(t, err, KindGone, "none")
 }
 
@@ -165,7 +165,7 @@ func TestReserve_conflictsWithAnOverlappingGrantEitherWay(t *testing.T) {
 	regAt(t, s, "other")
 	mustReserve(t, s, reserving("holder", pathMarotte, time.Hour))
 	for _, p := range []string{pathMarotte, pathWeb, "/workspace", "/"} {
-		_, err := s.Reserve(t.Context(), new(reserving("other", p, time.Hour)))
+		_, _, err := s.Reserve(t.Context(), Keyed{}, new(reserving("other", p, time.Hour)))
 		wantRefusal(t, err, KindConflict, "reserved", pathMarotte)
 	}
 	for _, p := range []string{"/workspace/marotte-old", repoSubflux} {
@@ -194,7 +194,7 @@ func TestReserve_conflictNamesTheHolder(t *testing.T) {
 	res := reserving("holder", pathMarotte, 2*time.Hour)
 	res.Reason = "rebasing the web tree"
 	mustReserve(t, s, res)
-	_, err := s.Reserve(t.Context(), new(reserving("other", pathWeb, time.Hour)))
+	_, _, err := s.Reserve(t.Context(), Keyed{}, new(reserving("other", pathWeb, time.Hour)))
 	wantRefusal(t, err, KindConflict, "reserved",
 		"holder", "laptop/wsl", "other machine", "rebasing the web tree", "2026-11-04 07:39 UTC", "--queue")
 }
@@ -209,14 +209,14 @@ func TestReserve_newcomerSubpathWaitsBehindAQueuedParent(t *testing.T) {
 	if parent.Behind == nil || parent.Behind.ID != web.Reservation.ID || parent.Behind.Holder != "web-holder" {
 		t.Errorf("the parent waits behind %+v, want web-holder's grant", parent.Behind)
 	}
-	_, err := s.Reserve(t.Context(), new(reserving("newcomer", pathAPI, time.Hour)))
+	_, _, err := s.Reserve(t.Context(), Keyed{}, new(reserving("newcomer", pathAPI, time.Hour)))
 	wantRefusal(t, err, KindConflict, "queued", pathMarotte, "parent", "queued first", "reason of parent", "--queue")
 	got := mustQueue(t, s, reserving("newcomer", pathAPI, time.Hour))
 	if got.Behind == nil || got.Behind.ID != parent.Reservation.ID {
 		t.Errorf("the newcomer waits behind %+v, want the parent's queue entry", got.Behind)
 	}
 	// A queued request holds back its own identity's newer ones too.
-	_, err = s.Reserve(t.Context(), new(reserving("parent", pathAPI, time.Hour)))
+	_, _, err = s.Reserve(t.Context(), Keyed{}, new(reserving("parent", pathAPI, time.Hour)))
 	wantRefusal(t, err, KindConflict, "queued", "you")
 }
 
@@ -269,7 +269,7 @@ func TestRelease_cancellingTheOnlyBlockerGrantsTheRequestBehindIt(t *testing.T) 
 	parent := mustQueue(t, s, reserving("parent", pathMarotte, time.Hour))
 	api := mustQueue(t, s, reserving("api", pathAPI, time.Hour))
 
-	got, err := s.Release(t.Context(), Caller{Session: sess("parent")}, parent.Reservation.ID)
+	got, _, err := s.Release(t.Context(), Keyed{}, Caller{Session: sess("parent")}, parent.Reservation.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,13 +319,13 @@ func TestRelease_aStaleIDCannotTouchALaterGrant(t *testing.T) {
 	if later.Reservation.ID == old.Reservation.ID {
 		t.Fatal("the later grant reused the old id")
 	}
-	_, err := s.Release(t.Context(), Caller{Session: sess("holder")}, old.Reservation.ID)
+	_, _, err := s.Release(t.Context(), Keyed{}, Caller{Session: sess("holder")}, old.Reservation.ID)
 	wantRefusal(t, err, KindNotFound, "", "no reservation")
-	_, err = s.RenewReservation(t.Context(), Caller{Session: sess("holder")}, old.Reservation.ID, 8*time.Hour)
+	_, _, err = s.RenewReservation(t.Context(), Keyed{}, Caller{Session: sess("holder")}, old.Reservation.ID, 8*time.Hour)
 	wantRefusal(t, err, KindNotFound, "", "no reservation")
-	_, err = s.Release(t.Context(), Caller{Session: sess("other")}, later.Reservation.ID)
+	_, _, err = s.Release(t.Context(), Keyed{}, Caller{Session: sess("other")}, later.Reservation.ID)
 	wantRefusal(t, err, KindNotFound, "", "no reservation")
-	_, err = s.RenewReservation(t.Context(), Caller{Session: sess("other")}, later.Reservation.ID, 8*time.Hour)
+	_, _, err = s.RenewReservation(t.Context(), Keyed{}, Caller{Session: sess("other")}, later.Reservation.ID, 8*time.Hour)
 	wantRefusal(t, err, KindNotFound, "", "no reservation")
 	row := wantState(t, s, later.Reservation.ID, reservationHeld)
 	if !row.Lease.Expires.Equal(testNow.Add(time.Hour)) {
@@ -339,7 +339,7 @@ func TestRenewReservation_refusesAQueueEntry(t *testing.T) {
 	regAt(t, s, "waiter")
 	mustReserve(t, s, reserving("holder", pathMarotte, time.Hour))
 	q := mustQueue(t, s, reserving("waiter", pathMarotte, time.Hour))
-	_, err := s.RenewReservation(t.Context(), Caller{Session: sess("waiter")}, q.Reservation.ID, 2*time.Hour)
+	_, _, err := s.RenewReservation(t.Context(), Keyed{}, Caller{Session: sess("waiter")}, q.Reservation.ID, 2*time.Hour)
 	wantRefusal(t, err, KindInvalid, "", "queued")
 }
 
@@ -365,7 +365,7 @@ func TestReservationWarning_onceAndRenewRearms(t *testing.T) {
 			t.Errorf("warning %q lacks %q", ev[0].Text, part)
 		}
 	}
-	got, err := s.RenewReservation(t.Context(), Caller{Session: sess("holder")}, id, time.Hour)
+	got, _, err := s.RenewReservation(t.Context(), Keyed{}, Caller{Session: sess("holder")}, id, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -418,7 +418,7 @@ func TestReserve_racingAnExpiredGrantNeverBeatsTheQueue(t *testing.T) {
 	q := mustQueue(t, s, reserving("waiter", pathMarotte, time.Hour))
 	clk.advance(10 * time.Minute)
 
-	_, err := s.Reserve(t.Context(), new(reserving("racer", pathWeb, time.Hour)))
+	_, _, err := s.Reserve(t.Context(), Keyed{}, new(reserving("racer", pathWeb, time.Hour)))
 	wantRefusal(t, err, KindConflict, "reserved", "waiter")
 	wantState(t, s, q.Reservation.ID, reservationHeld)
 	if n := len(eventsOf(t, s, waiter.ID, kindReservationGranted)); n != 1 {
@@ -526,11 +526,11 @@ func TestUnfollow_refusedUnderAHeldReservation(t *testing.T) {
 	mustFollow(t, s, sess("holder"), pathWeb)
 	res := mustReserve(t, s, reserving("holder", pathMarotte, time.Hour))
 
-	_, err := s.Unfollow(t.Context(), Caller{Session: sess("holder")}, pathWeb)
+	_, _, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("holder")}, pathWeb)
 	id := strconv.FormatUint(res.Reservation.ID, 10)
 	wantRefusal(t, err, KindConflict, "", "release "+id+" first", pathMarotte)
 	mustRelease(t, s, "holder", res.Reservation.ID)
-	got, err := s.Unfollow(t.Context(), Caller{Session: sess("holder")}, pathWeb)
+	got, _, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("holder")}, pathWeb)
 	if err != nil || slices.Contains(got.Follows, pathWeb) {
 		t.Errorf("unfollow after the release: follows %v, err %v; want it gone", got.Follows, err)
 	}
@@ -714,7 +714,7 @@ func TestUnfollow_passesOnceTheReservationExpired(t *testing.T) {
 	mustFollow(t, s, sess("holder"), pathWeb)
 	mustReserve(t, s, reserving("holder", pathMarotte, 10*time.Minute))
 	clk.advance(10 * time.Minute)
-	if _, err := s.Unfollow(t.Context(), Caller{Session: sess("holder")}, pathWeb); err != nil {
+	if _, _, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("holder")}, pathWeb); err != nil {
 		t.Errorf("unfollow after the reservation expired: %v", err)
 	}
 }
@@ -747,7 +747,7 @@ func TestRetire_freesEveryOwnRowBeforeTheQueueWalk(t *testing.T) {
 	mustQueue(t, s, reserving("leaving", pathAPI, time.Hour))
 	third := mustQueue(t, s, reserving("third", pathAPI, time.Hour))
 
-	if err := s.Retire(t.Context(), Caller{Session: sess("leaving")}); err != nil {
+	if _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("leaving")}); err != nil {
 		t.Fatal(err)
 	}
 	if rows := rowsHeldBy(t, s, leaving.ID); len(rows) != 0 {
@@ -766,7 +766,7 @@ func TestRetire_handsItsGrantToTheAgentQueuedBehindIt(t *testing.T) {
 	held := mustReserve(t, s, reserving("leaving", pathMarotte, time.Hour))
 	q := mustQueue(t, s, reserving("waiter", pathMarotte, 2*time.Hour))
 
-	if err := s.Retire(t.Context(), Caller{Session: sess("leaving")}); err != nil {
+	if _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("leaving")}); err != nil {
 		t.Fatal(err)
 	}
 	if _, found := getReservation(t, s, held.Reservation.ID); found {
@@ -822,12 +822,12 @@ func TestTakeOver_keepsReservationIDsWorkingFromTheNewSession(t *testing.T) {
 	r.TakeOver = true
 	mustRegister(t, s, r)
 
-	if _, err := s.RenewReservation(t.Context(), Caller{Session: sessB}, held.Reservation.ID, 2*time.Hour); err != nil {
+	if _, _, err := s.RenewReservation(t.Context(), Keyed{}, Caller{Session: sessB}, held.Reservation.ID, 2*time.Hour); err != nil {
 		t.Errorf("renew from the new session: %v", err)
 	}
-	_, err := s.Release(t.Context(), Caller{Session: sessA}, held.Reservation.ID)
+	_, _, err := s.Release(t.Context(), Keyed{}, Caller{Session: sessA}, held.Reservation.ID)
 	wantRefusal(t, err, KindGone, "")
-	if _, err := s.Release(t.Context(), Caller{Session: sessB}, held.Reservation.ID); err != nil {
+	if _, _, err := s.Release(t.Context(), Keyed{}, Caller{Session: sessB}, held.Reservation.ID); err != nil {
 		t.Errorf("release from the new session: %v", err)
 	}
 }

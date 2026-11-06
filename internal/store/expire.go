@@ -21,6 +21,7 @@ func (s *Store) wireLeases() {
 	t.resv.onExpire = expireReservation
 	t.links.onExpire = func(w *wtx, k []byte, _ *linkRow) error { return deleteRow(w, t.links, k) }
 	t.watches.onExpire = expireWatch
+	t.requests.onExpire = func(w *wtx, k []byte, _ *requestRow) error { return deleteRow(w, t.requests, k) }
 }
 
 func deleteRow[K, V any](w *wtx, l *leased[K, V], k K) error {
@@ -37,7 +38,7 @@ func expireIdentity(w *wtx, k uint64, v *identityRow) error {
 	case v.Parent != 0:
 		return w.endDelegate(v, endExpired)
 	case v.State == stateDormant:
-		w.s.forgetSeen(k)
+		w.forgetSeen(k)
 		if err := w.leaveWatches(v); err != nil {
 			return err
 		}

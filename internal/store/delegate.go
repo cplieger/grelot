@@ -60,20 +60,14 @@ type Granted struct {
 // KindNotFound for an agent name no live identity holds; KindConflict for
 // a handle an identity or an unused link holds, or a cap reached; KindGone
 // for a session with no live identity.
-func (s *Store) Delegate(ctx context.Context, g *Grant) (Granted, error) {
+func (s *Store) Delegate(ctx context.Context, k Keyed, g *Grant) (Granted, bool, error) {
 	if err := checkLabel(g.Label); err != nil {
-		return Granted{}, err
+		return Granted{}, false, err
 	}
 	if _, err := identityPolicy.grant(s.now(), g.TTL, time.Time{}); err != nil {
-		return Granted{}, err
+		return Granted{}, false, err
 	}
-	var out Granted
-	err := s.update(ctx, func(w *wtx) error {
-		var gerr error
-		out, gerr = w.delegate(g)
-		return gerr
-	})
-	return out, err
+	return keyed(ctx, s, k, func(w *wtx) (Granted, error) { return w.delegate(g) })
 }
 
 func (w *wtx) delegate(g *Grant) (Granted, error) {
@@ -110,7 +104,7 @@ func (w *wtx) delegate(g *Grant) (Granted, error) {
 	if err := w.s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {
 		return Granted{}, err
 	}
-	w.s.log.Info("delegate granted", "name", me.Name, "handle", handle, "ttl", fmtDur(g.TTL))
+	w.logInfo("delegate granted", "name", me.Name, "handle", handle, "ttl", fmtDur(g.TTL))
 	return Granted{Link: linkPrefix + text, Handle: handle, Expires: link.Lease.Expires}, nil
 }
 
@@ -255,7 +249,7 @@ func (w *wtx) registerDelegate(r *Registration) (Registered, error) {
 	if _, err := w.s.t.links.table.Delete(w.tx, pairKey(link.Parent, link.ID)); err != nil {
 		return Registered{}, err
 	}
-	w.s.log.Info("delegate registered", "handle", handle, "id", id, "parent", parent.ID, "own_session", session != "")
+	w.logInfo("delegate registered", "handle", handle, "id", id, "parent", parent.ID, "own_session", session != "")
 	v, verr := w.viewOf(&row)
 	return Registered{Identity: v}, verr
 }
@@ -528,8 +522,8 @@ func (w *wtx) endDelegate(d *identityRow, why endWhy) error {
 	if _, err := w.s.t.identities.table.Delete(w.tx, d.ID); err != nil {
 		return err
 	}
-	w.s.forgetSeen(d.ID)
-	w.s.log.Info("delegate ended", "handle", d.Name, "id", d.ID, "why", string(why))
+	w.forgetSeen(d.ID)
+	w.logInfo("delegate ended", "handle", d.Name, "id", d.ID, "why", string(why))
 	return nil
 }
 

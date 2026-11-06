@@ -201,6 +201,8 @@ type wtx struct {
 	s   *Store
 	tx  *bolttable.Tx
 	r   *bolttable.ReadTx
+	// refusal is what update returns once this transaction commits.
+	refusal *Error
 	// cards and events are owed so far, written once fn is done.
 	cards  []card
 	events []owedEvent
@@ -208,6 +210,18 @@ type wtx struct {
 	woke []uint64
 	// recounts are the identities whose unread summary recount rebuilds.
 	recounts []uint64
+}
+
+// refuseCommitting has update return e once this transaction commits: a
+// refusal whose transaction must still stand, as an eager hand-off it
+// reports does.
+func (w *wtx) refuseCommitting(e *Error) { w.refusal = e }
+
+// logInfo writes an INFO line once this transaction commits, so a rollback
+// (a later refusal, or a deadline passing after fn) never logs a change
+// that did not happen.
+func (w *wtx) logInfo(msg string, args ...any) {
+	w.tx.AfterCommit(func() { w.s.log.Info(msg, args...) })
 }
 
 // wake has Options.Woke report id once this transaction commits.
@@ -218,10 +232,13 @@ func (w *wtx) wake(id uint64) {
 }
 
 // update runs fn in one write transaction, at one instant of the clock,
-// then writes the cards and events it owes.
+// then writes the cards and events it owes. A nil return means the change
+// committed; a refusal fn left with refuseCommitting comes back after it.
 func (s *Store) update(ctx context.Context, fn func(*wtx) error) error {
-	return closed(s.db.Update(ctx, func(tx *bolttable.Tx) error {
+	var refusal *Error
+	err := closed(s.db.Update(ctx, func(tx *bolttable.Tx) error {
 		w := &wtx{s: s, tx: tx, r: tx.Read(), now: s.now()}
+		defer func() { refusal = w.refusal }()
 		if err := fn(w); err != nil {
 			return err
 		}
@@ -236,6 +253,10 @@ func (s *Store) update(ctx context.Context, fn func(*wtx) error) error {
 		}
 		return nil
 	}))
+	if err == nil && refusal != nil {
+		return refusal
+	}
+	return err
 }
 
 // read runs fn in one read transaction.

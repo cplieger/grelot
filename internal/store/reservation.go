@@ -64,24 +64,14 @@ type ReservationQuery struct {
 // while an older request waits for the parent. Refusals: KindInvalid for
 // a bad path, reason or ttl; KindGone with no live identity;
 // KindForbidden for a delegate; KindConflict naming the holder or queue head.
-func (s *Store) Reserve(ctx context.Context, r *Reserving) (Reserved, error) {
+func (s *Store) Reserve(ctx context.Context, k Keyed, r *Reserving) (Reserved, bool, error) {
 	if err := checkReserving(r); err != nil {
-		return Reserved{}, err
+		return Reserved{}, false, err
 	}
 	if _, err := s.resvPolicy.grant(s.now(), r.TTL, time.Time{}); err != nil {
-		return Reserved{}, err
+		return Reserved{}, false, err
 	}
-	var out Reserved
-	var conflict *Error
-	err := s.update(ctx, func(w *wtx) error {
-		var rerr error
-		out, conflict, rerr = w.reserve(r)
-		return rerr
-	})
-	if err == nil && conflict != nil {
-		return Reserved{}, conflict
-	}
-	return out, err
+	return keyed(ctx, s, k, func(w *wtx) (Reserved, error) { return w.reserve(r) })
 }
 
 func checkReserving(r *Reserving) error {
@@ -97,51 +87,54 @@ func checkReserving(r *Reserving) error {
 // reserve answers a conflict as a refusal the transaction still commits:
 // the 409 names the holder the eager expiry left, so that hand-off must
 // stand.
-func (w *wtx) reserve(r *Reserving) (Reserved, *Error, error) {
+func (w *wtx) reserve(r *Reserving) (Reserved, error) {
 	if err := w.settleReservations(r.Path); err != nil {
-		return Reserved{}, nil, err
+		return Reserved{}, err
 	}
 	me, err := w.liveAs(r.Caller)
 	if err != nil {
-		return Reserved{}, nil, err
+		return Reserved{}, err
 	}
 	if me.Parent != 0 {
-		return Reserved{}, nil, refuse(KindForbidden, "a delegate cannot reserve or queue: ask your parent to reserve the path")
+		return Reserved{}, refuse(KindForbidden, "a delegate cannot reserve or queue: ask your parent to reserve the path")
 	}
 	w.touch(&me)
 	if perr := w.s.t.identities.table.Put(w.tx, me.ID, &me); perr != nil {
-		return Reserved{}, nil, perr
+		return Reserved{}, perr
 	}
 	blocker, err := w.blocker(&reservationRow{Holder: me.ID, Path: r.Path, ID: math.MaxUint64})
 	if err != nil {
-		return Reserved{}, nil, err
+		return Reserved{}, err
 	}
 	if blocker != nil && !r.Queue {
 		refusal, cerr := w.conflict(&me, r.Path, blocker)
-		return Reserved{}, refusal, cerr
+		if cerr == nil {
+			w.refuseCommitting(refusal)
+		}
+		return Reserved{}, cerr
 	}
 	id, err := w.s.t.resv.table.NextID(w.tx)
 	if err != nil {
-		return Reserved{}, nil, err
+		return Reserved{}, err
 	}
 	row := reservationRow{ID: id, Holder: me.ID, Path: r.Path, Reason: r.Reason, TTL: r.TTL, Since: w.now, State: reservationQueued}
 	verb := "reservation queued"
 	if blocker == nil {
 		row.State, verb = reservationHeld, "reservation granted"
 		if row.Lease, err = w.s.resvPolicy.grant(w.now, r.TTL, time.Time{}); err != nil {
-			return Reserved{}, nil, err
+			return Reserved{}, err
 		}
 	}
 	if err := w.s.t.resv.table.Put(w.tx, id, &row); err != nil {
-		return Reserved{}, nil, err
+		return Reserved{}, err
 	}
-	w.s.log.Info(verb, "id", id, "name", me.Name, "path", r.Path)
+	w.logInfo(verb, "id", id, "name", me.Name, "path", r.Path)
 	out := Reserved{Reservation: w.s.reservationView(w.r, &me, &row)}
 	if blocker != nil {
 		b := w.s.reservationView(w.r, &me, blocker)
 		out.Behind = &b
 	}
-	return out, nil, nil
+	return out, nil
 }
 
 // blocker is the row that holds q back, or nil: another identity's grant
@@ -189,50 +182,45 @@ func (w *wtx) conflict(me *identityRow, path string, b *reservationRow) (*Error,
 // re-arming its warning. Refusals: KindInvalid for a bad ttl or a queued
 // entry; KindGone for a session with no live identity; KindNotFound for an
 // id that is not one of its rows, an expired or released one included.
-func (s *Store) RenewReservation(ctx context.Context, c Caller, id uint64, ttl time.Duration) (Reservation, error) {
-	var out Reservation
-	err := s.update(ctx, func(w *wtx) error {
+func (s *Store) RenewReservation(ctx context.Context, k Keyed, c Caller, id uint64, ttl time.Duration) (Reservation, bool, error) {
+	return keyed(ctx, s, k, func(w *wtx) (Reservation, error) {
 		me, row, err := w.ownReservation(c, id)
 		if err != nil {
-			return err
+			return Reservation{}, err
 		}
 		if row.State != reservationHeld {
-			return refuse(KindInvalid, fmt.Sprintf("reservation %d is queued: its ttl counts from its grant", id))
+			return Reservation{}, refuse(KindInvalid, fmt.Sprintf("reservation %d is queued: its ttl counts from its grant", id))
 		}
 		if row.Lease, err = s.resvPolicy.grant(w.now, ttl, time.Time{}); err != nil {
-			return err
+			return Reservation{}, err
 		}
 		row.TTL = ttl
 		if err := s.t.resv.table.Put(w.tx, id, &row); err != nil {
-			return err
+			return Reservation{}, err
 		}
-		s.log.Info("reservation renewed", "id", id, "name", me.Name, "path", row.Path)
-		out = s.reservationView(w.r, &me, &row)
-		return nil
+		w.logInfo("reservation renewed", "id", id, "name", me.Name, "path", row.Path)
+		return s.reservationView(w.r, &me, &row), nil
 	})
-	return out, err
 }
 
 // Release frees c's grant id or cancels its queue entry id, and
 // hands the freed paths to the queue in the same transaction. Refusals:
 // KindGone for a session with no live identity; KindNotFound for an id
 // that is not one of its rows, an expired or released one included.
-func (s *Store) Release(ctx context.Context, c Caller, id uint64) (Reservation, error) {
-	var out Reservation
-	err := s.update(ctx, func(w *wtx) error {
+func (s *Store) Release(ctx context.Context, k Keyed, c Caller, id uint64) (Reservation, bool, error) {
+	return keyed(ctx, s, k, func(w *wtx) (Reservation, error) {
 		me, row, err := w.ownReservation(c, id)
 		if err != nil {
-			return err
+			return Reservation{}, err
 		}
 		verb := "reservation released"
 		if row.State == reservationQueued {
 			verb = "reservation cancelled"
 		}
-		s.log.Info(verb, "id", id, "name", me.Name, "path", row.Path)
-		out = s.reservationView(w.r, &me, &row)
-		return w.freeAndHandOff([]reservationRow{row})
+		w.logInfo(verb, "id", id, "name", me.Name, "path", row.Path)
+		out := s.reservationView(w.r, &me, &row)
+		return out, w.freeAndHandOff([]reservationRow{row})
 	})
-	return out, err
 }
 
 // ownReservation settles row id and returns it with c's live identity,
@@ -368,7 +356,7 @@ func (w *wtx) freeHolder(holder uint64) error {
 	if err != nil || len(rows) == 0 {
 		return err
 	}
-	w.s.log.Info("reservations freed", "holder", holder, "count", len(rows))
+	w.logInfo("reservations freed", "holder", holder, "count", len(rows))
 	return w.freeAndHandOff(rows)
 }
 
@@ -395,7 +383,7 @@ func (w *wtx) handOver(q *reservationRow) error {
 	if err := w.s.t.resv.table.Put(w.tx, q.ID, q); err != nil {
 		return err
 	}
-	w.s.log.Info("reservation handed over", "id", q.ID, "holder", q.Holder, "path", q.Path)
+	w.logInfo("reservation handed over", "id", q.ID, "holder", q.Holder, "path", q.Path)
 	w.oweEvent(q.Holder, kindReservationGranted, fmt.Sprintf(
 		"you now hold reservation %d on %s until %s (%s from its grant, as you queued it) for %q: run `grelot release %d` when you are done",
 		q.ID, q.Path, fmtTime(q.Lease.Expires), fmtDur(q.Lease.Expires.Sub(w.now)), q.Reason, q.ID,
@@ -480,7 +468,7 @@ func expireReservation(w *wtx, _ uint64, v *reservationRow) error {
 		text = fmt.Sprintf("your reservation %d on %s expired at %s while the server was down, so no warning went out first; it is free now, reserve it again if you still need it",
 			v.ID, v.Path, fmtTime(v.Lease.Expires))
 	}
-	w.s.log.Info("reservation expired", "id", v.ID, "holder", v.Holder, "path", v.Path)
+	w.logInfo("reservation expired", "id", v.ID, "holder", v.Holder, "path", v.Path)
 	w.oweEvent(v.Holder, kindReservationExpired, text)
 	return w.freeAndHandOff([]reservationRow{*v})
 }

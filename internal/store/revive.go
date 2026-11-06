@@ -40,7 +40,7 @@ type Revived struct {
 // session with a live identity, an empty environment on a revive by name,
 // or another provider; KindNotFound for no dormant identity to revive, in
 // this environment or at all.
-func (s *Store) Revive(ctx context.Context, r *Revival) (Revived, error) {
+func (s *Store) Revive(ctx context.Context, k Keyed, r *Revival) (Revived, bool, error) {
 	provider, err := checkSession(r.Session)
 	if err == nil {
 		err = checkLabels(r.Host, r.OS, r.Arch, r.Proc)
@@ -49,15 +49,9 @@ func (s *Store) Revive(ctx context.Context, r *Revival) (Revived, error) {
 		err = checkWhere(nil, nil)
 	}
 	if err != nil {
-		return Revived{}, err
+		return Revived{}, false, err
 	}
-	var out Revived
-	err = s.update(ctx, func(w *wtx) error {
-		var uerr error
-		out, uerr = w.revive(r, provider)
-		return uerr
-	})
-	return out, err
+	return keyed(ctx, s, k, func(w *wtx) (Revived, error) { return w.revive(r, provider) })
 }
 
 func (w *wtx) revive(r *Revival, provider string) (Revived, error) {
@@ -106,7 +100,7 @@ func (w *wtx) revive(r *Revival, provider string) (Revived, error) {
 	if err != nil {
 		return Revived{}, err
 	}
-	w.s.log.Info("identity revived", "name", row.Name, "id", row.ID, "provider", provider, "moved", moved)
+	w.logInfo("identity revived", "name", row.Name, "id", row.ID, "provider", provider, "moved", moved)
 	return Revived{Identity: w.s.view(&row), Unread: unread, Moved: moved}, nil
 }
 

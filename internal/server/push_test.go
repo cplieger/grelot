@@ -620,7 +620,7 @@ func TestPush_aPromptTheDelegateGateRefusesOpensNoTurn(t *testing.T) {
 		h.mustRegisterAlone(sessA, "reader")
 		h.mustRegisterAlone(sessB, "writer")
 		h.stopHold(sessA, false)
-		if _, err := h.store.Delegate(t.Context(), &store.Grant{Caller: store.Caller{Session: sessA}, Label: "tests", TTL: time.Hour}); err != nil {
+		if _, _, err := h.store.Delegate(t.Context(), store.Keyed{}, &store.Grant{Caller: store.Caller{Session: sessA}, Label: "tests", TTL: time.Hour}); err != nil {
 			t.Fatal(err)
 		}
 		if r := h.as(sessA, http.MethodGet, "/v1/me?turn=start", nil); r.status != http.StatusConflict || r.str("code") != "delegate_gate" {

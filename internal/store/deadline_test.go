@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -48,7 +49,7 @@ func TestPost_deadlinePassingWhileTheWriterIsHeldStoresNothing(t *testing.T) {
 	start := time.Now()
 	posted := make(chan error, 1)
 	go func() {
-		_, err := s.Post(ctx, &p)
+		_, _, err := s.Post(ctx, Keyed{}, &p)
 		posted <- err
 	}()
 
@@ -77,5 +78,40 @@ func TestPost_deadlinePassingWhileTheWriterIsHeldStoresNothing(t *testing.T) {
 	}
 	if got := len(deliveriesTo(t, s, b.ID)); got != deliveriesBefore {
 		t.Errorf("%d deliveries to bravo after the refused post, want %d", got, deliveriesBefore)
+	}
+}
+
+func TestRetire_cancelledAfterItsChangeRanStoresAndLogsNothing(t *testing.T) {
+	s, clk, sink := openIdentityStore(t)
+	a := regAt(t, s, "alpha")
+	k := keyFor(plain("alpha"), "key-one", "retire")
+	seenAt := testNow.Add(time.Minute)
+	s.noteSeen(a.ID, seenAt)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	// The store reads its clock once its transaction holds the writer, so
+	// the context ends after the writer is held and before the commit.
+	s.now = func() time.Time {
+		cancel()
+		return clk.now()
+	}
+
+	_, err := s.Retire(ctx, k, plain("alpha"))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Retire err = %v, want context.Canceled", err)
+	}
+	row := getIdentity(t, s, a.ID)
+	if row.State != stateLive {
+		t.Errorf("alpha is %s after the cancelled retirement, want live", row.State)
+	}
+	if got := s.lastSeen(&row); !got.Equal(seenAt) {
+		t.Errorf("alpha last seen %v after the cancelled retirement, want its noted %v", got, seenAt)
+	}
+	if lines := sink.lines(slog.LevelInfo, "identity retired"); len(lines) != 0 {
+		t.Errorf("%d identity retired lines for a retirement that rolled back, want 0", len(lines))
+	}
+	s.now = clk.now
+	if replayed, err := s.Retire(t.Context(), k, plain("alpha")); err != nil || replayed {
+		t.Errorf("re-sent Retire = replayed %v, %v; want a fresh retirement", replayed, err)
 	}
 }

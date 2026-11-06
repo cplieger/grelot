@@ -90,7 +90,7 @@ func TestNotifyRead_retiredRecipientsCountApartAndComplete(t *testing.T) {
 	msg := mustPost(t, s, watchedPost("alpha", Target{Path: repoSubflux}, NotifyRead{All: true})).Message
 	readAll(t, s, "bravo")
 	readAll(t, s, "delta")
-	if err := s.Retire(t.Context(), plain("charlie")); err != nil {
+	if _, err := s.Retire(t.Context(), Keyed{}, plain("charlie")); err != nil {
 		t.Fatal(err)
 	}
 	wantEvents(t, s, sender.ID, kindReceiptsComplete,
@@ -129,7 +129,7 @@ func TestNotifyRead_aNameThatIsNotARecipientIsRefusedAndNothingPosted(t *testing
 	messages := countRows(t, s, s.t.messages.table)
 
 	p := watchedPost("alpha", Target{Path: repoSubflux}, NotifyRead{Names: []string{"bravo", "outsider", "nobody"}})
-	_, err := s.Post(t.Context(), &p)
+	_, _, err := s.Post(t.Context(), Keyed{}, &p)
 	wantRefusal(t, err, KindInvalid, "", "@outsider", "@nobody")
 	if strings.Contains(err.Error(), "@bravo") {
 		t.Errorf("refusal %q names bravo, a recipient", err)
@@ -163,7 +163,7 @@ func TestNotifyRead_requestChecks(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			p := watchedPost("alpha", Target{Agent: "bravo"}, tc.n)
-			_, err := s.Post(t.Context(), &p)
+			_, _, err := s.Post(t.Context(), Keyed{}, &p)
 			wantRefusal(t, err, KindInvalid, "", tc.want)
 		})
 	}
@@ -186,7 +186,7 @@ func TestNotifyRead_byFiresReceiptsDueWithTheStragglers(t *testing.T) {
 	regAt(t, s, "echo")
 	msg := mustPost(t, s, watchedPost("alpha", Target{Path: repoSubflux}, NotifyRead{All: true, By: time.Hour})).Message
 	readAll(t, s, "bravo")
-	if err := s.Retire(t.Context(), plain("echo")); err != nil {
+	if _, err := s.Retire(t.Context(), Keyed{}, plain("echo")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -272,7 +272,7 @@ func TestNotifyRead_endsWithItsSendersRetirementOrPurge(t *testing.T) {
 		regAt(t, s, "alpha")
 		regAt(t, s, "bravo")
 		mustPost(t, s, watchedPost("alpha", Target{Agent: "bravo"}, NotifyRead{All: true, By: time.Hour}))
-		if err := s.Retire(t.Context(), plain("alpha")); err != nil {
+		if _, err := s.Retire(t.Context(), Keyed{}, plain("alpha")); err != nil {
 			t.Fatal(err)
 		}
 		if n := watchCount(t, s); n != 0 {
@@ -364,7 +364,7 @@ func TestNotifyRead_aDelegateRecipientsEndCountsRetired(t *testing.T) {
 	regAt(t, s, "subflux-dev", repoGrelot)
 	scopedDelegate(t, s, "subflux-dev", "review", func(g *Grant) { g.AllowThreads = []string{pathInternal} })
 	msg := mustPost(t, s, watchedPost("alpha", Target{Path: pathInternal}, NotifyRead{All: true})).Message
-	if _, err := s.Revoke(t.Context(), self("subflux-dev"), "review"); err != nil {
+	if _, _, err := s.Revoke(t.Context(), Keyed{}, self("subflux-dev"), "review"); err != nil {
 		t.Fatal(err)
 	}
 	wantEvents(t, s, sender.ID, kindReceiptsComplete,
@@ -379,7 +379,7 @@ func TestNotifyRead_aParentKeepsContiguousSeqsWhenItsDelegatesEndCompletesItsWat
 			}
 		},
 		"revoke": func(t *testing.T, s *Store) {
-			if _, err := s.Revoke(t.Context(), self("subflux-dev"), "review"); err != nil {
+			if _, _, err := s.Revoke(t.Context(), Keyed{}, self("subflux-dev"), "review"); err != nil {
 				t.Fatal(err)
 			}
 		},
@@ -416,11 +416,11 @@ func TestNotifyRead_aCopyIsNotWatched(t *testing.T) {
 			t.Errorf("parent's copy %+v carries the watch", dl)
 		}
 	}
-	if _, err := s.Ack(t.Context(), self("subflux-dev"), getIdentity(t, s, parent.ID).Seq); err != nil {
+	if _, _, err := s.Ack(t.Context(), Keyed{}, self("subflux-dev"), getIdentity(t, s, parent.ID).Seq); err != nil {
 		t.Fatal(err)
 	}
 	wantEvents(t, s, sender.ID, kindReceiptsComplete)
-	if _, err := s.Ack(t.Context(), as(sess("subflux-dev"), d.Name), getIdentity(t, s, d.ID).Seq); err != nil {
+	if _, _, err := s.Ack(t.Context(), Keyed{}, as(sess("subflux-dev"), d.Name), getIdentity(t, s, d.ID).Seq); err != nil {
 		t.Fatal(err)
 	}
 	wantEvents(t, s, sender.ID, kindReceiptsComplete, fmt.Sprintf("message %d: all 1 have read %s", msg, subject))

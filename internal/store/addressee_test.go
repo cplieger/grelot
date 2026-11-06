@@ -45,7 +45,7 @@ func TestAddressee_afterATakeOverIsTheNewSession(t *testing.T) {
 	orig := mustRegister(t, s, registration("testhost:old", "subflux-dev", envA()))
 	r := registration("testhost:new", "subflux-dev", envA())
 	r.TakeOver = true
-	if _, err := s.Register(t.Context(), &r); err != nil {
+	if _, _, err := s.Register(t.Context(), Keyed{}, &r); err != nil {
 		t.Fatal(err)
 	}
 	got, found, err := s.Addressee(t.Context(), orig.ID)
@@ -58,7 +58,7 @@ func TestAddressee_leavesOutWhatIsNeverPushed(t *testing.T) {
 	s, clk := openClockStore(t)
 	parent, delegate := delegateOf(t, s, "alpha", "review")
 	retired := regAt(t, s, "bravo")
-	if err := s.Retire(t.Context(), plain("bravo")); err != nil {
+	if _, err := s.Retire(t.Context(), Keyed{}, plain("bravo")); err != nil {
 		t.Fatal(err)
 	}
 	short := registration(sess("charlie"), "charlie", envA())

@@ -99,7 +99,7 @@ func (w *wtx) recordNudge(me *identityRow, n *Nudge, via NudgeVia) {
 	me.Nudged, me.Nudges, me.NudgedAt = n.Seq, n.Attempt, w.now
 	w.wake(me.ID)
 	delay := w.now.Sub(n.Oldest)
-	w.s.log.Info(msgNudgeSent, "via", string(via), "attempt", n.Attempt, "seq", n.Seq,
+	w.logInfo(msgNudgeSent, "via", string(via), "attempt", n.Attempt, "seq", n.Seq,
 		"oldest_delay_ms", delay.Milliseconds())
 	attempt := obs.AttemptFirst
 	if n.Attempt > 1 {

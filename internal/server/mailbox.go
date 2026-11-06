@@ -90,7 +90,7 @@ func (s *Server) ack(r *http.Request, c store.Caller) (status int, body any, err
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	got, err := s.store.Ack(r.Context(), c, req.Upto)
+	got, _, err := s.store.Ack(r.Context(), store.Keyed{}, c, req.Upto)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -232,7 +232,7 @@ func (s *Server) receipts(r *http.Request, c store.Caller) (status int, body any
 
 // follow is PUT /v1/follows?path=.
 func (s *Server) follow(r *http.Request, c store.Caller) (status int, body any, err error) {
-	got, err := s.store.Follow(r.Context(), c, r.URL.Query().Get("path"))
+	got, _, err := s.store.Follow(r.Context(), store.Keyed{}, c, r.URL.Query().Get("path"))
 	if err != nil {
 		return 0, nil, err
 	}
@@ -241,7 +241,7 @@ func (s *Server) follow(r *http.Request, c store.Caller) (status int, body any, 
 
 // unfollow is DELETE /v1/follows?path=.
 func (s *Server) unfollow(r *http.Request, c store.Caller) (status int, body any, err error) {
-	got, err := s.store.Unfollow(r.Context(), c, r.URL.Query().Get("path"))
+	got, _, err := s.store.Unfollow(r.Context(), store.Keyed{}, c, r.URL.Query().Get("path"))
 	if err != nil {
 		return 0, nil, err
 	}

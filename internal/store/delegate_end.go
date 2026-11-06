@@ -21,17 +21,11 @@ type Revoked struct {
 // delegate is matched by its label alone. Refusals: KindInvalid for a bad
 // label, KindForbidden for a delegate caller, KindNotFound when nothing has
 // the label, KindGone for a session with no live identity.
-func (s *Store) Revoke(ctx context.Context, c Caller, label string) (Revoked, error) {
+func (s *Store) Revoke(ctx context.Context, k Keyed, c Caller, label string) (Revoked, bool, error) {
 	if err := checkLabel(label); err != nil {
-		return Revoked{}, err
+		return Revoked{}, false, err
 	}
-	var out Revoked
-	err := s.update(ctx, func(w *wtx) error {
-		var rerr error
-		out, rerr = w.revoke(c, label)
-		return rerr
-	})
-	return out, err
+	return keyed(ctx, s, k, func(w *wtx) (Revoked, error) { return w.revoke(c, label) })
 }
 
 func (w *wtx) revoke(c Caller, label string) (Revoked, error) {
@@ -96,7 +90,7 @@ func (w *wtx) revokeLink(me *identityRow, label string) (bool, error) {
 	if _, err := w.s.t.links.table.Delete(w.tx, pairKey(me.ID, links[i].ID)); err != nil {
 		return false, err
 	}
-	w.s.log.Info("delegate link revoked", "name", me.Name, "label", label)
+	w.logInfo("delegate link revoked", "name", me.Name, "label", label)
 	return true, nil
 }
 

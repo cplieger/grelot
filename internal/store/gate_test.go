@@ -40,22 +40,23 @@ func TestGate_unnamedRequestsFromASessionHoldingALinkMoveNothing(t *testing.T) {
 	t.Run("inbox", func(t *testing.T) {
 		_, err := s.Inbox(t.Context(), plain("parent"), 0)
 		wantGate(t, err, "parent/review")
-		_, err = s.Ack(t.Context(), plain("parent"), before.Seq)
+		_, _, err = s.Ack(t.Context(), Keyed{}, plain("parent"), before.Seq)
 		wantGate(t, err, "parent/review")
 	})
 	t.Run("post", func(t *testing.T) {
-		_, err := s.Post(t.Context(), new(posting(sess("parent"), Target{Agent: "peer"})))
+		_, _, err := s.Post(t.Context(), Keyed{}, new(posting(sess("parent"), Target{Agent: "peer"})))
 		wantGate(t, err, "parent/review")
 	})
 	t.Run("set", func(t *testing.T) {
-		_, err := s.Set(t.Context(), plain("parent"), Change{Fields: Fields{Description: "a subagent's task"}})
+		_, _, err := s.Set(t.Context(), Keyed{}, plain("parent"), Change{Fields: Fields{Description: "a subagent's task"}})
 		wantGate(t, err, "parent/review")
 	})
 	t.Run("bye", func(t *testing.T) {
-		wantGate(t, s.Retire(t.Context(), plain("parent")), "parent/review")
+		_, err := s.Retire(t.Context(), Keyed{}, plain("parent"))
+		wantGate(t, err, "parent/review")
 	})
 	t.Run("register", func(t *testing.T) {
-		_, err := s.Register(t.Context(), new(registration(sess("parent"), "parent", envA())))
+		_, _, err := s.Register(t.Context(), Keyed{}, new(registration(sess("parent"), "parent", envA())))
 		wantGate(t, err, "parent/review")
 	})
 	t.Run("nothing moved", func(t *testing.T) {
@@ -77,19 +78,19 @@ func TestGate_selfPasses(t *testing.T) {
 	if err != nil || len(page.Entries) != 1 {
 		t.Fatalf("Inbox with --self: %d entries, %v; want peer's one post", len(page.Entries), err)
 	}
-	if _, err := s.Ack(t.Context(), self("parent"), page.Entries[0].Seq); err != nil {
+	if _, _, err := s.Ack(t.Context(), Keyed{}, self("parent"), page.Entries[0].Seq); err != nil {
 		t.Errorf("Ack with --self: %v", err)
 	}
 	if got := mustPost(t, s, selfPost("parent", Target{Agent: "peer"})); got.Delivered != 1 {
 		t.Errorf("post with --self delivered %d, want 1", got.Delivered)
 	}
-	if got, err := s.Register(t.Context(), &Registration{
+	if got, _, err := s.Register(t.Context(), Keyed{}, &Registration{
 		Session: sess("parent"), Self: true, Where: new(envA()), TTL: time.Hour,
 		Fields: Fields{Name: "parent", Description: "moving the run surface", Paths: []string{repoSubflux}},
 	}); err != nil || !got.Existing || got.Identity.ID != parent.ID {
 		t.Errorf("register with --self: %+v, %v; want the parent returned unchanged", got, err)
 	}
-	if err := s.Retire(t.Context(), self("parent")); err != nil {
+	if _, err := s.Retire(t.Context(), Keyed{}, self("parent")); err != nil {
 		t.Errorf("bye with --self: %v", err)
 	}
 }
@@ -103,7 +104,7 @@ func TestGate_aDelegateRegisteredFromTheSessionHoldsIt(t *testing.T) {
 		t.Errorf("as %s: %d, %v; want the delegate %d", d.Name, got.ID, err, d.ID)
 	}
 	t.Run("lifts when the last delegate ends", func(t *testing.T) {
-		if err := s.Retire(t.Context(), as(sess("parent"), d.Name)); err != nil {
+		if _, err := s.Retire(t.Context(), Keyed{}, as(sess("parent"), d.Name)); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := s.Inbox(t.Context(), plain("parent"), 0); err != nil {

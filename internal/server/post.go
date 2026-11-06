@@ -90,7 +90,7 @@ func (s *Server) post(r *http.Request, c store.Caller) (status int, body any, er
 			}
 		}()
 	}
-	got, err := s.store.Post(ctx, &store.Posting{
+	got, _, err := s.store.Post(ctx, store.Keyed{}, &store.Posting{
 		Where: req.Where, Caller: c, Subject: req.Subject, Body: req.Body, To: to, NotifyRead: notify,
 		Fields: store.Fields{Name: req.Identity.Name, Description: req.Identity.Description, Paths: req.Identity.Paths},
 	})

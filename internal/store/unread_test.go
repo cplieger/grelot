@@ -28,7 +28,7 @@ func TestUnreadSummary_ackPastExpiredWarningsKeepsTheLaterPost(t *testing.T) {
 	s, clk := openSummaryStore(t)
 	reader := regAt(t, s, "reader", repoSubflux)
 	regAt(t, s, "writer", repoGrelot)
-	if _, err := s.Reserve(t.Context(), &Reserving{
+	if _, _, err := s.Reserve(t.Context(), Keyed{}, &Reserving{
 		Caller: Caller{Session: sess("reader")}, Path: repoSubflux, Reason: "editing", TTL: 2 * time.Minute,
 	}); err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestUnreadSummary_ackPastExpiredWarningsKeepsTheLaterPost(t *testing.T) {
 	if last.Message != post.Message {
 		t.Fatalf("last delivery %+v, want the post", last)
 	}
-	acked, err := s.Ack(t.Context(), Caller{Session: sess("reader")}, last.Seq-1)
+	acked, _, err := s.Ack(t.Context(), Keyed{}, Caller{Session: sess("reader")}, last.Seq-1)
 	if err != nil {
 		t.Fatal(err)
 	}

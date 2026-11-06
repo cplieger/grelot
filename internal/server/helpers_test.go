@@ -351,7 +351,7 @@ func (h *harness) mustRegister(session, name string) {
 func (h *harness) directPost(session, to string) {
 	h.t.Helper()
 	nc := store.Fields{Name: store.NoChange, Description: store.NoChange, Paths: []string{store.NoChange}}
-	if _, err := h.store.Post(h.t.Context(), &store.Posting{
+	if _, _, err := h.store.Post(h.t.Context(), store.Keyed{}, &store.Posting{
 		Caller: store.Caller{Session: session}, Subject: "hello", Body: "a body",
 		To: store.Target{Agent: to}, Fields: nc,
 	}); err != nil {

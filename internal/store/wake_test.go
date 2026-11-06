@@ -146,7 +146,7 @@ func TestWoke_reportsNothingForReadsOrARefusedWrite(t *testing.T) {
 		}
 	})
 	t.Run("a refused post", func(t *testing.T) {
-		if _, err := s.Post(t.Context(), new(posting(sess("alpha"), Target{Agent: "nobody"}))); err == nil {
+		if _, _, err := s.Post(t.Context(), Keyed{}, new(posting(sess("alpha"), Target{Agent: "nobody"}))); err == nil {
 			t.Fatal("post to an unknown name passed")
 		}
 		if got := wl.take(); len(got) != 0 {
@@ -162,11 +162,11 @@ func TestWoke_reportsARequestThatClearsEnded(t *testing.T) {
 			return err
 		},
 		"Set": func(t *testing.T, s *Store) error {
-			_, err := s.Set(t.Context(), Caller{Session: sess("bravo")}, Change{Fields: Fields{Name: NoChange, Description: "resumed", Paths: []string{NoChange}}})
+			_, _, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, Change{Fields: Fields{Name: NoChange, Description: "resumed", Paths: []string{NoChange}}})
 			return err
 		},
 		"Post": func(t *testing.T, s *Store) error {
-			_, err := s.Post(t.Context(), new(posting(sess("bravo"), Target{Agent: "alpha"})))
+			_, _, err := s.Post(t.Context(), Keyed{}, new(posting(sess("bravo"), Target{Agent: "alpha"})))
 			return err
 		},
 		"Hold": func(t *testing.T, s *Store) error {
@@ -174,11 +174,11 @@ func TestWoke_reportsARequestThatClearsEnded(t *testing.T) {
 			return err
 		},
 		"Ack": func(t *testing.T, s *Store) error {
-			_, err := s.Ack(t.Context(), Caller{Session: sess("bravo")}, 0)
+			_, _, err := s.Ack(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, 0)
 			return err
 		},
 		"Register again": func(t *testing.T, s *Store) error {
-			_, err := s.Register(t.Context(), new(registration(sess("bravo"), "bravo", envA())))
+			_, _, err := s.Register(t.Context(), Keyed{}, new(registration(sess("bravo"), "bravo", envA())))
 			return err
 		},
 	}
@@ -208,7 +208,7 @@ func TestLive_keepsOnlyTheLiveIdentities(t *testing.T) {
 	mustSweep(t, s)
 	live := regAt(t, s, "bravo")
 	retired := regAt(t, s, "charlie")
-	if err := s.Retire(t.Context(), Caller{Session: sess("charlie")}); err != nil {
+	if _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("charlie")}); err != nil {
 		t.Fatalf("Retire: %v", err)
 	}
 	got, err := s.Live(t.Context(), []uint64{dormant.ID, live.ID, retired.ID, 999})

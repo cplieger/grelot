@@ -17,7 +17,7 @@ func grantFrom(name, label string) Grant {
 
 func mustGrant(t *testing.T, s *Store, g Grant) Granted {
 	t.Helper()
-	got, err := s.Delegate(t.Context(), &g)
+	got, _, err := s.Delegate(t.Context(), Keyed{}, &g)
 	if err != nil {
 		t.Fatalf("Delegate(%s, %s): %v", g.Caller.Session, g.Label, err)
 	}
@@ -32,7 +32,7 @@ func delegateReg(session, link string) Registration {
 func mustRegisterDelegate(t *testing.T, s *Store, session, link string) Identity {
 	t.Helper()
 	r := delegateReg(session, link)
-	got, err := s.Register(t.Context(), &r)
+	got, _, err := s.Register(t.Context(), Keyed{}, &r)
 	if err != nil {
 		t.Fatalf("Register(--delegate from %s): %v", session, err)
 	}
@@ -122,7 +122,7 @@ func TestDelegate_registrationTakesTheGrantAndThePartsThatAreItsParents(t *testi
 	r := delegateReg(sess("subflux-dev"), g.Link)
 	other := Where{Machine: dmi("9"), Environment: hex32("9")}
 	r.Where = &other
-	got, err := s.Register(t.Context(), &r)
+	got, _, err := s.Register(t.Context(), Keyed{}, &r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func TestDelegate_grantRefusals(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			g := grantFrom("parent", "worker")
 			c.edit(&g)
-			_, err := s.Delegate(t.Context(), &g)
+			_, _, err := s.Delegate(t.Context(), Keyed{}, &g)
 			wantRefusal(t, err, c.kind, c.why, c.part)
 		})
 	}
@@ -211,11 +211,11 @@ func TestDelegate_grantRefusals(t *testing.T) {
 func TestDelegate_handleHeldIsRefusedAtTheGrant(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	delegateOf(t, s, "parent", "review")
-	_, err := s.Delegate(t.Context(), new(grantFrom("parent", "review")))
+	_, _, err := s.Delegate(t.Context(), Keyed{}, new(grantFrom("parent", "review")))
 	wantRefusal(t, err, KindConflict, "", "parent/review", "held")
 	t.Run("an unused link of the label", func(t *testing.T) {
 		mustGrant(t, s, grantFrom("parent", "build"))
-		_, err := s.Delegate(t.Context(), new(grantFrom("parent", "build")))
+		_, _, err := s.Delegate(t.Context(), Keyed{}, new(grantFrom("parent", "build")))
 		wantRefusal(t, err, KindConflict, "", "unused link", "revoke build")
 	})
 }
@@ -224,7 +224,7 @@ func TestDelegate_aDelegateCannotGrant(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	_, d := delegateOf(t, s, "parent", "review")
 	g := Grant{Caller: as(sess("parent"), d.Name), Label: "nested", TTL: time.Hour}
-	_, err := s.Delegate(t.Context(), &g)
+	_, _, err := s.Delegate(t.Context(), Keyed{}, &g)
 	wantRefusal(t, err, KindForbidden, "", "cannot grant")
 }
 
@@ -233,7 +233,7 @@ func TestDelegate_linkIsSingleUse(t *testing.T) {
 	regAt(t, s, "parent", repoSubflux)
 	g := mustGrant(t, s, grantFrom("parent", "review"))
 	mustRegisterDelegate(t, s, sess("parent"), g.Link)
-	_, err := s.Register(t.Context(), new(delegateReg(sess("parent"), g.Link)))
+	_, _, err := s.Register(t.Context(), Keyed{}, new(delegateReg(sess("parent"), g.Link)))
 	wantRefusal(t, err, KindGone, "link_gone", "link already used")
 	if n := countRows(t, s, s.t.links.table); n != 0 {
 		t.Errorf("%d links stored, want the used one deleted", n)
@@ -249,7 +249,7 @@ func TestDelegate_linkGoneAnswers410(t *testing.T) {
 			t.Errorf("link expires %v, want the grant's 2 h, %v", g.Expires, want)
 		}
 		clk.advance(2 * time.Hour)
-		_, err := s.Register(t.Context(), new(delegateReg(sess("parent"), g.Link)))
+		_, _, err := s.Register(t.Context(), Keyed{}, new(delegateReg(sess("parent"), g.Link)))
 		wantRefusal(t, err, KindGone, "link_gone", "link already used")
 	})
 	t.Run("expired by the sweep with no warning", func(t *testing.T) {
@@ -274,10 +274,10 @@ func TestDelegate_linkGoneAnswers410(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
 		regAt(t, s, "parent", repoSubflux)
 		g := mustGrant(t, s, grantFrom("parent", "review"))
-		if err := s.Retire(t.Context(), Caller{Session: sess("parent"), Self: true}); err != nil {
+		if _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("parent"), Self: true}); err != nil {
 			t.Fatal(err)
 		}
-		_, err := s.Register(t.Context(), new(delegateReg(sess("other"), g.Link)))
+		_, _, err := s.Register(t.Context(), Keyed{}, new(delegateReg(sess("other"), g.Link)))
 		wantRefusal(t, err, KindGone, "link_gone", "link already used")
 	})
 	t.Run("parent expired", func(t *testing.T) {
@@ -287,12 +287,12 @@ func TestDelegate_linkGoneAnswers410(t *testing.T) {
 		mustRegister(t, s, r)
 		g := mustGrant(t, s, grantFrom("parent", "review"))
 		clk.advance(time.Hour)
-		_, err := s.Register(t.Context(), new(delegateReg(sess("other"), g.Link)))
+		_, _, err := s.Register(t.Context(), Keyed{}, new(delegateReg(sess("other"), g.Link)))
 		wantRefusal(t, err, KindGone, "link_gone", "link already used")
 	})
 	t.Run("not a link", func(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
-		_, err := s.Register(t.Context(), new(delegateReg(sess("other"), "grelot-link:short")))
+		_, _, err := s.Register(t.Context(), Keyed{}, new(delegateReg(sess("other"), "grelot-link:short")))
 		wantRefusal(t, err, KindInvalid, "", "not a delegate link")
 	})
 }
@@ -315,7 +315,7 @@ func TestDelegate_registrationRefusesTheFieldsAGrantSets(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			r := delegateReg(sess("parent"), g.Link)
 			c.edit(&r)
-			_, err := s.Register(t.Context(), &r)
+			_, _, err := s.Register(t.Context(), Keyed{}, &r)
 			wantRefusal(t, err, KindInvalid, "", c.part)
 		})
 	}
@@ -331,7 +331,7 @@ func TestDelegate_caps(t *testing.T) {
 		for i := range 32 {
 			mustGrant(t, s, grantFrom("parent", fmt.Sprintf("w%02d", i)))
 		}
-		_, err := s.Delegate(t.Context(), new(grantFrom("parent", "w32")))
+		_, _, err := s.Delegate(t.Context(), Keyed{}, new(grantFrom("parent", "w32")))
 		wantRefusal(t, err, KindConflict, "", "32 unused delegate links")
 	})
 	t.Run("32 live delegates", func(t *testing.T) {
@@ -341,7 +341,7 @@ func TestDelegate_caps(t *testing.T) {
 			g := mustGrant(t, s, grantFrom("parent", fmt.Sprintf("w%02d", i)))
 			mustRegisterDelegate(t, s, sess("parent"), g.Link)
 		}
-		_, err := s.Delegate(t.Context(), new(grantFrom("parent", "w32")))
+		_, _, err := s.Delegate(t.Context(), Keyed{}, new(grantFrom("parent", "w32")))
 		wantRefusal(t, err, KindConflict, "", "32 live delegates")
 	})
 }
@@ -438,7 +438,7 @@ func TestDelegate_registeredFromItsOwnSessionBindsIt(t *testing.T) {
 	t.Run("not from a session with another live identity", func(t *testing.T) {
 		g := mustGrant(t, s, grantFrom("parent", "other"))
 		regAt(t, s, "busy", repoGrelot)
-		_, err := s.Register(t.Context(), new(delegateReg(sess("busy"), g.Link)))
+		_, _, err := s.Register(t.Context(), Keyed{}, new(delegateReg(sess("busy"), g.Link)))
 		wantRefusal(t, err, KindConflict, "", "busy")
 	})
 }
@@ -449,7 +449,7 @@ func TestDelegate_endsWithItsParent(t *testing.T) {
 		p, d := delegateOf(t, s, "parent", "review")
 		mustGrant(t, s, grantFrom("parent", "unused"))
 		before := commitCount(t, s)
-		if err := s.Retire(t.Context(), Caller{Session: sess("parent"), Self: true}); err != nil {
+		if _, err := s.Retire(t.Context(), Keyed{}, Caller{Session: sess("parent"), Self: true}); err != nil {
 			t.Fatal(err)
 		}
 		if n := commitCount(t, s) - before; n != 1 {
@@ -515,7 +515,7 @@ func TestDelegate_endsWithItsParent(t *testing.T) {
 		clk.advance(time.Minute)
 		_, err := s.Inbox(t.Context(), as(sess("parent"), d.Name), 0)
 		wantRefusal(t, err, KindGone, "delegate_ended", "")
-		_, err = s.Set(t.Context(), as(sess("parent"), d.Name), Change{Fields: Fields{Description: "x"}})
+		_, _, err = s.Set(t.Context(), Keyed{}, as(sess("parent"), d.Name), Change{Fields: Fields{Description: "x"}})
 		wantRefusal(t, err, KindGone, "delegate_ended", "")
 	})
 	t.Run("expiry seen from the delegate's own session", func(t *testing.T) {
@@ -537,7 +537,7 @@ func TestDelegate_endsWithItsParent(t *testing.T) {
 		wantRefusal(t, err, KindGone, "delegate_ended", "")
 		p := posting(own, Target{Agent: "parent"})
 		p.Fields = Fields{Description: NoChange}
-		_, err = s.Post(t.Context(), &p)
+		_, _, err = s.Post(t.Context(), Keyed{}, &p)
 		wantRefusal(t, err, KindGone, "delegate_ended", "")
 	})
 }
@@ -567,7 +567,7 @@ func TestDelegate_ownLeaseDeletesItNeverDormant(t *testing.T) {
 func TestDelegate_byeEndsOnlyTheDelegate(t *testing.T) {
 	s, _, sink := openIdentityStore(t)
 	p, d := delegateOf(t, s, "parent", "review")
-	if err := s.Retire(t.Context(), as(sess("parent"), d.Name)); err != nil {
+	if _, err := s.Retire(t.Context(), Keyed{}, as(sess("parent"), d.Name)); err != nil {
 		t.Fatal(err)
 	}
 	if identityExists(t, s, d.ID) {

@@ -86,7 +86,7 @@ func (s *Server) register(r *http.Request, c store.Caller) (status int, body any
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	got, err := s.store.Register(r.Context(), &store.Registration{
+	got, _, err := s.store.Register(r.Context(), store.Keyed{}, &store.Registration{
 		Where: req.Where, Session: c.Session, Link: req.Delegate,
 		Host: req.Host, OS: req.OS, Arch: req.Arch, Proc: req.Proc,
 		Fields: store.Fields{Name: req.Name, Description: req.Description, Paths: req.Paths},
@@ -138,7 +138,7 @@ func (s *Server) revive(r *http.Request, c store.Caller) (status int, body any, 
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	got, err := s.store.Revive(r.Context(), &store.Revival{
+	got, _, err := s.store.Revive(r.Context(), store.Keyed{}, &store.Revival{
 		Where: req.Where, Session: c.Session, Name: req.Name,
 		Host: req.Host, OS: req.OS, Arch: req.Arch, Proc: req.Proc, TTL: time.Duration(req.TTL),
 	})
@@ -352,7 +352,7 @@ func (s *Server) patchMe(r *http.Request, c store.Caller) (status int, body any,
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	got, err := s.store.Set(r.Context(), c, store.Change{
+	got, _, err := s.store.Set(r.Context(), store.Keyed{}, c, store.Change{
 		Where: req.Where, TTL: time.Duration(req.TTL),
 		Fields: store.Fields{Name: req.Name, Description: req.Description, Paths: req.Paths},
 	})
@@ -369,7 +369,7 @@ func (s *Server) deleteMe(r *http.Request, c store.Caller) (status int, body any
 	if err != nil {
 		return 0, nil, err
 	}
-	if err := s.store.Retire(ctx, c); err != nil {
+	if _, err := s.store.Retire(ctx, store.Keyed{}, c); err != nil {
 		return 0, nil, err
 	}
 	s.rewait(st.Identity.ID)

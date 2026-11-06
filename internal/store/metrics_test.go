@@ -156,7 +156,7 @@ func TestMetrics_eachStoredPostIsCountedByItsThreadKind(t *testing.T) {
 	mustPost(t, s, posting(sess("bravo"), Target{Agent: "alpha"}))
 	refused := posting(sess("alpha"), Target{Agent: "bravo"})
 	refused.Subject = ""
-	if _, err := s.Post(t.Context(), &refused); !isKind(err, KindInvalid) {
+	if _, _, err := s.Post(t.Context(), Keyed{}, &refused); !isKind(err, KindInvalid) {
 		t.Fatalf("post with no subject: %v, want KindInvalid", err)
 	}
 	wantSeries(t, page(t, m), map[string]float64{
@@ -175,7 +175,7 @@ func TestMetrics_aPostTheStoreRefusesCountsNothing(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	regAt(t, s, "alpha")
-	if _, err := s.Post(t.Context(), new(posting(sess("alpha"), Target{Announce: true}))); !isKind(err, KindFull) {
+	if _, _, err := s.Post(t.Context(), Keyed{}, new(posting(sess("alpha"), Target{Announce: true}))); !isKind(err, KindFull) {
 		t.Fatalf("post past the ceiling: %v, want KindFull", err)
 	}
 	if v, ok := page(t, m)[`grelot_posts_total{thread_kind="announce"}`]; ok {
