@@ -74,7 +74,7 @@ func (r *run) register(ctx context.Context, args []string) error {
 		if cerr := r.call(ctx, &client.Request{Method: http.MethodPost, Path: "/v1/register", Body: body}, &got); cerr != nil {
 			return cerr
 		}
-		r.registered(&got)
+		r.registered(&got, true)
 		return nil
 	}
 	if len(rest) != 1 {
@@ -106,7 +106,7 @@ func (r *run) register(ctx context.Context, args []string) error {
 	if note := client.ProviderNote(r.Providers, r.providerFlag, cfg, client.Shell{Lookup: r.Lookup, Ancestors: proctree.Names(r.tree())}); note != "" {
 		fmt.Fprintln(r.Stdout, note)
 	}
-	r.registered(&got)
+	r.registered(&got, false)
 	return nil
 }
 
@@ -120,8 +120,10 @@ func (r *run) freshRoot(ctx context.Context) {
 }
 
 // registered prints a register's or revive's answer: the lines the server
-// owes, the identity card, then the manual.
-func (r *run) registered(got *client.Registered) {
+// owes, the identity card, then the manual for a delegate and a pointer to
+// it for anyone else. Every path to a top-level register or revive sends
+// the agent to grelot help first; nothing does for a subagent's link.
+func (r *run) registered(got *client.Registered, delegate bool) {
 	if got.NoEnvironment != "" {
 		file := where.EnvironmentFile(r.ConfigDir)
 		fmt.Fprintln(r.Stdout, "grelot: "+strings.Replace(got.NoEnvironment,
@@ -136,7 +138,11 @@ func (r *run) registered(got *client.Registered) {
 	}
 	writeCard(r.Stdout, &got.Identity)
 	fmt.Fprintln(r.Stdout)
-	fmt.Fprint(r.Stdout, manual)
+	if delegate {
+		fmt.Fprint(r.Stdout, manual)
+		return
+	}
+	fmt.Fprintln(r.Stdout, "grelot: grelot help is the manual, if you have not read it")
 }
 
 func (r *run) revive(ctx context.Context, args []string) error {
@@ -170,7 +176,7 @@ func (r *run) revive(ctx context.Context, args []string) error {
 	if err := r.call(ctx, &client.Request{Method: http.MethodPost, Path: "/v1/revive", Body: body}, &got); err != nil {
 		return err
 	}
-	r.registered(&got)
+	r.registered(&got, false)
 	return nil
 }
 
@@ -205,7 +211,7 @@ func (r *run) me(ctx context.Context, args []string) error {
 	r.printStatus(resp.Status)
 	switch {
 	case me.State == client.StateNone:
-		fmt.Fprintln(r.Stdout, "grelot: register as the line above says, then read what it prints")
+		fmt.Fprintln(r.Stdout, "grelot: read grelot help first, then register as the line above says")
 		return nil
 	case me.Identity == nil:
 		return nil

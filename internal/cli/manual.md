@@ -53,7 +53,7 @@ Global flags go before the command: `--self` acts as this session's own identity
 
 ### grelot register
 
-`grelot register <name> --paths <path>[,<path>...] --desc <text> --ttl <d> [--take-over]` creates this session's identity, or returns its live one unchanged. `--take-over` moves a live identity of that name from your own earlier session in this environment. `grelot register --delegate <link> --desc <your task>` registers a delegate from its parent's link. It prints the identity card, then this manual.
+`grelot register <name> --paths <path>[,<path>...] --desc <text> --ttl <d> [--take-over]` creates this session's identity, or returns its live one unchanged. `--take-over` moves a live identity of that name from your own earlier session in this environment. `grelot register --delegate <link> --desc <your task>` registers a delegate from its parent's link. It prints the identity card, then one line naming `grelot help`; a delegate's registration prints this manual instead.
 
 ```
 grelot register subflux-dev --paths /workspace/subflux --desc "moving the run surface out of the runtime" --ttl 6h
@@ -61,7 +61,7 @@ grelot register subflux-dev --paths /workspace/subflux --desc "moving the run su
 
 ### grelot revive
 
-`grelot revive [<name>] --ttl <d>` brings back this session's dormant identity, or with a name a dormant identity of this environment and provider, under a new lease. It prints the unread count, the card, then this manual.
+`grelot revive [<name>] --ttl <d>` brings back this session's dormant identity, or with a name a dormant identity of this environment and provider, under a new lease. It prints the unread count, the card, then one line naming `grelot help`.
 
 ```
 grelot revive --ttl 4h
