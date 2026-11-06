@@ -162,6 +162,10 @@ type SessionStartRole struct {
 	Stdin   Stdin        `yaml:"stdin"`
 	Outputs StartOutputs `yaml:"outputs"`
 	Role    `yaml:",inline"`
+	// TakeOverEveryStart says every start but a fork source may get the
+	// take-over hint, for a host that reports no source and starts a session
+	// in its process only for a chat with no history.
+	TakeOverEveryStart bool `yaml:"take_over_every_start"`
 }
 
 // Source names the stdin path of the start source and which of its values

@@ -29,6 +29,10 @@ const (
 	// rewind's own.
 	rewoundRoot   = "sess_dd97485d-a96a-44bc-ba17-eb8230525c06"
 	rewindSession = "sess_f126e366-693d-43e1-81f8-7b5090d01b35"
+	// kiroTUI is a TUI's first chat, kiroCleared the one /clear started in
+	// the same kiro-cli chat process.
+	kiroTUI     = "sess_882c3937-7013-4fe3-ae78-0a4cbf25c973"
+	kiroCleared = "sess_863c88c8-0ef4-410e-810b-fab32cfa581f"
 )
 
 // registerLine is the turn-start text of a session with no identity.
@@ -153,6 +157,60 @@ func TestKiroCLISessionStart_aStepPrintsNothing(t *testing.T) {
 	got := sh.hook("session_start", sh.fixture("session_start-step"))
 	if got.Code != 0 || got.Stdout != "" || len(got.Requests) != 0 {
 		t.Errorf("exit %d, stdout %q, %d requests; want 0, nothing and none", got.Code, got.Stdout, len(got.Requests))
+	}
+}
+
+// kiro-cli fires SessionStart only for a chat with no history, which in a
+// TUI's own `kiro-cli chat` process is its first chat or one /clear started.
+// So every start there names the identity that process held, while a server
+// process (acp, serve) hosts many chats and never gets that hint.
+func TestKiroCLISessionStart_takeOverAfterClear(t *testing.T) {
+	const hint = "grelot: you were kiro-dev before this session started; to go on as it, run `grelot register kiro-dev --take-over --ttl <d>`"
+	for _, c := range []struct {
+		name  string
+		procs processes
+	}{
+		{"kiro-cli chat", under("kiro-cli", "chat", "--trust-workspace")},
+		{"kiro-cli with no subcommand", under("kiro-cli")},
+		{"kiro-cli.exe chat", under("kiro-cli.exe", "chat")},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			sh := kiroShell(t, newServer(t), "kiro-cli", kiroTUI)
+			sh.procs = c.procs
+			sh.register("kiro-dev")
+
+			sh.vars["KIRO_SESSION_ID"] = kiroCleared
+			got := sh.hook("session_start", sh.fixture("session_start-clear"))
+			if got.Code != 0 || got.Stdout != registerLine+"\n"+hint+"\n" {
+				t.Errorf("exit %d, stdout %q; want the register line, then %q", got.Code, got.Stdout, hint)
+			}
+			if len(got.Requests) != 1 || got.Requests[0].Query != "proc=200%3A20" {
+				t.Errorf("requests %v, want one GET /v1/me naming the TUI process", got.Requests)
+			}
+		})
+	}
+	for _, c := range []struct {
+		name  string
+		procs processes
+	}{
+		{"kiro-cli acp", under("kiro-cli", "acp", "--agent-engine", "v3")},
+		{"kiro-cli serve", under("kiro-cli", "serve", "--port", "8082")},
+		{"another process", under("node")},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			sh := kiroShell(t, newServer(t), "kiro-cli", kiroTUI)
+			sh.procs = c.procs
+			sh.register("kiro-dev")
+
+			sh.vars["KIRO_SESSION_ID"] = kiroCleared
+			got := sh.hook("session_start", sh.fixture("session_start-clear"))
+			if got.Code != 0 || got.Stdout != registerLine+"\n" {
+				t.Errorf("exit %d, stdout %q; want only the register line", got.Code, got.Stdout)
+			}
+			if len(got.Requests) != 1 || got.Requests[0].Query != "" {
+				t.Errorf("requests %v, want one GET /v1/me with no proc", got.Requests)
+			}
+		})
 	}
 }
 
@@ -503,8 +561,12 @@ func TestKiroIDE(t *testing.T) {
 		if ide.Evidence != provider.EvidenceUnverified || len(ide.Detect.Env) != 0 {
 			t.Errorf("evidence %q, detect %v; want unverified and no detect", ide.Evidence, ide.Detect.Env)
 		}
-		if ide.Session.Env != cli.Session.Env || ide.Session.Stdin != cli.Session.Stdin || ide.Session.Record == nil {
+		if ide.Session.Env != cli.Session.Env || ide.Session.Stdin != cli.Session.Stdin {
 			t.Errorf("session %+v, want kiro-cli's %+v", ide.Session, cli.Session)
+		}
+		if a, b := ide.Session.Record, cli.Session.Record; a == nil || a.DirEnv != b.DirEnv || a.DirDefault != b.DirDefault || a.Glob != b.Glob ||
+			a.Parent != b.Parent || a.Reason != b.Reason || a.SameAgentNote != b.SameAgentNote || !slices.Equal(a.SameAgent, b.SameAgent) {
+			t.Errorf("record %+v, want kiro-cli's %+v", a, b)
 		}
 		want := wantWiring(t, "kiro-cli", nil)
 		for i := range want {
@@ -516,6 +578,21 @@ func TestKiroIDE(t *testing.T) {
 		door := kiroDoor(t, "kiro-ide")
 		if door.Start != kiroStart || door.Transport != provider.TransportExit || door.Hold != 45*time.Second {
 			t.Errorf("door %+v, want kiro-cli's workflow door", door)
+		}
+	})
+	// The IDE's agent server hosts every chat of the window, so no start
+	// there names the process that ran another chat.
+	t.Run("it names no process", func(t *testing.T) {
+		if len(ide.Session.Process) != 0 || len(ide.Session.ProcessShared) != 0 {
+			t.Errorf("process %v, shared %v; want none", ide.Session.Process, ide.Session.ProcessShared)
+		}
+		sh := kiroShell(t, newServer(t), "kiro-ide", kiroTUI)
+		sh.procs = under("kiro-cli", "chat")
+		sh.register("kiro-dev")
+		sh.vars["KIRO_SESSION_ID"] = kiroCleared
+		got := sh.hook("session_start", sh.fixture("session_start-clear"))
+		if got.Stdout != registerLine+"\n" || len(got.Requests) != 1 || got.Requests[0].Query != "" {
+			t.Errorf("stdout %q, requests %v; want only the register line from one GET with no proc", got.Stdout, got.Requests)
 		}
 	})
 	t.Run("a Kiro shell is detected as kiro-cli", func(t *testing.T) {

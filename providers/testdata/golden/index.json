@@ -45,6 +45,7 @@
   "kiro-cli/session_end-delete.json": "linux 2.37.1 ACP client",
   "kiro-cli/session_end-other.json": "linux 2.37.1 ACP client",
   "kiro-cli/session_end-shutdown.json": "linux 2.37.1 ACP client",
+  "kiro-cli/session_start-clear.json": "linux 3.0.0 TUI, the SessionStart of the chat /clear started in the same kiro-cli chat process; cwd replaced",
   "kiro-cli/session_start-step.json": "linux 2.37.1 TUI, a workflow step's SessionStart (shell KIRO_SESSION_ID the root's)",
   "kiro-cli/session_start.json": "linux 2.37.1 headless",
   "kiro-cli/stop-replaced.json": "linux 2.37.1 TUI, the stop of that replaced session's wake turn",

@@ -176,7 +176,7 @@ func (h *hookCall) sessionStart(ctx context.Context, role *provider.SessionStart
 
 // parentStart is the session start text of a session that acts for its
 // own identity: the card, the status line and the manual; the revive
-// offer; or the register line with the take-over hint a take_over source
+// offer; or the register line with the take-over hint a take-over start
 // may get. An error is a server that did not answer it.
 func (h *hookCall) parentStart(ctx context.Context, role *provider.SessionStartRole) (string, error) {
 	h.self = true
@@ -184,7 +184,7 @@ func (h *hookCall) parentStart(ctx context.Context, role *provider.SessionStartR
 	if err != nil {
 		return "", err
 	}
-	q, header := h.startRequest(ctx, role.Source)
+	q, header := h.startRequest(ctx, role)
 	me, resp, err := hookMe(ctx, api, role.Budget, q, header)
 	if err != nil {
 		return "", err
@@ -193,16 +193,13 @@ func (h *hookCall) parentStart(ctx context.Context, role *provider.SessionStartR
 }
 
 // startRequest is session start's query and headers: proc only for a
-// take_over source, and the machine and environment in headers, never the
+// take-over start, and the machine and environment in headers, never the
 // query, which access logs keep.
-func (h *hookCall) startRequest(ctx context.Context, s *provider.Source) (url.Values, http.Header) {
+func (h *hookCall) startRequest(ctx context.Context, role *provider.SessionStartRole) (url.Values, http.Header) {
 	q := url.Values{}
-	if s != nil {
-		source := h.in.String(s.Path)
-		if slices.Contains(s.TakeOver, source) && !slices.Contains(s.Fork, source) {
-			if proc := proctree.Proc(h.tree(), h.prov.Session.Process, h.prov.Session.ProcessShared); proc != "" {
-				q.Set("proc", proc)
-			}
+	if h.takesOver(role) {
+		if proc := proctree.Proc(h.tree(), h.prov.Session.Process, h.prov.Session.ProcessShared); proc != "" {
+			q.Set("proc", proc)
 		}
 	}
 	header := http.Header{}
@@ -214,6 +211,20 @@ func (h *hookCall) startRequest(ctx context.Context, s *provider.Source) (url.Va
 		header.Set(client.HeaderMachine, w.Machine)
 	}
 	return q, header
+}
+
+// takesOver says whether this start may get the take-over hint: one whose
+// source is not a fork, and is in take_over unless every start may.
+func (h *hookCall) takesOver(role *provider.SessionStartRole) bool {
+	s := role.Source
+	if s == nil {
+		return role.TakeOverEveryStart
+	}
+	source := h.in.String(s.Path)
+	if slices.Contains(s.Fork, source) {
+		return false
+	}
+	return role.TakeOverEveryStart || slices.Contains(s.TakeOver, source)
 }
 
 func (h *hookCall) startText(me *client.Me, status string) string {

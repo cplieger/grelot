@@ -373,6 +373,9 @@ func (r *SessionStartRole) check() error {
 	if r == nil {
 		return nil
 	}
+	if r.TakeOverEveryStart && r.Source != nil && len(r.Source.TakeOver) > 0 {
+		return &LoadError{Key: "take_over_every_start", Problem: "already covers every source; leave out source.take_over"}
+	}
 	return firstErr(r.checkRole(), r.Stdin.check(), checkOutput("outputs.context", r.Outputs.Context), r.Source.check())
 }
 

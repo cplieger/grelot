@@ -1,5 +1,5 @@
 # The Kiro CLI, and any host that runs its agent server. Measured on
-# kiro-cli 2.37.1 on Linux.
+# kiro-cli 2.37.1 and 3.0.0 on Linux.
 name: kiro-cli
 evidence: measured
 detect:
@@ -9,7 +9,12 @@ session:
   # while its hooks carry the step's or fork's own id on stdin.
   env: KIRO_SESSION_ID
   stdin: session_id
-  # No process: one agent server process can serve many chats.
+  # A TUI's own kiro-cli chat process is the nearest kiro-cli ancestor of
+  # every hook and shell command of each chat it shows, across /clear, and
+  # of no other TUI's. kiro-cli acp and kiro-cli serve host many chats, so
+  # a start under one of them never names the identity another chat held.
+  process: [kiro-cli, kiro-cli.exe]
+  process_shared: [acp, serve]
   record:
     dir_env: KIRO_HOME
     dir_default: ~/.kiro
@@ -43,6 +48,9 @@ doors:
 hooks:
   session_start:
     event: SessionStart
+    # SessionStart reports no source and fires only for a chat with no
+    # history: a TUI's first chat, or the one /clear starts in its process.
+    take_over_every_start: true
     outputs:
       context: {text: "{{.Context}}"}
   prompt:

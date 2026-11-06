@@ -155,6 +155,42 @@ func TestHookSessionStart_takeOverHint(t *testing.T) {
 	})
 }
 
+func TestHookSessionStart_takeOverEveryStart(t *testing.T) {
+	const sourceLine = "    source: {path: source, take_over: [clear], fork: [branch]}\n"
+	files := map[string]string{
+		"with a fork source": strings.Replace(hookAlphaFile, sourceLine, "    take_over_every_start: true\n    source: {path: source, fork: [branch]}\n", 1),
+		"with no source":     strings.Replace(hookAlphaFile, sourceLine, "    take_over_every_start: true\n", 1),
+	}
+	for name, file := range files {
+		t.Run(name, func(t *testing.T) {
+			ts := newServer(t)
+			a, _ := registerAgent(t, ts, "s-1")
+			for _, stdin := range []string{`{"session_id":"s-2","source":"startup"}`, `{"session_id":"s-2"}`} {
+				b := hooked(t, newAgent(t, ts, "s-2", ""), "alpha", file)
+				b.env.ConfigDir = a.env.ConfigDir
+				if _, out, _ := b.hook("session_start", stdin); !strings.Contains(out, "you were toolbelt-dev") {
+					t.Errorf("%s: stdout %q, want the take-over hint", stdin, out)
+				}
+				if got := ts.last(t, http.MethodGet, "/v1/me"); !strings.Contains(got.URL, "proc=200%3A20") {
+					t.Errorf("%s: URL = %q, want the CLI ancestor's proc", stdin, got.URL)
+				}
+			}
+		})
+	}
+	t.Run("a fork source does not", func(t *testing.T) {
+		ts := newServer(t)
+		a, _ := registerAgent(t, ts, "s-1")
+		b := hooked(t, newAgent(t, ts, "s-2", ""), "alpha", files["with a fork source"])
+		b.env.ConfigDir = a.env.ConfigDir
+		if _, out, _ := b.hook("session_start", `{"session_id":"s-2","source":"branch"}`); strings.Contains(out, "you were") {
+			t.Errorf("stdout %q, want no hint", out)
+		}
+		if got := ts.last(t, http.MethodGet, "/v1/me"); strings.Contains(got.URL, "proc=") {
+			t.Errorf("URL = %q, want no proc", got.URL)
+		}
+	})
+}
+
 func TestHookSessionStart_children(t *testing.T) {
 	ts := newServer(t)
 	a, _ := registerAgent(t, ts, "s-1")

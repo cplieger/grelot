@@ -193,6 +193,15 @@ hooks:
 			t.Errorf("Has reports keys the file left out")
 		}
 	})
+	t.Run("take_over_every_start", func(t *testing.T) {
+		q, err := Load("plain", []byte("name: plain\nhooks:\n  session_start: {event: S, take_over_every_start: true, source: {path: source, fork: [fork]}}\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r := q.Hooks.SessionStart; !r.TakeOverEveryStart || !slices.Equal(r.Source.Fork, []string{"fork"}) {
+			t.Errorf("session_start = %+v, want take_over_every_start beside a fork source", r)
+		}
+	})
 	t.Run("end follows line", func(t *testing.T) {
 		q, err := Load("plain", []byte("name: plain\ndoors:\n  - {name: out, layer: 2, transport: exit, line: 'L {{.Line}}'}\n"))
 		if err != nil {
@@ -271,6 +280,7 @@ func TestLoadRefuses(t *testing.T) {
 		{"output text missing", "name: example\nhooks:\n  stop: {event: S, outputs: {block: {stream: stdout}}}\n", []string{"hooks.stop.outputs.block.text"}},
 		{"output stream", "name: example\nhooks:\n  stop: {event: S, outputs: {notice: {text: x, stream: tty}}}\n", []string{"hooks.stop.outputs.notice.stream"}},
 		{"source path missing", "name: example\nhooks:\n  session_start: {event: S, source: {take_over: [clear]}}\n", []string{"hooks.session_start.source.path"}},
+		{"take_over beside take_over_every_start", "name: example\nhooks:\n  session_start: {event: S, take_over_every_start: true, source: {path: source, take_over: [clear]}}\n", []string{"hooks.session_start.take_over_every_start", "source.take_over"}},
 		{"signal not RE2", "name: example\nhooks:\n  prompt: {event: P, signal: '(?<=x)'}\n", []string{"hooks.prompt.signal", "RE2"}},
 		{"signal without line group", "name: example\nhooks:\n  prompt: {event: P, signal: '^(x)$'}\n", []string{"hooks.prompt.signal", "line"}},
 	}
