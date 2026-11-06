@@ -261,7 +261,8 @@ func (r *run) showPage(ctx context.Context, page *client.Inbox) error {
 	return nil
 }
 
-// ack sends POST /v1/inbox/ack, retried, since read only moves forward.
+// ack sends POST /v1/inbox/ack as one keyed call, so the client's re-send
+// of a failed attempt answers the first result.
 func (r *run) ack(ctx context.Context, upto uint64) (client.Acked, error) {
 	var got client.Acked
 	err := r.peek(ctx, &client.Request{Method: http.MethodPost, Path: "/v1/inbox/ack", Body: map[string]uint64{"upto": upto}}, &got)

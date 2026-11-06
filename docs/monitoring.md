@@ -89,6 +89,6 @@ Load the rules in [`alerts/promql.yaml`](../alerts/promql.yaml) into Prometheus,
 
 `GrelotDown` is the floor under every other rule, because they all read grelot's own metrics and go quiet together when it stops being scraped. Only `GrelotDown` reads the scrape `job` label, because it reads the `up` series. Set its `job="grelot"` matcher to your scrape job's name, exactly, never a regex. Its two arms catch a target that fails and a target that no longer exists. The other rules carry no `job` matcher, so add one if you run more than one grelot server.
 
-`GrelotServerErrors` leaves out 507, which is `GrelotStoreFull`'s condition, and 503. A 503 is a request past its 15-second limit or one refused while the server was stopping, so it marks load or a restart. A post answered 503 may still have been stored.
+`GrelotServerErrors` leaves out 507, which is `GrelotStoreFull`'s condition, and 503. A 503 is a request that ran out of time before anything was stored (10 seconds, or 65 for a wait or an inbox read) or one refused while the server was stopping, so it marks load or a restart. A request answered 503 changed nothing.
 
 Thresholds, `for:` windows and the `severity` labels are starting points. Route by whatever labels your Alertmanager uses.
