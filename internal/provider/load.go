@@ -196,6 +196,19 @@ func (s *Session) check() error {
 	if s.Stdin != "" && !stdinPathRE.MatchString(s.Stdin) {
 		return &LoadError{Key: "session.stdin", Problem: "not a stdin field path"}
 	}
+	if s.HooksWithoutEnv && (s.Env == "" || s.Stdin == "") {
+		return &LoadError{Key: "session.hooks_without_env", Problem: "needs session.env and session.stdin"}
+	}
+	if err := s.checkProcesses(); err != nil {
+		return err
+	}
+	if s.Record != nil {
+		return s.Record.check()
+	}
+	return nil
+}
+
+func (s *Session) checkProcesses() error {
 	for i, proc := range s.Process {
 		if proc == "" || strings.ContainsAny(proc, `/\`) {
 			return &LoadError{Key: fmt.Sprintf("session.process[%d]", i), Problem: "must be a process name with no directory"}
@@ -208,9 +221,6 @@ func (s *Session) check() error {
 		if arg == "" {
 			return &LoadError{Key: fmt.Sprintf("session.process_shared[%d]", i), Problem: problemNotEmpty}
 		}
-	}
-	if s.Record != nil {
-		return s.Record.check()
 	}
 	return nil
 }
@@ -373,6 +383,9 @@ func (r *SessionStartRole) check() error {
 	if r == nil {
 		return nil
 	}
+	if r.TakeOverEveryStart && r.Source != nil && len(r.Source.TakeOver) > 0 {
+		return &LoadError{Key: "take_over_every_start", Problem: "already covers every source; leave out source.take_over"}
+	}
 	return firstErr(r.checkRole(), r.Stdin.check(), checkOutput("outputs.context", r.Outputs.Context), r.Source.check())
 }
 
@@ -388,6 +401,13 @@ func (r *LifecycleRole) check() error {
 		return nil
 	}
 	return firstErr(r.checkRole(), r.Stdin.check())
+}
+
+func (r *SubagentStopRole) check() error {
+	if r == nil {
+		return nil
+	}
+	return firstErr(r.checkRole(), checkPath("stdin.agent_id", r.Stdin.AgentID), checkPath("stdin.session", r.Stdin.Session))
 }
 
 func (r *PromptRole) check() error {

@@ -1,0 +1,7 @@
+prefix_rule(
+    pattern = ["grelot"],
+    decision = "allow",
+    justification = "grelot messaging client",
+    match = ["grelot inbox", "grelot watch --door queue"],
+    not_match = ["grelotx inbox"],
+)

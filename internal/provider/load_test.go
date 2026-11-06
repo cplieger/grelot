@@ -19,6 +19,7 @@ session:
   stdin: session_id
   process: [example, example.exe]
   process_shared: [app-server]
+  hooks_without_env: true
   record:
     dir_env: EXAMPLE_HOME
     dir_default: ~/.example
@@ -83,7 +84,7 @@ hooks:
     when: {reason: [delete]}
   subagent_stop:
     event: SubagentStop
-    stdin: {agent_id: agent_id}
+    stdin: {agent_id: agent_id, session: agent_id}
 `
 
 func TestLoadFull(t *testing.T) {
@@ -123,7 +124,7 @@ func TestLoadFull(t *testing.T) {
 	})
 	t.Run("session", func(t *testing.T) {
 		s := p.Session
-		if s.Env != "EXAMPLE_SESSION_ID" || s.Stdin != "session_id" || !slices.Equal(s.ProcessShared, []string{"app-server"}) {
+		if s.Env != "EXAMPLE_SESSION_ID" || s.Stdin != "session_id" || !slices.Equal(s.ProcessShared, []string{"app-server"}) || !s.HooksWithoutEnv {
 			t.Errorf("session = %+v", s)
 		}
 		if s.Record == nil || s.Record.Glob != "sessions/*/{{.HookSession}}/session.json" || !slices.Equal(s.Record.SameAgent, []string{"rewind"}) {
@@ -144,8 +145,8 @@ func TestLoadFull(t *testing.T) {
 		if h.SessionStart == nil || h.SessionStart.Source == nil || !slices.Equal(h.SessionStart.Source.TakeOver, []string{"clear"}) {
 			t.Errorf("session_start = %+v", h.SessionStart)
 		}
-		if h.TurnEnd == nil || h.SubagentStop == nil {
-			t.Errorf("turn_end %v, subagent_stop %v", h.TurnEnd, h.SubagentStop)
+		if h.TurnEnd == nil || h.SubagentStop == nil || h.SubagentStop.Stdin.Session != "agent_id" {
+			t.Errorf("turn_end %v, subagent_stop %+v", h.TurnEnd, h.SubagentStop)
 		}
 	})
 	t.Run("set keys", func(t *testing.T) {
@@ -193,6 +194,15 @@ hooks:
 			t.Errorf("Has reports keys the file left out")
 		}
 	})
+	t.Run("take_over_every_start", func(t *testing.T) {
+		q, err := Load("plain", []byte("name: plain\nhooks:\n  session_start: {event: S, take_over_every_start: true, source: {path: source, fork: [fork]}}\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r := q.Hooks.SessionStart; !r.TakeOverEveryStart || !slices.Equal(r.Source.Fork, []string{"fork"}) {
+			t.Errorf("session_start = %+v, want take_over_every_start beside a fork source", r)
+		}
+	})
 	t.Run("end follows line", func(t *testing.T) {
 		q, err := Load("plain", []byte("name: plain\ndoors:\n  - {name: out, layer: 2, transport: exit, line: 'L {{.Line}}'}\n"))
 		if err != nil {
@@ -221,6 +231,8 @@ func TestLoadRefuses(t *testing.T) {
 		{"rewrite output", "name: example\nhooks:\n  prompt: {event: P, outputs: {rewrite: {text: x}}}\n", []string{`"rewrite"`}},
 		{"block at session_start", "name: example\nhooks:\n  session_start: {event: S, outputs: {block: {text: x}}}\n", []string{`"block"`}},
 		{"outputs on a lifecycle role", "name: example\nhooks:\n  session_end: {event: E, outputs: {}}\n", []string{`"outputs"`}},
+		{"stdin session outside subagent_stop", "name: example\nhooks:\n  session_end: {event: E, stdin: {session: agent_id}}\n", []string{`"session"`}},
+		{"subagent_stop session path", "name: example\nhooks:\n  subagent_stop: {event: E, stdin: {session: 'a..b'}}\n", []string{"hooks.subagent_stop.stdin.session", "stdin field path"}},
 		{"signal outside prompt", "name: example\nhooks:\n  stop: {event: S, signal: x}\n", []string{`"signal"`}},
 		{"once_per_turn outside stop", "name: example\nhooks:\n  prompt: {event: P, once_per_turn: true}\n", []string{`"once_per_turn"`}},
 		{"second document", "name: example\n---\nname: other\n", []string{"more than one YAML document"}},
@@ -234,6 +246,8 @@ func TestLoadRefuses(t *testing.T) {
 		{"detect env name", "name: example\ndetect: {env: [BAD-NAME]}\n", []string{"detect.env[0]"}},
 		{"session env name", "name: example\nsession: {env: 'A B'}\n", []string{"session.env"}},
 		{"process with a directory", "name: example\nsession: {process: [/usr/bin/x]}\n", []string{"session.process[0]"}},
+		{"hooks_without_env without env", "name: example\nsession: {stdin: session_id, hooks_without_env: true}\n", []string{"session.hooks_without_env", "needs session.env and session.stdin"}},
+		{"hooks_without_env without stdin", "name: example\nsession: {env: A, hooks_without_env: true}\n", []string{"session.hooks_without_env", "needs session.env and session.stdin"}},
 		{"process_shared without process", "name: example\nsession: {process_shared: [app-server]}\n", []string{"session.process_shared", "needs session.process"}},
 		{"record without a directory", "name: example\nsession: {record: {glob: g, parent: p, reason: r}}\n", []string{"session.record", "dir_env or dir_default"}},
 		{"record without glob", "name: example\nsession: {record: {dir_default: d, parent: p, reason: r}}\n", []string{"session.record.glob"}},
@@ -269,6 +283,7 @@ func TestLoadRefuses(t *testing.T) {
 		{"output text missing", "name: example\nhooks:\n  stop: {event: S, outputs: {block: {stream: stdout}}}\n", []string{"hooks.stop.outputs.block.text"}},
 		{"output stream", "name: example\nhooks:\n  stop: {event: S, outputs: {notice: {text: x, stream: tty}}}\n", []string{"hooks.stop.outputs.notice.stream"}},
 		{"source path missing", "name: example\nhooks:\n  session_start: {event: S, source: {take_over: [clear]}}\n", []string{"hooks.session_start.source.path"}},
+		{"take_over beside take_over_every_start", "name: example\nhooks:\n  session_start: {event: S, take_over_every_start: true, source: {path: source, take_over: [clear]}}\n", []string{"hooks.session_start.take_over_every_start", "source.take_over"}},
 		{"signal not RE2", "name: example\nhooks:\n  prompt: {event: P, signal: '(?<=x)'}\n", []string{"hooks.prompt.signal", "RE2"}},
 		{"signal without line group", "name: example\nhooks:\n  prompt: {event: P, signal: '^(x)$'}\n", []string{"hooks.prompt.signal", "line"}},
 	}

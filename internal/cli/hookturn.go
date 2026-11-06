@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -80,7 +81,7 @@ func (h *hookCall) chatKey(c hook.Class) string {
 
 // identityKey keys a mark by the session the identity is registered from,
 // the API's Grelot-Session.
-func (h *hookCall) identityKey() string { return h.prov.Name + ":" + h.session }
+func (h *hookCall) identityKey() string { return h.prov.Name + ":" + h.own }
 
 // prompt runs at turn start: GET /v1/me?turn=start opens the turn and
 // answers the one line, the register or revive line, or the stale-signal
@@ -343,15 +344,10 @@ func (h *hookCall) stopText(held *client.Held, err error) (text string, block bo
 	return "", false, err
 }
 
-// lifecycle reports turn_end, session_end or subagent_stop and prints
-// nothing, whatever the server answers.
+// lifecycle reports turn_end or session_end and prints nothing, whatever
+// the server answers.
 func (h *hookCall) lifecycle(ctx context.Context, event string, role *provider.LifecycleRole) {
-	agent := h.in.String(role.Stdin.AgentID)
-	if event == roleSubagentStop {
-		h.subagentStop(ctx, agent, role.Budget)
-		return
-	}
-	if agent != "" {
+	if h.in.String(role.Stdin.AgentID) != "" {
 		return
 	}
 	c := h.classify("")
@@ -360,7 +356,7 @@ func (h *hookCall) lifecycle(ctx context.Context, event string, role *provider.L
 	}
 	// A session end reported from a session other than the identity's
 	// (a rewind, a step) never ends the identity.
-	if event == roleSessionEnd && c.Stdin != "" && c.Stdin != h.session {
+	if event == roleSessionEnd && c.Stdin != "" && c.Stdin != h.own {
 		return
 	}
 	h.self = true
@@ -369,18 +365,19 @@ func (h *hookCall) lifecycle(ctx context.Context, event string, role *provider.L
 	}
 }
 
-// subagentStop ends the delegate a subagent's own session holds. A
-// subagent sharing its parent's session holds none the server could end.
-func (h *hookCall) subagentStop(ctx context.Context, agent string, budget time.Duration) {
-	stdin := h.in.String(h.prov.Session.Stdin)
-	if stdin == "" || stdin == h.session {
+// subagentStop ends the delegate a subagent's own session holds, and
+// prints nothing. A subagent sharing its parent's session holds none the
+// server could end.
+func (h *hookCall) subagentStop(ctx context.Context, role *provider.SubagentStopRole) {
+	sub := h.in.String(cmp.Or(role.Stdin.Session, h.prov.Session.Stdin))
+	if sub == "" || sub == h.session {
 		return
 	}
-	api, err := h.sessionAPI(stdin)
+	api, err := h.sessionAPI(sub)
 	if err != nil {
 		return
 	}
-	postLifecycle(ctx, api, budget, map[string]any{keyEvent: roleSubagentStop, "agent_id": agent})
+	postLifecycle(ctx, api, role.Budget, map[string]any{keyEvent: roleSubagentStop, "agent_id": h.in.String(role.Stdin.AgentID)})
 }
 
 func postLifecycle(ctx context.Context, api *client.API, budget time.Duration, body map[string]any) {

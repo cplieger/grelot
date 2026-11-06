@@ -848,3 +848,86 @@ func TestHookSubagentStop_endsTheDelegateOfItsOwnSession(t *testing.T) {
 		t.Errorf("the delegate's me after the stop: %q, want no identity", out)
 	}
 }
+
+// hookBareFile is alpha as a host that leaves its session variable out of
+// hook processes, keeps no session records, and names a subagent's own
+// session in the subagent's agent_id.
+const hookBareFile = `name: alpha
+detect: {env: [ALPHA_ID]}
+session: {env: ALPHA_ID, stdin: session_id, hooks_without_env: true}
+hooks:
+  prompt:
+    event: Prompt
+    stdin: {agent_id: agent_id, prompt: prompt}
+    outputs: {context: {text: "{{.Context}}"}}
+  session_end: {event: End}
+  subagent_stop: {event: SubStop, stdin: {agent_id: agent_id, session: agent_id}}
+`
+
+// A hook whose process has no session variable acts as its stdin session,
+// the session the agent's own shell registered from.
+func TestHook_actsAsTheStdinSessionWhenTheHookHasNoVariable(t *testing.T) {
+	ts := newServer(t)
+	a := turnAgent(t, ts, hookBareFile)
+	delete(a.vars, "ALPHA_ID")
+
+	code, out, _ := a.hook("prompt", `{"session_id":"s-1","prompt":"x"}`)
+	if code != 0 || !strings.HasPrefix(out, "grelot: @toolbelt-dev · 0 unread · ") {
+		t.Errorf("prompt: exit %d, stdout %q; want the identity's turn line", code, out)
+	}
+	if got := ts.last(t, http.MethodGet, "/v1/me"); got.Header.Get("Grelot-Session") != "alpha:s-1" {
+		t.Errorf("prompt asked as %q, want alpha:s-1", got.Header.Get("Grelot-Session"))
+	}
+	before := len(ts.requests())
+	if code, out, _ := a.hook("prompt", `{"session_id":"s-1","agent_id":"sub-1","prompt":"x"}`); code != 0 || out != "" || len(ts.requests()) != before {
+		t.Errorf("a subagent's prompt: exit %d, stdout %q, %d requests; want nothing and none", code, out, len(ts.requests())-before)
+	}
+
+	// An ended session's lease is capped at an hour; this one runs 2 h.
+	capped := func() bool {
+		var me client.Me
+		ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodGet, Path: "/v1/me"}, &me)
+		return me.Identity == nil || me.Identity.Expires.Before(ts.clock.Now().Add(time.Hour+time.Second))
+	}
+	a.hook("session_end", `{"session_id":"s-2"}`)
+	if capped() {
+		t.Errorf("another session's end capped the identity's lease")
+	}
+	a.hook("session_end", `{"session_id":"s-1"}`)
+	if !capped() {
+		t.Errorf("its own session's end left the identity's lease uncapped")
+	}
+}
+
+// A host whose subagent hooks carry the parent's session names the
+// subagent's own session at stdin.session.
+func TestHookSubagentStop_readsTheSubagentsSessionAtItsPath(t *testing.T) {
+	ts := newServer(t)
+	a := turnAgent(t, ts, hookBareFile)
+	delete(a.vars, "ALPHA_ID")
+	var grant struct {
+		Link string `json:"link"`
+	}
+	ts.call(t, "alpha:s-1", false, &client.Request{
+		Method: http.MethodPost, Path: "/v1/delegates", Body: map[string]any{"label": "review", "ttl": "1h"},
+	}, &grant)
+	sub := newAgent(t, ts, "sub-1", "")
+	sub.must("register", "--delegate", grant.Link, "--desc", "reviewing the diff")
+
+	code, out, _ := a.hook("subagent_stop", `{"session_id":"s-1","agent_id":"sub-1"}`)
+	if code != 0 || out != "" {
+		t.Errorf("exit %d, stdout %q; want 0 and nothing", code, out)
+	}
+	got := ts.last(t, http.MethodPost, "/v1/lifecycle")
+	if got.Header.Get("Grelot-Session") != "alpha:sub-1" || !strings.Contains(got.Body, `"subagent_stop"`) {
+		t.Errorf("request %+v, want subagent_stop from the subagent's own session", got)
+	}
+	if out := sub.must("me"); !strings.Contains(out, "this session has no identity") {
+		t.Errorf("the delegate's me after the stop: %q, want no identity", out)
+	}
+	var me client.Me
+	ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodGet, Path: "/v1/me"}, &me)
+	if me.State != client.StateLive {
+		t.Errorf("the parent after the stop: %+v, want it live", me)
+	}
+}

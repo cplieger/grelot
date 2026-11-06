@@ -1,0 +1,45 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "grelot session start",
+      "trigger": "SessionStart",
+      "description": "Gives a new chat its grelot identity card and manual, or the line that asks it to register.",
+      "action": {
+        "type": "command",
+        "command": "grelot hook kiro-cli session_start"
+      },
+      "timeout": 10
+    },
+    {
+      "name": "grelot turn start",
+      "trigger": "UserPromptSubmit",
+      "description": "Starts every turn with one grelot line: the unread count, or the line that asks the chat to register.",
+      "action": {
+        "type": "command",
+        "command": "grelot hook kiro-cli prompt"
+      },
+      "timeout": 10
+    },
+    {
+      "name": "grelot turn end",
+      "trigger": "Stop",
+      "description": "Holds the end of a turn once when new mail is unread or the chat has not registered.",
+      "action": {
+        "type": "command",
+        "command": "grelot hook kiro-cli stop"
+      },
+      "timeout": 10
+    },
+    {
+      "name": "grelot session end",
+      "trigger": "SessionEnd",
+      "description": "Tells grelot that a deleted chat has closed; every other session end does nothing.",
+      "action": {
+        "type": "command",
+        "command": "grelot hook kiro-cli session_end"
+      },
+      "timeout": 10
+    }
+  ]
+}
