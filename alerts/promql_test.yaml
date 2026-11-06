@@ -156,9 +156,8 @@ tests:
             exp_annotations:
               summary: "grelot answered requests with a server error"
               description: >
-                grelot returned a 5xx other than 507 in the last 15m. Each 500 has
-                a request failed ERROR line naming the cause. A 503 is a request
-                that timed out, or one refused while grelot was stopping.
+                grelot returned a 5xx other than 503 or 507 in the last 15m. Each
+                500 has a request failed ERROR line naming the cause.
       - eval_time: 36m
         alertname: GrelotServerErrors
         exp_alerts: []
@@ -166,7 +165,7 @@ tests:
   - name: GrelotServerErrors fires for the first error on a route and clears after 15m
     interval: 1m
     input_series:
-      - series: 'grelot_http_requests_total{job="grelot",instance="a:8080",route="/v1/inbox",code="503"}'
+      - series: 'grelot_http_requests_total{job="grelot",instance="a:8080",route="/v1/inbox",code="500"}'
         values: "_x2 1x30"
     alert_rule_test:
       - eval_time: 6m
@@ -179,16 +178,18 @@ tests:
             exp_annotations:
               summary: "grelot answered requests with a server error"
               description: >
-                grelot returned a 5xx other than 507 in the last 15m. Each 500 has
-                a request failed ERROR line naming the cause. A 503 is a request
-                that timed out, or one refused while grelot was stopping.
+                grelot returned a 5xx other than 503 or 507 in the last 15m. Each
+                500 has a request failed ERROR line naming the cause.
       - eval_time: 18m
         alertname: GrelotServerErrors
         exp_alerts: []
 
-  - name: GrelotServerErrors ignores a full store, the health route and success
+  - name: GrelotServerErrors ignores a full store, a timeout, the health route and success
     interval: 1m
     input_series:
+      # A post past its route timeout, which may still have been stored.
+      - series: 'grelot_http_requests_total{job="grelot",instance="a:8080",route="/v1/posts",code="503"}'
+        values: "_x2 1+1x30"
       - series: 'grelot_http_requests_total{job="grelot",instance="a:8080",route="/v1/posts",code="507"}'
         values: "0+1x30"
       - series: 'grelot_http_requests_total{job="grelot",instance="a:8080",route="/healthz",code="503"}'

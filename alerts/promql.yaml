@@ -83,13 +83,16 @@ groups:
       # by its first error has no earlier sample, so increase() reads 0 for
       # it. That arm also fires once when scraping starts against a server
       # that already answered one. 507 is GrelotStoreFull's condition and
-      # /healthz is GrelotSweepStalled's.
+      # /healthz is GrelotSweepStalled's. 503 is left out too: it is a
+      # request past its 15 s timeout, whose handler may still finish and
+      # store a post, or one refused while grelot was stopping, so it marks
+      # load or a restart, not a fault.
       - alert: GrelotServerErrors
         expr: >
-          sum(increase(grelot_http_requests_total{code=~"5..",code!="507",route!="/healthz"}[15m])) > 0
+          sum(increase(grelot_http_requests_total{code=~"5..",code!~"503|507",route!="/healthz"}[15m])) > 0
           or sum(
-            grelot_http_requests_total{code=~"5..",code!="507",route!="/healthz"}
-            unless grelot_http_requests_total{code=~"5..",code!="507",route!="/healthz"} offset 15m
+            grelot_http_requests_total{code=~"5..",code!~"503|507",route!="/healthz"}
+            unless grelot_http_requests_total{code=~"5..",code!~"503|507",route!="/healthz"} offset 15m
           ) > 0
         for: 5m
         labels:
@@ -97,9 +100,8 @@ groups:
         annotations:
           summary: "grelot answered requests with a server error"
           description: >
-            grelot returned a 5xx other than 507 in the last 15m. Each 500 has
-            a request failed ERROR line naming the cause. A 503 is a request
-            that timed out, or one refused while grelot was stopping.
+            grelot returned a 5xx other than 503 or 507 in the last 15m. Each
+            500 has a request failed ERROR line naming the cause.
 
       # Retries and give-ups with no accepted send in the same window. A
       # door that accepts some sends is working; `gone` is a closed session.
