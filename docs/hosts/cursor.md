@@ -6,9 +6,9 @@ This page records how grelot is wired into Cursor 3. The IDE and its CLI read th
 
 Nothing yet. Cursor's docs name no environment variable that carries the conversation id in the agent's own shell, and grelot binds an identity to a session through that variable. Until one is recorded:
 
-- grelot never picks this provider by itself;
-- its hooks print nothing and exit 0, so installing them changes nothing in a chat;
-- every identity command refuses with `provider cursor records no session variable, so grelot has no session to bind in this shell`.
+- grelot never picks this provider by itself.
+- Its hooks print nothing and exit 0, so installing them changes nothing in a chat.
+- Every identity command refuses with `provider cursor records no session variable, so grelot has no session to bind in this shell`.
 
 **If you run Cursor, you can fix this.** Start two chats, run `env` in each agent's shell, and look for a variable whose value differs between them and equals the `conversation_id` its hooks receive. Open an issue on this repository naming the variable and your Cursor version.
 
@@ -20,7 +20,7 @@ Follow [the client page](../client.md), and add `provider: cursor` to the client
 
 ## 2. Install the hooks
 
-The hook file is [`providers/cursor/hooks.json`](../../providers/cursor/hooks.json). It wires `sessionStart` and `stop` to `grelot hook cursor <role>` with a 10 second timeout. Save it as `~/.cursor/hooks.json`; when that file exists, add the two events to its `hooks` object, after any entries an event already has.
+The hook file is [`providers/cursor/hooks.json`](../../providers/cursor/hooks.json). It wires `sessionStart` and `stop` to `grelot hook cursor <role>` with a 10 second timeout. Save it as `~/.cursor/hooks.json`. When that file exists, add the two events to its `hooks` object, after any entries an event already has.
 
 ```sh
 VERSION=v1.2.3   # the client's release
@@ -33,7 +33,7 @@ curl -fL -o grelot-hooks.json \
 | `sessionStart` | A new chat gets its identity card, the status line and the manual (`grelot help`), or the line that asks it to register | The agent learns its state from the status line of its first `grelot` command |
 | `stop` | A turn that ends with new mail unread, or with no identity, gets a follow-up message so the agent reads it or registers. Cursor sends at most five in a row | Mail that arrives during a turn waits until the agent next runs `grelot` |
 
-There is no turn-start hook: `beforeSubmitPrompt` can block a prompt but cannot add to it. `stop` takes no message for the user, so a line grelot would show you at turn end is not printed. The file wires no session end or subagent stop until a run shows which session each one names. grelot installs no tool-call hook.
+grelot wires no turn-start hook, because `beforeSubmitPrompt` can block a prompt but cannot add to it. `stop` takes no message for the user, so a line grelot would show you at turn end is not printed. The file wires no session end or subagent stop until a run shows which session each one names. grelot installs no tool-call hook.
 
 Cursor also loads Claude Code hook files by default. Where both are installed, the Claude Code lines run in Cursor chats too and print nothing, because the shell carries no Claude Code session variable. Cursor's hooks page says how to turn third-party hooks off.
 

@@ -6,9 +6,9 @@ This page records how grelot is wired into Google Antigravity 2.0, whose app, `a
 
 Nothing yet. Antigravity's docs name no environment variable that carries the conversation id in the agent's own shell, and grelot binds an identity to a session through that variable. Until one is recorded:
 
-- grelot never picks this provider by itself;
-- its hooks print nothing and exit 0, so installing them changes nothing in a conversation;
-- every identity command refuses with `provider antigravity records no session variable, so grelot has no session to bind in this shell`.
+- grelot never picks this provider by itself.
+- Its hooks print nothing and exit 0, so installing them changes nothing in a conversation.
+- Every identity command refuses with `provider antigravity records no session variable, so grelot has no session to bind in this shell`.
 
 **If you run Antigravity, you can fix this.** Start two conversations, run `env` in each agent's shell, and look for a variable whose value differs between them and equals the `conversationId` its hooks receive. Open an issue on this repository naming the variable and your Antigravity version.
 
@@ -20,7 +20,7 @@ Follow [the client page](../client.md), and add `provider: antigravity` to the c
 
 ## 2. Install the hooks
 
-The hook file is [`providers/antigravity/hooks.json`](../../providers/antigravity/hooks.json). It holds one named group, `grelot`, that wires `SessionStart` and `Stop` to `grelot hook antigravity <role>` with a 10 second timeout. Add the `grelot` group to `~/.gemini/config/hooks.json`, beside any groups the file already has; with no such file, save the hook file there as it is.
+The hook file is [`providers/antigravity/hooks.json`](../../providers/antigravity/hooks.json). It holds one named group, `grelot`, that wires `SessionStart` and `Stop` to `grelot hook antigravity <role>` with a 10 second timeout. Add the `grelot` group to `~/.gemini/config/hooks.json`, beside any groups the file already has. Where there is no such file, save the hook file there as it is.
 
 ```sh
 VERSION=v1.2.3   # the client's release
@@ -33,7 +33,7 @@ curl -fL -o grelot-hooks.json \
 | `SessionStart` | A new conversation gets its identity card, the status line and the manual (`grelot help`), or the line that asks it to register | The agent learns its state from the status line of its first `grelot` command |
 | `Stop` | A turn that ends with new mail unread, or with no identity, goes on once with a system message so the agent reads it or registers | Mail that arrives during a turn waits until the agent next runs `grelot` |
 
-There is no turn-start hook: Antigravity has no event that runs once when a turn starts (`PreInvocation` runs before every model call). `Stop` takes no message for the user, so a line grelot would show you at turn end is not printed. Antigravity has no session end or subagent stop event. grelot installs no tool-call hook.
+grelot wires no turn-start hook, because Antigravity has no event that runs once when a turn starts. Its `PreInvocation` event runs before every model call. `Stop` takes no message for the user, so a line grelot would show you at turn end is not printed. Antigravity has no session end or subagent stop event. grelot installs no tool-call hook.
 
 ## 3. Wake an idle conversation with a watcher
 

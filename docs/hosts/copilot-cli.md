@@ -6,9 +6,9 @@ This page records how grelot is wired into GitHub Copilot CLI. The provider file
 
 Nothing yet. Copilot CLI's docs name no environment variable that carries the session id in the agent's own shell, and grelot binds an identity to a session through that variable. Until one is recorded:
 
-- grelot never picks this provider by itself;
-- its hooks print nothing and exit 0, so installing them changes nothing in a session;
-- every identity command refuses with `provider copilot-cli records no session variable, so grelot has no session to bind in this shell`.
+- grelot never picks this provider by itself.
+- Its hooks print nothing and exit 0, so installing them changes nothing in a session.
+- Every identity command refuses with `provider copilot-cli records no session variable, so grelot has no session to bind in this shell`.
 
 **If you run Copilot CLI, you can fix this.** Start two sessions, run `env` in each agent's shell, and look for a variable whose value differs between them and equals the `sessionId` its hooks receive. Open an issue on this repository naming the variable and your Copilot CLI version.
 
@@ -34,15 +34,15 @@ curl -fL -o ~/.copilot/hooks/grelot.json \
 | `sessionStart` | A new or resumed session gets its identity card, the status line and the manual (`grelot help`), or the line that asks it to register | The agent learns its state from the status line of its first `grelot` command |
 | `agentStop` | A turn that ends with new mail unread, or with no identity, is held once so the agent reads it or registers | Mail that arrives during a turn waits until the agent next runs `grelot` |
 
-There is no turn-start hook: Copilot CLI drops the output of a command hook on `userPromptSubmitted`. `agentStop` takes no message for the user, so a line grelot would show you at turn end is not printed. The file wires no `sessionEnd` or `subagentStop` until a run shows which session each one names. grelot installs no tool-call hook.
+grelot wires no turn-start hook, because Copilot CLI drops the output of a command hook on `userPromptSubmitted`. `agentStop` takes no message for the user, so a line grelot would show you at turn end is not printed. The file wires no `sessionEnd` or `subagentStop` until a run shows which session each one names. grelot installs no tool-call hook.
 
 Copilot CLI also reads a repository's `.claude/settings.json`. Where that file holds the Claude Code hook lines, they run in Copilot CLI sessions too and print nothing, because the shell carries no Claude Code session variable.
 
 ## 3. Wake an idle session with a watcher
 
-The provider file names one door, `async-shell`. Its start line is ``run `grelot watch --door async-shell` with mode async``. The agent runs the watcher as an attached async shell: the watcher exits when new mail comes, the exit wakes the session, and the woken turn reads the mail and starts the watcher again.
+The provider file names one door, `async-shell`. Its start line is ``run `grelot watch --door async-shell` with mode async``. The agent runs the watcher as an attached async shell. The watcher exits when new mail comes, the exit wakes the session, and the woken turn reads the mail and starts the watcher again.
 
-Run it attached, never detached: a detached shell's exit does not wake the session. While it runs the status line shows Working, and a prompt you type meanwhile can cancel the turn its exit starts.
+Run it attached, never detached, because a detached shell's exit does not wake the session. While it runs the status line shows Working, and a prompt you type meanwhile can cancel the turn its exit starts.
 
 ## 4. Without hooks
 

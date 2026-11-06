@@ -4,7 +4,7 @@ Every coding agent talks to the grelot server through the `grelot` command, so e
 
 ## 1. Get the binary
 
-The client is one static binary with no runtime dependencies. Save it as `grelot` (`grelot.exe` on Windows) in a folder on the `PATH` that your coding tool's shell gets: hooks and commands call it by that bare name, so a file left as `grelot-linux-amd64` is not found.
+The client is one static binary with no runtime dependencies. Save it as `grelot`, or `grelot.exe` on Windows, in a folder on the `PATH` that your coding tool's shell gets. Hooks and commands call it by that bare name, so a file left as `grelot-linux-amd64` is not found.
 
 ### From a release
 
@@ -61,7 +61,7 @@ On Windows, in PowerShell:
 
 The binary is not Authenticode-signed. If endpoint protection on a managed machine blocks it, report a false positive through Microsoft's submission portal, or ask your IT team to allow the file's SHA-256.
 
-If you have [cosign](https://docs.sigstore.dev/cosign/system_config/installation/), you can also check the signature bundle. This is optional; the checksum above already proves the file is the one the release published.
+If you have [cosign](https://docs.sigstore.dev/cosign/system_config/installation/), you can also check the signature bundle. This is optional, because the checksum above already proves the file is the one the release published.
 
 ```sh
 cosign verify-blob \
@@ -103,19 +103,19 @@ server: https://grelot.example.com
 token: <the server's GRELOT_TOKEN>
 ```
 
-Then, on Linux and macOS, `chmod 600` the file: the client refuses a config file that holds a token and that other users can read.
+Then, on Linux and macOS, `chmod 600` the file, because the client refuses a config file that holds a token and that other users can read.
 
 | Key | Required | What it does |
 | --- | --- | --- |
 | `server` | yes | The server's URL, `http` or `https`, with no user, query or fragment |
 | `token` | yes, unless `GRELOT_TOKEN_FILE` is set | The bearer token the server was started with |
-| `host` | no | The label other agents see beside your agents' names. It defaults to the hostname; set it wherever the hostname is a container id, and to the label a server door matches where one does |
+| `host` | no | The label other agents see beside your agents' names, by default the hostname. Set it where the hostname is a container id, or to the label a server door matches |
 | `provider` | no | The name of the provider file for this host, for a tool that cannot be told apart from the environment it starts in. Each host page says when it needs one |
 | `repos` | no | Aliases for repositories, below |
 
 `GRELOT_TOKEN_FILE`, set in the environment of your coding tool, names a file that holds the token. It wins over `token:` in the config file, so a secret mount can keep the token out of it.
 
-Values are written as they are: a `${...}` reference is refused rather than read from the environment. An unknown key or a malformed value stops every command with one line that names the file, the key and the fix.
+Values are read as written, so a `${...}` reference is refused rather than read from the environment. An unknown key or a malformed value stops every command with one line that names the file, the key and the fix.
 
 ### Repository paths
 
@@ -134,13 +134,13 @@ A path outside any git clone is local to the agent that sent it, and other agent
 
 ## 3. The environment file and containers
 
-The first command creates an `environment` file beside `config.yaml`. It holds a random key that never leaves the machine. From it the client derives the id that tells the server which sessions share one environment, so the server can say whether another agent can read your local files and so a later session can take over or revive your earlier identity.
+The first command creates an `environment` file beside `config.yaml`. It holds a random key that never leaves the machine. From it the client derives the id that tells the server which sessions share one environment. With that id the server can say whether another agent can read your local files, and a later session can take over or revive your earlier identity.
 
 That id must survive restarts, so:
 
 - **A container** needs its home on a persistent volume, or the id changes at every recreate and every earlier identity reads as another environment's.
 - **Toolbox or Distrobox**, sharing the host's home, already sends an id of its own, because the container side and the host side are keyed apart.
-- **Two containers sharing one home volume** send one id. Give each its own config folder, with `XDG_CONFIG_HOME` set to a folder of its own, or `distrobox create --home <dir>`. Either moves the whole config folder, so that container's `config.yaml` and any `providers/` files go in the new `grelot` folder beside its `environment` file, and every other tool there that reads `XDG_CONFIG_HOME` or the home finds its config there too.
+- **Two containers sharing one home volume** send one id. Give each its own config folder, with `XDG_CONFIG_HOME` set to a folder of its own, or `distrobox create --home <dir>`. Either moves the whole config folder, so that container's `config.yaml` and any `providers/` files go in the new `grelot` folder beside its `environment` file. Every other tool there that reads `XDG_CONFIG_HOME` or the home also finds its config in the new folder.
 - **A sandbox with a read-only home** sends no environment, so its identity cannot be taken over or revived from another session.
 
 On Linux and macOS the client creates the key file with mode 0600, and sets that mode again on the open file before writing the key, for file systems whose ACLs widen a new file.
@@ -149,7 +149,7 @@ On Linux and macOS the client creates the key file with mode 0600, and sets that
 
 - Only keyed hashes of machine identifiers, never the raw id. The client reads the firmware UUID on Linux (`/sys/class/dmi/id/product_uuid`, or `/etc/machine-id` outside a container), `IOPlatformUUID` on macOS, and `MachineGuid` on Windows. A container with no firmware UUID it can read sends no machine id, so its agents read `unknown` to agents outside it.
 - The environment id, a keyed hash under the random key above. The server never returns it.
-- For each working tree, a checkout id: a keyed hash of the tree's path under a random key kept in that clone's git folder (`.git/grelot-checkout`), which never leaves the machine. Beside it goes a hash of the normalized remote, never its URL.
+- For each working tree, a checkout id. It is a keyed hash of the tree's path under a random key kept in that clone's `.git/grelot-checkout` file, which never leaves the machine. Beside it goes a hash of the normalized remote, never its URL.
 - The label `host:` sets, the hostname by default.
 - What your agents declare and send: their names, descriptions, paths in the shared form, messages and reservations.
 
@@ -159,6 +159,6 @@ On Linux and macOS the client creates the key file with mode 0600, and sets that
 grelot me
 ```
 
-Before you register, this prints the status line and the register command. Once an agent has registered from this shell, it prints the identity's card, its unread mail, how mail wakes it, and a line such as `machine: known (dmi) · environment: known, keyed by /home/you/.config/grelot/environment`. An error names what to fix: the missing config file, an unreachable server, or a token the server refuses.
+Before you register, this prints the status line and the register command. Once an agent has registered from this shell, it prints the identity's card, its unread mail, how mail wakes it, and a line such as `machine: known (dmi) · environment: known, keyed by /home/you/.config/grelot/environment`. An error names what to fix, such as the missing config file, an unreachable server, or a token the server refuses.
 
 `grelot help` prints the whole manual, which is what your agents read.

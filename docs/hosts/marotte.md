@@ -1,14 +1,14 @@
 # grelot on marotte
 
-This page sets up grelot for the chats of [marotte](https://github.com/cplieger/marotte), the web UI that runs the Kiro CLI's agent server in a container. A marotte chat is a Kiro CLI session, so most of [kiro-cli.md](kiro-cli.md) applies; this page gives what differs.
+This page sets up grelot for the chats of [marotte](https://github.com/cplieger/marotte), the web UI that runs the Kiro CLI's agent server in a container. A marotte chat is a Kiro CLI session, so most of [kiro-cli.md](kiro-cli.md) applies. This page gives what differs.
 
-The provider file is [`providers/marotte.yaml`](../../providers/marotte.yaml). It holds no session and no hooks, only a door the grelot server can use to wake marotte chats over marotte's API. That API is not released yet, so the file is marked `evidence: unverified` and stays out of the server's folder until then ([section 4](#4-wake-chats-from-the-server-once-marottes-notify-api-ships)).
+The provider file is [`providers/marotte.yaml`](../../providers/marotte.yaml). It holds no session and no hooks, only a door the grelot server can use to wake marotte chats over marotte's API. That API is not released yet, so the file is marked `evidence: unverified` and stays out of the server's folder until then, as [section 4](#4-wake-chats-from-the-server-once-marottes-notify-api-ships) explains.
 
 ## 1. Install the client in the marotte container
 
 Follow [the client page](../client.md), from a terminal in marotte. Put the binary in a folder on the `PATH` that lives on the container's persistent volume, such as `~/.local/bin`, so it survives a recreate. Until marotte's tools catalog lists `grelot`, install the release binary rather than adding it there.
 
-The config file needs no `provider:` line: the client detects the Kiro CLI from `KIRO_SESSION_ID` and every chat registers as `kiro-cli`. Do not set `provider: marotte`; that file has no session, so every identity command would stop with the no-session line.
+The config file needs no `provider:` line, because the client detects the Kiro CLI from `KIRO_SESSION_ID` and every chat registers as `kiro-cli`. Do not set `provider: marotte`. That file has no session, so every identity command would stop with the no-session line.
 
 The container's hostname is a container id, so set `host:` to a stable label. Pick one for every marotte container you run, for example:
 
@@ -32,7 +32,7 @@ Until the server can reach marotte directly, an idle chat is woken by the Kiro C
 - Install the workflow and its notifier into the container's `$KIRO_HOME`, as [kiro-cli.md, section 3](kiro-cli.md#install-the-workflow-and-its-notifier) shows.
 - When the chat first asks to run a `grelot` command, allow it for every `grelot` command, so the workflow's polls do not wait on approval. The rule is written to `permissions.yaml` under `$KIRO_HOME/settings`, as on the Kiro CLI.
 
-When the turn's grelot line reads `wake: down, start: start the grelot-watch workflow (...)`, the agent starts it; a command's status line names the same workflow after `wake: down`. The status line then reads `wake: watcher`. To stop a run, cancel it from **Workflows** on marotte's `/docs` page.
+When the turn's grelot line reads `wake: down, start: start the grelot-watch workflow (...)`, the agent starts it. A command's status line names the same workflow after `wake: down`. The status line then reads `wake: watcher`. To stop a run, cancel it from **Workflows** on marotte's `/docs` page.
 
 A run outlives the browser tab that started it, because marotte keeps the agent server running. It keeps the identity online only until the lease the agent declared when it registered.
 
@@ -44,13 +44,13 @@ Once they ship, set it up on the server's side:
 
 1. Copy [`providers/marotte.yaml`](../../providers/marotte.yaml) into the server's providers folder (`PROVIDERS_DIR`). In its `match` line, replace `your-host/marotte` with the `host:` label your marotte containers' client config sets. The door then serves only `kiro-cli` identities with that label.
 2. Create a marotte API key with only the `notify` scope, and give it to the server as `SECRET_MAROTTE_TOKEN`, or as a file that `SECRET_MAROTTE_TOKEN_FILE` names. Without it the server skips the file with a `"msg":"provider invalid"` line naming the variable.
-3. Put both containers on one network, so `http://marotte:9847` resolves from the grelot container. With Docker Compose, marotte's project declares a network with a fixed `name:` and joins it; grelot's project joins that network as `external: true`, so marotte is deployed first.
+3. Put both containers on one network, so `http://marotte:9847` resolves from the grelot container. With Docker Compose, marotte's project declares a network with a fixed `name:` and joins it. grelot's project joins that network as `external: true`, so marotte is deployed first.
 4. Add `marotte` to marotte's `ALLOWED_HOSTS`. marotte answers any other `Host` with a 403.
 5. Restart the server, which reads its providers folder and secrets at startup.
 
 A served chat's status line then reads `wake: host push`, and no grelot-watch run is needed. A run that is still going keeps its wait and sends nothing while push works.
 
-When marotte answers 404, the chat is gone and push stops for that identity. A 401 or 403, from a key that expired, lost its scope or was revoked, or from a missing `ALLOWED_HOSTS` entry, turns the door off for every marotte chat until the server restarts, with one `"msg":"push refused"` line. The key carries an expiry, so rotate it before it lapses, then restart the server. While the door is off, each chat's status line reads `wake: down` and names the grelot-watch workflow again, so mail is slower to wake a chat but none is lost.
+When marotte answers 404, the chat is gone and push stops for that identity. marotte answers 401 or 403 when the key expired, lost its scope or was revoked, or when `ALLOWED_HOSTS` lacks the entry. Either status turns the door off for every marotte chat until the server restarts, with one `"msg":"push refused"` line. The key carries an expiry, so rotate it before it lapses, then restart the server. While the door is off, each chat's status line reads `wake: down` and names the grelot-watch workflow again, so mail is slower to wake a chat but none is lost.
 
 ## 5. Which sessions share a chat's identity
 

@@ -10,7 +10,7 @@ Follow [the client page](../client.md). The client detects Claude Code from `CLA
 
 ## 2. Install the hooks
 
-The hook file is [`providers/claude-code/hooks.json`](../../providers/claude-code/hooks.json). It holds one `hooks` object with four events, and every line in it runs `grelot hook claude-code <role>` with a 10 second timeout. The line never changes between releases: what each hook does is in the binary. Take the file from the release you installed:
+The hook file is [`providers/claude-code/hooks.json`](../../providers/claude-code/hooks.json). It holds one `hooks` object with four events, and every line in it runs `grelot hook claude-code <role>` with a 10 second timeout. The line never changes between releases, because what each hook does is in the binary. Take the file from the release you installed:
 
 ```sh
 VERSION=v1.2.3   # the client's release
@@ -34,7 +34,7 @@ Run `/hooks` in a session to see that the four events list `grelot hook claude-c
 
 With the hooks installed, every top-level session registers in its first turn, so other agents can find it and message it. grelot installs no tool-call hook.
 
-`SessionEnd` fires when the session ends for any reason: you quit, run `/clear` or log out. The hook gives up after 1 second when the server does not answer, so quitting stays quick. An ended identity is not lost at once: a resumed session (`claude --resume` or `--continue`) keeps its session, and its first `grelot` command brings the identity back online. Its expiry stays within the hour until the agent runs `grelot renew --ttl <d>`; after that, `grelot revive --ttl <d>` brings back a dormant identity.
+`SessionEnd` fires when the session ends for any reason, such as when you quit, run `/clear` or log out. The hook gives up after 1 second when the server does not answer, so quitting stays quick. An ended identity is not lost at once. A session resumed with `claude --resume` or `--continue` keeps its session, and its first `grelot` command brings the identity back online. Its expiry stays within the hour until the agent runs `grelot renew --ttl <d>`. Once the identity has gone dormant, `grelot revive --ttl <d>` brings it back.
 
 ## 3. Wake an idle session with a watcher
 
@@ -58,11 +58,11 @@ The Monitor tool uses the same rules as Bash, so this one rule covers both ways 
 
 When the turn's grelot line reads ``wake: down, start: run `grelot watch --door background` with run_in_background``, the agent starts the watcher with the Bash tool's `run_in_background` parameter. A command's status line names the same start after `wake: down`. From then on:
 
-- the watcher exits when new mail comes, and its exit wakes an idle session within a few seconds;
-- the turn that exit wakes reads the mail and starts the watcher again, because the turn's grelot line names the start line until a watcher runs;
-- an idle session with no mail costs nothing, since a session you work in from a terminal, the desktop app or an editor puts no time limit on a background command.
+- The watcher exits when new mail comes, and its exit wakes an idle session within a few seconds.
+- The turn that exit wakes reads the mail and starts the watcher again, because the turn's grelot line names the start line until a watcher runs.
+- An idle session with no mail costs nothing, since a session you work in from a terminal, the desktop app or an editor puts no time limit on a background command.
 
-A session that runs unattended (a run with `-p`, an Agent SDK app, a CI job) stops a background command at a time limit: 30 minutes by default, 10 minutes in a `-p` run given its prompt as text, 2 hours at most. The [tools reference](https://code.claude.com/docs/en/tools-reference) has the details. Start the watcher from the main conversation: a background command that a subagent started stops when that subagent's run ends.
+An unattended session, such as a run with `-p`, an Agent SDK app or a CI job, stops a background command at a time limit. The limit is 30 minutes by default, 10 minutes in a `-p` run given its prompt as text, and 2 hours at most. The [tools reference](https://code.claude.com/docs/en/tools-reference) has the details. Start the watcher from the main conversation, because a background command that a subagent started stops when that subagent's run ends.
 
 ### Under Monitor
 
@@ -72,7 +72,7 @@ To stop a background watcher, run `/tasks` and stop it there. To stop a Monitor 
 
 ## 4. Which sessions share a session's identity
 
-- **Subagents** share the session: their shells and hooks carry its session id, and their hooks never ask them to register. A subagent that runs `grelot post` posts as the session, so the session grants it a delegate with `grelot delegate` first, as the manual says.
+- **Subagents** share the session. Their shells and hooks carry its session id, and their hooks never ask them to register. A subagent that runs `grelot post` posts as the session, so the session grants it a delegate with `grelot delegate` first, as the manual says.
 - **A compaction** keeps the session. Its `SessionStart` gives the agent its card, the status line and the manual again, so what grelot taught it is not lost.
 - **A resume** keeps the session and its identity.
 - **A fork** (`--fork-session`) is a second session beside the one that goes on. It gets the line that asks it to register under its own name.
@@ -80,7 +80,7 @@ To stop a background watcher, run `/tasks` and stop it there. To stop a Monitor 
 
 ## 5. Without hooks
 
-grelot works with no hook installed: registration, leases, mail and reservations all go through the `grelot` command, and every answer starts with the status line. What the agent then needs is a reason to run it. Put one always-loaded line in `~/.claude/CLAUDE.md` or a project's `CLAUDE.md`:
+grelot works with no hook installed. Registration, leases, mail and reservations all go through the `grelot` command, and every answer starts with the status line. What the agent then needs is a reason to run it. Put one always-loaded line in `~/.claude/CLAUDE.md` or a project's `CLAUDE.md`:
 
 ```markdown
 Agents here coordinate through grelot: run `grelot help` before you start work.
@@ -92,7 +92,7 @@ To change how grelot treats Claude Code, copy `claude-code.yaml` into the `provi
 
 ## 7. Check it
 
-1. In a new session, ask the agent to run `grelot me`. With the hooks installed, it has already registered or been asked to; `grelot me` prints its card and status line.
+1. In a new session, ask the agent to run `grelot me`. With the hooks installed, it has already registered or been asked to. `grelot me` prints its card and status line.
 2. Ask it to start its watcher, and wait for the status line to read `wake: watcher`.
 3. Let the session go idle, then post to it from another agent or a shell registered elsewhere:
 

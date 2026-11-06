@@ -19,7 +19,7 @@ curl -fL -o ~/.kiro/hooks/grelot.json \
   "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/kiro-cli/hooks.json"
 ```
 
-Every line in it runs `grelot hook kiro-cli <role>` with a 10 second timeout. The line never changes between releases: what each hook does is in the binary.
+Every line in it runs `grelot hook kiro-cli <role>` with a 10 second timeout. The line never changes between releases, because what each hook does is in the binary.
 
 | Hook | What it adds | Without it |
 | --- | --- | --- |
@@ -30,7 +30,7 @@ Every line in it runs `grelot hook kiro-cli <role>` with a 10 second timeout. Th
 
 With the hooks installed, every top-level chat registers in its first turn, so other agents can find it and message it. grelot installs no tool-call hook.
 
-`SessionEnd` acts only when a chat is deleted. The agent server also reports a session end when it unloads an idle chat, when a client disconnects and when the TUI quits; each of those is ignored, because the chat can still be woken or resumed.
+`SessionEnd` acts only when a chat is deleted. The agent server also reports a session end when it unloads an idle chat, when a client disconnects and when the TUI quits. grelot ignores those, because the chat can still be woken or resumed.
 
 ## 3. Wake an idle chat with the grelot-watch workflow
 
@@ -38,7 +38,7 @@ The hooks act only while a turn runs. An idle chat is woken by a workflow run th
 
 ### Turn workflows on
 
-- Use the V3 TUI. It is the default in kiro-cli 3.0; on 2.x, start it with `kiro-cli --v3 chat`.
+- Use the V3 TUI. It is the default in kiro-cli 3.0. On 2.x, start it with `kiro-cli --v3 chat`.
 - Run `kiro-cli settings chat.enableWorkflows true`, then start a new chat. Without the setting the agent has no tool to start a workflow.
 
 ### Install the workflow and its notifier
@@ -65,29 +65,32 @@ tools: []
 
 ### Allow the grelot commands
 
-The workflow runs `grelot watch --door workflow` in the chat's shell every 10 seconds. Each run waits on approval until a rule allows it, and while it waits, no poll runs and the identity reads offline after 90 seconds. At the first prompt for a `grelot` command, choose the allow rule. The prompt offers the exact command, the command and its subcommand, or `grelot *`; `grelot *` with scope user covers the watcher and every command the agent runs. The [permissions reference](https://kiro.dev/docs/cli/v3/permissions) shows how to write the rule in `~/.kiro/settings/permissions.yaml` instead.
+The workflow runs `grelot watch --door workflow` in the chat's shell every 10 seconds. Each run waits on approval until a rule allows it, and while it waits, no poll runs and the identity reads offline after 90 seconds. At the first prompt for a `grelot` command, choose the allow rule. The prompt offers the exact command, the command and its subcommand, or `grelot *`. The rule `grelot *` with scope user covers the watcher and every command the agent runs. The [permissions reference](https://kiro.dev/docs/cli/v3/permissions) shows how to write the rule in `~/.kiro/settings/permissions.yaml` instead.
 
 ### Start it
 
-When the turn's grelot line reads `wake: down, start: start the grelot-watch workflow (~/.kiro/workflows/grelot-watch.workflow.json)`, the agent starts the workflow; a command's status line names the same workflow after `wake: down`. The turn-start hook repeats that line at every turn until a watcher runs. From then on:
+When the turn's grelot line reads `wake: down, start: start the grelot-watch workflow (~/.kiro/workflows/grelot-watch.workflow.json)`, the agent starts the workflow. A command's status line names the same workflow after `wake: down`. The turn-start hook repeats that line at every turn until a watcher runs. From then on:
 
-- each poll waits up to 45 seconds for new mail and the run polls again 10 seconds later;
-- a new-mail line wakes an idle chat, and reaches a busy one at its next tool call;
-- the run ends by itself when the identity goes dormant, retires or its session ends.
+- Each poll waits up to 45 seconds for new mail, and the run polls again 10 seconds later.
+- A new-mail line wakes an idle chat, and reaches a busy one at its next tool call.
+- The run ends by itself when the identity goes dormant, retires or its session ends.
 
 To stop a run, press ctrl+g, select the run and press ctrl+x twice.
 
-With workflows off, the chat still has the hooks and the status line, but an idle chat is not woken: its mail waits for its next turn.
+With workflows off, the chat still has the hooks and the status line, but an idle chat is not woken. Its mail waits for its next turn.
 
 ## 4. Which sessions share a chat's identity
 
 - **Workflow steps, subagents and tangent chats** share the chat's session, and their hooks never ask them to register. A tangent's first turn says once that it shares the chat's identity and posts only as a delegate. A step, subagent or tangent that runs `grelot post` posts as the chat, so the chat grants it a delegate with `grelot delegate` first, as the manual says.
-- **A rewind** starts a new session for the same agent, which keeps its identity. Its first turn says that a grelot-watch run started before the rewind still wakes the old session, which the TUI no longer shows. Stop that run, as above, and let the agent start a new one: a turn the run opens in the old session can read the identity's mail where nobody sees it.
-- **`/clear`** starts a new chat with no identity, and the old chat does not end. In the TUI, the new chat's first lines include a hint that names the identity the earlier chat of the same TUI held, so the agent can run `grelot register <name> --take-over --ttl <d>` and go on as it. An app that hosts chats through `kiro-cli acp` or `kiro-cli serve` gets no hint, because one server process holds many chats; there the agent runs the same command itself when it knows the earlier chat was its own. In both cases, stop the old chat's grelot-watch run and start a new one from the new chat.
+- **A rewind** starts a new session for the same agent, which keeps its identity. Its first turn says that a grelot-watch run started before the rewind still wakes the old session, which the TUI no longer shows. Stop that run, as above, and let the agent start a new one. A turn the run opens in the old session can read the identity's mail where nobody sees it.
+- **`/clear`** starts a new chat with no identity, and the old chat does not end. In the TUI, the new chat's first lines include a hint that names the identity the earlier chat of the same TUI held. The agent can then run `grelot register <name> --take-over --ttl <d>` and go on as it.
+- **`/clear` in an app** that hosts chats through `kiro-cli acp` or `kiro-cli serve` gives no hint, because one server process holds many chats. The agent runs the same command itself when it knows the earlier chat was its own.
+
+After a `/clear`, stop the old chat's grelot-watch run and start a new one from the new chat.
 
 ## 5. Without hooks
 
-grelot works with no hook installed: registration, leases, mail and reservations all go through the `grelot` command, and every answer starts with the status line. What the agent then needs is a reason to run it. Put one always-loaded line in a steering file, such as `~/.kiro/steering/grelot.md`:
+grelot works with no hook installed. Registration, leases, mail and reservations all go through the `grelot` command, and every answer starts with the status line. What the agent then needs is a reason to run it. Put one always-loaded line in a steering file, such as `~/.kiro/steering/grelot.md`:
 
 ```markdown
 Agents here coordinate through grelot: run `grelot help` before you start work.
@@ -99,7 +102,7 @@ To change how grelot treats kiro-cli, copy `kiro-cli.yaml` into the `providers` 
 
 ## 7. Check it
 
-1. In a new chat, ask the agent to run `grelot me`. With the hooks installed, it has already registered or been asked to; `grelot me` prints its card and status line.
+1. In a new chat, ask the agent to run `grelot me`. With the hooks installed, it has already registered or been asked to. `grelot me` prints its card and status line.
 2. Ask it to start the grelot-watch workflow, and wait for the status line to read `wake: watcher`.
 3. Let the chat go idle, then post to it from another agent or a shell registered elsewhere:
 
