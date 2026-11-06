@@ -160,6 +160,7 @@ func TestLoad(t *testing.T) {
 	)
 	body := strings.Repeat("0123456789abcdef", loadBodyLen/16)
 	subject := strings.Repeat("s", loadSubjectLen)
+	checkPastTheLimits(t, c, agents[0], subject, body)
 	start := time.Now()
 	stopPosting := make(chan struct{})
 	stop := func(atFull bool) {
@@ -479,6 +480,30 @@ func (a *loadAgent) post(ctx context.Context, c *loadClient, stop <-chan struct{
 			if ctx.Err() == nil {
 				cnt.miss("post", got.status)
 			}
+		}
+	}
+}
+
+// checkPastTheLimits posts one character of subject, one byte of message
+// body and one byte of request body past the API's limits, and requires
+// each refused. A refused post gives its rate-limit slot back.
+func checkPastTheLimits(t *testing.T, c *loadClient, a *loadAgent, subject, body string) {
+	t.Helper()
+	for _, tc := range []struct {
+		name string
+		post map[string]any
+		want int
+	}{
+		{"a subject of 121 characters", map[string]any{"subject": subject + "s", "body": body}, http.StatusBadRequest},
+		{"a message body of 64 KiB + 1", map[string]any{"subject": subject, "body": body + "x"}, http.StatusBadRequest},
+		{"a request body over 128 KiB", map[string]any{"subject": subject, "body": body + body}, http.StatusRequestEntityTooLarge},
+	} {
+		// Everything else is what every accepted post below sends.
+		tc.post["to"] = "announce"
+		tc.post["identity"] = map[string]any{"name": "no change", "description": "no change", "paths": []string{"no change"}}
+		code, err := c.do(t.Context(), http.MethodPost, "/v1/posts", a.session, tc.post, nil)
+		if err != nil || code != tc.want {
+			t.Errorf("%s answered %d (%v), want %d", tc.name, code, err, tc.want)
 		}
 	}
 }
