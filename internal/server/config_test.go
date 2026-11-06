@@ -1,6 +1,7 @@
 package server
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,7 +51,7 @@ func TestLoadConfig_readsEachKey(t *testing.T) {
 	t.Setenv("GRELOT_TOKEN_FILE", tokenFile)
 	t.Setenv("GRELOT_PATH_ROOT", "/src")
 	t.Setenv("STORE_PATH", "/var/lib/grelot/g.db")
-	t.Setenv("STORE_MAX_BYTES", "1048576")
+	t.Setenv("STORE_MAX_BYTES", "67108864")
 	t.Setenv("THREAD_TTL", "24h")
 	t.Setenv("DORMANT_TTL", "12h")
 	t.Setenv("RESERVATION_MAX_TTL", "2h")
@@ -61,7 +62,7 @@ func TestLoadConfig_readsEachKey(t *testing.T) {
 	}
 	want := Config{
 		Token: "file-token", PathRoot: "/src", StorePath: "/var/lib/grelot/g.db",
-		MaxBytes: 1 << 20, ThreadTTL: 24 * time.Hour, DormantTTL: 12 * time.Hour, ReservationMaxTTL: 2 * time.Hour,
+		MaxBytes: 64 << 20, ThreadTTL: 24 * time.Hour, DormantTTL: 12 * time.Hour, ReservationMaxTTL: 2 * time.Hour,
 		ProvidersDir: "/etc/grelot/providers",
 	}
 	if c != want {
@@ -79,6 +80,7 @@ func TestLoadConfig_refusalsNameTheKey(t *testing.T) {
 		{"GRELOT_PATH_ROOT", "/workspace/../src"},
 		{"STORE_MAX_BYTES", "lots"},
 		{"STORE_MAX_BYTES", "0"},
+		{"STORE_MAX_BYTES", "67108863"},
 		{"THREAD_TTL", "72"},
 		{"DORMANT_TTL", "-1h"},
 		{"RESERVATION_MAX_TTL", "soon"},
@@ -96,6 +98,29 @@ func TestLoadConfig_refusalsNameTheKey(t *testing.T) {
 			}
 			if strings.Contains(err.Error(), "a-secret-value") {
 				t.Errorf("err %q carries the token", err)
+			}
+		})
+	}
+}
+
+func TestStoreMaxBytes_theFloorTakesPostsOnAFreshStore(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		maxBytes int64
+		want     int
+	}{
+		{"at the floor", minMaxBytes, http.StatusCreated},
+		// The reason for the floor: one growth step of an empty file is
+		// already past 90 % of a 16 MiB ceiling.
+		{"at one growth step", 16 << 20, http.StatusInsufficientStorage},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarnessWith(t, store.Options{MaxBytes: tc.maxBytes})
+			h.mustRegister(sessA, "writer")
+			h.mustRegister(sessB, "reader")
+			r := h.as(sessA, http.MethodPost, "/v1/posts", postBody(map[string]any{"agent": "reader"}, "first", "a body"))
+			if r.status != tc.want {
+				t.Errorf("first post on a fresh store: %d %s, want %d", r.status, r.raw, tc.want)
 			}
 		})
 	}
