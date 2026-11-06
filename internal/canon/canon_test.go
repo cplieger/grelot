@@ -53,7 +53,7 @@ func TestPath_oneFileFromThreeClones(t *testing.T) {
 	if err != nil || loc.Canonical != "/workspace/toolbelt/internal/x/y.go" {
 		t.Errorf("subdirectory: got %q, %v", loc.Canonical, err)
 	}
-	if loc.Clone == nil || loc.Clone.Toplevel != laptop || loc.Clone.Remote != "github.com/cplieger/toolbelt" || loc.Clone.Repo != "toolbelt" {
+	if loc.Clone == nil || loc.Clone.Toplevel != filepath.ToSlash(laptop) || loc.Clone.Remote != "github.com/cplieger/toolbelt" || loc.Clone.Repo != "toolbelt" {
 		t.Errorf("subdirectory clone: got %+v", loc.Clone)
 	}
 }
@@ -64,8 +64,8 @@ func TestPath_cloneWithNoRemoteIsLocal(t *testing.T) {
 	gitRepo(t, dir)
 	file := filepath.Join(dir, "todo.md")
 	loc, err := New("/workspace", nil, nil).Path(t.Context(), file)
-	if err != nil || loc.Canonical != filepath.ToSlash(file) {
-		t.Errorf("got %q, %v; want the local path %q", loc.Canonical, err, file)
+	if want := outsideForm(file); err != nil || loc.Canonical != want {
+		t.Errorf("got %q, %v; want the local path %q", loc.Canonical, err, want)
 	}
 	if loc.Clone == nil || loc.Clone.Remote != "" || loc.Clone.Repo != "" {
 		t.Errorf("clone: got %+v, want one with no remote", loc.Clone)
@@ -90,7 +90,7 @@ func TestPath_remoteChoice(t *testing.T) {
 			file := filepath.Join(dir, "a.md")
 			want := tt.want
 			if want == "" {
-				want = filepath.ToSlash(file)
+				want = outsideForm(file)
 			}
 			loc, err := New("/workspace", nil, nil).Path(t.Context(), file)
 			if err != nil || loc.Canonical != want {
@@ -116,13 +116,13 @@ func TestPath_outsideAClone(t *testing.T) {
 	base := tempDir(t)
 	r := New("/workspace", nil, nil)
 	loc, err := r.Path(t.Context(), filepath.Join(base, "a", "..", "b", "f.txt"))
-	if want := filepath.ToSlash(filepath.Join(base, "b", "f.txt")); err != nil || loc.Canonical != want || loc.Clone != nil {
+	if want := outsideForm(filepath.Join(base, "b", "f.txt")); err != nil || loc.Canonical != want || loc.Clone != nil {
 		t.Errorf("cleaned: got %+v, %v; want %q", loc, err, want)
 	}
 
 	t.Chdir(base)
 	loc, err = r.Path(t.Context(), "rel/f.txt")
-	if want := filepath.ToSlash(filepath.Join(base, "rel", "f.txt")); err != nil || loc.Canonical != want {
+	if want := outsideForm(filepath.Join(base, "rel", "f.txt")); err != nil || loc.Canonical != want {
 		t.Errorf("relative: got %q, %v; want %q", loc.Canonical, err, want)
 	}
 
@@ -136,6 +136,24 @@ func TestPath_outsideAClone(t *testing.T) {
 		loc, err := win.Path(t.Context(), local)
 		if err != nil || loc.Canonical != want {
 			t.Errorf("Windows %q: got %q, %v; want %q", local, loc.Canonical, err, want)
+		}
+	}
+}
+
+// On Windows a rooted path with no drive is already in grelot form: the
+// manual tells agents to write repository paths as /workspace/<repo>/<file>.
+func TestPath_windowsRootedPathIsGrelotForm(t *testing.T) {
+	win := windowsResolver("/workspace", fakeGit{}, []string{"C:/", "C:/workspace"}, nil)
+	for local, want := range map[string]string{
+		"/workspace/tool/x.go": "/workspace/tool/x.go",
+		`\workspace\tool`:      "/workspace/tool",
+		"/workspace/a/../b":    "/workspace/b",
+		"/srv/notes.md":        "/srv/notes.md",
+		`C:\workspace\tool`:    "/c/workspace/tool",
+	} {
+		loc, err := win.Path(t.Context(), local)
+		if err != nil || loc.Canonical != want || loc.Clone != nil {
+			t.Errorf("Windows %q: got %+v, %v; want %q in no clone", local, loc, err, want)
 		}
 	}
 }
@@ -186,7 +204,8 @@ func TestPath_checkoutPerWorktreeAndCopy(t *testing.T) {
 		}
 		ids[loc.Clone.GitDir] = id
 	}
-	if len(ids) != 2 || ids[filepath.Join(primary, ".git")] == ids[filepath.Join(primary, ".git", "worktrees", "toolbelt-wt")] {
+	primaryGit := filepath.ToSlash(filepath.Join(primary, ".git"))
+	if len(ids) != 2 || ids[primaryGit] == ids[primaryGit+"/worktrees/toolbelt-wt"] {
 		t.Errorf("worktrees share a git dir or an id: %v", ids)
 	}
 
@@ -198,7 +217,7 @@ func TestPath_checkoutPerWorktreeAndCopy(t *testing.T) {
 	if err != nil || loc.Clone == nil {
 		t.Fatalf("copy: got %+v, %v", loc, err)
 	}
-	if got := where.Checkout(t.Context(), loc.Clone.GitDir, loc.Clone.Toplevel); got == "" || got == ids[filepath.Join(primary, ".git")] {
-		t.Errorf("copy: id %q, original %q", got, ids[filepath.Join(primary, ".git")])
+	if got := where.Checkout(t.Context(), loc.Clone.GitDir, loc.Clone.Toplevel); got == "" || got == ids[primaryGit] {
+		t.Errorf("copy: id %q, original %q", got, ids[primaryGit])
 	}
 }

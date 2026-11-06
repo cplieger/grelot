@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -55,6 +57,16 @@ func writeFile(t *testing.T, file string) {
 	if err := os.WriteFile(file, []byte("x\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// outsideForm is the canonical form of a local path in no clone with a
+// remote: the path in slash form, and on Windows C:\x\y as /c/x/y.
+func outsideForm(p string) string {
+	p = filepath.ToSlash(p)
+	if runtime.GOOS == "windows" && len(p) > 1 && p[1] == ':' {
+		return "/" + strings.ToLower(p[:1]) + p[2:]
+	}
+	return p
 }
 
 // fakeGit answers WorkTree for the directories it lists, for paths of another

@@ -1,3 +1,5 @@
+//go:build !windows
+
 package store
 
 // Space is the store file's size and how much of it holds data. bbolt

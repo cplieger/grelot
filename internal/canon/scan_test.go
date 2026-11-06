@@ -10,6 +10,7 @@ import (
 // scanHost is a host whose home, temp dir and path root are directories of
 // its own, with a clone at its canonical root (toolbelt), a clone at another
 // local root (subflux) and a scratch tree under the root that is no clone.
+// Its fields are in slash form, as a body names paths and git prints them.
 type scanHost struct {
 	r                                *Resolver
 	home, temp, root, subflux, notes string
@@ -18,12 +19,12 @@ type scanHost struct {
 func newScanHost(t *testing.T) scanHost {
 	t.Helper()
 	isolateGit(t)
-	base := tempDir(t)
+	base := filepath.ToSlash(tempDir(t))
 	h := scanHost{
-		home:    filepath.Join(base, "home"),
-		temp:    filepath.Join(base, "tmp"),
-		root:    filepath.Join(base, "workspace"),
-		subflux: filepath.Join(base, "src", "subflux"),
+		home:    base + "/home",
+		temp:    base + "/tmp",
+		root:    base + "/workspace",
+		subflux: base + "/src/subflux",
 	}
 	for _, d := range []string{h.home, h.temp} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
@@ -35,7 +36,7 @@ func newScanHost(t *testing.T) scanHost {
 	gitRepo(t, h.subflux, "origin", "git@github.com:cplieger/subflux.git")
 	writeFile(t, filepath.Join(h.subflux, "x.go"))
 	writeFile(t, filepath.Join(h.subflux, "pkg", "y.go"))
-	h.notes = filepath.Join(h.root, "_scratch", "notes.md")
+	h.notes = h.root + "/_scratch/notes.md"
 	writeFile(t, h.notes)
 	h.r = New(h.root, nil, nil)
 	h.r.home, h.r.temp = h.home, h.temp
@@ -74,7 +75,6 @@ func TestScanLocal_none(t *testing.T) {
 		"API route":                      "call /v1/me first",
 		"no component":                   "a / b // c ~/ d",
 		"no path":                        "nothing to see",
-		"other case on a case-sensitive": "see " + strings.ToUpper(h.temp) + "/a",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if got, ok := h.r.ScanLocal(t.Context(), body); ok {

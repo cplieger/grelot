@@ -1,3 +1,5 @@
+//go:build !windows
+
 package server
 
 import (
@@ -8,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/store"
 )
 
@@ -217,8 +220,8 @@ func TestWho_refusals(t *testing.T) {
 					t.Errorf("%s: error %q lacks %q", tc.query, r.str("error"), p)
 				}
 			}
-			if r.str("path_root") != DefaultPathRoot {
-				t.Errorf("%s: path_root %q, want %s", tc.query, r.str("path_root"), DefaultPathRoot)
+			if r.str("path_root") != protopath.DefaultRoot {
+				t.Errorf("%s: path_root %q, want %s", tc.query, r.str("path_root"), protopath.DefaultRoot)
 			}
 		})
 	}
@@ -241,8 +244,8 @@ func TestRegister_twoRemotesNamedDocsAre409(t *testing.T) {
 	if r.status != http.StatusConflict || r.str("error") != want || r.str("code") != "other_repository" {
 		t.Errorf("got %d %s, want 409 %q", r.status, r.raw, want)
 	}
-	if r.str("path_root") != DefaultPathRoot {
-		t.Errorf("path_root %q, want %s", r.str("path_root"), DefaultPathRoot)
+	if r.str("path_root") != protopath.DefaultRoot {
+		t.Errorf("path_root %q, want %s", r.str("path_root"), protopath.DefaultRoot)
 	}
 }
 

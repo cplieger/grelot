@@ -1,6 +1,9 @@
+//go:build !windows
+
 // Package server is grelot's HTTP API: the routes of every client verb and
 // hook, the standing and in-turn waits, and the in-memory state behind
-// them (presence, open turns, push state).
+// them (presence, open turns, push state). It does not build on Windows,
+// where its store does not run.
 package server
 
 import (

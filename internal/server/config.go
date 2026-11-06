@@ -1,3 +1,5 @@
+//go:build !windows
+
 package server
 
 import (
@@ -8,6 +10,7 @@ import (
 
 	"github.com/cplieger/go/envx"
 	"github.com/cplieger/go/pathinside"
+	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/store"
 )
 
@@ -41,7 +44,6 @@ const (
 
 // The defaults of the optional keys.
 const (
-	DefaultPathRoot  = store.DefaultPathRoot
 	DefaultStorePath = "/data/grelot.db"
 	// DefaultProvidersDir holds no file in the image, so a server with no
 	// folder mounted pushes to no host.
@@ -52,7 +54,7 @@ const (
 // the key to fix and never a secret's value.
 func LoadConfig() (Config, error) {
 	c := Config{
-		PathRoot:          DefaultPathRoot,
+		PathRoot:          protopath.DefaultRoot,
 		StorePath:         DefaultStorePath,
 		MaxBytes:          store.DefaultMaxBytes,
 		ThreadTTL:         store.DefaultThreadTTL,
@@ -69,7 +71,7 @@ func LoadConfig() (Config, error) {
 	if v := envx.String(keyPathRoot); v != "" {
 		c.PathRoot = v
 	}
-	if !path.IsAbs(c.PathRoot) || !pathinside.IsCanonical(c.PathRoot) {
+	if !protopath.IsCanonical(c.PathRoot) {
 		errs = append(errs, fmt.Errorf("%s must be a clean absolute path such as /workspace", keyPathRoot))
 	}
 	if v := envx.String(keyStorePath); v != "" {

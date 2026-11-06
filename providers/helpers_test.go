@@ -6,11 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"log/slog"
 	"maps"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -23,8 +20,6 @@ import (
 	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/proctree"
 	"github.com/cplieger/grelot/internal/provider"
-	"github.com/cplieger/grelot/internal/server"
-	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/providers"
 )
 
@@ -66,35 +61,6 @@ type testServer struct {
 	reqs  []request
 }
 
-func newServer(t *testing.T) *testServer {
-	t.Helper()
-	ts := &testServer{clock: &clock{now: time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC)}}
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	hub := server.NewHub()
-	st, err := store.Open(filepath.Join(t.TempDir(), "grelot.db"), &store.Options{
-		Logger: logger, PathRoot: store.DefaultPathRoot, Woke: hub.Woke, Now: ts.clock.Now,
-	})
-	if err != nil {
-		t.Fatalf("store.Open: %v", err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	h := server.New(&server.Options{
-		Store: st, Logger: logger, Hub: hub, Version: "v1.1.0", Now: ts.clock.Now,
-		Config: server.Config{Token: "test-token", PathRoot: store.DefaultPathRoot},
-	}).Handler()
-	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		ts.mu.Lock()
-		ts.reqs = append(ts.reqs, request{Header: r.Header.Clone(), Method: r.Method, Path: r.URL.Path, Query: r.URL.RawQuery, Body: string(body)})
-		ts.mu.Unlock()
-		r.Body = io.NopCloser(bytes.NewReader(body))
-		h.ServeHTTP(w, r)
-	}))
-	t.Cleanup(hs.Close)
-	ts.URL = hs.URL
-	return ts
-}
-
 func (ts *testServer) count() int {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
@@ -130,21 +96,6 @@ type shell struct {
 	inHook    bool
 }
 
-// newShell is a shell of the named shipped provider whose environment
-// holds vars, with a client config naming the server and host label box.
-func newShell(t *testing.T, srv *testServer, name string, vars map[string]string) *shell {
-	t.Helper()
-	s := &shell{t: t, srv: srv, provider: name, vars: vars, home: t.TempDir(), config: t.TempDir(), wd: t.TempDir(), version: "v1.1.0"}
-	file := client.ConfigFile(s.config)
-	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(file, fmt.Appendf(nil, "server: %s\ntoken: test-token\nhost: box\n", srv.URL), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return s
-}
-
 // useServer points the shell's client config at url instead of its test
 // server.
 func (s *shell) useServer(url string) {
@@ -172,31 +123,6 @@ func under(name string, args ...string) processes {
 		250: {Name: "bash", Args: []string{"bash"}, PID: 250, PPID: 200, Start: 25},
 		200: {Name: name, Args: append([]string{name}, args...), PID: 200, PPID: 1, Start: 20},
 		1:   {Name: "init", Args: []string{"init"}, PID: 1, Start: 1},
-	}
-}
-
-// silentServer is a server that never answers; hits counts the requests
-// it has received.
-func silentServer(t *testing.T) (url string, hits func() int) {
-	t.Helper()
-	release := make(chan struct{})
-	var mu sync.Mutex
-	n := 0
-	hs := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		n++
-		mu.Unlock()
-		select {
-		case <-release:
-		case <-r.Context().Done():
-		}
-	}))
-	t.Cleanup(hs.Close)
-	t.Cleanup(func() { close(release) })
-	return hs.URL, func() int {
-		mu.Lock()
-		defer mu.Unlock()
-		return n
 	}
 }
 

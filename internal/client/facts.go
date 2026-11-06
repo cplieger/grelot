@@ -2,11 +2,10 @@ package client
 
 import (
 	"encoding/json"
-	"path"
 	"path/filepath"
 
+	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/statefile"
-	"github.com/cplieger/grelot/internal/store"
 )
 
 // Facts is what the client keeps from the server's last answer that named
@@ -29,13 +28,13 @@ func factsFile(configDir string) string { return filepath.Join(StateDir(configDi
 // or a path root that is not absolute and clean, gives the server's default
 // root and no version, so a first command still names paths.
 func LoadFacts(configDir string) Facts {
-	f := Facts{PathRoot: store.DefaultPathRoot}
+	f := Facts{PathRoot: protopath.DefaultRoot}
 	data, err := statefile.Read(factsFile(configDir), maxFactsFile)
 	if err != nil || data == nil {
 		return f
 	}
 	var got Facts
-	if json.Unmarshal(data, &got) != nil || !cleanRoot(got.PathRoot) {
+	if json.Unmarshal(data, &got) != nil || !protopath.IsCanonical(got.PathRoot) {
 		return f
 	}
 	return got
@@ -44,7 +43,7 @@ func LoadFacts(configDir string) Facts {
 // SaveFacts records f when it differs from the cached facts. It is best
 // effort: a lost write costs only a refresh at the next answer.
 func SaveFacts(configDir string, f Facts) {
-	if !cleanRoot(f.PathRoot) || LoadFacts(configDir) == f {
+	if !protopath.IsCanonical(f.PathRoot) || LoadFacts(configDir) == f {
 		return
 	}
 	data, err := json.Marshal(f)
@@ -53,5 +52,3 @@ func SaveFacts(configDir string, f Facts) {
 	}
 	_ = statefile.Replace(factsFile(configDir), data)
 }
-
-func cleanRoot(p string) bool { return p != "" && p[0] == '/' && path.Clean(p) == p }

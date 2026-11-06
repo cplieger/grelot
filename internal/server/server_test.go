@@ -1,3 +1,5 @@
+//go:build !windows
+
 package server
 
 import (
@@ -11,6 +13,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/store"
 )
 
@@ -139,8 +142,8 @@ func TestAuthorize_version(t *testing.T) {
 func TestRoutes_unknownRouteIs404WithThePathRoot(t *testing.T) {
 	h := newHarness(t)
 	r := h.as(sessA, http.MethodGet, "/v1/nope", nil)
-	if r.status != http.StatusNotFound || r.str("path_root") != DefaultPathRoot {
-		t.Errorf("got %d %s, want 404 with path_root %s", r.status, r.raw, DefaultPathRoot)
+	if r.status != http.StatusNotFound || r.str("path_root") != protopath.DefaultRoot {
+		t.Errorf("got %d %s, want 404 with path_root %s", r.status, r.raw, protopath.DefaultRoot)
 	}
 }
 

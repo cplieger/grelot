@@ -77,6 +77,9 @@ func New(root string, repos map[string]string, clones *Clones) *Resolver {
 // against the working directory. It fails when git or the working directory
 // does.
 func (r *Resolver) Path(ctx context.Context, local string) (Location, error) {
+	if p, ok := r.grelotForm(local); ok {
+		return Location{Canonical: p}, nil
+	}
 	p, err := r.absolute(local)
 	if err != nil {
 		return Location{}, err
@@ -120,6 +123,18 @@ func (r *Resolver) absolute(local string) (string, error) {
 		p = r.slash(a)
 	}
 	return r.clean(p), nil
+}
+
+// grelotForm is local cleaned when, on Windows, it is a rooted path with no
+// drive (/workspace/x): the form the manual tells agents to write repository
+// paths in. Resolving it would join it to the current drive and give
+// /<drive>/workspace/x.
+func (r *Resolver) grelotForm(local string) (string, bool) {
+	p := r.slash(local)
+	if !r.windows() || !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") {
+		return "", false
+	}
+	return path.Clean(p), true
 }
 
 func (r *Resolver) slash(p string) string {
@@ -169,7 +184,7 @@ func (r *Resolver) nearestDir(p string) (dir, tail string) {
 
 // outside is the canonical form of a path in no clone with a remote: the path
 // itself, with a Windows drive as a first component, C:/x/y as /c/x/y, since
-// the server checks paths with Linux semantics.
+// a canonical path is a slash path with no drive on every OS.
 func (r *Resolver) outside(p string) string {
 	if r.windows() && hasDrive(p) {
 		return path.Join("/", strings.ToLower(p[:1]), p[2:])

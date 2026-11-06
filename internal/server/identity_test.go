@@ -1,3 +1,5 @@
+//go:build !windows
+
 package server
 
 import (
@@ -6,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/store"
 )
 
@@ -216,7 +219,7 @@ func TestMe_liveIdentityStatus(t *testing.T) {
 		}
 	})
 	t.Run("offline, push none, the path root", func(t *testing.T) {
-		if r.body["online"] != false || r.str("push") != "none" || r.str("path_root") != DefaultPathRoot {
+		if r.body["online"] != false || r.str("push") != "none" || r.str("path_root") != protopath.DefaultRoot {
 			t.Errorf("online %v push %v path_root %v", r.body["online"], r.body["push"], r.body["path_root"])
 		}
 	})

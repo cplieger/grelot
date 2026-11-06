@@ -1,4 +1,4 @@
-//go:build loadtest
+//go:build loadtest && !windows
 
 package main
 
