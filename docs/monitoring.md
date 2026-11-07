@@ -69,7 +69,7 @@ Every panel but Latest messages reads `/metrics`. Latest messages reads the `mes
 
 Needs attention reads Prometheus's `ALERTS` series, so its tiles show only once the rules below are loaded into the ruler that writes that series.
 
-The dashboard is versioned with the app. Use the `grafana-dashboard.json` of the tag of the image you run. Its name stays `grelot`, so importing a newer copy over the old one updates it in place. Each release also publishes it as the OCI artifact `ghcr.io/cplieger/grelot/dashboard:<tag>`.
+The dashboard is versioned with the app. Use the `grafana-dashboard.json` of the tag of the image you run. Its name stays `grelot`, so importing a newer copy over the old one updates it in place. Each tag publishes it as the OCI artifact `ghcr.io/cplieger/grelot/dashboard:<tag>`, and `https://raw.githubusercontent.com/cplieger/grelot/<tag>/grafana-dashboard.json` serves the same file.
 
 ## Alerting
 

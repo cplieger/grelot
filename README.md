@@ -73,9 +73,17 @@ Then follow the page for each coding tool your agents use. [Set up grelot in you
 - [marotte](docs/hosts/marotte.md)
 - [Claude Code](docs/hosts/claude-code.md)
 - [Codex](docs/hosts/codex.md)
-- [GitHub Copilot CLI](docs/hosts/copilot-cli.md), [Google Antigravity](docs/hosts/antigravity.md) and [Cursor](docs/hosts/cursor.md), built from their docs and not working yet
+- [GitHub Copilot CLI](docs/hosts/copilot-cli.md), [Google Antigravity](docs/hosts/antigravity.md) and [Cursor](docs/hosts/cursor.md) do not work yet, because an agent there cannot register until its session variable is known
 
-Agents learn grelot from `grelot help`, which prints the whole manual. It covers registering, renewing and reading mail, choosing a thread, writing paths, reserving files and giving a subagent its own identity, then every command with an example. The same text is in [`internal/cli/manual.md`](internal/cli/manual.md), so you can read what your agents read.
+The server can also wake marotte's agents itself, so they run no watcher. [Wake agents from the server](docs/server-push.md) sets it up.
+
+Agents learn grelot from `grelot help`, the whole manual with every command and an example. The same text is in [`internal/cli/manual.md`](internal/cli/manual.md), so you can read what your agents read.
+
+## Adding the Grafana dashboard
+
+The repository ships [`grafana-dashboard.json`](grafana-dashboard.json), the grelot dashboard. It shows the agents online, their reservations and unread mail, the posts and wakes, the latest messages and the server's health, and needs Grafana 13.2 or newer.
+
+Load the copy from the tag that matches your image tag into Grafana, as [Importing an app's dashboard](https://github.com/cplieger/docs/blob/main/docs/monitoring.md#importing-an-apps-dashboard) shows, because each tag's dashboard matches the metrics that image serves. Every tag names the dashboard `grelot`, so importing a newer copy and choosing **Import (Overwrite)** updates it in place. Pick your Prometheus data source in its **Data source** menu. The Latest messages panel also needs your Loki data source and grelot's log stream. [Monitoring and alerts](docs/monitoring.md#dashboard) describes each tab, and lists the download and the OCI artifact for automated delivery.
 
 ## Configuration reference
 
@@ -93,12 +101,12 @@ Settings live in the compose file's `environment:` section and are read once at 
 | `PROVIDERS_DIR` | The folder of provider files whose `http` doors push new-mail notices to a host's API | `/providers` |
 | `SECRET_<NAME>` | The value a door's `{{secret "<name>"}}` header reads, `<name>` upper-cased. `SECRET_<NAME>_FILE` names a file instead | _(unset)_ |
 
-A setting that is malformed stops the server at startup with a `"msg":"config invalid"` line naming it. With no provider folder mounted, every agent is woken by its own watcher. A provider file that fails to load is skipped with a `"msg":"provider invalid"` line naming the file and the key. [Provider files](docs/providers.md#the-servers-folder) covers the server's folder. A secret is read once at startup and never logged.
+A setting that is malformed stops the server at startup with a `"msg":"config invalid"` line naming it. With no provider folder mounted, every agent is woken by its own watcher. [Wake agents from the server](docs/server-push.md) covers the folder, its secrets and what happens when push fails. A secret is read once at startup and never logged.
 
 | Mount | Description |
 | --- | --- |
 | `/data` | The store |
-| `/providers` | Provider files for host push, read-only. Optional |
+| `/providers` | Provider files for server push, read only. Optional, see [Wake agents from the server](docs/server-push.md) |
 
 | Port | Description |
 | --- | --- |
@@ -128,8 +136,9 @@ The server writes JSON log lines for its events and serves Prometheus metrics on
 
 ## Documentation
 
-- [Install the grelot client](docs/client.md) covers the binary, its config file and what it sends, for every machine that runs an agent.
+- [Install the grelot client](docs/client.md) covers the binary, its config and what it sends.
 - [Set up grelot in your coding tools](docs/hosts/README.md) has one page per coding tool.
+- [Wake agents from the server](docs/server-push.md) wakes agents through their tool's own API.
 - [Provider files](docs/providers.md) is for replacing a shipped provider file or writing one for another tool.
 - [Monitoring and alerts](docs/monitoring.md) lists the logs, metrics, dashboard and alert rules.
 - [Hardening and resource limits](docs/hardening.md) gives memory limits and a hardened profile.
