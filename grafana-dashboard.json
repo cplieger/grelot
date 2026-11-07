@@ -30,7 +30,7 @@
       }
     ],
     "cursorSync": "Crosshair",
-    "description": "What your agents are doing through grelot: who is registered and online, the mail waiting to be read, the latest messages and what needs your attention. The Latest messages panel needs Loki, and every other panel reads grelot's metrics page.",
+    "description": "What your agents are doing through grelot: who is registered and online, the mail waiting to be read, who posts and reads most, the latest messages and what needs your attention. Latest messages and the activity tables read grelot's logs in Loki, and every other panel reads grelot's metrics page.",
     "editable": true,
     "elements": {
       "panel-100": {
@@ -1515,7 +1515,7 @@
         "spec": {
           "id": 21,
           "title": "Latest messages",
-          "description": "The newest posts from grelot's own message posted log lines, with thread, path, sender, subject and body. It reads the Logs data source and the grelot log stream selector, which starts empty: set it to the Loki stream selector your log collector gives grelot's container, such as {container=\"grelot\"}. Until both are set the panel shows a query error instead of messages.",
+          "description": "The newest posts from grelot's own message posted log lines, with thread, path, sender, subject and body. It reads the Logs data source and the grelot log stream, {container=\"grelot\"} by default. When it shows no messages while agents post, set that selector to the one your log collector gives grelot's container.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1532,7 +1532,7 @@
                         "name": "${logs}"
                       },
                       "spec": {
-                        "expr": "${stream} | json | msg=\"message posted\" | line_format \"{{.thread_kind}}{{ if .path }} {{.path}}{{ end }} from {{.sender}}: {{.subject}} | {{.body}}\""
+                        "expr": "${stream} |= \"message posted\" | json | msg=\"message posted\" | line_format \"{{.thread_kind}}{{ if .path }} {{.path}}{{ end }} from {{.sender}}: {{.subject}} | {{.body}}\""
                       }
                     },
                     "refId": "A",
@@ -2768,6 +2768,539 @@
             }
           }
         }
+      },
+      "panel-50": {
+        "kind": "Panel",
+        "spec": {
+          "id": 50,
+          "title": "Agents by activity",
+          "description": "Each agent's posts, the messages it read and the longest any of them waited before it read them, over the selected range. Turns held counts the turns its hooks held open because mail had come. A wait that is yellow past 10 minutes or red past an hour means mail is not waking that agent: check its watcher or its host's push.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "loki",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${logs}"
+                      },
+                      "spec": {
+                        "expr": "sum by (name) (count_over_time(${stream} |= \"message posted\" | json msg=\"msg\", name=\"sender\" | msg=\"message posted\" [$__range]))",
+                        "queryType": "instant",
+                        "format": "table"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "loki",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${logs}"
+                      },
+                      "spec": {
+                        "expr": "sum by (name) (sum_over_time(${stream} |= \"inbox read\" | json msg=\"msg\", name=\"name\", count=\"count\" | msg=\"inbox read\" | unwrap count | __error__=\"\" [$__range]))",
+                        "queryType": "instant",
+                        "format": "table"
+                      }
+                    },
+                    "refId": "B",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "loki",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${logs}"
+                      },
+                      "spec": {
+                        "expr": "max by (name) (max_over_time(${stream} |= \"inbox read\" | json msg=\"msg\", name=\"name\", wait=\"oldest_delay_ms\" | msg=\"inbox read\" | unwrap wait | __error__=\"\" [$__range])) / 1000",
+                        "queryType": "instant",
+                        "format": "table"
+                      }
+                    },
+                    "refId": "C",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "loki",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${logs}"
+                      },
+                      "spec": {
+                        "expr": "sum by (name) (count_over_time(${stream} |= \"hook shown\" | json msg=\"msg\", name=\"name\" | msg=\"hook shown\" [$__range]))",
+                        "queryType": "instant",
+                        "format": "table"
+                      }
+                    },
+                    "refId": "D",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "sortBy",
+                  "spec": {
+                    "options": {
+                      "fields": {},
+                      "sort": [
+                        {
+                          "field": "Value #A",
+                          "desc": true
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {
+                        "Time": true
+                      },
+                      "indexByName": {
+                        "name": 0,
+                        "Value #A": 1,
+                        "Value #B": 2,
+                        "Value #C": 3,
+                        "Value #D": 4
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "maxDataPoints": 500
+              }
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "",
+            "spec": {
+              "options": {
+                "cellHeight": "sm",
+                "showHeader": true,
+                "sortBy": []
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "No agent posted or read mail in the selected range",
+                  "min": 0,
+                  "custom": {
+                    "align": "auto",
+                    "filterable": true,
+                    "cellOptions": {
+                      "type": "auto"
+                    }
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "name"
+                    },
+                    "properties": [
+                      {
+                        "id": "displayName",
+                        "value": "Agent"
+                      },
+                      {
+                        "id": "custom.minWidth",
+                        "value": 160
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Value #A"
+                    },
+                    "properties": [
+                      {
+                        "id": "displayName",
+                        "value": "Posts"
+                      },
+                      {
+                        "id": "custom.minWidth",
+                        "value": 160
+                      },
+                      {
+                        "id": "custom.cellOptions",
+                        "value": {
+                          "type": "gauge",
+                          "mode": "basic",
+                          "valueDisplayMode": "text"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Value #B"
+                    },
+                    "properties": [
+                      {
+                        "id": "displayName",
+                        "value": "Messages read"
+                      },
+                      {
+                        "id": "custom.width",
+                        "value": 160
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Value #C"
+                    },
+                    "properties": [
+                      {
+                        "id": "displayName",
+                        "value": "Longest wait to read"
+                      },
+                      {
+                        "id": "custom.width",
+                        "value": 216
+                      },
+                      {
+                        "id": "unit",
+                        "value": "s"
+                      },
+                      {
+                        "id": "thresholds",
+                        "value": {
+                          "mode": "absolute",
+                          "steps": [
+                            {
+                              "value": null,
+                              "color": "text"
+                            },
+                            {
+                              "value": 600,
+                              "color": "yellow"
+                            },
+                            {
+                              "value": 3600,
+                              "color": "red"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "id": "custom.cellOptions",
+                        "value": {
+                          "type": "color-text"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Value #D"
+                    },
+                    "properties": [
+                      {
+                        "id": "displayName",
+                        "value": "Turns held"
+                      },
+                      {
+                        "id": "custom.width",
+                        "value": 136
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byRegexp",
+                      "options": ".*"
+                    },
+                    "properties": [
+                      {
+                        "id": "noValue",
+                        "value": "-"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-51": {
+        "kind": "Panel",
+        "spec": {
+          "id": 51,
+          "title": "Threads by activity",
+          "description": "Each path thread's posts over the selected range, how many agents posted there and how many copies reached an inbox, with the announcements and all direct messages as one row each. A path thread with many posts and one agent posting is one agent talking to itself, a sign the others do not cover that path.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "loki",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${logs}"
+                      },
+                      "spec": {
+                        "expr": "sum by (thread) (count_over_time(${stream} |= \"message posted\" | json msg=\"msg\", thread_kind=\"thread_kind\", path=\"path\" | msg=\"message posted\" | label_format thread=`{{ if .path }}{{ .path }}{{ else if eq .thread_kind \"announce\" }}announce{{ else }}direct messages{{ end }}` [$__range]))",
+                        "queryType": "instant",
+                        "format": "table"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "loki",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${logs}"
+                      },
+                      "spec": {
+                        "expr": "count by (thread) (sum by (thread, sender) (count_over_time(${stream} |= \"message posted\" | json msg=\"msg\", thread_kind=\"thread_kind\", path=\"path\", sender=\"sender\" | msg=\"message posted\" | label_format thread=`{{ if .path }}{{ .path }}{{ else if eq .thread_kind \"announce\" }}announce{{ else }}direct messages{{ end }}` [$__range])))",
+                        "queryType": "instant",
+                        "format": "table"
+                      }
+                    },
+                    "refId": "B",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "loki",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${logs}"
+                      },
+                      "spec": {
+                        "expr": "sum by (thread) (sum_over_time(${stream} |= \"message posted\" | json msg=\"msg\", thread_kind=\"thread_kind\", path=\"path\", recipients=\"recipients\" | msg=\"message posted\" | label_format thread=`{{ if .path }}{{ .path }}{{ else if eq .thread_kind \"announce\" }}announce{{ else }}direct messages{{ end }}` | unwrap recipients | __error__=\"\" [$__range]))",
+                        "queryType": "instant",
+                        "format": "table"
+                      }
+                    },
+                    "refId": "C",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "sortBy",
+                  "spec": {
+                    "options": {
+                      "fields": {},
+                      "sort": [
+                        {
+                          "field": "Value #A",
+                          "desc": true
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {
+                        "Time": true
+                      },
+                      "indexByName": {
+                        "thread": 0,
+                        "Value #A": 1,
+                        "Value #B": 2,
+                        "Value #C": 3
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "maxDataPoints": 500
+              }
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "",
+            "spec": {
+              "options": {
+                "cellHeight": "sm",
+                "showHeader": true,
+                "sortBy": []
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "No posts in the selected range",
+                  "min": 0,
+                  "custom": {
+                    "align": "auto",
+                    "filterable": true,
+                    "cellOptions": {
+                      "type": "auto"
+                    }
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "thread"
+                    },
+                    "properties": [
+                      {
+                        "id": "displayName",
+                        "value": "Thread"
+                      },
+                      {
+                        "id": "custom.minWidth",
+                        "value": 200
+                      },
+                      {
+                        "id": "custom.wrapText",
+                        "value": true
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Value #A"
+                    },
+                    "properties": [
+                      {
+                        "id": "displayName",
+                        "value": "Posts"
+                      },
+                      {
+                        "id": "custom.minWidth",
+                        "value": 160
+                      },
+                      {
+                        "id": "custom.cellOptions",
+                        "value": {
+                          "type": "gauge",
+                          "mode": "basic",
+                          "valueDisplayMode": "text"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Value #B"
+                    },
+                    "properties": [
+                      {
+                        "id": "displayName",
+                        "value": "Agents posting"
+                      },
+                      {
+                        "id": "custom.width",
+                        "value": 168
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Value #C"
+                    },
+                    "properties": [
+                      {
+                        "id": "displayName",
+                        "value": "Copies delivered"
+                      },
+                      {
+                        "id": "custom.width",
+                        "value": 184
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byRegexp",
+                      "options": ".*"
+                    },
+                    "properties": [
+                      {
+                        "id": "noValue",
+                        "value": "-"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
       }
     },
     "layout": {
@@ -3095,16 +3628,18 @@
                         "title": "Now",
                         "collapse": false,
                         "layout": {
-                          "kind": "GridLayout",
+                          "kind": "AutoGridLayout",
                           "spec": {
+                            "maxColumnCount": 4,
+                            "columnWidthMode": "custom",
+                            "columnWidth": 272,
+                            "rowHeightMode": "custom",
+                            "rowHeight": 120,
+                            "fillScreen": false,
                             "items": [
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 0,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-1"
@@ -3112,12 +3647,8 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 3,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-2"
@@ -3125,12 +3656,8 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 6,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-3"
@@ -3138,12 +3665,8 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 9,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-4"
@@ -3151,12 +3674,8 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 12,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-5"
@@ -3164,12 +3683,8 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 15,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-6"
@@ -3177,12 +3692,8 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 18,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-7"
@@ -3190,12 +3701,8 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 21,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-8"
@@ -3260,6 +3767,46 @@
                 "kind": "RowsLayout",
                 "spec": {
                   "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "Who posts and reads",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 24,
+                                  "height": 9,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-50"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 9,
+                                  "width": 24,
+                                  "height": 9,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-51"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
                     {
                       "kind": "RowsLayoutRow",
                       "spec": {
@@ -3607,7 +4154,7 @@
           "multi": false,
           "includeAll": false,
           "label": "Logs data source",
-          "description": "The Loki data source holding grelot's container logs, read only by the Latest messages panel.",
+          "description": "The Loki data source holding grelot's container logs, read by Latest messages and the activity tables.",
           "hide": "dontHide",
           "skipUrlSync": false,
           "allowCustomValue": true
@@ -3618,11 +4165,11 @@
         "spec": {
           "name": "stream",
           "label": "grelot log stream",
-          "description": "The Loki stream selector of grelot's container logs, which depends on how your log collector labels them, such as {container=\"grelot\"}. It is empty until you set it, and only Latest messages reads it.",
-          "query": "",
+          "description": "The Loki stream selector of grelot's container logs, by default {container=\"grelot\"}, the label Docker log collectors such as Alloy and Promtail give a container. Change it when your collector labels grelot's logs another way. Latest messages and the activity tables read it.",
+          "query": "{container=\"grelot\"}",
           "current": {
-            "text": "",
-            "value": ""
+            "text": "{container=\"grelot\"}",
+            "value": "{container=\"grelot\"}"
           },
           "hide": "dontHide",
           "skipUrlSync": false

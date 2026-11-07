@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"maps"
 	"net/http"
@@ -202,38 +203,82 @@ func TestDashboard_attentionTilesStartHidden(t *testing.T) {
 }
 
 var (
-	lokiMsg   = regexp.MustCompile(`\| json \| msg="([^"]+)"`)
-	lokiField = regexp.MustCompile(`\{\{\.(\w+)\}\}`)
+	lokiMsg      = regexp.MustCompile(`\| msg="([^"]+)"`)
+	lokiJSONArgs = regexp.MustCompile(`\| json ((?:\w+="\w+"(?:, )?)+)`)
+	lokiJSONPair = regexp.MustCompile(`(\w+)="(\w+)"`)
+	lokiTemplate = regexp.MustCompile(`\{\{[^}]*\}\}`)
+	lokiTmplRef  = regexp.MustCompile(`\.(\w+)`)
+	lokiUnwrap   = regexp.MustCompile(`\| unwrap (\w+)`)
+	lokiBy       = regexp.MustCompile(`\bby \(([\w, ]+)\)`)
+	lokiMade     = regexp.MustCompile(`\| label_format (\w+)=`)
 )
 
-func TestDashboard_latestMessagesReadsTheFieldsThePostLineCarries(t *testing.T) {
-	var expr string
+// Every Loki query reads one log line the server writes, and every label it
+// groups by, unwraps or shows is a field of that line, or one the query
+// makes from such fields.
+func TestDashboard_everyLokiQueryReadsFieldsItsLineCarries(t *testing.T) {
+	lines := serverLines(t)
+	var n int
 	for _, q := range readDashboard(t).queries {
-		if q.group == "loki" {
-			if expr != "" {
-				t.Fatalf("two Loki queries; this test reads one")
+		if q.group != "loki" {
+			continue
+		}
+		n++
+		t.Run(q.where, func(t *testing.T) {
+			msgs := lokiMsg.FindAllStringSubmatch(q.expr, -1)
+			if len(msgs) != 1 {
+				t.Fatalf("query %q selects %d msg values, want 1", q.expr, len(msgs))
 			}
-			expr = q.expr
-		}
+			line, ok := lines[msgs[0][1]]
+			if !ok {
+				t.Fatalf("query %q reads %q lines, which the server never wrote; it wrote %v", q.expr, msgs[0][1], slices.Sorted(maps.Keys(lines)))
+			}
+			labels := map[string]bool{}
+			if args := lokiJSONArgs.FindStringSubmatch(q.expr); args != nil {
+				for _, pair := range lokiJSONPair.FindAllStringSubmatch(args[1], -1) {
+					if _, ok := line[pair[2]]; !ok {
+						t.Errorf("json extracts %s from %s, which the %q line does not carry: %v", pair[1], pair[2], msgs[0][1], line)
+					}
+					labels[pair[1]] = true
+				}
+			} else {
+				for f := range line {
+					labels[f] = true
+				}
+			}
+			for _, m := range lokiMade.FindAllStringSubmatch(q.expr, -1) {
+				labels[m[1]] = true
+			}
+			var used []string
+			for _, tmpl := range lokiTemplate.FindAllString(q.expr, -1) {
+				for _, ref := range lokiTmplRef.FindAllStringSubmatch(tmpl, -1) {
+					used = append(used, ref[1])
+				}
+			}
+			for _, u := range lokiUnwrap.FindAllStringSubmatch(q.expr, -1) {
+				used = append(used, u[1])
+			}
+			for _, by := range lokiBy.FindAllStringSubmatch(q.expr, -1) {
+				for l := range strings.SplitSeq(by[1], ",") {
+					used = append(used, strings.TrimSpace(l))
+				}
+			}
+			for _, u := range used {
+				if !labels[u] {
+					t.Errorf("query %q uses %s, which neither the %q line carries nor the query makes", q.expr, u, msgs[0][1])
+				}
+			}
+		})
 	}
-	msg := lokiMsg.FindStringSubmatch(expr)
-	fields := lokiField.FindAllStringSubmatch(expr, -1)
-	if msg == nil || len(fields) == 0 {
-		t.Fatalf("Loki query %q selects no msg or shows no field", expr)
-	}
-
-	line := postedLine(t, msg[1])
-	for _, f := range fields {
-		if _, ok := line[f[1]]; !ok {
-			t.Errorf("the panel shows %s, which the %q line does not carry: %v", f[1], msg[1], line)
-		}
+	if n == 0 {
+		t.Fatal("the dashboard has no Loki query")
 	}
 }
 
-// postedLine registers an agent, posts to the announcement thread through
-// the server serve builds, logging as serve does, and returns the one log
-// line whose msg is msg.
-func postedLine(t *testing.T, msg string) map[string]any {
+// serverLines drives the server serve builds, logging as serve does, through
+// a post to each kind of thread, a held turn and a read inbox, and returns
+// the last log line of each msg.
+func serverLines(t *testing.T) map[string]map[string]any {
 	t.Helper()
 	var logs bytes.Buffer
 	h, _ := slogx.NewHandler(slogx.Options{Output: &logs, Format: slogx.JSON})
@@ -246,32 +291,52 @@ func postedLine(t *testing.T, msg string) map[string]any {
 		st.Close()
 	})
 	where := `"where": {"machine": "dmi:` + strings.Repeat("1", 32) + `", "environment": "` + strings.Repeat("a", 32) + `", "checkouts": []}`
-	for _, call := range []struct{ path, body string }{
-		{"/v1/register", `{"name": "builder", "paths": ["/workspace/app"], "description": "building", "host": "h", "os": "linux", "arch": "amd64", "ttl": "1h", ` + where + `}`},
-		{"/v1/posts", `{"to": "announce", "subject": "release", "body": "tagged", "identity": {"name": "no change", "description": "no change", "paths": ["no change"]}}`},
-	} {
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, call.path, strings.NewReader(call.body))
+	keep := `"identity": {"name": "no change", "description": "no change", "paths": ["no change"]}`
+	var keys int
+	call := func(session, method, path, body string, want int) []byte {
+		t.Helper()
+		req := httptest.NewRequestWithContext(t.Context(), method, path, strings.NewReader(body))
 		req.Header.Set("Authorization", "Bearer test-token")
 		req.Header.Set("Grelot-Version", "v1.1.0")
-		req.Header.Set("Grelot-Session", "host:session-1")
-		req.Header.Set("Idempotency-Key", `"key-for-`+strings.TrimPrefix(call.path, "/v1/")+`-0001"`)
+		req.Header.Set("Grelot-Session", "host:"+session)
+		if method == http.MethodPost && path != "/v1/events/hold" {
+			keys++
+			req.Header.Set("Idempotency-Key", fmt.Sprintf(`"key-for-dashboard-test-%04d"`, keys))
+		}
 		rec := httptest.NewRecorder()
 		srv.HTTPServer().Handler.ServeHTTP(rec, req)
-		if rec.Code != http.StatusCreated {
-			t.Fatalf("POST %s: %d %s", call.path, rec.Code, rec.Body)
+		if rec.Code != want {
+			t.Fatalf("%s %s: %d %s", method, path, rec.Code, rec.Body)
 		}
+		return rec.Body.Bytes()
 	}
-	var found []map[string]any
+	for _, name := range []string{"builder", "reader"} {
+		call(name, http.MethodPost, "/v1/register", `{"name": "`+name+`", "paths": ["/workspace/app"], "description": "building", "host": "h", "os": "linux", "arch": "amd64", "ttl": "1h", `+where+`}`, http.StatusCreated)
+	}
+	for _, to := range []string{`"announce"`, `{"path": "/workspace/app/main.go"}`, `{"agent": "reader"}`} {
+		call("builder", http.MethodPost, "/v1/posts", `{"to": `+to+`, "subject": "release", "body": "tagged", `+keep+`}`, http.StatusCreated)
+	}
+	call("reader", http.MethodPost, "/v1/events/hold", `{"for": "stop"}`, http.StatusOK)
+	var page struct {
+		Entries []struct {
+			Seq uint64 `json:"seq"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(call("reader", http.MethodGet, "/v1/inbox", "", http.StatusOK), &page); err != nil || len(page.Entries) == 0 {
+		t.Fatalf("inbox page %+v, %v; want entries", page, err)
+	}
+	call("reader", http.MethodPost, "/v1/inbox/ack", fmt.Sprintf(`{"upto": %d}`, page.Entries[len(page.Entries)-1].Seq), http.StatusOK)
+
+	lines := map[string]map[string]any{}
 	for raw := range strings.SplitSeq(logs.String(), "\n") {
 		var line map[string]any
-		if json.Unmarshal([]byte(raw), &line) == nil && line["msg"] == msg {
-			found = append(found, line)
+		if json.Unmarshal([]byte(raw), &line) == nil {
+			if msg, ok := line["msg"].(string); ok {
+				lines[msg] = line
+			}
 		}
 	}
-	if len(found) != 1 {
-		t.Fatalf("%d %q lines, want 1; logs: %s", len(found), msg, logs.String())
-	}
-	return found[0]
+	return lines
 }
 
 func dig(v any, keys ...string) any {
