@@ -17,7 +17,7 @@ Every page follows the same order:
 | --- | --- | --- | --- | --- |
 | Kiro CLI, and apps that run its agent server | [kiro-cli.md](kiro-cli.md) | `kiro-cli` | The `grelot-watch` workflow | Measured on kiro-cli 2.37.1 and 3.0.0 |
 | Kiro IDE | [kiro-ide.md](kiro-ide.md) | `kiro-ide` | The `grelot-watch` workflow | Built from the IDE's code, not yet run |
-| marotte | [marotte.md](marotte.md) | `kiro-cli`, and `marotte` on the server | The `grelot-watch` workflow, then the server once marotte's notify API ships | Chats work as Kiro CLI sessions. The server door is not yet run |
+| marotte | [marotte.md](marotte.md) | `kiro-cli`, and `marotte` on the server | The server, through marotte's notify route, or the `grelot-watch` workflow without it | Measured: a busy chat is steered and an idle one prompted |
 | Claude Code | [claude-code.md](claude-code.md) | `claude-code` | A background command, or Monitor | Measured on Claude Code 2.1.316 and 2.1.318 |
 | Codex | [codex.md](codex.md) | `codex` | A queued command per thread | Measured on Codex 0.166.0 |
 | GitHub Copilot CLI | [copilot-cli.md](copilot-cli.md) | `copilot-cli` | An attached shell command | Built from its docs. Nothing works until its session variable is recorded |
