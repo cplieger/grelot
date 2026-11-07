@@ -3,9 +3,11 @@ package cli
 import (
 	"go/scanner"
 	"go/token"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -133,12 +135,13 @@ func commands(text string) []string {
 	return out
 }
 
-// spans are the backtick spans of text that start with "grelot ".
+// spans are the backtick spans of text that start with "grelot " or pipe
+// into one, since a pipe's other segments run in the same call.
 func spans(text string) []string {
 	var out []string
 	parts := strings.Split(text, "`")
 	for i := 1; i < len(parts); i += 2 {
-		if strings.HasPrefix(parts[i], "grelot ") {
+		if strings.HasPrefix(parts[i], "grelot ") || strings.Contains(parts[i], "| grelot ") {
 			out = append(out, parts[i])
 		}
 	}
@@ -234,6 +237,9 @@ func TestUnsafeWord(t *testing.T) {
 			t.Errorf("unsafeWord(%q) refuses = %v, want %v", word, got, want)
 		}
 	}
+	if got := spans("run `'body' | grelot post x` or `grelot me`, not `ls`"); len(got) != 2 || got[0] != "'body' | grelot post x" {
+		t.Errorf("spans = %q, want the piped span and the grelot one", got)
+	}
 	if got := filled("grelot post @<name> --paths <path>[,<path>...] --ttl <d> [--by <d>] [--fields <a,b>] <<'EOF'"); got != "grelot post @toolbelt-dev --paths x,x --ttl 2h --by 2h --fields x,x" {
 		t.Errorf("filled = %q", got)
 	}
@@ -313,5 +319,25 @@ func TestManual_hereDocumentHasAPipeForm(t *testing.T) {
 	}
 	if n == 0 {
 		t.Fatal("found no here-document example in the manual")
+	}
+}
+
+// TestHelp_pipeSectionNamesThePowerShellRule keeps grelot help <verb> whole
+// on its own: a section that pipes a body in states which PowerShell runs
+// the pipe, or points to the post section that does.
+func TestHelp_pipeSectionNamesThePowerShellRule(t *testing.T) {
+	n := 0
+	for _, verb := range slices.Sorted(maps.Keys(verbs)) {
+		sec := section(verb)
+		if !strings.Contains(sec, " | grelot ") {
+			continue
+		}
+		n++
+		if !strings.Contains(sec, "PowerShell 7") && !strings.Contains(sec, "`grelot help post`") {
+			t.Errorf("grelot help %s pipes a body in but names no PowerShell rule", verb)
+		}
+	}
+	if n < 2 {
+		t.Fatalf("found %d sections with a pipe form, want post and as", n)
 	}
 }

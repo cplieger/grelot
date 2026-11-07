@@ -245,6 +245,8 @@ The section matches the code.
 EOF
 ```
 
+The pipe form below follows the PowerShell rules in `grelot help post`.
+
 ```
 Get-Content body.md | grelot as subflux-dev/review post '@subflux-dev' "Done: section 5 checked" --desc "no change"
 ```
