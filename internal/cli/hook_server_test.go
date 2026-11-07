@@ -3,6 +3,8 @@
 package cli
 
 import (
+	"errors"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -316,5 +318,38 @@ func TestHookSessionStart_anOldClientGetsThe426(t *testing.T) {
 	code, out, _ := a.hook("session_start", `{"session_id":"s-1"}`)
 	if code != 0 || !strings.HasPrefix(out, "grelot: this grelot server (v1.1.0-dev.4) does not speak client v0.0.1; install grelot") {
 		t.Errorf("exit %d, stdout %q; want 0 and the 426's line", code, out)
+	}
+}
+
+// A hook on a client with no config leaves no state behind and prints at
+// most the one could-not-check line naming the missing file, whichever
+// role runs and whatever kind of session it runs for.
+func TestHook_noClientConfigWritesNothing(t *testing.T) {
+	a := hooked(t, newAgent(t, &testServer{URL: unreachableURL(t)}, "s-1", ""), "alpha", hookTurnFile)
+	file := client.ConfigFile(a.env.ConfigDir)
+	if err := os.Remove(file); err != nil {
+		t.Fatal(err)
+	}
+	a.record("tangent", `{"parent":"s-1","reason":"branch"}`)
+	a.record("r1", `{"parent":"s-1","reason":"rewind"}`)
+	runs := []struct{ role, stdin string }{
+		{"session_start", `{"session_id":"s-1"}`},
+		{"prompt", `{"session_id":"s-1","prompt":"x"}`},
+		{"stop", `{"session_id":"s-1"}`},
+		{"turn_end", `{"session_id":"s-1"}`},
+		{"session_end", `{"session_id":"s-1","reason":"delete"}`},
+		{"session_start", `{"session_id":"tangent"}`},
+		{"prompt", `{"session_id":"tangent","prompt":"x"}`},
+		{"prompt", `{"session_id":"r1","prompt":"x"}`},
+		{"session_start", `{"session_id":"sub-1","agent_id":"x"}`},
+	}
+	for _, r := range runs {
+		code, out, errOut := a.hook(r.role, r.stdin)
+		if code != 0 || errOut != "" || strings.Count(out, "\n") > 1 || (out != "" && !strings.Contains(out, file)) {
+			t.Errorf("%s %s: exit %d, stdout %q, stderr %q; want 0 and at most one line naming %s", r.role, r.stdin, code, out, errOut, file)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(client.Dir(a.env.ConfigDir), "state")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("state folder: %v, want none written", err)
 	}
 }

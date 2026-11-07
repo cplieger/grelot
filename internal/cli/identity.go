@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/proctree"
+	"github.com/cplieger/grelot/internal/provider"
 	"github.com/cplieger/grelot/internal/where"
 )
 
@@ -202,6 +204,11 @@ func (r *run) me(ctx context.Context, args []string) error {
 	}
 	a, err := r.client(true)
 	if err != nil {
+		_, noHost := errors.AsType[*provider.DetectError](err)
+		ns, noSession := errors.AsType[*provider.NoSessionError](err)
+		if noHost || noSession && ns.Env != "" {
+			return r.meWithoutSession(ctx, err)
+		}
 		return err
 	}
 	me, resp, err := a.Me(ctx, url.Values{}, http.Header{})
@@ -218,6 +225,31 @@ func (r *run) me(ctx context.Context, args []string) error {
 	}
 	writeCard(r.Stdout, me.Identity)
 	writeMe(r.Stdout, me, where.EnvironmentFile(r.ConfigDir))
+	return nil
+}
+
+// meWithoutSession is grelot me in a shell that holds no host session,
+// such as a terminal no agent runs in: it checks the server and the token
+// with a read any caller may make, then prints why there is no identity
+// to show.
+func (r *run) meWithoutSession(ctx context.Context, why error) error {
+	a, err := r.client(false)
+	if err != nil {
+		return err
+	}
+	q := url.Values{"fields": {"name"}}
+	resp, err := a.Do(ctx, r.bounded(&client.Request{Method: http.MethodGet, Path: "/v1/identities", Query: q}), nil)
+	if err != nil {
+		return err
+	}
+	r.printStatus(resp.Status)
+	fmt.Fprintf(r.Stdout, "grelot: the server at %s answers and accepts this token\n", safe(r.cfg.Server))
+	line := safe(why.Error())
+	if !strings.HasPrefix(line, "grelot") {
+		line = "grelot: " + line
+	}
+	fmt.Fprintln(r.Stdout, line)
+	fmt.Fprintln(r.Stdout, "grelot: run grelot me in your agent's shell for its status line and the register command")
 	return nil
 }
 

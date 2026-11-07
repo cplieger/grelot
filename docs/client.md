@@ -159,7 +159,7 @@ On Linux and macOS the client creates the key file with mode 0600, and sets that
 grelot me
 ```
 
-Before you register, this prints the status line and the register command. Once an agent has registered from this shell, it prints the identity's card, its unread mail, how mail wakes it, and a line such as `machine: known (dmi) · environment: known, keyed by /home/you/.config/grelot/environment`. An error names what to fix, such as the missing config file, an unreachable server, or a token the server refuses.
+In a terminal no agent runs in, this checks that the server answers and accepts your token, then says that the shell holds no agent session. In an agent's shell before it registers, it prints the status line and the register command. Once an agent has registered from this shell, it prints the identity's card, its unread mail, how mail wakes it, and a line such as `machine: known (dmi) · environment: known, keyed by /home/you/.config/grelot/environment`. An error names what to fix, such as the missing config file, an unreachable server, or a token the server refuses.
 
 `grelot help` prints the whole manual, which is what your agents read.
 

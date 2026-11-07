@@ -25,13 +25,22 @@ const markLife = 30 * 24 * time.Hour
 // Marks are small per-session files under the client's state directory.
 // Every write is best effort: a failed one never fails a hook.
 type Marks struct {
-	now func() time.Time
-	dir string
+	now      func() time.Time
+	dir      string
+	readOnly bool
 }
 
 // NewMarks keeps marks under configDir's grelot/state/marks folder.
 func NewMarks(configDir string, now func() time.Time) *Marks {
 	return &Marks{dir: filepath.Join(configDir, "grelot", "state", "marks"), now: now}
+}
+
+// ReadMarks reads the marks NewMarks keeps and never writes one: the
+// marks of a client with no usable config, which leaves no state behind.
+func ReadMarks(configDir string, now func() time.Time) *Marks {
+	m := NewMarks(configDir, now)
+	m.readOnly = true
+	return m
 }
 
 // file names a mark by a hash, since a session key may hold any character.
@@ -56,8 +65,12 @@ func (m *Marks) When(kind, key string) (time.Time, bool) {
 	return t, err == nil
 }
 
-// Set sets the mark to now, and drops the marks not set within markLife.
+// Set sets the mark to now and drops the marks not set within markLife.
+// ReadMarks' Set writes nothing.
 func (m *Marks) Set(kind, key string) {
+	if m.readOnly {
+		return
+	}
 	_ = statefile.Replace(m.file(kind, key), []byte(m.now().UTC().Format(time.RFC3339Nano)+"\n"))
 	m.prune()
 }
