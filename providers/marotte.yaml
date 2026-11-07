@@ -5,16 +5,19 @@
 # told provider: marotte refuses every identity command.
 #
 # The server reads this file from its own providers folder, not from the
-# client's set. The door needs marotte's notify verb and a marotte API key
-# with the notify scope; until both ship, leave the file out of the
-# server's folder and run kiro-cli's grelot-watch workflow in each chat.
+# client's set. The door needs marotte's notify route turned on with
+# MAROTTE_NOTIFY_TOKEN, and the same value in the server's
+# SECRET_MAROTTE_TOKEN. Without it, run kiro-cli's grelot-watch workflow in
+# each chat.
 name: marotte
-evidence: unverified
+evidence: measured
 doors:
   # POST /api/sessions/<session>/notify steers a busy chat or prompts an
   # idle one. marotte answers 200 for a delivery and for a key it saw in
   # the last 10 minutes, 404 for a session it does not have, and 503 with
-  # Retry-After when busy. The session is the chat's KIRO_SESSION_ID.
+  # Retry-After when busy. The session is the chat's KIRO_SESSION_ID. The
+  # text may not start with [notification/ or hold a #[[kind:query]]
+  # reference, which grelot's signal line never does.
   - name: notify
     layer: 1
     transport: http
