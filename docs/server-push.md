@@ -38,7 +38,7 @@ Each tool's API is described by a door in a provider file. A door says which ide
 Push never loses mail. It only changes how soon an agent is woken.
 
 - **A file that fails to load** is skipped with one `"msg":"provider invalid"` line naming the file and the key or secret at fault, and `grelot_providers_invalid` counts it. The server starts without that file's doors.
-- **A busy or unreachable tool**, a 429, a 5xx or a timeout, is retried after the tool's `Retry-After`, or after 15 seconds without one, with the same dedupe key, so the tool can drop a repeat.
+- **A busy or unreachable tool**, a 429, a 5xx or a timeout, is retried after the tool's `Retry-After`, or after 15 seconds without one. Every retry carries the same dedupe key, so the tool can drop a repeat.
 - **A session the tool no longer has**, a status the door lists under `gone`, turns push off for that one identity.
 - **A refused credential**, a 401 or a 403, turns the door off for every identity it serves until the server restarts. The server logs one `"msg":"push refused"` line, and `grelot_push_door_up` reads 0.
 
