@@ -380,7 +380,7 @@ func sameWiring(got, want []wire) bool {
 // wantWiring is what a provider's hook file must run: grelot hook
 // <provider> <role> under each role's event, for every role the provider
 // spells and no other, with the timeout timeouts names for the event, or
-// 10 s.
+// 30 s.
 func wantWiring(t *testing.T, name string, timeouts map[string]int) []wire {
 	t.Helper()
 	set, err := provider.LoadSet(providers.FS)
@@ -393,7 +393,7 @@ func wantWiring(t *testing.T, name string, timeouts map[string]int) []wire {
 	}
 	var want []wire
 	add := func(role, event string) {
-		want = append(want, wire{Event: event, Command: "grelot hook " + name + " " + role, Timeout: cmp.Or(timeouts[event], 10)})
+		want = append(want, wire{Event: event, Command: "grelot hook " + name + " " + role, Timeout: cmp.Or(timeouts[event], 30)})
 	}
 	hs := &p.Hooks
 	if hs.SessionStart != nil {

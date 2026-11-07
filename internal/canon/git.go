@@ -13,8 +13,10 @@ import (
 	"time"
 )
 
-// gitTimeout bounds one git call; a hook runs several within its budget.
-const gitTimeout = 5 * time.Second
+// gitTimeout bounds one git call, which only a hung git reaches: one call
+// takes over a second on a slow Windows host and several times that under
+// load.
+const gitTimeout = 15 * time.Second
 
 type execGit struct{}
 

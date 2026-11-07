@@ -18,9 +18,6 @@ import (
 
 const verbHook = "hook"
 
-// hookBudget is a hook's request budget when its role sets none.
-const hookBudget = 3 * time.Second
-
 // The lines a hook prints of its own.
 const (
 	lineUnregistered = "grelot: not registered. Register before you start work: run `grelot help`, then `grelot register` as it says."
@@ -303,7 +300,7 @@ func (h *hookCall) forkLine(c hook.Class) string {
 // hookMe sends GET /v1/me within the role's budget.
 func hookMe(ctx context.Context, api *client.API, budget time.Duration, q url.Values, header http.Header) (*client.Me, client.Response, error) {
 	if budget == 0 {
-		budget = hookBudget
+		budget = provider.DefaultBudget
 	}
 	ctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
@@ -315,7 +312,7 @@ func hookMe(ctx context.Context, api *client.API, budget time.Duration, q url.Va
 // check and why, so neither an outage nor a client fault holds the agent.
 func failLine(err error, budget time.Duration) string {
 	if budget == 0 {
-		budget = hookBudget
+		budget = provider.DefaultBudget
 	}
 	var why string
 	ae, isAPI := errors.AsType[*client.APIError](err)

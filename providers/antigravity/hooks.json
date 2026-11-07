@@ -4,14 +4,14 @@
       {
         "type": "command",
         "command": "grelot hook antigravity session_start",
-        "timeout": 10
+        "timeout": 30
       }
     ],
     "Stop": [
       {
         "type": "command",
         "command": "grelot hook antigravity stop",
-        "timeout": 10
+        "timeout": 30
       }
     ]
   }

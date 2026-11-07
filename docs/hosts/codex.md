@@ -36,7 +36,7 @@ The hooks need none of this, because Codex runs trusted hooks outside the sandbo
 
 ## 3. Install the hooks
 
-The hook file is [`providers/codex/hooks.json`](../../providers/codex/hooks.json). Every line in it runs `grelot hook codex <role>` with a 10 second timeout, and 3 seconds for `SessionEnd`, the most Codex allows there. The line never changes between releases, because what each hook does is in the binary.
+The hook file is [`providers/codex/hooks.json`](../../providers/codex/hooks.json). Every line in it runs `grelot hook codex <role>` with a 30 second timeout, and 3 seconds for `SessionEnd`, the most Codex allows there. The line never changes between releases, because what each hook does is in the binary.
 
 With no `~/.codex/hooks.json` yet, save the file as that file:
 

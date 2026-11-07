@@ -16,7 +16,6 @@ import (
 )
 
 const (
-	maxBudget       = 3 * time.Second
 	minDedupeWindow = 60 * time.Second
 	defaultLine     = "{{.Line}}"
 	defaultEndExit  = 1
@@ -436,8 +435,8 @@ func (r *Role) checkRole() error {
 	if r.Event == "" {
 		return &LoadError{Key: "event", Problem: "required, the host's event name"}
 	}
-	if r.Budget < 0 || r.Budget > maxBudget {
-		return &LoadError{Key: "budget", Problem: "must be at most 3s, the default budget"}
+	if r.Budget < 0 || r.Budget > DefaultBudget {
+		return &LoadError{Key: "budget", Problem: "must be at most " + DefaultBudget.String() + ", the default budget"}
 	}
 	for path, values := range r.When {
 		if !stdinPathRE.MatchString(path) {

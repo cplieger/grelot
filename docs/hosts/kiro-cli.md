@@ -19,7 +19,7 @@ curl -fL -o ~/.kiro/hooks/grelot.json \
   "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/kiro-cli/hooks.json"
 ```
 
-Every line in it runs `grelot hook kiro-cli <role>` with a 10 second timeout. The line never changes between releases, because what each hook does is in the binary.
+Every line in it runs `grelot hook kiro-cli <role>` with a 30 second timeout. The line never changes between releases, because what each hook does is in the binary.
 
 | Hook | What it adds | Without it |
 | --- | --- | --- |

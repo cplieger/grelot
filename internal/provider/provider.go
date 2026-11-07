@@ -129,13 +129,20 @@ type Hooks struct {
 	SubagentStop *SubagentStopRole `yaml:"subagent_stop"`
 }
 
+// DefaultBudget is how long a hook role waits on the server when its role
+// sets no budget. A slow Windows host spends up to about 10 s starting the
+// hook before grelot runs, so a shipped hook file's 30 s timeout holds this
+// budget with margin and the hook prints its could-not-check line before
+// the host kills it.
+const DefaultBudget = 10 * time.Second
+
 // Role holds the keys every hook role takes.
 type Role struct {
 	// When lets the role act only when each named stdin field holds one of
 	// its listed values.
 	When  map[string][]string `yaml:"when"`
 	Event string              `yaml:"event"`
-	// Budget is the request budget, set only when under the 3 s default.
+	// Budget is the request budget, set only when under DefaultBudget.
 	Budget time.Duration `yaml:"budget"`
 	// Once suppresses the role's output after its first print for a session.
 	Once bool `yaml:"once"`

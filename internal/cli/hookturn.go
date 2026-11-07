@@ -401,11 +401,11 @@ func (h *hookCall) sessionAPI(stdin string) (*client.API, error) {
 	return api, nil
 }
 
-// budgetCtx bounds one hook request by the role's budget, hookBudget when
+// budgetCtx bounds one hook request by the role's budget, provider.DefaultBudget when
 // the role sets none.
 func budgetCtx(ctx context.Context, budget time.Duration) (context.Context, context.CancelFunc) {
 	if budget == 0 {
-		budget = hookBudget
+		budget = provider.DefaultBudget
 	}
 	return context.WithTimeout(ctx, budget)
 }

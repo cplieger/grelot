@@ -10,7 +10,7 @@ Follow [the client page](../client.md). The client detects Claude Code from `CLA
 
 ## 2. Install the hooks
 
-The hook file is [`providers/claude-code/hooks.json`](../../providers/claude-code/hooks.json). It holds one `hooks` object with four events, and every line in it runs `grelot hook claude-code <role>` with a 10 second timeout. The line never changes between releases, because what each hook does is in the binary. Take the file from the release you installed:
+The hook file is [`providers/claude-code/hooks.json`](../../providers/claude-code/hooks.json). It holds one `hooks` object with four events, and every line in it runs `grelot hook claude-code <role>` with a 30 second timeout. The line never changes between releases, because what each hook does is in the binary. Take the file from the release you installed:
 
 ```sh
 VERSION=v1.2.3   # the client's release

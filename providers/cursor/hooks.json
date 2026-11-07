@@ -5,14 +5,14 @@
       {
         "type": "command",
         "command": "grelot hook cursor session_start",
-        "timeout": 10
+        "timeout": 30
       }
     ],
     "stop": [
       {
         "type": "command",
         "command": "grelot hook cursor stop",
-        "timeout": 10
+        "timeout": 30
       }
     ]
   }
