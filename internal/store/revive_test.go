@@ -219,7 +219,7 @@ func TestRevive_byNameRefusalsInOrder(t *testing.T) {
 		},
 		{
 			name: "a copied environment on a machine of another kind", session: sessB, target: "subflux-dev", caller: other(machineID("1"), hex32("a")),
-			kind: KindNotFound, why: "other_environment", want: "no dormant identity subflux-dev in this environment (unknown)",
+			kind: KindNotFound, why: "other_environment", want: "no dormant identity subflux-dev in this environment (other environment, machine not comparable (dmi · machine-id))",
 		},
 		{
 			name: "another provider", session: "claude-code:session-b", target: "subflux-dev", caller: envA(),

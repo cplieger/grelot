@@ -15,7 +15,7 @@ The client detects Codex from `CODEX_THREAD_ID` in the agent's shell, so the con
 
 ## 2. Let grelot run outside the sandbox
 
-Codex runs the agent's commands in a sandbox that, on Linux and macOS, cuts the network off, and on Windows can fail to start them with `CreateProcessAsUserW failed: 5 (Access is denied.)`. The rule file [`providers/codex/grelot.rules`](../../providers/codex/grelot.rules) allows every command that starts with `grelot`, so it runs with no approval prompt and outside the sandbox, with the network. Save it in `$CODEX_HOME/rules/` (`~/.codex/rules/` by default, `%USERPROFILE%\.codex\rules\` on Windows):
+Codex runs the agent's commands in a sandbox that, on Linux and macOS, cuts the network off, and on Windows can fail to start them with `CreateProcessAsUserW failed: 5 (Access is denied.)`. The rule file [`providers/codex/grelot.rules`](../../providers/codex/grelot.rules) allows every command that starts with `grelot` or `grelot.exe`, so it runs with no approval prompt and outside the sandbox, with the network. Save it in `$CODEX_HOME/rules/` (`~/.codex/rules/` by default, `%USERPROFILE%\.codex\rules\` on Windows):
 
 ```sh
 VERSION=v1.2.3   # the client's release

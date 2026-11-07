@@ -158,6 +158,10 @@ func relation(a, b Where, path string) string {
 		return "same machine, environment unknown"
 	case a.Machine != "" && b.Machine != "" && machineKind(a.Machine) == machineKind(b.Machine):
 		return "other machine"
+	case a.Machine != "" && b.Machine != "":
+		kinds := []string{machineKind(a.Machine), machineKind(b.Machine)}
+		slices.Sort(kinds)
+		return "other environment, machine not comparable (" + kinds[0] + " · " + kinds[1] + ")"
 	default:
 		return relationUnknown
 	}

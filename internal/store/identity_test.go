@@ -266,7 +266,7 @@ func TestTakeOver_refusedOutsideTheEnvironmentOrProvider(t *testing.T) {
 			Where{Machine: machineID("1"), Environment: hex32("a")},
 			Where{Machine: dmi("1"), Environment: hex32("a")},
 			"other_environment",
-			[]string{"(unknown)"},
+			[]string{"(other environment, machine not comparable (dmi · machine-id))"},
 		},
 		{
 			"same environment, other provider", "claude-code:x", envA(), envA(), "other_provider",

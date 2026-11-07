@@ -166,15 +166,19 @@ func (w *wtx) conflict(me *identityRow, path string, b *reservationRow) (*Error,
 		return nil, err
 	}
 	rel := party{where: me.Where, id: me.ID}.relationTo(party{where: h.Where, id: h.ID}, b.Path)
+	subject := path + " overlaps " + b.Path + ","
+	if path == b.Path {
+		subject = path + " is"
+	}
 	if b.State == reservationHeld {
 		return &Error{Kind: KindConflict, Why: "reserved", Msg: fmt.Sprintf(
-			"%s overlaps %s, reserved by %s (%s · %s) until %s for %q: add --queue to be granted it when it frees",
-			path, b.Path, h.Name, h.Host, rel, fmtTime(b.Lease.Expires), b.Reason,
+			"%s reserved by %s (%s · %s) until %s for %q: add --queue to be granted it when it frees",
+			subject, h.Name, h.Host, rel, fmtTime(b.Lease.Expires), b.Reason,
 		)}, nil
 	}
 	return &Error{Kind: KindConflict, Why: "queued", Msg: fmt.Sprintf(
-		"%s overlaps %s, queued first by %s (%s · %s) since %s for %q, waiting until %s at the latest: add --queue to wait behind it",
-		path, b.Path, h.Name, h.Host, rel, fmtTime(b.Since), b.Reason, fmtTime(h.Lease.Expires),
+		"%s queued first by %s (%s · %s) since %s for %q, waiting until %s at the latest: add --queue to wait behind it",
+		subject, h.Name, h.Host, rel, fmtTime(b.Since), b.Reason, fmtTime(h.Lease.Expires),
 	)}, nil
 }
 

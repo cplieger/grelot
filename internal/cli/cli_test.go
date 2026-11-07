@@ -20,6 +20,19 @@ func TestRun_unknownCommand(t *testing.T) {
 	}
 }
 
+func TestRun_helpFlagsPrintTheManual(t *testing.T) {
+	a := newAgent(t, newServer(t), "s-1", "")
+	want := a.must("help")
+	for _, flag := range []string{"--help", "-h"} {
+		t.Run(flag, func(t *testing.T) {
+			code, out, errOut := a.run(flag)
+			if code != 0 || out != want || errOut != "" {
+				t.Errorf("grelot %s: exit %d, stdout %d bytes, stderr %q; want 0 and grelot help's text", flag, code, len(out), errOut)
+			}
+		})
+	}
+}
+
 func TestRun_usageErrorsNameTheCommandsHelp(t *testing.T) {
 	a := newAgent(t, newServer(t), "s-1", "")
 	for _, args := range [][]string{{"register"}, {"register", "a", "b"}, {"me", "--bogus"}, {"renew", "--ttl"}} {

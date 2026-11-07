@@ -94,6 +94,9 @@ func Run(ctx context.Context, env *Env, args []string) int {
 	if len(args) == 0 {
 		return r.fail(usagef("", "name a command: grelot help lists them"))
 	}
+	if args[0] == "--help" || args[0] == "-h" {
+		args[0] = "help"
+	}
 	fn, ok := verbs[args[0]]
 	if !ok {
 		return r.fail(usagef("", "unknown command %q: grelot help lists the commands", args[0]))

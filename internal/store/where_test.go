@@ -118,12 +118,24 @@ func TestRelation_ranks(t *testing.T) {
 			name:   "two machine kinds",
 			reader: Where{Machine: dmi("1"), Environment: hex32("a")},
 			sender: Where{Machine: machineID("2"), Environment: hex32("b")},
-			want:   "unknown",
+			want:   "other environment, machine not comparable (dmi · machine-id)",
 		},
 		{
 			name:   "an environment id copied to two machines of two kinds",
 			reader: Where{Machine: dmi("1"), Environment: hex32("a")},
 			sender: Where{Machine: machineID("1"), Environment: hex32("a")},
+			want:   "other environment, machine not comparable (dmi · machine-id)",
+		},
+		{
+			name:   "a windows machine and a dmi machine",
+			reader: Where{Machine: "windows:" + hex32("1"), Environment: hex32("a")},
+			sender: Where{Machine: dmi("1"), Environment: hex32("b")},
+			want:   "other environment, machine not comparable (dmi · windows)",
+		},
+		{
+			name:   "one side with no machine id",
+			reader: Where{Environment: hex32("a")},
+			sender: Where{Machine: dmi("1"), Environment: hex32("b")},
 			want:   "unknown",
 		},
 		{
