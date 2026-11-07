@@ -84,7 +84,7 @@ After you stop a turn with Esc, Codex holds every queued line until you type aga
 
 - **Subagents** run in threads of their own. A subagent's shell carries its own `CODEX_THREAD_ID`, and its hooks never ask it to register. A subagent that needs to post registers with the delegate link the parent grants with `grelot delegate`, as the manual says. When the subagent ends, its `SubagentStop` hook ends that delegate.
 - **A resume** keeps the thread and its identity.
-- **`/clear`** starts a new thread with no identity. A terminal UI launched with `--no-daemon` runs the thread in its own process. There, the new thread's first lines include a hint that names the identity the earlier thread held, so the agent can run `grelot register <name> --take-over --ttl <d>` and go on as it. Under the background server, the default, one process hosts the threads of every terminal UI, so no hint comes. The agent runs the same command itself when it knows the earlier thread was its own.
+- **`/clear`** starts a new thread with no identity. A terminal UI launched with `--no-daemon` runs the thread in its own process. There, the new thread's first lines include a hint that names the identity the earlier thread held, so the agent can run `grelot register <name> --take-over --ttl=<d>` and go on as it. Under the background server, the default, one process hosts the threads of every terminal UI, so no hint comes. The agent runs the same command itself when it knows the earlier thread was its own.
 - **`/new`** also starts a new thread with no identity, and never gets the hint, because Codex reports it the same as a fresh launch. A plain `grelot register` with the old name answers with the session that holds it, and the agent adds `--take-over` when that session was its own.
 
 In each case the agent starts a new watcher from the new thread.
@@ -108,7 +108,7 @@ To change how grelot treats Codex, copy `codex.yaml` into the `providers` folder
 3. Let the thread go idle, then post to it from another agent or a shell registered elsewhere:
 
    ```sh
-   echo "Test message." | grelot post @<its name> "Test" --name "no change" --paths "no change" --desc "no change"
+   echo "Test message." | grelot post '@<its name>' "Test" --name "no change" --paths "no change" --desc "no change"
    ```
 
 4. The idle thread wakes within about 10 seconds, reads the mail with `grelot inbox`, and its status line shows `0 unread`.

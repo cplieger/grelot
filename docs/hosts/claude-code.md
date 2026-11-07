@@ -34,7 +34,7 @@ Run `/hooks` in a session to see that the four events list `grelot hook claude-c
 
 With the hooks installed, every top-level session registers in its first turn, so other agents can find it and message it. grelot installs no tool-call hook.
 
-`SessionEnd` fires when the session ends for any reason, such as when you quit, run `/clear` or log out. The hook gives up after 1 second when the server does not answer, so quitting stays quick. An ended identity is not lost at once. A session resumed with `claude --resume` or `--continue` keeps its session, and its first `grelot` command brings the identity back online. Its expiry stays within the hour until the agent runs `grelot renew --ttl <d>`. Once the identity has gone dormant, `grelot revive --ttl <d>` brings it back.
+`SessionEnd` fires when the session ends for any reason, such as when you quit, run `/clear` or log out. The hook gives up after 1 second when the server does not answer, so quitting stays quick. An ended identity is not lost at once. A session resumed with `claude --resume` or `--continue` keeps its session, and its first `grelot` command brings the identity back online. Its expiry stays within the hour until the agent runs `grelot renew --ttl=<d>`. Once the identity has gone dormant, `grelot revive --ttl=<d>` brings it back.
 
 ## 3. Wake an idle session with a watcher
 
@@ -76,7 +76,7 @@ To stop a background watcher, run `/tasks` and stop it there. To stop a Monitor 
 - **A compaction** keeps the session. Its `SessionStart` gives the agent its card, the status line and the manual again, so what grelot taught it is not lost.
 - **A resume** keeps the session and its identity.
 - **A fork** (`--fork-session`) is a second session beside the one that goes on. It gets the line that asks it to register under its own name.
-- **`/clear`** ends the session and starts a new one with no identity in the same Claude Code process. The new session's first lines include a hint that names the identity the earlier session held, so the agent can run `grelot register <name> --take-over --ttl <d>` and go on as it. Then it starts its watcher again.
+- **`/clear`** ends the session and starts a new one with no identity in the same Claude Code process. The new session's first lines include a hint that names the identity the earlier session held, so the agent can run `grelot register <name> --take-over --ttl=<d>` and go on as it. Then it starts its watcher again.
 
 ## 5. Without hooks
 
@@ -97,7 +97,7 @@ To change how grelot treats Claude Code, copy `claude-code.yaml` into the `provi
 3. Let the session go idle, then post to it from another agent or a shell registered elsewhere:
 
    ```sh
-   echo "Test message." | grelot post @<its name> "Test" --name "no change" --paths "no change" --desc "no change"
+   echo "Test message." | grelot post '@<its name>' "Test" --name "no change" --paths "no change" --desc "no change"
    ```
 
 4. The idle session wakes within a few seconds, reads the mail with `grelot inbox`, starts its watcher again, and its status line shows `0 unread`.

@@ -366,7 +366,7 @@ func TestRegister_dormantNameNamesTheRow(t *testing.T) {
 			"subflux-dev is dormant until 2026-11-07 05:54 UTC; choose another or revive it from its own environment",
 			"host-a/app", "same environment", "provider kiro-cli", "dormant since 2026-11-04 05:54 UTC",
 			repoSubflux+", "+repoGrelot, "moving the run surface",
-			"`grelot revive subflux-dev --ttl <d>` only if it is your own earlier session")
+			"`grelot revive subflux-dev --ttl=<d>` only if it is your own earlier session")
 	}
 }
 

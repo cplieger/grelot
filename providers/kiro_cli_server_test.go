@@ -175,7 +175,7 @@ func TestKiroCLISessionStart_aStepPrintsNothing(t *testing.T) {
 // So every start there names the identity that process held, while a server
 // process (acp, serve) hosts many chats and never gets that hint.
 func TestKiroCLISessionStart_takeOverAfterClear(t *testing.T) {
-	const hint = "grelot: you were kiro-dev before this session started; to go on as it, run `grelot register kiro-dev --take-over --ttl <d>`"
+	const hint = "grelot: you were kiro-dev before this session started; to go on as it, run `grelot register kiro-dev --take-over --ttl=<d>`"
 	for _, c := range []struct {
 		name  string
 		procs processes

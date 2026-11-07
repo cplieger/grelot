@@ -109,7 +109,7 @@ func TestRevive_leaseAndWhereRequired(t *testing.T) {
 		want string
 	}{
 		{name: "no where", edit: func(r *Revival) { r.Where = nil }, want: "where is required"},
-		{name: "no ttl", edit: func(r *Revival) { r.TTL = 0 }, want: "a ttl is required: pass --ttl <d>, from 15m to 24h"},
+		{name: "no ttl", edit: func(r *Revival) { r.TTL = 0 }, want: "a ttl is required: pass --ttl=<d>, from 15m to 24h"},
 		{name: "ttl under the bounds", edit: func(r *Revival) { r.TTL = 14 * time.Minute }, want: "from 15m to 24h"},
 		{name: "ttl over the bounds", edit: func(r *Revival) { r.TTL = 25 * time.Hour }, want: "from 15m to 24h"},
 		{name: "bad machine", edit: func(r *Revival) { r.Where.Machine = "dmi:xyz" }, want: "where.machine"},

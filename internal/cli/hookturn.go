@@ -48,7 +48,7 @@ const (
 )
 
 const (
-	lineDormant = "grelot: not registered: %s is dormant. Run `grelot revive --ttl <d>` to go on as it, or `grelot help`, then `grelot register` as it says."
+	lineDormant = "grelot: not registered: %s is dormant. Run `grelot revive --ttl=<d>` to go on as it, or `grelot help`, then `grelot register` as it says."
 	lineStale   = "grelot (automated, not the user): signal %d is stale; its mail has been read, so this turn ends"
 	lineHold    = "grelot (automated, not the user): unread %s; run grelot inbox before you stop"
 )

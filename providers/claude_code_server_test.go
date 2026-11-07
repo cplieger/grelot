@@ -81,7 +81,7 @@ func TestClaudeCodeSessionStart_live(t *testing.T) {
 // the identity that process held; a fork is a second session and never
 // gets that hint.
 func TestClaudeCodeSessionStart_takeOverAndFork(t *testing.T) {
-	const hint = "grelot: you were claude-dev before this session started; to go on as it, run `grelot register claude-dev --take-over --ttl <d>`"
+	const hint = "grelot: you were claude-dev before this session started; to go on as it, run `grelot register claude-dev --take-over --ttl=<d>`"
 	for _, exe := range []string{"claude.exe", "claude"} {
 		t.Run(exe, func(t *testing.T) {
 			srv := newServer(t)

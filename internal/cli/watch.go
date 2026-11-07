@@ -49,7 +49,7 @@ func (r *run) watch(ctx context.Context, args []string) error {
 	case len(rest) > 0:
 		return usagef(r.verb, "unexpected %q: a command for the exec transport goes after --", rest[0])
 	case r.handle != "":
-		return usagef(r.verb, "a delegate is pull only: run grelot as %s wait --timeout <d> instead", r.handle)
+		return usagef(r.verb, "a delegate is pull only: run grelot as %s wait --timeout=<d> instead", r.handle)
 	case *byHand != "" && *doorName != "":
 		return usagef(r.verb, "--door and --transport do not combine")
 	case *byHand == "" && dashes:

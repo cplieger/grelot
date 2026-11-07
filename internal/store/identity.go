@@ -566,7 +566,7 @@ func (s *Store) lookupIdentity(r *bolttable.ReadTx, ix *bolttable.Index[uint64, 
 func noIdentity() *Error {
 	return &Error{
 		Kind: KindGone, Why: "none",
-		Msg: "this session has no identity: read grelot help, then run grelot register <name> --paths <path> --desc <what and why> --ttl <d>",
+		Msg: "this session has no identity: read grelot help, then run grelot register <name> --paths <path> --desc <what and why> --ttl=<d>",
 	}
 }
 
@@ -579,7 +579,7 @@ func (s *Store) dormantIdentity(r *bolttable.ReadTx, row *identityRow, now time.
 	}
 	return &Error{
 		Kind: KindGone, Why: "dormant",
-		Msg: fmt.Sprintf("your identity %s expired %d h ago with %d unread; `grelot revive --ttl <d>` restores it",
+		Msg: fmt.Sprintf("your identity %s expired %d h ago with %d unread; `grelot revive --ttl=<d>` restores it",
 			row.Name, int(now.Sub(row.DormantSince).Hours()), n),
 	}
 }
@@ -595,7 +595,7 @@ func (s *Store) liveNameRefusal(holder *identityRow, caller Where) *Error {
 
 func (s *Store) dormantNameRefusal(holder *identityRow, caller Where) *Error {
 	return refuse(KindConflict, fmt.Sprintf(
-		"%s is dormant until %s; choose another or revive it from its own environment\n%s · %s · provider %s · dormant since %s\npaths: %s\ndescription: %s\n`grelot revive %s --ttl <d>` only if it is your own earlier session",
+		"%s is dormant until %s; choose another or revive it from its own environment\n%s · %s · provider %s · dormant since %s\npaths: %s\ndescription: %s\n`grelot revive %s --ttl=<d>` only if it is your own earlier session",
 		holder.Name, fmtTime(holder.Lease.Expires), holder.Host, relation(caller, holder.Where, ""), holder.Provider,
 		fmtTime(holder.DormantSince), strings.Join(holder.Paths, ", "), holder.Description, holder.Name,
 	))
@@ -688,7 +688,7 @@ func resolveFields(cur *identityRow, f Fields, mode fieldMode) (fieldChange, err
 	case len(f.Paths) == 0 && mode == fieldsSome, len(f.Paths) == 1 && mode.keeps(f.Paths[0]):
 		return fc, nil
 	case len(f.Paths) == 0 || slices.Contains(f.Paths, NoChange):
-		return fc, missingField(mode, "paths", "--paths <path>[,<path>...]")
+		return fc, missingField(mode, "paths", "--paths '<path>[,<path>...]'")
 	}
 	paths, err := checkPaths(f.Paths)
 	if err != nil {

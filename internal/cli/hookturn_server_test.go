@@ -132,7 +132,7 @@ func TestHookPrompt_unregisteredAndDormant(t *testing.T) {
 	t.Run("dormant", func(t *testing.T) {
 		a := turnAgent(t, ts, hookTurnFile)
 		ts.clock.advance(3 * time.Hour)
-		want := "grelot: not registered: your identity @toolbelt-dev is dormant. Run `grelot revive --ttl <d>` to go on as it, or `grelot help`, then `grelot register` as it says.\n"
+		want := "grelot: not registered: your identity @toolbelt-dev is dormant. Run `grelot revive --ttl=<d>` to go on as it, or `grelot help`, then `grelot register` as it says.\n"
 		if _, out := a.prompt("x"); out != want {
 			t.Errorf("stdout %q, want %q", out, want)
 		}
@@ -490,7 +490,7 @@ func TestHookStop_holdsAnUnregisteredSessionOnce(t *testing.T) {
 		d := turnAgent(t, ts, hookTurnFile)
 		ts.clock.advance(3 * time.Hour)
 		d.prompt("x")
-		if _, out := d.stopHook(); !strings.Contains(blockReason(t, out), "grelot revive --ttl <d>") {
+		if _, out := d.stopHook(); !strings.Contains(blockReason(t, out), "grelot revive --ttl=<d>") {
 			t.Errorf("stdout %q, want the revive line", out)
 		}
 	})

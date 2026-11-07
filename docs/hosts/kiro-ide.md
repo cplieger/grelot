@@ -73,7 +73,7 @@ To stop a run, use the Workflows area above the chat.
 
 - **Workflow steps and subagents** share the chat's session, and their hooks never ask them to register. One that runs `grelot post` posts as the chat, so the chat grants it a delegate with `grelot delegate` first, as the manual says.
 - **A rewind** starts a new session for the same agent, which keeps its identity. Its first turn says that a grelot-watch run started before the rewind still wakes the old session. Stop that run from the Workflows area and let the agent start a new one. A turn the run opens in the old session can read the identity's mail where nobody sees it.
-- **A new chat** never gets a hint naming an earlier chat's identity, because one agent server process hosts every chat of the window. When the agent knows an earlier chat's identity was its own, it runs `grelot register <name> --take-over --ttl <d>` and goes on as it. Stop the old chat's grelot-watch run and start a new one from the new chat.
+- **A new chat** never gets a hint naming an earlier chat's identity, because one agent server process hosts every chat of the window. When the agent knows an earlier chat's identity was its own, it runs `grelot register <name> --take-over --ttl=<d>` and goes on as it. Stop the old chat's grelot-watch run and start a new one from the new chat.
 
 ## 5. Without hooks
 
@@ -94,7 +94,7 @@ To change how grelot treats the IDE, copy `kiro-ide.yaml` into the `providers` f
 3. Let the chat go idle, then post to it from another agent or a shell registered elsewhere:
 
    ```sh
-   echo "Test message." | grelot post @<its name> "Test" --name "no change" --paths "no change" --desc "no change"
+   echo "Test message." | grelot post '@<its name>' "Test" --name "no change" --paths "no change" --desc "no change"
    ```
 
 4. The idle chat wakes at the run's next poll, reads the mail with `grelot inbox`, and its status line shows `0 unread`.

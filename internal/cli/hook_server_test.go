@@ -62,7 +62,7 @@ func TestHookSessionStart_dormantGetsTheReviveOffer(t *testing.T) {
 	ts.clock.advance(3 * time.Hour)
 	code, out, _ := a.hook("session_start", `{"session_id":"s-1","source":"resume"}`)
 	if code != 0 || !strings.HasPrefix(out, "grelot: your identity toolbelt-dev expired") ||
-		!strings.Contains(out, "grelot revive --ttl <d>") || !strings.Contains(out, "dormant since 2026-11-05 11:00 UTC") {
+		!strings.Contains(out, "grelot revive --ttl=<d>") || !strings.Contains(out, "dormant since 2026-11-05 11:00 UTC") {
 		t.Errorf("exit %d, stdout %q; want the revive offer, then the dormant card", code, out)
 	}
 }
@@ -75,7 +75,7 @@ func TestHookSessionStart_takeOverHint(t *testing.T) {
 		b.env.ConfigDir = a.env.ConfigDir
 		return b
 	}
-	hint := "grelot: you were toolbelt-dev before this session started; to go on as it, run `grelot register toolbelt-dev --take-over --ttl <d>`"
+	hint := "grelot: you were toolbelt-dev before this session started; to go on as it, run `grelot register toolbelt-dev --take-over --ttl=<d>`"
 
 	t.Run("a take_over source gets it", func(t *testing.T) {
 		b := newSession(t)

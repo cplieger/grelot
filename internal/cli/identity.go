@@ -80,7 +80,7 @@ func (r *run) register(ctx context.Context, args []string) error {
 		return nil
 	}
 	if len(rest) != 1 {
-		return usagef(r.verb, "name the identity once: grelot register <name> --paths <path> --desc <what and why> --ttl <d>")
+		return usagef(r.verb, "name the identity once: grelot register <name> --paths <path> --desc <what and why> --ttl=<d>")
 	}
 	p, err := r.provider()
 	if err != nil {
@@ -132,7 +132,7 @@ func (r *run) registered(got *client.Registered, delegate bool) {
 			"no environment id:", "no environment id ("+file+" could not be read or created):", 1))
 	}
 	if got.Existing {
-		fmt.Fprintf(r.Stdout, "grelot: this session already has the identity @%s, returned unchanged with its lease; run grelot renew --ttl <d> to extend it\n",
+		fmt.Fprintf(r.Stdout, "grelot: this session already has the identity @%s, returned unchanged with its lease; run grelot renew --ttl=<d> to extend it\n",
 			got.Identity.Name)
 	}
 	if got.Unread > 0 {
@@ -155,7 +155,7 @@ func (r *run) revive(ctx context.Context, args []string) error {
 		return err
 	}
 	if len(rest) > 1 {
-		return usagef(r.verb, "name at most one identity: grelot revive [<name>] --ttl <d>")
+		return usagef(r.verb, "name at most one identity: grelot revive [<name>] --ttl=<d>")
 	}
 	p, err := r.provider()
 	if err != nil {
@@ -323,7 +323,7 @@ func (r *run) renew(ctx context.Context, args []string) error {
 	}
 	switch {
 	case len(rest) > 1:
-		return usagef(r.verb, "name at most one reservation: grelot renew [<reservation id>] --ttl <d>")
+		return usagef(r.verb, "name at most one reservation: grelot renew [<reservation id>] --ttl=<d>")
 	case len(rest) == 1:
 		return r.renewReservation(ctx, rest[0], *ttl)
 	}

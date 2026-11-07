@@ -108,9 +108,9 @@ func TestFollowAndUnfollow_needALiveIdentity(t *testing.T) {
 	wantRefusal(t, err, KindGone, "none")
 	expireToDormant(t, s, clk, "subflux-dev")
 	_, err = s.Follow(t.Context(), Keyed{}, Caller{Session: sessA}, repoSubflux)
-	wantRefusal(t, err, KindGone, "dormant", "grelot revive --ttl <d>")
+	wantRefusal(t, err, KindGone, "dormant", "grelot revive --ttl=<d>")
 	_, err = s.Unfollow(t.Context(), Keyed{}, Caller{Session: sessA}, repoSubflux)
-	wantRefusal(t, err, KindGone, "dormant", "grelot revive --ttl <d>")
+	wantRefusal(t, err, KindGone, "dormant", "grelot revive --ttl=<d>")
 }
 
 func TestUnfollow_stopsTheThread(t *testing.T) {

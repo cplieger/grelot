@@ -55,9 +55,9 @@ func serverLease(now time.Time, ttl time.Duration) lease { return lease{Expires:
 func (p leasePolicy) grant(now time.Time, ttl time.Duration, limit time.Time) (lease, error) {
 	if ttl < p.min || ttl > p.max {
 		if ttl == 0 {
-			return lease{}, refuse(KindInvalid, fmt.Sprintf("a ttl is required: pass --ttl <d>, from %s to %s", fmtDur(p.min), fmtDur(p.max)))
+			return lease{}, refuse(KindInvalid, fmt.Sprintf("a ttl is required: pass --ttl=<d>, from %s to %s", fmtDur(p.min), fmtDur(p.max)))
 		}
-		return lease{}, refuse(KindInvalid, fmt.Sprintf("ttl %s is outside the bounds: pass --ttl <d>, from %s to %s", fmtDur(ttl), fmtDur(p.min), fmtDur(p.max)))
+		return lease{}, refuse(KindInvalid, fmt.Sprintf("ttl %s is outside the bounds: pass --ttl=<d>, from %s to %s", fmtDur(ttl), fmtDur(p.min), fmtDur(p.max)))
 	}
 	l := lease{Expires: now.Add(ttl)}
 	if !limit.IsZero() && l.Expires.After(limit) {

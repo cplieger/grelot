@@ -456,7 +456,7 @@ func (w *wtx) heldOverlapping(p string) ([]reservationRow, error) {
 func warnReservation(w *wtx, _ uint64, v *reservationRow) error {
 	left := int(math.Ceil(v.Lease.Expires.Sub(w.now).Minutes()))
 	w.oweEvent(v.Holder, kindReservationExpiring, fmt.Sprintf(
-		"your reservation %d on %s expires in %d min (at %s); if you still need it, run `grelot renew %d --ttl <d>`, otherwise `grelot release %d`",
+		"your reservation %d on %s expires in %d min (at %s); if you still need it, run `grelot renew %d --ttl=<d>`, otherwise `grelot release %d`",
 		v.ID, v.Path, left, fmtTime(v.Lease.Expires), v.ID, v.ID,
 	))
 	return nil
