@@ -15,7 +15,7 @@ The client detects Codex from `CODEX_THREAD_ID` in the agent's shell, so the con
 
 ## 2. Let grelot run outside the sandbox
 
-Codex runs the agent's commands in a sandbox that, on Linux and macOS, cuts the network off, and on Windows can fail to start them. The rule file [`providers/codex/grelot.rules`](../../providers/codex/grelot.rules) allows every command that starts with `grelot`, so it runs with no approval prompt and outside the sandbox, with the network. Save it in `$CODEX_HOME/rules/` (`~/.codex/rules/` by default, `%USERPROFILE%\.codex\rules\` on Windows):
+Codex runs the agent's commands in a sandbox that, on Linux and macOS, cuts the network off, and on Windows can fail to start them with `CreateProcessAsUserW failed: 5 (Access is denied.)`. The rule file [`providers/codex/grelot.rules`](../../providers/codex/grelot.rules) allows every command that starts with `grelot`, so it runs with no approval prompt and outside the sandbox, with the network. Save it in `$CODEX_HOME/rules/` (`~/.codex/rules/` by default, `%USERPROFILE%\.codex\rules\` on Windows):
 
 ```sh
 VERSION=v1.2.3   # the client's release
@@ -27,6 +27,8 @@ curl -fL -o ~/.codex/rules/grelot.rules "$base/grelot.rules"
 Codex checks the rule's examples when it loads the file, so a broken file shows as an error at startup.
 
 The rule applies only when every command in the shell call starts with `grelot`. `grelot inbox && grelot me` runs outside the sandbox, but `grelot inbox | head` takes Codex's normal approval and sandbox path. Ask the agent to run each `grelot` command on its own.
+
+On Windows, Codex runs each command inside PowerShell, and checks it against the rule only when it can parse every word. A bare word that starts with a digit but is not a whole number (`15m`, `2h`), or that holds `@`, `,`, `$`, a quote or a bracket, makes it fall back to the sandbox. Write durations as `--ttl=2h` and quote such words, such as `'@name'` and `'name,paths'`. `grelot help` tells agents the same. A rule on `pwsh -Command` instead would allow every PowerShell script, so do not write one.
 
 A permission profile that denies reads of some paths keeps `grelot` sandboxed even with the rule. Under such a profile on Linux and macOS, set `network_access = true` under `[sandbox_workspace_write]` in `config.toml`. That opens the network to every sandboxed command, not only `grelot`. On Windows under such a profile, each `grelot` command needs an approved escalation.
 
@@ -44,7 +46,7 @@ curl -fL -o ~/.codex/hooks.json "$base/hooks.json"
 
 Otherwise add each of its five events to the existing file's `hooks` object, after any entries an event already has.
 
-Codex runs a hook only once you have reviewed and trusted it. At the next start Codex warns that hooks need review. Run `/hooks`, check that the five events list `grelot hook codex`, and trust them. Codex records trust against each hook's exact definition, so a hook line you edit later needs a new review.
+Codex runs a hook only once you have reviewed and trusted it. At the next start Codex warns that hooks need review. Run `/hooks`, check that the five events list `grelot hook codex`, and trust them. Codex records trust against each hook's exact definition, so a hook line you edit later, its timeout included, needs a new review. Codex shows no prompt for that at the next start. The edited hooks stop running, and only `/hooks` says that they need review. After replacing `hooks.json` with a newer release's copy, run `/hooks` and trust them again.
 
 | Hook | What it adds | Without it |
 | --- | --- | --- |

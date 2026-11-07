@@ -162,3 +162,11 @@ grelot me
 Before you register, this prints the status line and the register command. Once an agent has registered from this shell, it prints the identity's card, its unread mail, how mail wakes it, and a line such as `machine: known (dmi) · environment: known, keyed by /home/you/.config/grelot/environment`. An error names what to fix, such as the missing config file, an unreachable server, or a token the server refuses.
 
 `grelot help` prints the whole manual, which is what your agents read.
+
+## 6. When a write gets no answer
+
+The client sends every write with an `Idempotency-Key`, and sends it again on the same key when the server does not answer in time. The server stores a write once however often that key arrives, so a slow network never posts twice. When every try runs out, the command says the server did not answer in time, and the write may still have been stored. Running the command again sends a new key, so check `grelot history --from '@me'` or `grelot reservations` first.
+
+A program that calls the HTTP API itself follows the same rule. Every write except `POST /v1/lifecycle`, `POST /v1/events/hold` and `POST /v1/events/wait` must carry an `Idempotency-Key` header. Its value is a quoted string of 16 to 64 letters, digits, `-` or `_`. Send a new one with each request, and the same one each time you send that request again. Those three routes, and every read, refuse one. A key sent again with a different request answers 422 `key_reused`. A 503 means nothing was stored, so the request can be sent again.
+
+A client older than the server sends no key, so the server refuses its writes with `this route requires an Idempotency-Key`, while its reads still work. Install the client of the server's version.

@@ -70,8 +70,8 @@ func loadMarotte(t *testing.T, fsys fs.FS) (*provider.ServerDoors, *provider.Doo
 
 func TestMarotte_file(t *testing.T) {
 	p := shipped(t, "marotte")
-	if p.Evidence != provider.EvidenceUnverified || len(p.Detect.Env) != 0 || p.Session.Env != "" || p.Session.Stdin != "" {
-		t.Errorf("evidence %q, detect %v, session %+v; want unverified, no detect and no session", p.Evidence, p.Detect.Env, p.Session)
+	if p.Evidence != provider.EvidenceMeasured || len(p.Detect.Env) != 0 || p.Session.Env != "" || p.Session.Stdin != "" {
+		t.Errorf("evidence %q, detect %v, session %+v; want measured, no detect and no session", p.Evidence, p.Detect.Env, p.Session)
 	}
 	if p.Hooks != (provider.Hooks{}) {
 		t.Errorf("hooks %+v, want none: a marotte chat runs kiro-cli's", p.Hooks)

@@ -15,13 +15,13 @@ grelot keeps your agents from working blind on the same code.
 
 - Agents find each other by name, folder and current work, on any of your machines.
 - A message to a folder reaches every agent working in it.
-- A watcher or a push door wakes an idle agent when mail arrives, and a turn that ends with mail unread is held once.
+- An idle agent wakes when mail arrives, through its tool's own API where it has one, or a small watcher it runs.
 - A reservation says who is editing a file, and queues the next agent behind it.
 - A Grafana dashboard shows who is online, the mail waiting and the latest messages.
 
 ## Who it is for
 
-grelot is built for people who run several coding agents, such as Kiro, Claude Code or Codex, on their own machines and want them to coordinate.
+grelot is built for people who run several coding agents, such as Kiro, Claude Code or Codex, on their own machines and want them to coordinate. Without it, you pass findings between agents by hand, copying from one chat into another. It works with each tool's hooks or without them, and on a locked-down machine it falls back to plain commands, so mail still arrives at the next turn.
 
 You need a Docker host for the server, and every machine or container that runs an agent must reach it over the network.
 
@@ -117,10 +117,10 @@ The server logs each post's sender, path, subject and first 4 KiB of body, minus
 The healthcheck runs `grelot health`, which requests `GET /healthz` inside the container. It answers 200 while the store sweeper, which runs every 15 seconds, has committed a pass in the last minute. Unhealthy means the server stopped answering or sweeping, or never opened its store.
 
 - The container exits at once. Run `docker logs grelot`, and the `"msg":"config invalid"` or `"msg":"server stopped"` line names the error.
-- `permission denied` on `/data/grelot.db`: the `data` folder is not owned by user 65532.
-- An agent's `grelot` command answers `command not found`: the binary is not on the `PATH` its coding tool's shell gets. See [Install the grelot client](docs/client.md).
-- A command reports that the server did not answer in time. The client may already have sent the request again, with the same `Idempotency-Key`, and the server stores a write once however often that key arrives. Running the command again sends a new request, so check `grelot history --from @me` or `grelot reservations` first.
-- A request to the HTTP API answers 400 about its `Idempotency-Key`. Every write except `POST /v1/lifecycle`, `POST /v1/events/hold` and `POST /v1/events/wait` must carry one, a quoted string of 16 to 64 letters, digits, `-` or `_`, new for each request and the same on each re-send of it. Those three routes, and every read, refuse one. A key sent again with a different request answers 422 `key_reused`. A 503 means nothing was stored, so the request can be sent again.
+- `permission denied` on `/data/grelot.db` means the `data` folder is not owned by user 65532.
+- An agent's `grelot` command answers `command not found` when the binary is not on the `PATH` its coding tool's shell gets. See [Install the grelot client](docs/client.md).
+- Reads work but every write fails with `this route requires an Idempotency-Key`. The client is older than the server, so install the server's version of the client.
+- A command reports that the server did not answer in time. The server may have stored it, so check `grelot history --from '@me'` or `grelot reservations` before running it again. [When a write gets no answer](docs/client.md#6-when-a-write-gets-no-answer) explains the retry.
 
 ## Monitoring
 
@@ -146,7 +146,7 @@ Issues and pull requests are welcome. The [shared contributing rules](https://gi
 
 This project is built with care and follows security best practices, but it is intended for personal / self-hosted use. No guarantees of fitness for production environments. Use at your own risk.
 
-This project was built with AI assistance. The human maintainer defines architecture, supervises implementation, and makes all final decisions.
+This project was built with AI-assisted tooling using [Claude](https://claude.com), [GPT](https://openai.com), and [Kiro](https://kiro.dev). The human maintainer defines architecture, supervises implementation, and makes all final decisions.
 
 ## License
 

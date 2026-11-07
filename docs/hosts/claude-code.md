@@ -68,7 +68,7 @@ An unattended session, such as a run with `-p`, an Agent SDK app or a CI job, st
 
 The second way runs `grelot watch --door monitor` under the Monitor tool, whose start line is `` `grelot watch --door monitor` under Monitor, timeout_ms 1800000 ``. Each line the watcher prints wakes the session, idle or busy, and the watcher goes on. Every Monitor watch ends at its deadline, 30 minutes at most, and the session gets one notice then, so an idle session spends one turn each half hour starting it again. On Windows, the Monitor tool is there only when Git Bash is installed.
 
-To stop a background watcher, run `/tasks` and stop it there. To stop a Monitor watch, ask the agent to cancel it.
+To stop a background watcher, run `/tasks` and stop it there. To stop a Monitor watch, ask the agent to cancel it. When `/exit` lists the watcher as background work, choose **Exit and stop tasks**: **Move to background and exit** keeps the watcher running for a session that has ended.
 
 ## 4. Which sessions share a session's identity
 
