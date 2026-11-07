@@ -281,6 +281,12 @@ func (h *hookCall) stop(ctx context.Context, role *provider.StopRole) error {
 		postLifecycle(ctx, api, role.Budget, map[string]any{keyEvent: roleTurnEnd})
 		return nil
 	}
+	// Mail this client cannot ack stays unread, so a hold would hold every
+	// turn until the client is upgraded.
+	if line := client.CannotAck(h.ConfigDir, h.Version); line != "" {
+		postLifecycle(ctx, api, role.Budget, map[string]any{keyEvent: roleTurnEnd})
+		return h.emit(role.Outputs.Notice, "grelot: unread mail stays unread until this client is upgraded: "+line)
+	}
 	var held client.Held
 	// A host that cannot be held, or runs one stop per turn, ends the turn
 	// at this hold whatever it answers.

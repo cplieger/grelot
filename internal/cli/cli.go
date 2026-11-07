@@ -179,6 +179,9 @@ func (r *run) fail(err error) int {
 			fmt.Fprintln(r.Stdout, line)
 		}
 		fmt.Fprintln(r.Stderr, msg)
+		if ae.Upgrade != "" {
+			fmt.Fprintln(r.Stderr, "grelot: the server is newer than this client, which may be why it refused: "+ae.Upgrade)
+		}
 		return exitFailed
 	}
 	msg := err.Error()

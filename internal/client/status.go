@@ -2,6 +2,8 @@ package client
 
 import (
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/cplieger/go/textsafe"
@@ -36,10 +38,8 @@ func (s *Status) Line() string {
 	if s.Start != "" && strings.Contains(s.Server, wakeDown) {
 		extra = append(extra, textsafe.SanitizeSingleLine(s.Start))
 	}
-	if c, ok := releaseBase(s.Client); ok {
-		if v, ok := releaseBase(s.ServerVersion); ok && v != c {
-			extra = append(extra, "this client is "+c+" and the server "+v+": install grelot "+v+" from "+releases+v)
-		}
+	if line := Upgrade(s.Client, s.ServerVersion); line != "" {
+		extra = append(extra, line)
 	}
 	for _, name := range s.Invalid {
 		extra = append(extra, "provider "+name+" invalid: run grelot provider check on its file")
@@ -53,14 +53,61 @@ func (s *Status) Line() string {
 	return strings.Join(append([]string{textsafe.SanitizeSingleLine(s.Server)}, extra...), " · ")
 }
 
-var releasePattern = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
+// Upgrade is the line naming the client to install for a server of
+// version server, "" when either is unknown or client is server's release:
+// a promoted stable image keeps its dev build's version while the
+// release's clients carry the base, so only another base, or an earlier
+// dev build of the same base, names one. The server's exact version is
+// always a tag, so the line names it.
+func Upgrade(client, server string) string {
+	c, ok := parseVersion(client)
+	s, sok := parseVersion(server)
+	if !ok || !sok || (c.base == s.base && (c.dev < 0 || s.dev <= c.dev)) {
+		return ""
+	}
+	return "this client is " + client + " and the server " + server + ": install grelot " + server +
+		" with go install github.com/cplieger/grelot@" + server + " or from " + releases + server
+}
 
-// releaseBase is v with any -dev.N suffix removed: a promoted stable image
-// keeps its dev build's version while the release's clients carry the
-// base. An unstamped "dev" build, or anything else, has none.
-func releaseBase(v string) (string, bool) {
-	base, _, _ := strings.Cut(v, "-")
-	return base, releasePattern.MatchString(base)
+// Older reports whether client is an earlier build than server: an earlier
+// release base, or the same base at an earlier dev build. A release and
+// its own dev builds are neither, for the reason Upgrade gives.
+func Older(client, server string) bool {
+	c, ok := parseVersion(client)
+	s, sok := parseVersion(server)
+	if !ok || !sok {
+		return false
+	}
+	if order := slices.Compare(c.parts[:], s.parts[:]); order != 0 {
+		return order < 0
+	}
+	return c.dev >= 0 && s.dev > c.dev
+}
+
+var versionPattern = regexp.MustCompile(`^v(\d{1,9})\.(\d{1,9})\.(\d{1,9})(?:-dev\.(\d{1,9}))?$`)
+
+// version is a parsed vX.Y.Z or vX.Y.Z-dev.N; dev is -1 for a release.
+type version struct {
+	base  string
+	parts [3]int
+	dev   int
+}
+
+// parseVersion reads v; an unstamped "dev" build, or anything else, is
+// not a version.
+func parseVersion(v string) (version, bool) {
+	m := versionPattern.FindStringSubmatch(v)
+	if m == nil {
+		return version{}, false
+	}
+	out := version{base: strings.SplitN(v, "-", 2)[0], dev: -1}
+	for i := range out.parts {
+		out.parts[i], _ = strconv.Atoi(m[i+1])
+	}
+	if m[4] != "" {
+		out.dev, _ = strconv.Atoi(m[4])
+	}
+	return out, true
 }
 
 // FirstStart is the start line of p's first layer-2 door, "" when it has

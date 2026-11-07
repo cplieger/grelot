@@ -35,9 +35,19 @@ func TestStatus_Line(t *testing.T) {
 			"grelot: @tool-dev · 0 unread · wake: down · expires in 20 min · " + startLine,
 		},
 		{
-			"another release base names the server's release",
+			"another release base names the server's own tag",
 			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "v1.1.0", ServerVersion: "v1.2.0-dev.3"},
-			"grelot: @a · 0 unread · wake: watcher · this client is v1.1.0 and the server v1.2.0: install grelot v1.2.0 from https://github.com/cplieger/grelot/releases/tag/v1.2.0",
+			"grelot: @a · 0 unread · wake: watcher · this client is v1.1.0 and the server v1.2.0-dev.3: install grelot v1.2.0-dev.3 with go install github.com/cplieger/grelot@v1.2.0-dev.3 or from https://github.com/cplieger/grelot/releases/tag/v1.2.0-dev.3",
+		},
+		{
+			"an earlier dev build of the server's release",
+			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "v1.1.0-dev.24", ServerVersion: "v1.1.0-dev.25"},
+			"grelot: @a · 0 unread · wake: watcher · this client is v1.1.0-dev.24 and the server v1.1.0-dev.25: install grelot v1.1.0-dev.25 with go install github.com/cplieger/grelot@v1.1.0-dev.25 or from https://github.com/cplieger/grelot/releases/tag/v1.1.0-dev.25",
+		},
+		{
+			"a later dev build than the server says nothing",
+			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "v1.1.0-dev.26", ServerVersion: "v1.1.0-dev.25"},
+			"grelot: @a · 0 unread · wake: watcher",
 		},
 		{
 			"a promoted dev build is the same release",
@@ -118,5 +128,31 @@ func TestInvalid(t *testing.T) {
 		"gamma", "name: gamma\nextends: beta\n")
 	if got := Invalid(set); !slices.Equal(got, []string{"beta", "gamma"}) {
 		t.Errorf("Invalid = %v, want [beta gamma]", got)
+	}
+}
+
+func TestOlder(t *testing.T) {
+	for _, tc := range []struct {
+		client, server string
+		want           bool
+	}{
+		{"v1.1.0", "v1.2.0", true},
+		{"v1.9.0", "v1.10.0", true},
+		{"v1.1.0-dev.24", "v1.1.0-dev.25", true},
+		{"v1.1.0-dev.9", "v1.1.0-dev.10", true},
+		{"v1.1.0-dev.30", "v1.2.0-dev.1", true},
+		{"v1.1.0", "v1.1.0-dev.25", false},
+		{"v1.1.0-dev.25", "v1.1.0", false},
+		{"v1.1.0-dev.25", "v1.1.0-dev.25", false},
+		{"v1.2.0", "v1.1.0", false},
+		{"dev", "v1.2.0", false},
+		{"v1.1.0", "dev", false},
+		{"v1.1.0", "", false},
+	} {
+		t.Run(tc.client+" against "+tc.server, func(t *testing.T) {
+			if got := Older(tc.client, tc.server); got != tc.want {
+				t.Errorf("Older(%q, %q) = %v, want %v", tc.client, tc.server, got, tc.want)
+			}
+		})
 	}
 }

@@ -250,9 +250,16 @@ func (r *run) showPage(ctx context.Context, page *client.Inbox) error {
 		upto = max(upto, page.Entries[i].Seq)
 	}
 	acked, err := r.ack(ctx, upto)
+	ae, refused := errors.AsType[*client.APIError](err)
+	refused = refused && ae.Upgrade != ""
+	if err == nil || refused {
+		client.NoteAck(r.ConfigDir, r.Version, refused)
+	}
 	switch {
 	case err != nil && ctx.Err() != nil:
 		return err
+	case refused:
+		fmt.Fprintln(r.Stdout, "grelot: the server refused the ack, so this page shows again and no watcher wakes for it: "+ae.Upgrade)
 	case err != nil:
 		fmt.Fprintln(r.Stdout, "grelot: the ack failed; this page may show again")
 	case acked.Left.Total > 0:

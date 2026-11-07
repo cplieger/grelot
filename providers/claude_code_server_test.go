@@ -298,6 +298,36 @@ func TestClaudeCodeSessionEnd(t *testing.T) {
 	})
 }
 
+// Claude Code's "Move to background and exit" keeps a running
+// grelot watch --door background alive past SessionEnd; the end report
+// ends its wait, and it exits on the end line.
+func TestClaudeCodeSessionEnd_endsABackgroundWatcher(t *testing.T) {
+	srv := newServer(t)
+	sh := claudeShell(t, srv, claudeEnded)
+	sh.register("claude-dev")
+	watcher := *sh
+	done := make(chan outcome, 1)
+	before := srv.count()
+	go func() { done <- watcher.run("", "watch", "--door", "background") }()
+	deadline := time.Now().Add(10 * time.Second)
+	for !slices.ContainsFunc(srv.since(before), func(r request) bool { return r.Path == "/v1/events/wait" }) {
+		if time.Now().After(deadline) {
+			t.Fatal("the watcher sent no wait")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	sh.hook("session_end", sh.fixture("session_end-other"))
+	select {
+	case got := <-done:
+		want := "[grelot:end] grelot (automated, not the user): this watcher stopped (ended); run grelot me\n"
+		if got.Code != 1 || got.Stdout != want {
+			t.Errorf("exit %d, stdout %q; want 1 and %q", got.Code, got.Stdout, want)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the background watcher did not exit after SessionEnd")
+	}
+}
+
 // sessionOf is the session_id of a recorded payload.
 func sessionOf(t *testing.T, dir, name string) string {
 	t.Helper()

@@ -82,7 +82,7 @@ func (r *run) watch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	ws := &watcher{api: api, door: door, w: w, log: log}
+	ws := &watcher{api: api, door: door, w: w, log: log, cannotAck: func() string { return client.CannotAck(r.ConfigDir, r.Version) }}
 	return ws.run(ctx, &provider.Data{Session: sid})
 }
 
@@ -126,12 +126,15 @@ func watchDoor(p *provider.Provider, name, byHand string, argv []string) (*provi
 	return nil, usagef("watch", "provider %s has no watcher door %q: its watcher doors are %s", p.Name, name, strings.Join(names, ", "))
 }
 
-// watcher is one grelot watch process.
+// watcher is one grelot watch process. cannotAck is the upgrade line once
+// the server refuses this client's ack, which would leave each nudge's
+// mail unread to wake it again.
 type watcher struct {
-	api  *client.API
-	door *provider.Door
-	w    *transport.Watch
-	log  *slog.Logger
+	api       *client.API
+	door      *provider.Door
+	w         *transport.Watch
+	log       *slog.Logger
+	cannotAck func() string
 }
 
 // polled is what one poll came to: a nudge, the end reason of a 410, or
@@ -171,12 +174,29 @@ func (ws *watcher) run(ctx context.Context, data *provider.Data) error {
 	}
 }
 
+// endUpgrade is the end reason of a watcher whose client cannot ack.
+const endUpgrade = "upgrade"
+
+func (ws *watcher) stopForUpgrade() bool {
+	line := ws.cannotAck()
+	if line != "" {
+		ws.log.Warn("this client cannot mark mail read on this server; this watcher stops", "fix", line)
+	}
+	return line != ""
+}
+
 // poll takes standing waits until one answers a nudge or a 410, or until
 // passes (never when zero). A server that cannot be reached or answers 5xx
-// is tried again with backoff, with one WARN line per outage.
+// is tried again with backoff, with one WARN line per outage. Once the
+// server refuses this client's ack, poll answers the upgrade end before
+// its next wait: the nudged mail stays unread, so every restarted watcher
+// would wake for it again.
 func (ws *watcher) poll(ctx context.Context, until time.Time) (polled, error) {
 	backoff, failing := watchRetry, false
 	for {
+		if ws.stopForUpgrade() {
+			return polled{end: endUpgrade}, nil
+		}
 		hold := maxHold
 		if !until.IsZero() {
 			if hold = min(hold, time.Until(until).Round(time.Millisecond)); hold <= 0 {

@@ -31,6 +31,14 @@ func (c *clock) advance(d time.Duration) {
 
 func newServer(t *testing.T) *testServer {
 	t.Helper()
+	return newServerAt(t, "v1.1.0-dev.4", nil)
+}
+
+// newServerAt is newServer at version, answering any request refuse
+// matches with the 400 a server newer than the key rule gave a client
+// that sent no Idempotency-Key.
+func newServerAt(t *testing.T, version string, refuse func(*http.Request) bool) *testServer {
+	t.Helper()
 	ts := &testServer{clock: &clock{now: time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC)}}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	hub := server.NewHub()
@@ -42,7 +50,7 @@ func newServer(t *testing.T) *testServer {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	srv := server.New(&server.Options{
-		Store: st, Logger: logger, Hub: hub, Version: "v1.1.0-dev.4", Now: ts.clock.Now,
+		Store: st, Logger: logger, Hub: hub, Version: version, Now: ts.clock.Now,
 		Config: server.Config{Token: "test-token", PathRoot: protopath.DefaultRoot},
 	})
 	h := srv.Handler()
@@ -53,7 +61,14 @@ func newServer(t *testing.T) *testServer {
 		ts.mu.Unlock()
 		r.Body = io.NopCloser(bytes.NewReader(body))
 		rec := &teeWriter{ResponseWriter: w}
-		h.ServeHTTP(rec, r)
+		if refuse != nil && refuse(r) {
+			w.Header().Set("Grelot-Version", version)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(rec, `{"error":"this route requires an Idempotency-Key: send a new quoted random key with each request","code":"invalid"}`)
+		} else {
+			h.ServeHTTP(rec, r)
+		}
 		ts.mu.Lock()
 		ts.answer = rec.body.String()
 		ts.mu.Unlock()

@@ -74,15 +74,15 @@ func speaks(v string) bool {
 }
 
 // upgradeLine is the 426's one line: the client to install for a server of
-// version server.
+// version server. It names the server's own tag, which exists for a dev
+// build whose release base is not out yet.
 func upgradeLine(client, server string) string {
 	if client == "" {
 		client = "with no Grelot-Version"
 	}
-	base, ok := releaseBase(server)
-	if !ok {
+	if _, ok := releaseBase(server); !ok {
 		return fmt.Sprintf("this grelot server (%s) does not speak client %s; install the client built from the same source as the server", server, client)
 	}
-	return fmt.Sprintf("this grelot server (%s) does not speak client %s; install grelot %s from https://github.com/cplieger/grelot/releases/tag/%s",
-		server, client, base, base)
+	return fmt.Sprintf("this grelot server (%s) does not speak client %s; install grelot %s with go install github.com/cplieger/grelot@%s or from https://github.com/cplieger/grelot/releases/tag/%s",
+		server, client, server, server, server)
 }

@@ -30,6 +30,8 @@ const maxBody = 128 << 10
 
 // authorize admits a request with the bearer token and a client version
 // this server speaks: 401 otherwise, then 426 naming the client to install.
+// Every answer past the bearer names the server's version, so a client
+// can tell a refusal it cannot read from a newer server.
 func (s *Server) authorize(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
@@ -41,6 +43,7 @@ func (s *Server) authorize(next http.Handler) http.Handler {
 			})
 			return
 		}
+		w.Header().Set(headerVersion, s.version)
 		if v := r.Header.Get(headerVersion); !speaks(v) {
 			s.fail(w, r, &apiError{status: http.StatusUpgradeRequired, code: "upgrade_required", msg: upgradeLine(v, s.version)})
 			return
@@ -108,6 +111,47 @@ func (s *Server) keyed(fn keyedFunc) http.Handler {
 		}
 		return fn(r, c, k)
 	}, callerSession)
+}
+
+// renewable is keyed for PATCH /v1/me, which also takes a renewal alone,
+// {ttl, where}, with no key: it sets the same lease however often it is
+// sent, so a client older than the key rule still renews and its identity
+// never goes dormant over the client's upgrade.
+func (s *Server) renewable(fn keyedFunc) http.Handler {
+	return s.identityFor(func(r *http.Request, c store.Caller) (int, any, error) {
+		if _, sent := r.Header[headerKey]; !sent {
+			renewal, err := renewalOnly(r)
+			if err != nil {
+				return 0, nil, err
+			}
+			if renewal {
+				return fn(r, c, store.Keyed{})
+			}
+		}
+		k, err := keyOf(r, c)
+		if err != nil {
+			return 0, nil, err
+		}
+		return fn(r, c, k)
+	}, callerSession)
+}
+
+// renewalOnly reports whether r's body names a ttl and nothing beside it
+// but where, putting the body back for decode.
+func renewalOnly(r *http.Request) (bool, error) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return false, bodyError(err)
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(body, &fields) != nil {
+		return false, nil
+	}
+	_, ttl := fields["ttl"]
+	delete(fields, "ttl")
+	delete(fields, "where")
+	return ttl && len(fields) == 0, nil
 }
 
 // unkeyed refuses a key on a route that takes none, so a client that keys

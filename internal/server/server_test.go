@@ -105,6 +105,9 @@ func TestAuthorize_bearer(t *testing.T) {
 			if _, ok := r.body["path_root"]; ok {
 				t.Error("a 401 carries the path root")
 			}
+			if r.header.Get(headerVersion) != "" {
+				t.Error("a 401 names the server version")
+			}
 		})
 	}
 }
@@ -131,8 +134,11 @@ func TestAuthorize_version(t *testing.T) {
 			if r.status != tc.want {
 				t.Fatalf("status %d, want %d: %s", r.status, tc.want, r.raw)
 			}
+			if got := r.header.Get(headerVersion); got != testVersion {
+				t.Errorf("answer names server version %q, want %q", got, testVersion)
+			}
 			if tc.want == http.StatusUpgradeRequired && !strings.Contains(r.str("error"),
-				"install grelot v1.1.0 from https://github.com/cplieger/grelot/releases/tag/v1.1.0") {
+				"install grelot v1.1.0-dev.4 with go install github.com/cplieger/grelot@v1.1.0-dev.4 or from https://github.com/cplieger/grelot/releases/tag/v1.1.0-dev.4") {
 				t.Errorf("426 %q does not name the server's release download", r.str("error"))
 			}
 		})

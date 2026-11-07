@@ -145,7 +145,7 @@ The client's watcher, `grelot watch`, waits on the server and delivers each noti
 | `hold` | none | How long one run waits before it prints `idle`, for a tool that polls the command. An `exit` door then exits 0, and a `stdout` door goes on |
 | `idle` | none | What is printed when `hold` lapses. `hold` and `idle` go together |
 
-The end line says why the watcher stopped:
+The end line says why the watcher stopped: `ended` after the session's end report, `none` or `dormant` when the session has no live identity, and `upgrade` when the server refuses this client's inbox ack:
 
 ```text
 [grelot:end] grelot (automated, not the user): this watcher stopped (ended); run grelot me
