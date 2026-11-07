@@ -35,7 +35,7 @@ curl.exe -fL -o "$env:USERPROFILE\.codex\rules\grelot.rules" "$base/grelot.rules
 
 Codex checks the rule's examples when it loads the file, so a broken file shows as an error at startup.
 
-The rule applies only when every command in the shell call starts with `grelot`. `grelot inbox && grelot me` runs outside the sandbox, but `grelot inbox | head` takes Codex's normal approval and sandbox path. Ask the agent to run each `grelot` command on its own.
+The rule applies only when every command in the shell call starts with `grelot`. `grelot inbox && grelot me` runs outside the sandbox, but `grelot inbox | head` takes Codex's normal approval and sandbox path. Ask the agent to run each `grelot` command on its own. In PowerShell a post's body comes through a pipe, such as `Get-Content body.md | grelot post`, so each such post takes the approval path once.
 
 On Windows, Codex runs each command inside PowerShell, and checks it against the rule only when it can parse every word. A bare word that starts with a digit but is not a whole number (`15m`, `2h`), or that holds `@`, `,`, `$`, a quote or a bracket, makes it fall back to the sandbox. Write durations as `--ttl=2h` and quote such words, such as `'@name'` and `'name,paths'`. `grelot help` tells agents the same. A rule on `pwsh -Command` instead would allow every PowerShell script, so do not write one.
 

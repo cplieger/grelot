@@ -137,8 +137,8 @@ type watcher struct {
 	cannotAck func() string
 }
 
-// polled is what one poll came to: a nudge, the end reason of a 410, or
-// neither when a door's hold lapsed.
+// polled is what one poll came to: a nudge, an end reason (a 410's code,
+// or upgrade), or neither when a door's hold lapsed.
 type polled struct {
 	nudge *client.Nudge
 	end   string

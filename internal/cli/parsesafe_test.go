@@ -75,13 +75,14 @@ var (
 	placeholder = regexp.MustCompile(`<[^<>]*>`)
 )
 
-// filled is cmd as an agent runs it: optional "[...]" groups outside quotes
-// dropped, list tails and placeholders filled, a here-document dropped.
+// filled is cmd as an agent runs it with every option given: the brackets
+// of optional "[...]" groups outside quotes dropped, list tails and
+// placeholders filled, a here-document dropped.
 func filled(cmd string) string {
 	cmd, _, _ = strings.Cut(cmd, " <<")
 	cmd = listTail.ReplaceAllString(cmd, ",x")
 	var b strings.Builder
-	quote, depth := byte(0), 0
+	quote := byte(0)
 	for i := range len(cmd) {
 		c := cmd[i]
 		switch {
@@ -91,30 +92,27 @@ func filled(cmd string) string {
 			}
 		case c == '\'' || c == '"':
 			quote = c
-		case c == '[':
-			depth++
-			continue
-		case c == ']' && depth > 0:
-			depth--
+		case c == '[' || c == ']':
 			continue
 		}
-		if depth == 0 {
-			b.WriteByte(c)
-		}
+		b.WriteByte(c)
 	}
 	return placeholder.ReplaceAllStringFunc(b.String(), func(p string) string {
-		switch p {
-		case "<d>", "<d|time>":
+		switch {
+		case p == "<d>" || p == "<d|time>":
 			return "2h"
-		case "<name>", "<its name>":
+		case p == "<name>" || p == "<its name>":
 			return "toolbelt-dev"
+		case strings.Contains(p, ","):
+			return "x,x"
 		}
 		return "x"
 	})
 }
 
 // commands are the grelot commands in a markdown text: every inline code
-// span and every code-block segment that starts with "grelot ".
+// span that starts with "grelot ", and every segment of a code-block line
+// that holds one, since a pipe's other segments run in the same call.
 func commands(text string) []string {
 	var out []string
 	inBlock := false
@@ -125,10 +123,8 @@ func commands(text string) []string {
 			continue
 		}
 		if inBlock {
-			for seg := range strings.SplitSeq(line, " | ") {
-				if seg = strings.TrimSpace(seg); strings.HasPrefix(seg, "grelot ") {
-					out = append(out, seg)
-				}
+			if strings.HasPrefix(line, "grelot ") || strings.Contains(line, "| grelot ") {
+				out = append(out, line)
 			}
 			continue
 		}
@@ -201,13 +197,19 @@ var (
 var chain = regexp.MustCompile(` (\|\||&&|\|) `)
 
 // checkParseSafe fails for each command in cmds whose filled form holds a
-// word Codex's parser refuses. A synopsis's "a|b" is a choice, so each
-// alternative is checked as the word an agent writes.
+// word Codex's parser refuses, or a pipe segment that is not a command:
+// the parser refuses source outside command nodes (source_is_covered_by_commands),
+// such as a quoted string or a variable piped in. A synopsis's "a|b" is a
+// choice, so each alternative is checked as the word an agent writes.
 func checkParseSafe(t *testing.T, where string, cmds []string) {
 	t.Helper()
 	for _, cmd := range cmds {
 		for _, part := range chain.Split(filled(cmd), -1) {
-			for _, w := range shellWords(part) {
+			words := shellWords(part)
+			if len(words) > 0 && strings.ContainsAny(words[0][:1], "'\"$@([0123456789") {
+				t.Errorf("%s: %q: a pipe segment that is not a command, %q", where, cmd, words[0])
+			}
+			for _, w := range words {
 				alts := []string{w}
 				if w[0] != '\'' && w[0] != '"' {
 					alts = strings.Split(w, "|")
@@ -232,7 +234,7 @@ func TestUnsafeWord(t *testing.T) {
 			t.Errorf("unsafeWord(%q) refuses = %v, want %v", word, got, want)
 		}
 	}
-	if got := filled("grelot post @<name> --paths <path>[,<path>...] --ttl <d> [--by <d>] <<'EOF'"); got != "grelot post @toolbelt-dev --paths x,x --ttl 2h " {
+	if got := filled("grelot post @<name> --paths <path>[,<path>...] --ttl <d> [--by <d>] [--fields <a,b>] <<'EOF'"); got != "grelot post @toolbelt-dev --paths x,x --ttl 2h --by 2h --fields x,x" {
 		t.Errorf("filled = %q", got)
 	}
 }
@@ -281,9 +283,15 @@ func TestHints_everyCommandIsParseSafe(t *testing.T) {
 		if strings.HasSuffix(f, ".go") {
 			checkParseSafe(t, f+" literals", literalCommands(t, b))
 		}
-		for _, m := range bareForm.FindAllString(text, -1) {
-			t.Errorf("%s: %q: write --ttl=<d> and quote '@name'", f, m)
-		}
+		checkBareForms(t, f, text)
+	}
+	checkBareForms(t, "manual", manual)
+}
+
+func checkBareForms(t *testing.T, where, text string) {
+	t.Helper()
+	for _, m := range bareForm.FindAllString(text, -1) {
+		t.Errorf("%s: %q: write --ttl=<d> and quote '@name'", where, m)
 	}
 }
 

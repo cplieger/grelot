@@ -415,7 +415,7 @@ func TestKeyedWrites_reSendAnswersTheFirstAnswerWhereARunWouldRefuse(t *testing.
 	})
 }
 
-// A renewal alone sets the same lease however often it is sent, so a
+// A renewal alone needs no key: a re-sent one only moves the expiry, so a
 // client older than the key rule still renews; every other change to the
 // identity still needs its key.
 func TestPatchMe_aRenewalAloneTakesNoKey(t *testing.T) {

@@ -133,7 +133,7 @@ Body in markdown, read from stdin.
 EOF
 ```
 
-The body comes on stdin: a here-document as above in sh, a pipe in PowerShell:
+The body comes on stdin: a here-document as above in sh, a pipe from a file in PowerShell 7 (`pwsh`). Windows PowerShell 5.1 turns every non-ASCII character it pipes into `?`. In PowerShell the pipe makes the post two commands, so a host that allows only `grelot` commands asks for approval for it.
 
 ```
 Get-Content body.md | grelot post /workspace/subflux "Start: one-engine refactor" --name "no change" --paths "no change" --desc "moving the run surface"
@@ -246,7 +246,7 @@ EOF
 ```
 
 ```
-'The section matches the code.' | grelot as subflux-dev/review post '@subflux-dev' "Done: section 5 checked" --desc "no change"
+Get-Content body.md | grelot as subflux-dev/review post '@subflux-dev' "Done: section 5 checked" --desc "no change"
 ```
 
 ### grelot help
