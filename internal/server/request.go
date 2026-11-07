@@ -114,9 +114,10 @@ func (s *Server) keyed(fn keyedFunc) http.Handler {
 }
 
 // renewable is keyed for PATCH /v1/me, which also takes a renewal alone,
-// {ttl, where}, with no key: it sets the same lease however often it is
-// sent, so a client older than the key rule still renews and its identity
-// never goes dormant over the client's upgrade.
+// {ttl, where}, with no key: a re-sent renewal only moves the expiry to
+// ttl after the later send, so it needs no dedup, and a client older than
+// the key rule still renews and its identity never goes dormant over the
+// client's upgrade.
 func (s *Server) renewable(fn keyedFunc) http.Handler {
 	return s.identityFor(func(r *http.Request, c store.Caller) (int, any, error) {
 		if _, sent := r.Header[headerKey]; !sent {

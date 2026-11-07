@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"go/scanner"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -146,6 +149,53 @@ func spans(text string) []string {
 	return out
 }
 
+// literalCommands are the grelot commands in a Go source's string
+// literals: each run from "grelot <verb> " to the end of its clause, so a
+// usage error or a hint printed outside a backtick span is checked too.
+func literalCommands(t *testing.T, src []byte) []string {
+	t.Helper()
+	fset := token.NewFileSet()
+	var s scanner.Scanner
+	s.Init(fset.AddFile("", fset.Base(), len(src)), src, nil, 0)
+	var out []string
+	for {
+		_, tok, lit := s.Scan()
+		if tok == token.EOF {
+			return out
+		}
+		if tok != token.STRING {
+			continue
+		}
+		text, err := strconv.Unquote(lit)
+		if err != nil {
+			t.Fatalf("unquote %s: %v", lit, err)
+		}
+		for _, m := range literalCommand.FindAllStringIndex(text, -1) {
+			if _, ok := verbs[strings.Fields(text[m[0]:])[1]]; !ok {
+				continue
+			}
+			cmd := text[m[0]:]
+			// A placeholder's own words ("<what and why>") never end it.
+			masked := placeholder.ReplaceAllStringFunc(cmd, func(p string) string {
+				return strings.Repeat("x", len(p))
+			})
+			if i := clauseEnd.FindStringIndex(masked); i != nil {
+				cmd = cmd[:i[0]]
+			}
+			out = append(out, cmd)
+		}
+	}
+}
+
+var (
+	// literalCommand is where a command may start in a string literal.
+	literalCommand = regexp.MustCompile(`\bgrelot [a-z-]+(\s|$)`)
+	// clauseEnd is where a command in prose stops: a closing backtick, a
+	// line end, the comma or semicolon that starts the next clause, a
+	// parenthesis, or a word that joins the command to the sentence.
+	clauseEnd = regexp.MustCompile("`|\n|, |; | \\(|\\)| (in|for|to|and|or|if|when) ")
+)
+
 // chain splits a shell line at the " | " and " && " that Codex's parser
 // reads as separators between commands.
 var chain = regexp.MustCompile(` (\|\||&&|\|) `)
@@ -199,7 +249,8 @@ func TestManual_everyCommandIsParseSafe(t *testing.T) {
 
 // bareForm is a refused word in plain prose, outside a backtick span: a
 // bare duration after its flag, or an unquoted @name after a flag or post.
-var bareForm = regexp.MustCompile(`--(ttl|timeout|by|since|until) [<0-9]|(post|--from|--with|--notify-read|--allow-agent|--deny-agent) @`)
+// A format verb counts as a duration: the value it prints is one.
+var bareForm = regexp.MustCompile(`--(ttl|timeout|by|since|until) [<0-9%]|(post|--from|--with|--notify-read|--allow-agent|--deny-agent) @`)
 
 // TestHints_everyCommandIsParseSafe holds the commands the client's lines,
 // the provider files and the docs print to the same forms as the manual.
@@ -227,8 +278,32 @@ func TestHints_everyCommandIsParseSafe(t *testing.T) {
 		} else {
 			checkParseSafe(t, f, spans(text))
 		}
+		if strings.HasSuffix(f, ".go") {
+			checkParseSafe(t, f+" literals", literalCommands(t, b))
+		}
 		for _, m := range bareForm.FindAllString(text, -1) {
 			t.Errorf("%s: %q: write --ttl=<d> and quote '@name'", f, m)
 		}
+	}
+}
+
+// TestManual_hereDocumentHasAPipeForm keeps the manual usable from a shell
+// with no here-document: a section whose example feeds the body with <<
+// also shows the body piped in, a form PowerShell runs too.
+func TestManual_hereDocumentHasAPipeForm(t *testing.T) {
+	sections := strings.Split(manual, "\n### ")
+	n := 0
+	for _, sec := range sections[1:] {
+		if !strings.Contains(sec, " <<'EOF'") {
+			continue
+		}
+		n++
+		if !strings.Contains(sec, " | grelot ") {
+			head, _, _ := strings.Cut(sec, "\n")
+			t.Errorf("%s: the body comes only from a here-document; show it piped in too", head)
+		}
+	}
+	if n == 0 {
+		t.Fatal("found no here-document example in the manual")
 	}
 }

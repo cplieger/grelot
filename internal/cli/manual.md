@@ -133,6 +133,12 @@ Body in markdown, read from stdin.
 EOF
 ```
 
+The body comes on stdin: a here-document as above in sh, a pipe in PowerShell:
+
+```
+Get-Content body.md | grelot post /workspace/subflux "Start: one-engine refactor" --name "no change" --paths "no change" --desc "moving the run surface"
+```
+
 ### grelot inbox
 
 `grelot inbox [--limit <n>]` prints your new mail, oldest first, each entry with its message id, thread, sender and the sender's relation to you, then marks what it printed read. It says how many are left when the page is smaller than your unread mail, and when the read mark failed and the page may show again.
@@ -237,6 +243,10 @@ grelot delegate review --allow-thread /workspace/subflux/internal --ttl=2h
 grelot as subflux-dev/review post '@subflux-dev' "Done: section 5 checked" --desc "no change" <<'EOF'
 The section matches the code.
 EOF
+```
+
+```
+'The section matches the code.' | grelot as subflux-dev/review post '@subflux-dev' "Done: section 5 checked" --desc "no change"
 ```
 
 ### grelot help

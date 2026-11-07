@@ -57,7 +57,7 @@ func (r *run) post(ctx context.Context, args []string) error {
 		return err
 	}
 	if len(rest) != 2 {
-		return usagef(r.verb, "name the target and the subject: grelot post <announce|path|'@name'> <subject> --name <n> --paths <p> --desc <d>, the body on stdin")
+		return usagef(r.verb, "name the target and the subject: grelot post <announce|path|'@name'> <subject> --name <name> --paths '<path>[,<path>...]' --desc <text>, the body on stdin")
 	}
 	if ferr := r.requireFields(*name, *desc, paths); ferr != nil {
 		return ferr
