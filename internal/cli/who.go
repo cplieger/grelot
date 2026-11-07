@@ -13,13 +13,19 @@ import (
 	"github.com/cplieger/grelot/internal/client"
 )
 
-// pathParam is the query parameter that names a path in grelot form.
-const pathParam = "path"
+const (
+	// pathParam is the query parameter that names a path in grelot form.
+	pathParam = "path"
+	// fieldsParam is the query parameter that picks the answer's fields.
+	fieldsParam = "fields"
+	// identitiesPath lists the server's identities.
+	identitiesPath = "/v1/identities"
+)
 
 func (r *run) who(ctx context.Context, args []string) error {
 	fs := flags(r.verb)
 	asJSON := fs.Bool("json", false, "")
-	text := map[string]*string{"repo": fs.String("repo", "", ""), "fields": fs.String("fields", "", "")}
+	text := map[string]*string{"repo": fs.String("repo", "", ""), fieldsParam: fs.String(fieldsParam, "", "")}
 	local := map[string]*string{pathParam: fs.String("path", "", ""), "holds": fs.String("holds", "", ""), "queued": fs.String("queued", "", "")}
 	set := map[string]*bool{"online": fs.Bool("online", false, ""), "here": fs.Bool("here", false, ""), "all": fs.Bool("all", false, "")}
 	rest, err := parse(fs, args)
@@ -47,7 +53,7 @@ func (r *run) who(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := a.Do(ctx, r.bounded(&client.Request{Method: http.MethodGet, Path: "/v1/identities", Query: q}), nil)
+	resp, err := a.Do(ctx, r.bounded(&client.Request{Method: http.MethodGet, Path: identitiesPath, Query: q}), nil)
 	if err != nil {
 		return err
 	}

@@ -23,15 +23,15 @@ func refuseAck(r *http.Request) bool {
 }
 
 // skewPair is watchPair on a newer server that refuses every ack.
-func skewPair(t *testing.T) (ts *testServer, reader, writer *agent) {
+func skewPair(t *testing.T) (reader, writer *agent) {
 	t.Helper()
-	ts = newServerAt(t, newerServer, refuseAck)
+	ts := newServerAt(t, newerServer, refuseAck)
 	ts.clock.run()
 	reader = newAgent(t, ts, "s-reader", "")
 	reader.env.Providers = providerSet(t, "alpha", alphaDoors, "beta", betaFile)
 	reader.must("register", "reader-dev", "--paths", "/workspace/reader", "--desc", "reading", "--ttl", "2h")
 	writer, _ = registerAt(t, ts, "s-writer", "writer-dev")
-	return ts, reader, writer
+	return reader, writer
 }
 
 func TestRefusal_aNewerServersRefusalNamesTheUpgrade(t *testing.T) {
@@ -48,7 +48,7 @@ func TestRefusal_aNewerServersRefusalNamesTheUpgrade(t *testing.T) {
 }
 
 func TestInbox_aRefusedAckNamesTheUpgrade(t *testing.T) {
-	_, reader, writer := skewPair(t)
+	reader, writer := skewPair(t)
 	writer.postTo("@reader-dev", "hello")
 	out := reader.must("inbox")
 	if want := "grelot: the server refused the ack, so this page shows again and no watcher wakes for it: " + upgrade + "\n"; !strings.Contains(out, "hello") || !strings.HasSuffix(out, want) {
@@ -62,7 +62,7 @@ func TestInbox_aRefusedAckNamesTheUpgrade(t *testing.T) {
 func TestWatch_stopsOnceTheServerRefusesItsAck(t *testing.T) {
 	end := transport.EndLine(endUpgrade)
 	t.Run("started after the refusal", func(t *testing.T) {
-		_, reader, writer := skewPair(t)
+		reader, writer := skewPair(t)
 		writer.postTo("@reader-dev", "hello")
 		reader.must("inbox")
 		w := reader.start("watch", "--door", "poll")
@@ -79,7 +79,7 @@ func TestWatch_stopsOnceTheServerRefusesItsAck(t *testing.T) {
 	t.Run("running at the refusal", func(t *testing.T) {
 		defer func(d time.Duration) { maxHold = d }(maxHold)
 		maxHold = 100 * time.Millisecond
-		_, reader, writer := skewPair(t)
+		reader, writer := skewPair(t)
 		w := reader.start("watch")
 		writer.postTo("@reader-dev", "first")
 		w.waitFor(t, signal(1, 1)+"\n")

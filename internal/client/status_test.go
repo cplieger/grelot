@@ -150,8 +150,8 @@ func TestOlder(t *testing.T) {
 		{"v1.1.0", "", false},
 	} {
 		t.Run(tc.client+" against "+tc.server, func(t *testing.T) {
-			if got := Older(tc.client, tc.server); got != tc.want {
-				t.Errorf("Older(%q, %q) = %v, want %v", tc.client, tc.server, got, tc.want)
+			if got := older(tc.client, tc.server); got != tc.want {
+				t.Errorf("older(%q, %q) = %v, want %v", tc.client, tc.server, got, tc.want)
 			}
 		})
 	}

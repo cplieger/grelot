@@ -39,7 +39,7 @@ func shellWords(cmd string) []string {
 	var out []string
 	var b strings.Builder
 	quote := byte(0)
-	for i := 0; i < len(cmd); i++ {
+	for i := range len(cmd) {
 		c := cmd[i]
 		switch {
 		case quote != 0:
@@ -79,7 +79,7 @@ func filled(cmd string) string {
 	cmd = listTail.ReplaceAllString(cmd, ",x")
 	var b strings.Builder
 	quote, depth := byte(0), 0
-	for i := 0; i < len(cmd); i++ {
+	for i := range len(cmd) {
 		c := cmd[i]
 		switch {
 		case quote != 0:

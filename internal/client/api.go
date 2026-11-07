@@ -288,8 +288,8 @@ func (a *API) refusal(r *Response, server string) error {
 		Msg:  textsafe.SanitizeSingleLine(eb.Error),
 		Code: textsafe.SanitizeSingleLine(eb.Code),
 	}
-	if skewStatus[r.Code] && Older(a.version, server) {
-		ae.Upgrade = Upgrade(a.version, server)
+	if skewStatus[r.Code] && older(a.version, server) {
+		ae.Upgrade = upgradeLine(a.version, server)
 	}
 	return ae
 }

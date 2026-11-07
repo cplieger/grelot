@@ -24,10 +24,10 @@ type Facts struct {
 // or a server no longer newer, clears it.
 func CannotAck(configDir, client string) string {
 	f := LoadFacts(configDir)
-	if f.AckRefused != client || !Older(client, f.Version) {
+	if f.AckRefused != client || !older(client, f.Version) {
 		return ""
 	}
-	return Upgrade(client, f.Version)
+	return upgradeLine(client, f.Version)
 }
 
 // NoteAck records whether the server refused this client's ack as too old.

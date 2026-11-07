@@ -28,12 +28,7 @@ func (r *Resolver) ScanLocal(ctx context.Context, body string) (Finding, bool) {
 	trees := map[string]tree{}
 	checked := 0
 	for field := range strings.FieldsSeq(body) {
-		lead := strings.TrimLeft(field, "\"'`([{<")
-		if placeholder(lead) {
-			continue
-		}
-		tok := strings.TrimRight(lead, "\"'`)]}>.,;:!?")
-		p, ok := r.candidate(tok)
+		tok, p, ok := r.token(field)
 		if !ok {
 			continue
 		}
@@ -60,6 +55,19 @@ func (r *Resolver) ScanLocal(ctx context.Context, body string) (Finding, bool) {
 		return Finding{Token: tok, Canonical: path.Join(canonRoot, t.prefix, tail)}, true
 	}
 	return Finding{}, false
+}
+
+// token is field with its surrounding quotes, brackets and punctuation
+// trimmed, and p its candidate path; ok is false for a placeholder or a
+// token that is no candidate.
+func (r *Resolver) token(field string) (tok, p string, ok bool) {
+	lead := strings.TrimLeft(field, "\"'`([{<")
+	if placeholder(lead) {
+		return "", "", false
+	}
+	tok = strings.TrimRight(lead, "\"'`)]}>.,;:!?")
+	p, ok = r.candidate(tok)
+	return tok, p, ok
 }
 
 type tree struct {

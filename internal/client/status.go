@@ -38,7 +38,7 @@ func (s *Status) Line() string {
 	if s.Start != "" && strings.Contains(s.Server, wakeDown) {
 		extra = append(extra, textsafe.SanitizeSingleLine(s.Start))
 	}
-	if line := Upgrade(s.Client, s.ServerVersion); line != "" {
+	if line := upgradeLine(s.Client, s.ServerVersion); line != "" {
 		extra = append(extra, line)
 	}
 	for _, name := range s.Invalid {
@@ -53,13 +53,13 @@ func (s *Status) Line() string {
 	return strings.Join(append([]string{textsafe.SanitizeSingleLine(s.Server)}, extra...), " · ")
 }
 
-// Upgrade is the line naming the client to install for a server of
+// upgradeLine is the line naming the client to install for a server of
 // version server, "" when either is unknown or client is server's release:
 // a promoted stable image keeps its dev build's version while the
 // release's clients carry the base, so only another base, or an earlier
 // dev build of the same base, names one. The server's exact version is
 // always a tag, so the line names it.
-func Upgrade(client, server string) string {
+func upgradeLine(client, server string) string {
 	c, ok := parseVersion(client)
 	s, sok := parseVersion(server)
 	if !ok || !sok || (c.base == s.base && (c.dev < 0 || s.dev <= c.dev)) {
@@ -69,10 +69,10 @@ func Upgrade(client, server string) string {
 		" with go install github.com/cplieger/grelot@" + server + " or from " + releases + server
 }
 
-// Older reports whether client is an earlier build than server: an earlier
+// older reports whether client is an earlier build than server: an earlier
 // release base, or the same base at an earlier dev build. A release and
-// its own dev builds are neither, for the reason Upgrade gives.
-func Older(client, server string) bool {
+// its own dev builds are neither, for the reason upgradeLine gives.
+func older(client, server string) bool {
 	c, ok := parseVersion(client)
 	s, sok := parseVersion(server)
 	if !ok || !sok {

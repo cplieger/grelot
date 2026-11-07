@@ -186,8 +186,8 @@ func (r *run) revive(ctx context.Context, args []string) error {
 // none is listed; the server answers for a name it cannot revive.
 func (r *run) dormantPaths(ctx context.Context, name string) []string {
 	var got client.Peers
-	q := url.Values{"all": {"1"}, "q": {name}, "fields": {"paths,state"}}
-	if r.peek(ctx, &client.Request{Method: http.MethodGet, Path: "/v1/identities", Query: q}, &got) != nil {
+	q := url.Values{"all": {"1"}, "q": {name}, fieldsParam: {"paths,state"}}
+	if r.peek(ctx, &client.Request{Method: http.MethodGet, Path: identitiesPath, Query: q}, &got) != nil {
 		return nil
 	}
 	for i := range got.Identities {
@@ -237,8 +237,8 @@ func (r *run) meWithoutSession(ctx context.Context, why error) error {
 	if err != nil {
 		return err
 	}
-	q := url.Values{"fields": {"name"}}
-	resp, err := a.Do(ctx, r.bounded(&client.Request{Method: http.MethodGet, Path: "/v1/identities", Query: q}), nil)
+	q := url.Values{fieldsParam: {"name"}}
+	resp, err := a.Do(ctx, r.bounded(&client.Request{Method: http.MethodGet, Path: identitiesPath, Query: q}), nil)
 	if err != nil {
 		return err
 	}

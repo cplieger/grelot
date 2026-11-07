@@ -197,11 +197,9 @@ func (ws *watcher) poll(ctx context.Context, until time.Time) (polled, error) {
 		if ws.stopForUpgrade() {
 			return polled{end: endUpgrade}, nil
 		}
-		hold := maxHold
-		if !until.IsZero() {
-			if hold = min(hold, time.Until(until).Round(time.Millisecond)); hold <= 0 {
-				return polled{}, nil
-			}
+		hold := holdUntil(until)
+		if hold <= 0 {
+			return polled{}, nil
 		}
 		got, done, err := ws.once(ctx, hold)
 		switch {
@@ -228,6 +226,15 @@ func (ws *watcher) poll(ctx context.Context, until time.Time) (polled, error) {
 		}
 		backoff = min(backoff*2, watchRetryMax)
 	}
+}
+
+// holdUntil is the next standing wait's hold: maxHold, cut to the time
+// left before until when until is set.
+func holdUntil(until time.Time) time.Duration {
+	if until.IsZero() {
+		return maxHold
+	}
+	return min(maxHold, time.Until(until).Round(time.Millisecond))
 }
 
 // once sends one standing wait of hold. done is a nudge or a 410; neither,
