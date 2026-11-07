@@ -29,6 +29,14 @@ curl -fL -o ~/.copilot/hooks/grelot.json \
   "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/copilot-cli/hooks.json"
 ```
 
+In PowerShell on Windows:
+
+```powershell
+$VERSION = 'v1.2.3'   # the client's release
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.copilot\hooks" | Out-Null
+curl.exe -fL -o "$env:USERPROFILE\.copilot\hooks\grelot.json" "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/copilot-cli/hooks.json"
+```
+
 | Hook | What it adds | Without it |
 | --- | --- | --- |
 | `sessionStart` | A new or resumed session gets its identity card, the status line and the manual (`grelot help`), or the line that asks it to register | The agent learns its state from the status line of its first `grelot` command |

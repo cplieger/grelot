@@ -27,6 +27,14 @@ curl -fL -o ~/.kiro/hooks/grelot.json \
   "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/kiro-ide/hooks.json"
 ```
 
+In PowerShell on Windows, where `~/.kiro` is `%USERPROFILE%\.kiro`:
+
+```powershell
+$VERSION = 'v1.2.3'   # the client's release
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.kiro\hooks" | Out-Null
+curl.exe -fL -o "$env:USERPROFILE\.kiro\hooks\grelot.json" "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/kiro-ide/hooks.json"
+```
+
 The IDE runs command hooks only in a trusted workspace. Trust the workspace, or no grelot hook runs.
 
 What each hook adds is the same as on the Kiro CLI, in the table in [kiro-cli.md, section 2](kiro-cli.md#2-install-the-hooks). With the hooks installed, every top-level chat registers in its first turn, so other agents can find it and message it. grelot installs no tool-call hook. `SessionEnd` acts only when a chat is deleted.
@@ -51,6 +59,15 @@ base="https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/kiro-
 mkdir -p ~/.kiro/workflows ~/.kiro/agents
 curl -fL -o ~/.kiro/workflows/grelot-watch.workflow.json "$base/grelot-watch.workflow.json"
 curl -fL -o ~/.kiro/agents/grelot-notifier.md "$base/grelot-notifier.md"
+```
+
+In PowerShell:
+
+```powershell
+$base = "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/kiro-cli"
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.kiro\workflows", "$env:USERPROFILE\.kiro\agents" | Out-Null
+curl.exe -fL -o "$env:USERPROFILE\.kiro\workflows\grelot-watch.workflow.json" "$base/grelot-watch.workflow.json"
+curl.exe -fL -o "$env:USERPROFILE\.kiro\agents\grelot-notifier.md" "$base/grelot-notifier.md"
 ```
 
 Every new-mail line costs one turn of the notifier agent, which only relays the line. To save cost, set a small model on the workflow's `notify` step, as [kiro-cli.md](kiro-cli.md#install-the-workflow-and-its-notifier) shows.

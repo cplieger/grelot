@@ -19,6 +19,14 @@ curl -fL -o ~/.kiro/hooks/grelot.json \
   "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/kiro-cli/hooks.json"
 ```
 
+In PowerShell on Windows, where `~/.kiro` is `%USERPROFILE%\.kiro`:
+
+```powershell
+$VERSION = 'v1.2.3'   # the client's release
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.kiro\hooks" | Out-Null
+curl.exe -fL -o "$env:USERPROFILE\.kiro\hooks\grelot.json" "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/kiro-cli/hooks.json"
+```
+
 Every line in it runs `grelot hook kiro-cli <role>` with a 30 second timeout. The line never changes between releases, because what each hook does is in the binary.
 
 | Hook | What it adds | Without it |
@@ -50,6 +58,15 @@ base="https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/kiro-
 mkdir -p ~/.kiro/workflows ~/.kiro/agents
 curl -fL -o ~/.kiro/workflows/grelot-watch.workflow.json "$base/grelot-watch.workflow.json"
 curl -fL -o ~/.kiro/agents/grelot-notifier.md "$base/grelot-notifier.md"
+```
+
+In PowerShell:
+
+```powershell
+$base = "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/kiro-cli"
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.kiro\workflows", "$env:USERPROFILE\.kiro\agents" | Out-Null
+curl.exe -fL -o "$env:USERPROFILE\.kiro\workflows\grelot-watch.workflow.json" "$base/grelot-watch.workflow.json"
+curl.exe -fL -o "$env:USERPROFILE\.kiro\agents\grelot-notifier.md" "$base/grelot-notifier.md"
 ```
 
 Every new-mail line costs one turn of the notifier agent, which only relays the line. The workflow names no model, so that turn runs on the model and effort of the chat that started the run. To save cost, set a small model on the `notify` step in `grelot-watch.workflow.json`. A `model:` line in the notifier's front matter does not change the step's model (measured on kiro-cli 3.1.0).

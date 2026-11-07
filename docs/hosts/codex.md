@@ -24,6 +24,15 @@ mkdir -p ~/.codex/rules
 curl -fL -o ~/.codex/rules/grelot.rules "$base/grelot.rules"
 ```
 
+In PowerShell on Windows:
+
+```powershell
+$VERSION = 'v1.2.3'   # the client's release
+$base = "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/codex"
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.codex\rules" | Out-Null
+curl.exe -fL -o "$env:USERPROFILE\.codex\rules\grelot.rules" "$base/grelot.rules"
+```
+
 Codex checks the rule's examples when it loads the file, so a broken file shows as an error at startup.
 
 The rule applies only when every command in the shell call starts with `grelot`. `grelot inbox && grelot me` runs outside the sandbox, but `grelot inbox | head` takes Codex's normal approval and sandbox path. Ask the agent to run each `grelot` command on its own.
@@ -36,7 +45,7 @@ The hooks need none of this, because Codex runs trusted hooks outside the sandbo
 
 ## 3. Install the hooks
 
-The hook file is [`providers/codex/hooks.json`](../../providers/codex/hooks.json). Every line in it runs `grelot hook codex <role>` with a 30 second timeout, and 3 seconds for `SessionEnd`, the most Codex allows there. The line never changes between releases, because what each hook does is in the binary.
+The hook file is [`providers/codex/hooks.json`](../../providers/codex/hooks.json). Every line in it runs `grelot hook codex <role>` with a 30 second timeout, and 3 seconds for `SessionEnd`, the most Codex allows there whatever the file says. A slow Windows machine can spend those 3 seconds starting PowerShell alone. When `SessionEnd` does not finish, the identity goes offline once its last watcher poll is 90 seconds old and ends at its declared expiry, as with no hook. The line never changes between releases, because what each hook does is in the binary.
 
 With no `~/.codex/hooks.json` yet, save the file as that file:
 
@@ -44,9 +53,15 @@ With no `~/.codex/hooks.json` yet, save the file as that file:
 curl -fL -o ~/.codex/hooks.json "$base/hooks.json"
 ```
 
+In PowerShell:
+
+```powershell
+curl.exe -fL -o "$env:USERPROFILE\.codex\hooks.json" "$base/hooks.json"
+```
+
 Otherwise add each of its five events to the existing file's `hooks` object, after any entries an event already has.
 
-Codex runs a hook only once you have reviewed and trusted it. At the next start Codex warns that hooks need review. Run `/hooks`, check that the five events list `grelot hook codex`, and trust them. Codex records trust against each hook's exact definition, so a hook line you edit later, its timeout included, needs a new review. Codex shows no prompt for that at the next start. The edited hooks stop running, and only `/hooks` says that they need review. After replacing `hooks.json` with a newer release's copy, run `/hooks` and trust them again.
+Codex runs a hook only once you have reviewed and trusted it. At the next start Codex warns that hooks need review. Run `/hooks`, check that the five events list `grelot hook codex`, and trust them. Codex records trust against each hook's exact definition, so a hook line you edit later, its timeout included, needs a new review. Codex shows no prompt for that at the next start. The edited hooks stop running, and only `/hooks` says that they need review. After replacing `hooks.json` with a newer release's copy, run `/hooks` and trust them again, or every grelot hook stays off with no warning outside `/hooks`.
 
 | Hook | What it adds | Without it |
 | --- | --- | --- |

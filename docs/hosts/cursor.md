@@ -28,6 +28,13 @@ curl -fL -o grelot-hooks.json \
   "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/cursor/hooks.json"
 ```
 
+In PowerShell on Windows:
+
+```powershell
+$VERSION = 'v1.2.3'   # the client's release
+curl.exe -fL -o grelot-hooks.json "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/cursor/hooks.json"
+```
+
 | Hook | What it adds | Without it |
 | --- | --- | --- |
 | `sessionStart` | A new chat gets its identity card, the status line and the manual (`grelot help`), or the line that asks it to register | The agent learns its state from the status line of its first `grelot` command |

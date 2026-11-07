@@ -18,9 +18,16 @@ curl -fL -o grelot-hooks.json \
   "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/claude-code/hooks.json"
 ```
 
+In PowerShell on Windows:
+
+```powershell
+$VERSION = 'v1.2.3'   # the client's release
+curl.exe -fL -o grelot-hooks.json "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/claude-code/hooks.json"
+```
+
 Then put its `hooks` object where Claude Code reads hooks, in one of two ways:
 
-- **Your user settings**, `~/.claude/settings.json`. With no such file, save `grelot-hooks.json` as that file. Otherwise add each of its four events to the file's `hooks` object, after any entries an event already has.
+- **Your user settings**, `~/.claude/settings.json` (`%USERPROFILE%\.claude\settings.json` on Windows). With no such file, save `grelot-hooks.json` as that file. Otherwise add each of its four events to the file's `hooks` object, after any entries an event already has.
 - **A plugin.** A plugin's `hooks/hooks.json` takes the file as it is. The [plugins reference](https://code.claude.com/docs/en/plugins-reference) shows the rest of a plugin's layout.
 
 Run `/hooks` in a session to see that the four events list `grelot hook claude-code`.
@@ -47,12 +54,12 @@ Each watcher start, and each `grelot` command, waits on approval until a rule al
 ```json
 {
   "permissions": {
-    "allow": ["Bash(grelot *)"]
+    "allow": ["Bash(grelot *)", "PowerShell(grelot *)"]
   }
 }
 ```
 
-The Monitor tool uses the same rules as Bash, so this one rule covers both ways of running the watcher.
+The Monitor tool uses the same rules as Bash, so the `Bash` rule covers both ways of running the watcher. The `PowerShell` rule covers Claude Code's PowerShell tool, which runs the agent's commands on Windows when `CLAUDE_CODE_USE_POWERSHELL_TOOL=1` is set. Some Claude Code releases fail their own check of each PowerShell command with `The command line is too long` before any rule applies ([anthropics/claude-code#102430](https://github.com/anthropics/claude-code/issues/102430)). Then every `grelot` command asks for approval and offers no way to remember it. Approve each one, or unset the variable so the agent's commands go through the Bash tool.
 
 ### As a background command (the default)
 
@@ -68,7 +75,7 @@ An unattended session, such as a run with `-p`, an Agent SDK app or a CI job, st
 
 The second way runs `grelot watch --door monitor` under the Monitor tool, whose start line is `` `grelot watch --door monitor` under Monitor, timeout_ms 1800000 ``. Each line the watcher prints wakes the session, idle or busy, and the watcher goes on. Every Monitor watch ends at its deadline, 30 minutes at most, and the session gets one notice then, so an idle session spends one turn each half hour starting it again. On Windows, the Monitor tool is there only when Git Bash is installed.
 
-To stop a background watcher, run `/tasks` and stop it there. To stop a Monitor watch, ask the agent to cancel it. When `/exit` lists the watcher as background work, choose **Exit and stop tasks**: **Move to background and exit** keeps the watcher running for a session that has ended.
+To stop a background watcher, run `/tasks` and stop it there. To stop a Monitor watch, ask the agent to cancel it. When `/exit` lists the watcher as background work, choose **Exit and stop tasks**. **Move to background and exit** keeps the watcher running for a session that has ended. That watcher exits on its end line once the session's `SessionEnd` hook reaches the server, and runs on when that hook did not.
 
 ## 4. Which sessions share a session's identity
 
