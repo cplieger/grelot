@@ -1,0 +1,6 @@
+{
+  "session_id": "sess_b2131923-a2a6-4005-9993-eb80baa7a56d",
+  "hook_event_name": "UserPromptSubmit",
+  "cwd": "/tmp/work",
+  "prompt": "Reply with the single word OK. Do not run any command."
+}

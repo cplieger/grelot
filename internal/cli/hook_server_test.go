@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -26,7 +27,7 @@ func TestHookSessionStart_unregistered(t *testing.T) {
 	ts := newServer(t)
 	a := hooked(t, newAgent(t, ts, "s-1", ""))
 	code, out, errOut := a.hook("session_start", `{"session_id":"s-1","source":"startup"}`)
-	want := "grelot: not registered. Register before you start work: run `grelot help`, then `grelot register` as it says.\n"
+	want := registerStart + "\n"
 	if code != 0 || out != want || errOut != "" {
 		t.Errorf("exit %d, stdout %q, stderr %q; want 0 and only %q", code, out, errOut, want)
 	}
@@ -61,10 +62,72 @@ func TestHookSessionStart_dormantGetsTheReviveOffer(t *testing.T) {
 	hooked(t, a)
 	ts.clock.advance(3 * time.Hour)
 	code, out, _ := a.hook("session_start", `{"session_id":"s-1","source":"resume"}`)
-	if code != 0 || !strings.HasPrefix(out, "grelot: your identity toolbelt-dev expired") ||
+	if code != 0 || !strings.HasPrefix(out, "grelot: your identity @toolbelt-dev expired") ||
 		!strings.Contains(out, "grelot revive --ttl=<d>") || !strings.Contains(out, "dormant since 2026-11-05 11:00 UTC") {
 		t.Errorf("exit %d, stdout %q; want the revive offer, then the dormant card", code, out)
 	}
+}
+
+// A start prints the richest of its texts whose rendered bytes fit the
+// host's context limit: the whole text, then without the manual, then
+// without the card, the last printed whatever its size.
+func TestHookSessionStart_contextLimit(t *testing.T) {
+	const event = "    event: Start\n"
+	limited := func(limit int, template string) string {
+		file := strings.Replace(hookAlphaFile, event, event+"    context_limit: "+strconv.Itoa(limit)+"\n", 1)
+		return strings.Replace(file, `{text: "{{.Context}}"}`, template, 1)
+	}
+	start := func(t *testing.T, a *agent, file string) string {
+		t.Helper()
+		hooked(t, a, "alpha", file)
+		code, out, errOut := a.hook("session_start", `{"session_id":"s-1","source":"startup"}`)
+		if code != 0 || errOut != "" {
+			t.Fatalf("exit %d, stderr %q; want 0 and nothing on stderr", code, errOut)
+		}
+		return out
+	}
+	ts := newServer(t)
+	a, _ := registerAgent(t, ts, "s-1")
+	full := start(t, a, hookAlphaFile)
+	card := full[:strings.Index(full, "grelot: @toolbelt-dev · 0 unread")]
+	status := full[len(card) : len(card)+strings.Index(full[len(card):], "\n")+1]
+	if !strings.HasPrefix(card, "@toolbelt-dev · box") || !strings.HasSuffix(full, manual) {
+		t.Fatalf("stdout %q, want the card, the status line and the manual with no limit", full)
+	}
+	noManual := card + status + lineManualLeftOut + "\n"
+	noCard := status + lineCardLeftOut + "\n"
+
+	cases := []struct {
+		name, template, want string
+		limit                int
+	}{
+		{"the whole text at its size", `{text: "{{.Context}}"}`, full, len(full)},
+		{"no manual a byte under it", `{text: "{{.Context}}"}`, noManual, len(full) - 1},
+		{"no manual at its size", `{text: "{{.Context}}"}`, noManual, len(noManual)},
+		{"no card a byte under it", `{text: "{{.Context}}"}`, noCard, len(noManual) - 1},
+		{"no card under its own size", `{text: "{{.Context}}"}`, noCard, 10},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := start(t, a, limited(c.limit, c.template)); got != c.want {
+				t.Errorf("limit %d: stdout %q, want %q", c.limit, got, c.want)
+			}
+		})
+	}
+	t.Run("the rendered bytes count", func(t *testing.T) {
+		out := start(t, a, limited(len(noManual), `{text: '{"c":{{json .Context}}}'}`))
+		if !strings.HasPrefix(out, `{"c":`) || strings.Contains(out, "@toolbelt-dev · box") || !strings.Contains(out, "`grelot me` for your card") {
+			t.Errorf("stdout %q, want the envelope around the text without the card, whose raw bytes alone fit", out)
+		}
+	})
+	t.Run("a dormant card keeps the offer first", func(t *testing.T) {
+		ts.clock.advance(3 * time.Hour)
+		out := start(t, a, limited(2000, `{text: "{{.Context}}"}`))
+		if !strings.HasPrefix(out, "grelot: your identity @toolbelt-dev expired") || !strings.Contains(out, "dormant since ") ||
+			!strings.HasSuffix(out, lineManualLeftOut+"\n") || len(out) > 2000 {
+			t.Errorf("stdout %q, want the revive offer, the dormant card and the left-out line within 2000 bytes", out)
+		}
+	})
 }
 
 func TestHookSessionStart_takeOverHint(t *testing.T) {
@@ -75,7 +138,7 @@ func TestHookSessionStart_takeOverHint(t *testing.T) {
 		b.env.ConfigDir = a.env.ConfigDir
 		return b
 	}
-	hint := "grelot: you were toolbelt-dev before this session started; to go on as it, run `grelot register toolbelt-dev --take-over --ttl=<d>`"
+	hint := "grelot: you were @toolbelt-dev before this session started; to go on as it, run `grelot register toolbelt-dev --take-over --ttl=<d>`"
 
 	t.Run("a take_over source gets it", func(t *testing.T) {
 		b := newSession(t)
@@ -127,7 +190,7 @@ func TestHookSessionStart_takeOverEveryStart(t *testing.T) {
 			for _, stdin := range []string{`{"session_id":"s-2","source":"startup"}`, `{"session_id":"s-2"}`} {
 				b := hooked(t, newAgent(t, ts, "s-2", ""), "alpha", file)
 				b.env.ConfigDir = a.env.ConfigDir
-				if _, out, _ := b.hook("session_start", stdin); !strings.Contains(out, "you were toolbelt-dev") {
+				if _, out, _ := b.hook("session_start", stdin); !strings.Contains(out, "you were @toolbelt-dev") {
 					t.Errorf("%s: stdout %q, want the take-over hint", stdin, out)
 				}
 				if got := ts.last(t, http.MethodGet, "/v1/me"); !strings.Contains(got.URL, "proc=200%3A20") {
@@ -261,7 +324,7 @@ func TestHookSessionStart_outputStreamAndExit(t *testing.T) {
 		`outputs: {context: {text: '{"context": {{json .Context}}}', stream: stderr, exit: 3}}`, 1)
 	a := hooked(t, newAgent(t, ts, "s-1", ""), "alpha", file)
 	code, out, errOut := a.hook("session_start", `{"session_id":"s-1"}`)
-	want := `{"context": "grelot: not registered. Register before you start work: run ` + "`grelot help`, then `grelot register`" + ` as it says."}` + "\n"
+	want := `{"context": "` + registerStart + `"}` + "\n"
 	if code != 3 || out != "" || errOut != want {
 		t.Errorf("exit %d, stdout %q, stderr %q; want 3 and %q on stderr", code, out, errOut, want)
 	}

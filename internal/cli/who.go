@@ -84,7 +84,7 @@ func (r *run) canonicalQuery(ctx context.Context, q url.Values, local map[string
 func (r *run) writePeers(body []byte) error {
 	var got client.Peers
 	if err := json.Unmarshal(body, &got); err != nil {
-		return errors.New("the server's answer to GET /v1/identities is not the JSON this client reads; check that the client and server versions match with grelot me")
+		return errors.New("the server's answer to GET /v1/identities is not the JSON this client reads; check that the client and server versions match with grelot version")
 	}
 	if len(got.Identities) == 0 {
 		fmt.Fprintln(r.Stdout, "grelot: no identity matches")

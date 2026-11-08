@@ -9,18 +9,24 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"syscall"
 
 	"github.com/cplieger/grelot/internal/cli"
 	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/proctree"
 	"github.com/cplieger/grelot/internal/provider"
+	buildver "github.com/cplieger/grelot/internal/version"
 	"github.com/cplieger/grelot/internal/where"
 	"github.com/cplieger/grelot/providers"
 )
 
 // version is set at build time with -ldflags "-X main.version=<tag>".
 var version = "dev"
+
+// buildVersion is the version this binary reports; buildver.Build says
+// which.
+func buildVersion() string { return buildver.Build(version, debug.ReadBuildInfo) }
 
 // The server's two commands; serve is also what grelot runs with no
 // arguments.
@@ -65,11 +71,12 @@ func clientCommand(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	reported := buildVersion()
 	return cli.Run(ctx, &cli.Env{
 		Stdin: os.Stdin, Stdout: stdout, Stderr: stderr,
 		Lookup: os.LookupEnv, Hostname: os.Hostname, Getwd: os.Getwd, Home: os.UserHomeDir,
 		Machine: where.Machine, InContainer: where.InContainer,
 		Providers: set, Processes: proctree.System(),
-		ConfigDir: configDir, Version: version, PID: os.Getpid(),
+		ConfigDir: configDir, Version: buildver.Wire(reported), Build: reported, PID: os.Getpid(),
 	}, args)
 }

@@ -339,7 +339,7 @@ func (w *wtx) directRoute(me *identityRow, name string) (route, error) {
 	th.Kind = kindDirect
 	rt := route{thread: th, recipients: map[uint64]string{peer.ID: ""}}
 	if peer.State == stateDormant {
-		rt.notices = append(rt.notices, fmt.Sprintf("%s is dormant since %s; it gets this if it revives before %s",
+		rt.notices = append(rt.notices, fmt.Sprintf("@%s is dormant since %s; it gets this if it revives before %s",
 			peer.Name, fmtTime(peer.DormantSince), fmtTime(peer.Lease.Expires)))
 	}
 	return rt, nil

@@ -1,18 +1,20 @@
 package client
 
 import (
-	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/cplieger/go/textsafe"
 	"github.com/cplieger/grelot/internal/provider"
+	"github.com/cplieger/grelot/internal/version"
 )
 
-// wakeDown is how the server's status line says no wake reaches the
-// identity.
-const wakeDown = " · wake: down"
+// wakeShown is in the server's status line only when it names an
+// identity, and wakeDown when no wake reaches that identity.
+const (
+	wakeShown = " · wake: "
+	wakeDown  = wakeShown + "down"
+)
 
 // releases is where the status line sends a client of another release.
 const releases = "https://github.com/cplieger/grelot/releases/tag/"
@@ -28,6 +30,9 @@ type Status struct {
 	// Client and ServerVersion are compared by release base.
 	Client        string
 	ServerVersion string
+	// HooksLost is the provider's fix for hooks that did not run in this
+	// session, appended when the server's line names an identity.
+	HooksLost string
 	// Invalid lists the provider files that failed to load.
 	Invalid []string
 }
@@ -37,6 +42,9 @@ func (s *Status) Line() string {
 	var extra []string
 	if s.Start != "" && strings.Contains(s.Server, wakeDown) {
 		extra = append(extra, textsafe.SanitizeSingleLine(s.Start))
+	}
+	if s.HooksLost != "" && strings.Contains(s.Server, wakeShown) {
+		extra = append(extra, "grelot's hooks did not run in this session; ask the user to "+textsafe.SanitizeSingleLine(s.HooksLost))
 	}
 	if line := upgradeLine(s.Client, s.ServerVersion); line != "" {
 		extra = append(extra, line)
@@ -60,54 +68,29 @@ func (s *Status) Line() string {
 // dev build of the same base, names one. The server's exact version is
 // always a tag, so the line names it.
 func upgradeLine(client, server string) string {
-	c, ok := parseVersion(client)
-	s, sok := parseVersion(server)
-	if !ok || !sok || (c.base == s.base && (c.dev < 0 || s.dev <= c.dev)) {
+	c, ok := version.Parse(client)
+	s, sok := version.Parse(server)
+	if !ok || !sok || (c.Release == s.Release && (c.Dev < 0 || s.Dev <= c.Dev)) {
 		return ""
 	}
 	return "this client is " + client + " and the server " + server + ": install grelot " + server +
-		" with go install github.com/cplieger/grelot@" + server + " or from " + releases + server
+		" with go install github.com/cplieger/grelot@" + server + " or from " + releases + server +
+		", then check both with grelot version"
 }
 
 // older reports whether client is an earlier build than server: an earlier
 // release base, or the same base at an earlier dev build. A release and
 // its own dev builds are neither, for the reason upgradeLine gives.
 func older(client, server string) bool {
-	c, ok := parseVersion(client)
-	s, sok := parseVersion(server)
+	c, ok := version.Parse(client)
+	s, sok := version.Parse(server)
 	if !ok || !sok {
 		return false
 	}
-	if order := slices.Compare(c.parts[:], s.parts[:]); order != 0 {
+	if order := slices.Compare(c.Release[:], s.Release[:]); order != 0 {
 		return order < 0
 	}
-	return c.dev >= 0 && s.dev > c.dev
-}
-
-var versionPattern = regexp.MustCompile(`^v(\d{1,9})\.(\d{1,9})\.(\d{1,9})(?:-dev\.(\d{1,9}))?$`)
-
-// version is a parsed vX.Y.Z or vX.Y.Z-dev.N; dev is -1 for a release.
-type version struct {
-	base  string
-	parts [3]int
-	dev   int
-}
-
-// parseVersion reads v; an unstamped "dev" build, or anything else, is
-// not a version.
-func parseVersion(v string) (version, bool) {
-	m := versionPattern.FindStringSubmatch(v)
-	if m == nil {
-		return version{}, false
-	}
-	out := version{base: strings.SplitN(v, "-", 2)[0], dev: -1}
-	for i := range out.parts {
-		out.parts[i], _ = strconv.Atoi(m[i+1])
-	}
-	if m[4] != "" {
-		out.dev, _ = strconv.Atoi(m[4])
-	}
-	return out, true
+	return c.Dev >= 0 && s.Dev > c.Dev
 }
 
 // FirstStart is the start line of p's first layer-2 door, "" when it has

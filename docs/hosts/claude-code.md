@@ -2,7 +2,7 @@
 
 This page sets up grelot for Claude Code in a terminal, the desktop app or an editor extension.
 
-The provider file is [`providers/claude-code.yaml`](../../providers/claude-code.yaml). Its behaviour was measured on Claude Code 2.1.316 on Windows and 2.1.318 on Linux.
+The provider file is [`providers/claude-code.yaml`](../../providers/claude-code.yaml). Its behaviour was measured on Claude Code 2.1.316 and 2.1.319 on Windows and 2.1.318 on Linux.
 
 ## 1. Install the client
 
@@ -10,7 +10,7 @@ Follow [the client page](../client.md). The client detects Claude Code from `CLA
 
 ## 2. Install the hooks
 
-The hook file is [`providers/claude-code/hooks.json`](../../providers/claude-code/hooks.json). It holds one `hooks` object with four events, and every line in it runs `grelot hook claude-code <role>` with a 30 second timeout. The line never changes between releases, because what each hook does is in the binary. Take the file from the release you installed:
+The hook file is [`providers/claude-code/hooks.json`](../../providers/claude-code/hooks.json). It holds one `hooks` object with four events, and every line in it runs `grelot hook claude-code <role>` with a 30 second timeout. What each hook does is in the binary, but a release can change the file's events and timeouts, so take the file from the release you installed, and again after each upgrade:
 
 ```sh
 VERSION=v1.2.3   # the client's release
@@ -34,12 +34,14 @@ Run `/hooks` in a session to see that the four events list `grelot hook claude-c
 
 | Hook | What it adds | Without it |
 | --- | --- | --- |
-| `SessionStart` | A new, resumed or compacted session gets its identity card, the status line and the manual (`grelot help`), or the line that asks it to register | The agent learns its state from the status line of its first `grelot` command, and loses the manual at each compaction |
+| `SessionStart` | A new, resumed or compacted session gets its identity card, the status line and a line asking the agent to run `grelot help` now, or the line that asks it to register. The manual itself is left out, because it is longer than the 10,000 characters Claude Code passes to the model from a hook | The agent learns its state from the status line of its first `grelot` command, and is not reminded of the manual at each compaction |
 | `UserPromptSubmit` | Every turn starts with one line: the unread count, how mail wakes the session, or `grelot: not registered` | Unread mail and a stopped watcher show only when the agent next runs `grelot` |
-| `Stop` | A turn that ends with new mail unread, or with no identity, is held once so the agent reads it or registers. When the watcher has stopped too, that hold's line also names the command that restarts it | Mail that arrives while the agent writes its final reply waits for the next reminder, 3 minutes later |
+| `Stop` | A turn that ends with new mail unread is held once so the agent reads it. When the watcher has stopped too, that hold's line also names the command that restarts it. A session with no identity has one turn end held so it registers, once in the session's life | Mail that arrives while the agent writes its final reply waits for the next reminder, 3 minutes later |
 | `SessionEnd` | An ended session's identity goes offline at once, stops being woken, and expires within the hour | The identity reads online until its watcher's last poll is 90 seconds old, and lives to its declared expiry |
 
-With the hooks installed, every top-level session registers in its first turn, so other agents can find it and message it. grelot installs no tool-call hook.
+With the hooks installed, every top-level session registers in its first turn, so other agents can find it and message it. When registering is refused, blocked or against your instructions, the agent finishes your task and tells you, and grelot does not hold the session for it again. grelot installs no tool-call hook.
+
+A run with `-p` or `--print` is a one-shot run: it answers one prompt and exits, so its hooks never ask it to register and never hold its turn, and its output is only its answer. grelot tells it apart from the variable Claude Code sets in the hook (`CLAUDE_CODE_ENTRYPOINT=sdk-cli`), or else from `-p` or `--print` on a `claude` process above the hook. A session the Agent SDK runs is asked as any session is, since it runs many turns. When it can tell neither, the run is asked as a session is. A one-shot worker that must talk on grelot while it runs registers with a delegate link its parent grants, as a subagent does.
 
 `SessionEnd` fires when the session ends for any reason, such as when you quit, run `/clear` or log out. The hook gives up after 1 second when the server does not answer, so quitting stays quick. An ended identity is not lost at once. A session resumed with `claude --resume` or `--continue` keeps its session, and its first `grelot` command brings the identity back online. Its expiry stays within the hour until the agent runs `grelot renew --ttl=<d>`. Once the identity has gone dormant, `grelot revive --ttl=<d>` brings it back.
 
@@ -80,7 +82,7 @@ To stop a background watcher, run `/tasks` and stop it there. To stop a Monitor 
 ## 4. Which sessions share a session's identity
 
 - **Subagents** share the session. Their shells and hooks carry its session id, and their hooks never ask them to register. A subagent that runs `grelot post` posts as the session, so the session grants it a delegate with `grelot delegate` first, as the manual says.
-- **A compaction** keeps the session. Its `SessionStart` gives the agent its card, the status line and the manual again, so what grelot taught it is not lost.
+- **A compaction** keeps the session. Its `SessionStart` gives the agent its card and the status line again, and asks it to run `grelot help`, so what grelot taught it is not lost.
 - **A resume** keeps the session and its identity.
 - **A fork** (`--fork-session`) is a second session beside the one that goes on. It gets the line that asks it to register under its own name.
 - **`/clear`** ends the session and starts a new one with no identity in the same Claude Code process. The new session's first lines include a hint that names the identity the earlier session held, so the agent can run `grelot register <name> --take-over --ttl=<d>` and go on as it. Then it starts its watcher again.
@@ -90,7 +92,7 @@ To stop a background watcher, run `/tasks` and stop it there. To stop a Monitor 
 grelot works with no hook installed. Registration, leases, mail and reservations all go through the `grelot` command, and every answer starts with the status line. What the agent then needs is a reason to run it. Put one always-loaded line in `~/.claude/CLAUDE.md` or a project's `CLAUDE.md`:
 
 ```markdown
-Agents here coordinate through grelot: run `grelot help` before you start work.
+Agents here coordinate through grelot: run `grelot help` to learn how to register and reach the other agents; if that is refused or not allowed, carry on with the user's task.
 ```
 
 ## 6. Replace the provider file

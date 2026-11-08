@@ -16,6 +16,11 @@ const (
 	markReplaced = "replaced"
 	// MarkOnce is a role's first print for a session, for a role under once.
 	MarkOnce = "once"
+	// MarkHostHooked is a hook run of a host on this machine, keyed by the
+	// provider's name, and MarkSessionHooked one of a session, keyed by the
+	// session as the CLI sends it (<provider>:<id>).
+	MarkHostHooked    = "hooks"
+	MarkSessionHooked = "hooked"
 )
 
 // markLife is how long a mark is kept after it was last set; a session
@@ -55,14 +60,18 @@ func (m *Marks) Has(kind, key string) bool {
 	return ok
 }
 
-// When is the time the mark was last set.
+// When is the time the mark was last set. A mark set over markLife ago is
+// absent, whether or not a write has pruned it yet.
 func (m *Marks) When(kind, key string) (time.Time, bool) {
 	data, err := statefile.Read(m.file(kind, key), 64)
 	if err != nil || data == nil {
 		return time.Time{}, false
 	}
 	t, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(string(data)))
-	return t, err == nil
+	if err != nil || m.now().Sub(t) > markLife {
+		return time.Time{}, false
+	}
+	return t, true
 }
 
 // Set sets the mark to now and drops the marks not set within markLife.
@@ -73,6 +82,18 @@ func (m *Marks) Set(kind, key string) {
 	}
 	_ = statefile.Replace(m.file(kind, key), []byte(m.now().UTC().Format(time.RFC3339Nano)+"\n"))
 	m.prune()
+}
+
+// Touch sets the mark unless it was set within every, so a caller that runs
+// often writes about once per every, and a mark it keeps touching more
+// often than markLife is never pruned.
+func (m *Marks) Touch(kind, key string, every time.Duration) {
+	if t, ok := m.When(kind, key); ok {
+		if age := m.now().Sub(t); age >= 0 && age < every {
+			return
+		}
+	}
+	m.Set(kind, key)
 }
 
 // prune reads file ages on the wall clock, which file times are kept on,

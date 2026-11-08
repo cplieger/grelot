@@ -18,6 +18,7 @@ import (
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/server"
 	"github.com/cplieger/grelot/internal/store"
+	buildver "github.com/cplieger/grelot/internal/version"
 )
 
 const listenAddr = ":9737"
@@ -71,7 +72,7 @@ func build(cfg *server.Config, logger *slog.Logger, metrics *obs.Metrics) (*stor
 	if err != nil {
 		return nil, nil, err
 	}
-	return st, server.New(&server.Options{Store: st, Logger: logger, Hub: hub, Metrics: metrics, Version: version, Config: *cfg}), nil
+	return st, server.New(&server.Options{Store: st, Logger: logger, Hub: hub, Metrics: metrics, Version: buildver.Wire(buildVersion()), Config: *cfg}), nil
 }
 
 // serve opens the store, sweeps it and serves the API on addr until ctx
@@ -92,7 +93,7 @@ func serve(ctx context.Context, cfg *server.Config, addr string, logger *slog.Lo
 	go func() {
 		swept <- st.Run(ctx, func() { srv.Beat(ctx) })
 	}()
-	logger.Info("listening", "addr", ln.Addr().String(), "version", version)
+	logger.Info("listening", "addr", ln.Addr().String(), "version", buildVersion())
 	err = httpserver.Run(ctx, srv.HTTPServer(), ln, nil,
 		httpserver.WithPreDrain(func(context.Context) { srv.Release() }))
 	cancel()

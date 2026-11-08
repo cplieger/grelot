@@ -12,6 +12,15 @@ session:
   # Hook payloads in the camelCase format, which the camelCase event names
   # below select, carry the session as sessionId.
   stdin: sessionId
+  # The CLI's own executable, which the npm package's launcher starts with
+  # the arguments it was given (read from @github/copilot 1.0.107, not run).
+  process: [copilot, copilot.exe]
+# -p PROMPT or --prompt (--prompt=PROMPT) runs one prompt and exits
+# (https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference).
+# A prompt piped in with no -p runs once too, and nothing in its arguments
+# says so.
+one_shot:
+  args: [-p, --prompt, --prompt=]
 doors:
   # The exit of an attached async shell makes the agent go on by itself, so
   # the watcher exits at each nudge and the session starts it again.
@@ -27,6 +36,9 @@ doors:
 hooks:
   session_start:
     event: sessionStart
+    # sessionStart context over the 10 MiB hook-output limit is dropped
+    # (the hooks reference above, "sessionStart / SessionStart").
+    context_limit: 10485760
     outputs:
       context: {text: '{"additionalContext":{{json .Context}}}'}
   stop:

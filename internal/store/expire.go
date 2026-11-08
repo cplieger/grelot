@@ -77,7 +77,7 @@ func warnIdentity(w *wtx, k uint64, v *identityRow) error {
 	if v.Parent != 0 {
 		verb = "grelot as " + v.Name + " renew"
 	}
-	text := fmt.Sprintf("your identity %s expires in %d min (at %s); if you are still working on %s, run `%s --ttl=%s`, otherwise do nothing",
+	text := fmt.Sprintf("your identity @%s expires in %d min (at %s); if you are still working on %s, run `%s --ttl=%s`, otherwise do nothing",
 		v.Name, left, fmtTime(v.Lease.Expires), v.Description, verb, fmtDur(v.TTL))
 	w.oweEvent(k, kindIdentityExpiring, text)
 	return nil

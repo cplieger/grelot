@@ -9,6 +9,11 @@
 # No door: nothing outside the chat can wake an idle Cursor chat today, and
 # forum reports show its background shells killed minutes after the turn
 # ends, so a watcher would not outlive the turn.
+#
+# No one_shot: the CLI's -p (--print) runs one prompt
+# (https://cursor.com/docs/cli/reference/parameters), but the CLI runs as
+# the node it bundles (its launcher script execs node), a process name no
+# session.process can claim for Cursor.
 name: cursor
 evidence: documented
 session:

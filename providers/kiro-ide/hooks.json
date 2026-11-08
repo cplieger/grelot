@@ -24,7 +24,7 @@
     {
       "name": "grelot hold for mail or registration",
       "trigger": "Stop",
-      "description": "Holds the end of a turn once when new mail is unread or the chat has not registered.",
+      "description": "Holds the end of a turn once when new mail is unread, and one turn end in the life of a chat that has not registered.",
       "action": {
         "type": "command",
         "command": "grelot hook kiro-ide stop"

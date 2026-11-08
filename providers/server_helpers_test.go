@@ -65,27 +65,55 @@ func newShell(t *testing.T, srv *testServer, name string, vars map[string]string
 	return s
 }
 
-// silentServer is a server that never answers; hits counts the requests
-// it has received.
-func silentServer(t *testing.T) (url string, hits func() int) {
+// silentServer is a server that never answers.
+type silentServer struct {
+	gaveUp chan time.Duration
+	URL    string
+	mu     sync.Mutex
+	n      int
+}
+
+func newSilentServer(t *testing.T) *silentServer {
 	t.Helper()
+	s := &silentServer{gaveUp: make(chan time.Duration, 16)}
 	release := make(chan struct{})
-	var mu sync.Mutex
-	n := 0
 	hs := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		n++
-		mu.Unlock()
+		arrived := time.Now()
+		// net/http notices a closed connection, and ends r.Context(), only
+		// once the body has been read.
+		_, _ = io.Copy(io.Discard, r.Body)
+		s.mu.Lock()
+		s.n++
+		s.mu.Unlock()
 		select {
 		case <-release:
 		case <-r.Context().Done():
+			s.gaveUp <- time.Since(arrived)
 		}
 	}))
 	t.Cleanup(hs.Close)
 	t.Cleanup(func() { close(release) })
-	return hs.URL, func() int {
-		mu.Lock()
-		defer mu.Unlock()
-		return n
+	s.URL = hs.URL
+	return s
+}
+
+// hits counts the requests the server has received.
+func (s *silentServer) hits() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.n
+}
+
+// waited is how long the client held its first unanswered request open,
+// from its arrival to the client closing it: the client's own give-up,
+// with no process start or provider load in it.
+func (s *silentServer) waited(t *testing.T) time.Duration {
+	t.Helper()
+	select {
+	case d := <-s.gaveUp:
+		return d
+	case <-time.After(10 * time.Second):
+		t.Fatal("the client never gave up its request to the silent server")
+		return 0
 	}
 }

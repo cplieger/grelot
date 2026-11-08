@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/cplieger/go/yamlenv"
 	"go.yaml.in/yaml/v4"
@@ -30,6 +31,7 @@ const (
 	keyIdle    = "idle"
 	keyURL     = "url"
 	keyHeaders = "headers"
+	keyOneShot = "one_shot"
 
 	keyDedupeWindow = "dedupe_window"
 
@@ -155,19 +157,8 @@ func presence(data []byte) (rawKeys, error) {
 }
 
 func (p *Provider) check(name string, doorSets []map[string]bool) error {
-	switch {
-	case p.Name == "":
-		return &LoadError{Key: keyName, Problem: problemRequired}
-	case !nameRE.MatchString(p.Name):
-		return &LoadError{Key: keyName, Problem: "must match " + nameRE.String()}
-	case p.Name != name:
-		return &LoadError{Key: keyName, Problem: fmt.Sprintf("is %q but the file is named %q", p.Name, name+".yaml")}
-	case p.Extends != "" && !nameRE.MatchString(p.Extends):
-		return &LoadError{Key: keyExtends, Problem: "must match " + nameRE.String()}
-	case p.Extends == p.Name:
-		return &LoadError{Key: keyExtends, Problem: "a provider cannot extend itself"}
-	case p.Extends != "" && p.set[keyDetect]:
-		return &LoadError{Key: keyDetect, Problem: "a file that extends another is chosen only by name"}
+	if err := p.checkName(name); err != nil {
+		return err
 	}
 	switch p.Evidence {
 	case "", EvidenceMeasured, EvidenceDocumented, EvidenceUnverified:
@@ -182,10 +173,74 @@ func (p *Provider) check(name string, doorSets []map[string]bool) error {
 	if err := p.Session.check(); err != nil {
 		return err
 	}
+	if err := p.OneShot.check(); err != nil {
+		return err
+	}
+	// A file that extends another may inherit session.process, so resolve
+	// checks it after the merge.
+	if p.Extends == "" {
+		if err := p.checkOneShotProcess(); err != nil {
+			return err
+		}
+	}
 	if err := checkDoors(p.Doors, doorSets); err != nil {
 		return err
 	}
 	return p.Hooks.check()
+}
+
+func (p *Provider) checkName(name string) error {
+	switch {
+	case p.Name == "":
+		return &LoadError{Key: keyName, Problem: problemRequired}
+	case !nameRE.MatchString(p.Name):
+		return &LoadError{Key: keyName, Problem: "must match " + nameRE.String()}
+	case p.Name != name:
+		return &LoadError{Key: keyName, Problem: fmt.Sprintf("is %q but the file is named %q", p.Name, name+".yaml")}
+	case p.Extends != "" && !nameRE.MatchString(p.Extends):
+		return &LoadError{Key: keyExtends, Problem: "must match " + nameRE.String()}
+	case p.Extends == p.Name:
+		return &LoadError{Key: keyExtends, Problem: "a provider cannot extend itself"}
+	case p.Extends != "" && p.set[keyDetect]:
+		return &LoadError{Key: keyDetect, Problem: "a file that extends another is chosen only by name"}
+	}
+	return nil
+}
+
+func (o *OneShot) check() error {
+	for _, name := range slices.Sorted(maps.Keys(o.Env)) {
+		key := keyOneShot + ".env." + name
+		switch values := o.Env[name]; {
+		case !envNameRE.MatchString(name):
+			return &LoadError{Key: keyOneShot + ".env", Problem: fmt.Sprintf("%q is %s", name, problemEnvName)}
+		case len(values) == 0:
+			return &LoadError{Key: key, Problem: "needs at least one value"}
+		case slices.Contains(values, ""):
+			return &LoadError{Key: key, Problem: "a value must not be empty"}
+		}
+	}
+	for i, arg := range o.Args {
+		key := fmt.Sprintf("%s.args[%d]", keyOneShot, i)
+		name, _, valued := strings.Cut(arg, "=")
+		switch {
+		case arg == "":
+			return &LoadError{Key: key, Problem: problemNotEmpty}
+		case valued && strings.Trim(name, "-") == "":
+			return &LoadError{Key: key, Problem: "needs the option's name before ="}
+		case strings.Trim(arg, "-") == "":
+			return &LoadError{Key: key, Problem: "needs the option's name"}
+		case valued && !strings.HasPrefix(arg, "-"):
+			return &LoadError{Key: key, Problem: "holds =, so it names an option and starts with -"}
+		}
+	}
+	return nil
+}
+
+func (p *Provider) checkOneShotProcess() error {
+	if len(p.OneShot.Args) > 0 && len(p.Session.Process) == 0 {
+		return &LoadError{Provider: p.Name, Key: keyOneShot + ".args", Problem: "needs session.process, the ancestors it reads"}
+	}
+	return nil
 }
 
 func (s *Session) check() error {
@@ -365,6 +420,9 @@ func (h *Hooks) check() error {
 		{key: "session_end", check: h.SessionEnd},
 		{key: "subagent_stop", check: h.SubagentStop},
 	}
+	if h.LostFix != "" && (strings.TrimSpace(h.LostFix) == "" || strings.ContainsFunc(h.LostFix, unicode.IsControl)) {
+		return &LoadError{Key: "hooks.lost_fix", Problem: "must be one line of text"}
+	}
 	for _, r := range roles {
 		if err := r.check.check(); err != nil {
 			if le, ok := errors.AsType[*LoadError](err); ok {
@@ -384,6 +442,9 @@ func (r *SessionStartRole) check() error {
 	}
 	if r.TakeOverEveryStart && r.Source != nil && len(r.Source.TakeOver) > 0 {
 		return &LoadError{Key: "take_over_every_start", Problem: "already covers every source; leave out source.take_over"}
+	}
+	if r.ContextLimit < 0 {
+		return &LoadError{Key: "context_limit", Problem: "must be a byte count, or 0 for no limit"}
 	}
 	return firstErr(r.checkRole(), r.Stdin.check(), checkOutput("outputs.context", r.Outputs.Context), r.Source.check())
 }

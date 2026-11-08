@@ -39,8 +39,11 @@ type Env struct {
 	// ConfigDir is the user config dir; grelot's files are under its grelot
 	// folder.
 	ConfigDir string
-	Version   string
-	PID       int
+	// Version is the Grelot-Version this client sends; Build is the
+	// version grelot version prints, which may be a pseudo-version.
+	Version string
+	Build   string
+	PID     int
 	// Timeout bounds each API call; zero takes the client's default.
 	Timeout time.Duration
 }
@@ -76,6 +79,7 @@ var verbs = map[string]func(*run, context.Context, []string) error{
 	"release":      (*run).release,
 	"reservations": (*run).reservations,
 	"delegate":     (*run).delegate,
+	"version":      (*run).version,
 	"watch":        (*run).watch,
 	"wait":         (*run).wait,
 	verbHook:       (*run).hook,
@@ -94,8 +98,11 @@ func Run(ctx context.Context, env *Env, args []string) int {
 	if len(args) == 0 {
 		return r.fail(usagef("", "name a command: grelot help lists them"))
 	}
-	if args[0] == "--help" || args[0] == "-h" {
+	switch args[0] {
+	case "--help", "-h":
 		args[0] = "help"
+	case "--version", "-v":
+		args[0] = "version"
 	}
 	fn, ok := verbs[args[0]]
 	if !ok {

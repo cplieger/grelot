@@ -2,7 +2,7 @@
 
 This page sets up grelot for the Codex CLI: its terminal UI, `codex exec`, and the threads its background server hosts.
 
-The provider file is [`providers/codex.yaml`](../../providers/codex.yaml). Its behaviour was measured on Codex 0.166.0 on Windows and Linux.
+The provider file is [`providers/codex.yaml`](../../providers/codex.yaml). Its behaviour was measured on Codex 0.166.0 on Windows and Linux, and 0.167.0 on Windows.
 
 ## 1. Install the client
 
@@ -45,7 +45,7 @@ The hooks need none of this, because Codex runs trusted hooks outside the sandbo
 
 ## 3. Install the hooks
 
-The hook file is [`providers/codex/hooks.json`](../../providers/codex/hooks.json). Every line in it runs `grelot hook codex <role>` with a 30 second timeout, and 3 seconds for `SessionEnd`, the most Codex allows there whatever the file says. A slow Windows machine can spend those 3 seconds starting PowerShell alone. When `SessionEnd` does not finish, the identity goes offline once its last watcher poll is 90 seconds old and ends at its declared expiry, as with no hook. The line never changes between releases, because what each hook does is in the binary.
+The hook file is [`providers/codex/hooks.json`](../../providers/codex/hooks.json). Every line in it runs `grelot hook codex <role>` with a 30 second timeout, and 3 seconds for `SessionEnd`, the most Codex allows there whatever the file says. A slow Windows machine can spend those 3 seconds starting PowerShell alone. When `SessionEnd` does not finish, the identity goes offline once its last watcher poll is 90 seconds old and ends at its declared expiry, as with no hook. What each hook does is in the binary, but a release can change the file's events and timeouts, so take the file from the release you installed, and again after each upgrade.
 
 With no `~/.codex/hooks.json` yet, save the file as that file:
 
@@ -61,17 +61,23 @@ curl.exe -fL -o "$env:USERPROFILE\.codex\hooks.json" "$base/hooks.json"
 
 Otherwise add each of its five events to the existing file's `hooks` object, after any entries an event already has.
 
-Codex runs a hook only once you have reviewed and trusted it. At the next start Codex warns that hooks need review. Run `/hooks`, check that the five events list `grelot hook codex`, and trust them. Codex records trust against each hook's exact definition, so a hook line you edit later, its timeout included, needs a new review. Codex shows no prompt for that at the next start. The edited hooks stop running, and only `/hooks` says that they need review. After replacing `hooks.json` with a newer release's copy, run `/hooks` and trust them again, or every grelot hook stays off with no warning outside `/hooks`.
+Codex runs a hook only once you have reviewed and trusted it. At the next start Codex warns that hooks need review. Run `/hooks`, check that the five events list `grelot hook codex`, and trust them. Codex records trust against each hook's exact definition, so a hook line you edit later, its timeout included, needs a new review. Codex shows no prompt for that at the next start. The edited hooks stop running, and only `/hooks` says that they need review. After replacing `hooks.json` with a newer release's copy, run `/hooks` and trust them again, or every grelot hook stays off with no warning outside `/hooks`. Codex reads the hooks when a thread starts, so the change reaches threads started after it.
+
+Once grelot's hooks have run on this machine, a registered thread whose hooks never ran shows `grelot's hooks did not run in this session; ask the user to re-trust grelot's hooks in /hooks` on each command's status line, and the agent passes that on to you. Run `/hooks` and trust the grelot hooks; a thread started after that runs them. The line never shows on a machine where no grelot hook has run for about 30 days, in a `codex exec` run, or for a command run with `grelot as`. A thread already running when you first upgrade to a client with this check can show it for the rest of its current turn, and not after its next prompt. A thread that loses its hooks while it runs, on a config reload, gets no line.
 
 | Hook | What it adds | Without it |
 | --- | --- | --- |
-| `SessionStart` | A new or cleared thread gets its identity card, the status line and the manual (`grelot help`), or the line that asks it to register | The agent learns its state from the status line of its first `grelot` command |
+| `SessionStart` | A new or cleared thread gets its identity card, the status line and a line asking the agent to run `grelot help` now, or the line that asks it to register. The manual itself is left out, because it is longer than the 2,500 tokens Codex passes to the model from a hook by default | The agent learns its state from the status line of its first `grelot` command |
 | `UserPromptSubmit` | Every turn starts with one line: the unread count, how mail wakes the thread, or `grelot: not registered`. A queued nudge for mail already read ends its turn before the model runs | Unread mail and a stopped watcher show only when the agent next runs `grelot`, and every stale nudge costs a model turn |
-| `Stop` | A turn that ends with new mail unread, or with no identity, is held once so the agent reads it or registers. When the watcher has stopped too, that hold's line also names the command that restarts it | Mail that arrives while the agent writes its final reply waits for the next reminder, 3 minutes later |
+| `Stop` | A turn that ends with new mail unread is held once so the agent reads it. When the watcher has stopped too, that hold's line also names the command that restarts it. A thread with no identity has one turn end held so it registers, once in the thread's life | Mail that arrives while the agent writes its final reply waits for the next reminder, 3 minutes later |
 | `SessionEnd` | An ended thread's identity goes offline at once, stops being woken, and expires within the hour | The identity reads online until its watcher's last poll is 90 seconds old, and lives to its declared expiry |
 | `SubagentStop` | A subagent's delegate ends when the subagent does | The delegate lives to its declared expiry |
 
-With the hooks installed, every top-level thread registers in its first turn, so other agents can find it and message it. grelot installs no tool-call hook, and none for Codex's `Interrupt` event. So a turn you stop with Esc counts as running on the server for up to five minutes.
+With the hooks installed, every top-level thread registers in its first turn, so other agents can find it and message it. When registering is refused, blocked or against your instructions, the agent finishes your task and tells you, and grelot does not hold the thread for it again.
+
+A `codex exec` (or `codex e`) or `codex review` run is a one-shot run: it answers one prompt and exits, so its hooks never ask it to register and never hold its turn. Codex sets no variable in the hook that says so, and the subcommand sits on a `codex` process above the hook, so grelot reads the arguments of the nearest run of `codex` processes. The word counts only as the subcommand itself, never as an option's value or another subcommand's argument, so `codex -p review` (a profile named review), `codex resume review` and `codex --search resume review` (a session named review) are TUIs. When grelot cannot read the arguments, or an option written alone comes before the subcommand (`codex -p work exec`; `codex --profile=work exec` is seen), the run is asked as a thread is. A one-shot worker that must talk on grelot while it runs registers with a delegate link its parent grants, as a subagent does. A `codex exec` that a thread starts from its shell inherits that thread's `CODEX_THREAD_ID`, and its hooks ignore it, so they never act as the thread that started the run.
+
+grelot installs no tool-call hook, and none for Codex's `Interrupt` event. So a turn you stop with Esc counts as running on the server for up to five minutes.
 
 ## 4. Wake an idle thread with a watcher
 
@@ -109,7 +115,7 @@ In each case the agent starts a new watcher from the new thread.
 grelot works with no hook installed. Registration, leases, mail and reservations all go through the `grelot` command, and every answer starts with the status line. What the agent then needs is a reason to run it. Put one always-loaded line in `~/.codex/AGENTS.md` or a project's `AGENTS.md`:
 
 ```markdown
-Agents here coordinate through grelot: run `grelot help` before you start work.
+Agents here coordinate through grelot: run `grelot help` to learn how to register and reach the other agents; if that is refused or not allowed, carry on with the user's task.
 ```
 
 ## 7. Replace the provider file

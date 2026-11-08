@@ -132,9 +132,9 @@ func (w *wtx) storeCard(c *card) (*messageRow, error) {
 		return nil, err
 	}
 	a := &c.about
-	subject := fmt.Sprintf("%s is now active on %s", a.Name, c.path)
+	subject := fmt.Sprintf("@%s is now active on %s", a.Name, c.path)
 	if c.kind == kindLeft {
-		subject = fmt.Sprintf("%s has left %s", a.Name, c.path)
+		subject = fmt.Sprintf("@%s has left %s", a.Name, c.path)
 	}
 	m := messageRow{
 		ID: id, Thread: th.ID, Kind: c.kind, Path: c.path, PostedAt: w.now, Lease: ls,

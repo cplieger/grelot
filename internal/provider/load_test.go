@@ -28,6 +28,11 @@ session:
     reason: createdReason
     same_agent: [rewind]
     same_agent_note: a fixed note
+one_shot:
+  env:
+    EXAMPLE_ENTRYPOINT: [batch, sdk]
+    EXAMPLE_ATTENDED: ["0"]
+  args: [-p, exec]
 doors:
   - name: watcher
     layer: 2
@@ -56,10 +61,12 @@ doors:
     transport: exec
     argv: [example, queue, --thread, '{{.Session}}', --message, '{{.Line}}']
 hooks:
+  lost_fix: re-trust the hooks in /hooks
   session_start:
     event: SessionStart
     stdin: {agent_id: agent_id}
     source: {path: source, take_over: [clear], fork: [fork]}
+    context_limit: 10000
     outputs:
       context: {text: '{{.Context}}'}
   prompt:
@@ -142,15 +149,27 @@ func TestLoadFull(t *testing.T) {
 		if h.SessionEnd == nil || h.SessionEnd.Budget != time.Second || !slices.Equal(h.SessionEnd.When["reason"], []string{"delete"}) {
 			t.Errorf("session_end = %+v", h.SessionEnd)
 		}
-		if h.SessionStart == nil || h.SessionStart.Source == nil || !slices.Equal(h.SessionStart.Source.TakeOver, []string{"clear"}) {
+		if h.SessionStart == nil || h.SessionStart.Source == nil || !slices.Equal(h.SessionStart.Source.TakeOver, []string{"clear"}) || h.SessionStart.ContextLimit != 10000 {
 			t.Errorf("session_start = %+v", h.SessionStart)
 		}
 		if h.TurnEnd == nil || h.SubagentStop == nil || h.SubagentStop.Stdin.Session != "agent_id" {
 			t.Errorf("turn_end %v, subagent_stop %+v", h.TurnEnd, h.SubagentStop)
 		}
+		if h.LostFix != "re-trust the hooks in /hooks" {
+			t.Errorf("lost_fix = %q", h.LostFix)
+		}
+	})
+	t.Run("one_shot", func(t *testing.T) {
+		o := p.OneShot
+		if !slices.Equal(o.Env["EXAMPLE_ENTRYPOINT"], []string{"batch", "sdk"}) || !slices.Equal(o.Env["EXAMPLE_ATTENDED"], []string{"0"}) || len(o.Env) != 2 {
+			t.Errorf("one_shot.env = %v", o.Env)
+		}
+		if !slices.Equal(o.Args, []string{"-p", "exec"}) {
+			t.Errorf("one_shot.args = %v", o.Args)
+		}
 	})
 	t.Run("set keys", func(t *testing.T) {
-		for _, k := range []string{"name", "detect", "session", "doors", "hooks", "notes", "evidence"} {
+		for _, k := range []string{"name", "detect", "session", "one_shot", "doors", "hooks", "notes", "evidence"} {
 			if !p.has(k) {
 				t.Errorf("Has(%q) = false", k)
 			}
@@ -249,6 +268,19 @@ func TestLoadRefuses(t *testing.T) {
 		{"hooks_without_env without env", "name: example\nsession: {stdin: session_id, hooks_without_env: true}\n", []string{"session.hooks_without_env", "needs session.env and session.stdin"}},
 		{"hooks_without_env without stdin", "name: example\nsession: {env: A, hooks_without_env: true}\n", []string{"session.hooks_without_env", "needs session.env and session.stdin"}},
 		{"process_shared without process", "name: example\nsession: {process_shared: [app-server]}\n", []string{"session.process_shared", "needs session.process"}},
+		{"lost_fix of blanks", "name: example\nhooks: {lost_fix: '  '}\n", []string{"hooks.lost_fix", "one line"}},
+		{"lost_fix of two lines", "name: example\nhooks: {lost_fix: \"open /hooks\\nthen trust\"}\n", []string{"hooks.lost_fix", "one line"}},
+		{"lost_fix with an escape", "name: example\nhooks: {lost_fix: \"open \\e[31m/hooks\"}\n", []string{"hooks.lost_fix", "one line"}},
+		{"one_shot unknown key", "name: example\none_shot: {argv: [x]}\n", []string{`"argv"`}},
+		{"one_shot env name", "name: example\none_shot: {env: {BAD-NAME: [x]}}\n", []string{"one_shot.env", `"BAD-NAME"`, "not an environment variable name"}},
+		{"one_shot env without values", "name: example\none_shot: {env: {EXAMPLE_MODE: []}}\n", []string{"one_shot.env.EXAMPLE_MODE", "at least one value"}},
+		{"one_shot env empty value", "name: example\none_shot: {env: {EXAMPLE_MODE: [batch, '']}}\n", []string{"one_shot.env.EXAMPLE_MODE", "must not be empty"}},
+		{"one_shot empty arg", "name: example\nsession: {process: [example]}\none_shot: {args: [-p, '']}\n", []string{"one_shot.args[1]", "must not be empty"}},
+		{"one_shot arg of = alone", "name: example\nsession: {process: [example]}\none_shot: {args: [--prompt=, '=']}\n", []string{"one_shot.args[1]", "name before ="}},
+		{"one_shot arg of dashes before =", "name: example\nsession: {process: [example]}\none_shot: {args: ['--=x']}\n", []string{"one_shot.args[0]", "name before ="}},
+		{"one_shot arg of dashes alone", "name: example\nsession: {process: [example]}\none_shot: {args: [-p, '--']}\n", []string{"one_shot.args[1]", "needs the option's name"}},
+		{"one_shot word holding =", "name: example\nsession: {process: [example]}\none_shot: {args: [format=json]}\n", []string{"one_shot.args[0]", "starts with -"}},
+		{"one_shot args without process", "name: example\none_shot: {args: [-p]}\n", []string{"one_shot.args", "needs session.process"}},
 		{"record without a directory", "name: example\nsession: {record: {glob: g, parent: p, reason: r}}\n", []string{"session.record", "dir_env or dir_default"}},
 		{"record without glob", "name: example\nsession: {record: {dir_default: d, parent: p, reason: r}}\n", []string{"session.record.glob"}},
 		{"record without parent", "name: example\nsession: {record: {dir_default: d, glob: g, reason: r}}\n", []string{"session.record.parent"}},
@@ -283,6 +315,7 @@ func TestLoadRefuses(t *testing.T) {
 		{"output text missing", "name: example\nhooks:\n  stop: {event: S, outputs: {block: {stream: stdout}}}\n", []string{"hooks.stop.outputs.block.text"}},
 		{"output stream", "name: example\nhooks:\n  stop: {event: S, outputs: {notice: {text: x, stream: tty}}}\n", []string{"hooks.stop.outputs.notice.stream"}},
 		{"source path missing", "name: example\nhooks:\n  session_start: {event: S, source: {take_over: [clear]}}\n", []string{"hooks.session_start.source.path"}},
+		{"context_limit below 0", "name: example\nhooks:\n  session_start: {event: S, context_limit: -1}\n", []string{"hooks.session_start.context_limit", "byte count"}},
 		{"take_over beside take_over_every_start", "name: example\nhooks:\n  session_start: {event: S, take_over_every_start: true, source: {path: source, take_over: [clear]}}\n", []string{"hooks.session_start.take_over_every_start", "source.take_over"}},
 		{"signal not RE2", "name: example\nhooks:\n  prompt: {event: P, signal: '(?<=x)'}\n", []string{"hooks.prompt.signal", "RE2"}},
 		{"signal without line group", "name: example\nhooks:\n  prompt: {event: P, signal: '^(x)$'}\n", []string{"hooks.prompt.signal", "line"}},

@@ -140,7 +140,7 @@ func TestRevive_sameSessionRefusals(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
 		mustRegister(t, s, registration(sessA, "subflux-dev", envA()))
 		_, _, err := s.Revive(t.Context(), Keyed{}, new(revival(sessA, "", envA())))
-		wantRefusal(t, err, KindConflict, "", "this session already has the live identity subflux-dev")
+		wantRefusal(t, err, KindConflict, "", "this session already has the live identity @subflux-dev")
 	})
 }
 
@@ -194,7 +194,7 @@ func TestRevive_byNameRefusalsInOrder(t *testing.T) {
 		{
 			name: "a live identity before no environment", session: sessB, target: "subflux-dev", caller: other(dmi("1"), ""),
 			setup: func(t *testing.T, s *Store) { mustRegister(t, s, registration(sessB, "other-dev", envA())) },
-			kind:  KindConflict, want: "this session already has the live identity other-dev",
+			kind:  KindConflict, want: "this session already has the live identity @other-dev",
 		},
 		{
 			name: "no environment before an unknown name", session: sessB, target: "ghost-dev", caller: other(dmi("1"), ""),
@@ -276,7 +276,7 @@ func TestRevive_aFreshRegistrationLeavesTheDormantRowRevivableByName(t *testing.
 	old := expireToDormant(t, s, clk, "subflux-dev")
 	mustRegister(t, s, registration(sessA, "subflux-two", envA()))
 	_, _, err := s.Revive(t.Context(), Keyed{}, new(revival(sessA, "subflux-dev", envA())))
-	wantRefusal(t, err, KindConflict, "", "this session already has the live identity subflux-two")
+	wantRefusal(t, err, KindConflict, "", "this session already has the live identity @subflux-two")
 	if got := mustRevive(t, s, revival(sessB, "subflux-dev", envA())); got.Identity.ID != old.ID || !got.Moved {
 		t.Errorf("revived %d moved %v, want %d moved to the new session", got.Identity.ID, got.Moved, old.ID)
 	}

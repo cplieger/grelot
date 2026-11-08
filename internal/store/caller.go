@@ -201,5 +201,5 @@ func orEnded(err error, c Caller) error {
 }
 
 func delegateEnded(handle string) *Error {
-	return &Error{Kind: KindGone, Why: "delegate_ended", Msg: fmt.Sprintf("delegate %s ended; ask your parent for a new link", handle)}
+	return &Error{Kind: KindGone, Why: "delegate_ended", Msg: fmt.Sprintf("delegate @%s ended; ask your parent for a new link", handle)}
 }

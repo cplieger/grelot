@@ -250,6 +250,60 @@ func TestMarks(t *testing.T) {
 	}
 }
 
+func TestMarks_Touch(t *testing.T) {
+	dir := t.TempDir()
+	at := time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC)
+	now := at
+	m := NewMarks(dir, func() time.Time { return now })
+	when := func() time.Time {
+		t.Helper()
+		got, ok := m.When(MarkSessionHooked, "a")
+		if !ok {
+			t.Fatal("the mark is not set")
+		}
+		return got
+	}
+	m.Touch(MarkSessionHooked, "a", time.Hour)
+	if got := when(); !got.Equal(at) {
+		t.Errorf("an absent mark: When = %v, want %v", got, at)
+	}
+	now = at.Add(59 * time.Minute)
+	m.Touch(MarkSessionHooked, "a", time.Hour)
+	if got := when(); !got.Equal(at) {
+		t.Errorf("a mark set within every: When = %v, want it kept at %v", got, at)
+	}
+	now = at.Add(time.Hour)
+	m.Touch(MarkSessionHooked, "a", time.Hour)
+	if got := when(); !got.Equal(now) {
+		t.Errorf("a mark set every ago: When = %v, want %v", got, now)
+	}
+	now = at.Add(-time.Minute)
+	m.Touch(MarkSessionHooked, "a", time.Hour)
+	if got := when(); !got.Equal(now) {
+		t.Errorf("a mark set after now: When = %v, want %v", got, now)
+	}
+	ro := ReadMarks(t.TempDir(), time.Now)
+	ro.Touch(MarkSessionHooked, "a", time.Hour)
+	if ro.Has(MarkSessionHooked, "a") {
+		t.Error("ReadMarks' Touch wrote a mark")
+	}
+}
+
+func TestMarks_expireUnpruned(t *testing.T) {
+	at := time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC)
+	now := at
+	m := NewMarks(t.TempDir(), func() time.Time { return now })
+	m.Set(MarkHostHooked, "a")
+	now = at.Add(markLife)
+	if !m.Has(MarkHostHooked, "a") {
+		t.Error("a mark set markLife ago is absent")
+	}
+	now = at.Add(markLife + time.Second)
+	if m.Has(MarkHostHooked, "a") {
+		t.Error("a mark set over markLife ago, and never pruned, is present")
+	}
+}
+
 func TestMarks_pruneDropsOldMarks(t *testing.T) {
 	m := NewMarks(t.TempDir(), time.Now)
 	m.Set(MarkOnce, "old")

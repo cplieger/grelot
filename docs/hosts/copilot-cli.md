@@ -40,11 +40,15 @@ curl.exe -fL -o "$env:USERPROFILE\.copilot\hooks\grelot.json" "https://raw.githu
 | Hook | What it adds | Without it |
 | --- | --- | --- |
 | `sessionStart` | A new or resumed session gets its identity card, the status line and the manual (`grelot help`), or the line that asks it to register | The agent learns its state from the status line of its first `grelot` command |
-| `agentStop` | A turn that ends with new mail unread, or with no identity, is held once so the agent reads it or registers | Mail that arrives during a turn waits until the agent next runs `grelot` |
+| `agentStop` | A turn that ends with new mail unread is held once so the agent reads it. A session with no identity has one turn end held so it registers, once in the session's life | Mail that arrives during a turn waits until the agent next runs `grelot` |
 
 grelot wires no turn-start hook, because Copilot CLI drops the output of a command hook on `userPromptSubmitted`. `agentStop` takes no message for the user, so a line grelot would show you at turn end is not printed. The file wires no `sessionEnd` or `subagentStop` until a run shows which session each one names. grelot installs no tool-call hook.
 
-Once a session variable is recorded, every top-level session registers in its first turn with the hooks installed. An unregistered session gets the register line at session start. The end of its turn is held once with a line that starts `grelot: not registered` and tells the agent to run `grelot help` and register.
+Once a session variable is recorded, every top-level session registers in its first turn with the hooks installed. An unregistered session gets the register line at session start, and one turn end is held with a line that starts `grelot: not registered` and tells the agent to run `grelot help` and register. When registering is refused, blocked or against your instructions, the agent finishes your task and tells you, and grelot does not hold the session for it again.
+
+A run with `-p`, `--prompt` or `--prompt=<text>`, as the [command reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference) names them, is a one-shot run: it answers one prompt and exits, so its hooks never ask it to register and never hold its turn. grelot reads the flag from the `copilot` process above the hook. A prompt piped to Copilot CLI also runs once, but nothing in its arguments says so, so that run is asked as a session is.
+
+Take the hook file again from the new release after each upgrade, because a release can change its events and timeouts.
 
 Copilot CLI also reads a repository's `.claude/settings.json`. Where that file holds the Claude Code hook lines, they run in Copilot CLI sessions too and print nothing, because the shell carries no Claude Code session variable.
 
@@ -59,7 +63,7 @@ Run it attached, never detached, because a detached shell's exit does not wake t
 grelot works with no hook installed, once the session variable is recorded. Put one always-loaded line in a project's `AGENTS.md`:
 
 ```markdown
-Agents here coordinate through grelot: run `grelot help` before you start work.
+Agents here coordinate through grelot: run `grelot help` to learn how to register and reach the other agents; if that is refused or not allowed, carry on with the user's task.
 ```
 
 ## 5. Replace the provider file

@@ -189,8 +189,39 @@ func TestPath_msysRewriteIsUndone(t *testing.T) {
 			}
 		})
 	}
-	if _, err := gitBash("MINGW64").Local(t.Context(), git+"/workspace/toolbelt/a.go"); !errors.Is(err, ErrNoClone) {
+	r := gitBash("MINGW64")
+	if _, err := r.Local(t.Context(), r.AsTyped(git+"/workspace/toolbelt/a.go")); !errors.Is(err, ErrNoClone) {
 		t.Errorf("Local of a rewritten repo path: got %v; want ErrNoClone", err)
+	}
+}
+
+// grelot path --local /workspace/grelot/README.md, typed in Git Bash with
+// MSYS_NO_PATHCONV unset, reaches grelot as the first argument below.
+func TestLocal_msysRewriteIsUndone(t *testing.T) {
+	const (
+		git    = "C:/Program Files/Git"
+		arg    = git + "/workspace/grelot/README.md"
+		clone  = "D:/src/grelot"
+		remote = "https://github.com/cplieger/grelot.git"
+	)
+	r := windowsResolver("/workspace", fakeGit{clone: {Toplevel: clone, Remote: remote}}, []string{"C:/", git, "D:/", clone}, []string{git + msysMarker})
+	r.msys = "MINGW64"
+	if got := r.AsTyped(arg); got != "/workspace/grelot/README.md" {
+		t.Errorf("AsTyped(%q) = %q, want /workspace/grelot/README.md", arg, got)
+	}
+	if got := r.AsTyped("/workspace/grelot/README.md"); got != "/workspace/grelot/README.md" {
+		t.Errorf("AsTyped of an unrewritten path = %q, want it unchanged", got)
+	}
+	r.clones = NewClones(t.TempDir())
+	norm, _ := NormalizeRemote(remote)
+	r.clones.record(norm, clone)
+	got, err := r.Local(t.Context(), r.AsTyped(arg))
+	if want := filepath.FromSlash(clone + "/README.md"); err != nil || got != want {
+		t.Errorf("Local(%q) = %q, %v; want %q", arg, got, err, want)
+	}
+	r.msys = ""
+	if got := r.AsTyped(arg); got != arg {
+		t.Errorf("AsTyped outside an MSYS shell = %q, want %q unchanged", got, arg)
 	}
 }
 

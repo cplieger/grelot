@@ -55,6 +55,7 @@ Values are read as written. A `${...}` reference is refused, so a file never pul
 | `evidence` | no | Where the file's facts come from: `measured` (recorded from the tool itself), `documented` (from its documentation only) or `unverified` |
 | `detect` | no | How the client recognizes the tool's shells |
 | `session` | no | Where the tool keeps its session id |
+| `one_shot` | no | How a hook tells a [one-shot run](#one_shot) of the tool from an interactive session |
 | `doors` | no | How a notice wakes one of the tool's sessions |
 | `hooks` | no | The hook events the tool offers, by role |
 | `notes` | no | Free text, such as the page that explains the file |
@@ -71,8 +72,8 @@ A file with no `detect` is chosen only by name.
 | --- | --- |
 | `env` | The variable that holds the session id in the agent's shell. With none, every identity command refuses, because the shell has no session to bind |
 | `stdin` | The path of the session id in the JSON a hook reads on stdin, such as `session_id` |
-| `hooks_without_env` | `true` for a tool that leaves `env` out of its hook processes, so a hook acts for the `stdin` session. Without it, a hook that finds no `env` belongs to another tool and does nothing. Needs `env` and `stdin` |
-| `process` | Names of the tool's process when it runs one session at a time, such as `[mytool, mytool.exe]`. A new session in that process may get the hint to take over the previous one's identity. It also breaks a detection tie |
+| `hooks_without_env` | `true` for a tool that leaves `env` out of its hook processes, so a hook acts for the `stdin` session. A value of `env` such a hook finds was inherited from the shell of another session that started the tool, and the hook ignores it. Without it, a hook that finds no `env` belongs to another tool and does nothing. Needs `env` and `stdin` |
+| `process` | Names of the tool's process, such as `[mytool, mytool.exe]`. When it runs one session at a time, a new session in that process may get the hint to take over the previous one's identity. It also breaks a detection tie, and `one_shot.args` reads the arguments of these processes |
 | `process_shared` | Arguments that mark one of those processes as serving many sessions at once, such as `[serve]`. A session under such a process is never offered another session's identity. Needs `process` |
 | `record` | Where the tool keeps a record for each session, for a tool whose subagents, workflow steps or forks run hooks under their own session id while their shells carry the parent's |
 
@@ -85,6 +86,24 @@ A file with no `detect` is chosen only by name.
 | `parent`, `reason` | The JSON fields of the record that hold the parent session and why the session was made |
 | `same_agent` | Reasons that mean the same agent going on in a new session, such as a rewind. Any other reason with a parent is a second agent beside the first |
 | `same_agent_note` | A line printed once to a session `same_agent` matched, for what the user must do about it |
+
+### `one_shot`
+
+A one-shot run takes one prompt and exits, usually as another agent's tool call, such as `mytool --print "<prompt>"`. Nothing can reach it once it exits, so its hooks treat it as they treat a subagent: when no live identity is bound to the session, `session_start`, `prompt` and `stop` print nothing, and `stop` never holds the turn. An identity already bound to the session gets its card, status line and mail holds as usual, and every command still works, so a one-shot worker can register with a delegate link and post with `grelot as`.
+
+```yaml
+one_shot:
+  env:
+    MYTOOL_MODE: [print, batch]
+  args: [--print, -p, --prompt=]
+```
+
+| Key | What it holds |
+| --- | --- |
+| `env` | Variables of the hook's environment and the values that mean a one-shot run. Any listed variable holding one of its values is enough. List only the tool's own variables, because a tool started from another tool's shell inherits that tool's |
+| `args` | Arguments that mean a one-shot run. A hook reads the tool's own run of ancestor processes: the nearest unbroken chain of processes named in `session.process`, so a run started from another tool's shell stops at that shell. Arguments after the program name of any of them count, up to a `--`. An entry starting with `-` is an option, matched whole: `-p`. One ending in `=` also matches as a prefix: `--prompt=` matches `--prompt=<text>`. One with a value after `=` matches written either way: `--format=json` matches `--format=json` and `--format json`. Any other entry is a subcommand, and counts only as the first argument that is not an option, when every option before it carries its value after `=`. So `exec` matches `mytool exec` and `mytool --profile=work exec`, but not `mytool resume exec`, where it belongs to `resume`, nor `mytool --profile exec` or `mytool --verbose resume exec`: grelot cannot tell whether an option written alone takes the next argument, so after one the subcommand is not known. Needs `session.process` |
+
+Each match is evidence only for a one-shot run. When no variable matches and no listed argument is seen, including when the system will not show a process's arguments, the session is treated as interactive and is asked to register as before. A subcommand after an option written alone, such as `mytool --verbose exec` or `mytool -c a=b exec`, is not seen either. A hook reads the ancestors only when no variable matched and the session has no live identity, when the server did not answer, or, at `stop`, when this client is too old to mark mail read: a one-shot run's hooks then print nothing, where another run's print that they could not check the session or that its mail stays unread.
 
 ### `doors`
 
@@ -159,9 +178,9 @@ A tool's hook file wires each event to `grelot hook <provider> <role>`, and the 
 
 | Role | When it runs | What it does |
 | --- | --- | --- |
-| `session_start` | A session starts | Prints the identity's status, or for an unregistered session the line that asks it to register, as `context` |
+| `session_start` | A session starts | Prints, as `context`, the identity's card, its status line and the manual, cut to fit `context_limit`. An unregistered session gets the line that asks it to register instead, and a one-shot run nothing |
 | `prompt` | A turn starts | Prints the unread count, an hour-old description's reminder and a stopped watcher's start line as `context`, never a message. A turn started by a notice line already read ends through `block` before the model runs |
-| `stop` | A turn ends | Holds the turn open with `block` when mail came, or for a session that has not registered. Prints a line for the user as `notice` |
+| `stop` | A turn ends | Holds the turn open with `block` when mail came. A session with no live identity is held once in its life, so it registers or revives, and a one-shot run never. Prints a line for the user as `notice` |
 | `turn_end` | A turn ends some other way than `stop`, such as an error or an interruption | Tells the server the turn ended. Prints nothing |
 | `session_end` | A session closes | Tells the server, which ends the session's delegates and lets the identity go dormant within the hour. Prints nothing |
 | `subagent_stop` | A subagent ends | Ends the delegate that subagent's own session held. Prints nothing |
@@ -182,6 +201,7 @@ And these, by role:
 | `stdin.agent_id` | all | The stdin path of a subagent's id. A hook whose input holds one belongs to a subagent and never acts for its parent |
 | `stdin.prompt` | `prompt` | The stdin path of the prompt text |
 | `signal` | `prompt` | An RE2 pattern over the whole prompt, with a named group `(?P<line>...)`, for a tool that delivers a background line inside its own wrapper |
+| `context_limit` | `session_start` | The most bytes of context the tool hands its model whole, from the tool's documentation, or `0` for no limit, which is the default. When the card, the status line and the manual together go over it, the manual is replaced by a line asking the agent to run `grelot help`. When that still goes over, the card is left out too, with a line pointing at `grelot me`. The count is of the rendered output, so a JSON wrapper counts. A byte count never undercounts a tool that counts characters |
 | `source` | `session_start` | `path`, the stdin path of the start source, and the values among it that mean a take-over (`take_over`, such as `clear`) or a fork (`fork`). A take-over start may get the hint for the identity of the previous session in that process |
 | `take_over_every_start` | `session_start` | `true` for a tool that reports no source and starts a session in its process only for a chat with no history. Every start but a fork may then get the hint. Not with `source.take_over` |
 | `once_per_turn` | `stop` | `true` for a tool that runs its stop hooks at most once per turn, so the hold ends the turn whether or not it blocks |
@@ -196,6 +216,18 @@ Outputs, under `outputs.context`, `outputs.block` and `outputs.notice`:
 | `exit` | `0` | The exit code after printing, 0 to 255 |
 
 `session_start` takes `context`, `prompt` takes `context` and `block`, and `stop` takes `block` and `notice`. A role whose output kind is left out prints nothing for it, so a `stop` with no `block` never holds a turn.
+
+#### Hooks that stop running
+
+`hooks.lost_fix` is for a tool that can turn its hooks off with no sign to the agent, such as one that stops trusting a hook file once it changes. It holds what the user does to turn them back on, as one line starting with a verb, such as `re-trust grelot's hooks in /hooks`. A tool that never loses its hooks that way leaves it out.
+
+With it set, every hook run of a configured client records, in the client config folder, that the tool's hooks ran on this machine and in which session. A command then adds one segment to its status line when the tool's hooks have run on this machine in about the past 30 days, but never in this session:
+
+```text
+grelot's hooks did not run in this session; ask the user to re-trust grelot's hooks in /hooks
+```
+
+The segment shows only under a registered identity, and never for `grelot as` or in a one-shot run. A hook records its run before it prints, so its own output never carries it, and an install that never ran the hooks never sees it. A running session whose hooks the tool turns off part way through keeps its record and gets no segment.
 
 ## Templates
 
@@ -220,7 +252,7 @@ Read fields one at a time, as `.Line`. Reading the whole data, as `{{.}}` or `$`
 
 ## Extending a file
 
-A file with `extends: <name>` inherits every key of that file but `detect`, so it is chosen only by name. A door it lists replaces the parent's door of the same name in place, and its other doors are added. Any other key it sets, `evidence`, `notes`, `session` or `hooks`, replaces the parent's whole. Extending is one level only, and a file that extends an invalid or missing one is invalid itself.
+A file with `extends: <name>` inherits every key of that file but `detect`, so it is chosen only by name. A door it lists replaces the parent's door of the same name in place, and its other doors are added. Any other key it sets, `evidence`, `notes`, `session`, `one_shot` or `hooks`, replaces the parent's whole, so `one_shot: {}` drops an inherited one. The merged file is checked again, so a file that inherits `one_shot.args` needs a `session.process` too. Extending is one level only, and a file that extends an invalid or missing one is invalid itself.
 
 To change one thing about a shipped host, put a file of its name in your `providers` folder. To add a variant beside it, give the new file another name, `extends` the shipped one, and set `provider:` in the client config of the machines that use it.
 

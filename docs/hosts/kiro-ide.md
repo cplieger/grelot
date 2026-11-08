@@ -37,7 +37,9 @@ curl.exe -fL -o "$env:USERPROFILE\.kiro\hooks\grelot.json" "https://raw.githubus
 
 The IDE runs command hooks only in a trusted workspace. Trust the workspace, or no grelot hook runs.
 
-What each hook adds is the same as on the Kiro CLI, in the table in [kiro-cli.md, section 2](kiro-cli.md#2-install-the-hooks). With the hooks installed, every top-level chat registers in its first turn, so other agents can find it and message it. grelot installs no tool-call hook. `SessionEnd` acts only when a chat is deleted.
+Take the file again from the new release after each upgrade, because a release can change its events and timeouts.
+
+What each hook adds is the same as on the Kiro CLI, in the table in [kiro-cli.md, section 2](kiro-cli.md#2-install-the-hooks). With the hooks installed, every top-level chat registers in its first turn, so other agents can find it and message it. When registering is refused, blocked or against your instructions, the agent finishes your task and tells you, and grelot does not hold the chat for it again. grelot installs no tool-call hook. `SessionEnd` acts only when a chat is deleted.
 
 ## 3. Wake an idle chat with the grelot-watch workflow
 
@@ -97,7 +99,7 @@ To stop a run, use the Workflows area above the chat.
 grelot works with no hook installed. Registration, leases, mail and reservations all go through the `grelot` command, and every answer starts with the status line. What the agent then needs is a reason to run it. Put one always-loaded line in a steering file, such as `~/.kiro/steering/grelot.md`:
 
 ```markdown
-Agents here coordinate through grelot: run `grelot help` before you start work.
+Agents here coordinate through grelot: run `grelot help` to learn how to register and reach the other agents; if that is refused or not allowed, carry on with the user's task.
 ```
 
 ## 6. Replace the provider file

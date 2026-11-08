@@ -100,6 +100,31 @@ func TestServe(t *testing.T) {
 	}
 }
 
+// The server names a release stamp as it is, and a stamp no client could
+// parse as the development version.
+func TestServe_namesTheWireVersion(t *testing.T) {
+	for stamped, want := range map[string]string{"v1.2.3-dev.4": "v1.2.3-dev.4", "v1.2.4-0.20261105101010-0123456789ab": "dev"} {
+		t.Run(stamped, func(t *testing.T) {
+			stamp(t, stamped)
+			addr, _, _, _ := startServe(t)
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+addr+"/v1/version", http.NoBody)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Authorization", "Bearer test-token")
+			req.Header.Set("Grelot-Version", "dev")
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if got := resp.Header.Get("Grelot-Version"); resp.StatusCode != http.StatusOK || got != want {
+				t.Errorf("status %d, Grelot-Version %q; want 200 and %q", resp.StatusCode, got, want)
+			}
+		})
+	}
+}
+
 func TestProbeHealth(t *testing.T) {
 	t.Parallel()
 	t.Run("a stale sweep with a live listener fails", func(t *testing.T) {

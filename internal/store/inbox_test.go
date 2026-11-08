@@ -233,6 +233,9 @@ func TestInbox_aCardIsQuietAndRelatedAtItsPath(t *testing.T) {
 	if e.Kind != kindJoin || e.Wake || e.From != "charlie" || e.Relation != "same checkout" || e.ThreadPath != repoSubflux {
 		t.Errorf("card %+v, want a quiet join card from charlie, same checkout", e)
 	}
+	if want := "@charlie is now active on " + repoSubflux; e.Subject != want {
+		t.Errorf("join card subject %q, want %q", e.Subject, want)
+	}
 	if p.Unread.Cards != 1 || p.Unread.Wake() != 0 {
 		t.Errorf("unread %+v, want one card and no wake event", p.Unread)
 	}
@@ -242,7 +245,10 @@ func TestInbox_aCardIsQuietAndRelatedAtItsPath(t *testing.T) {
 	}
 	p = mustInbox(t, s, sess("bravo"), 0)
 	if len(p.Entries) != 2 || p.Entries[1].Kind != kindLeft || p.Entries[1].Wake || p.Unread.Cards != 2 || p.Unread.Wake() != 0 {
-		t.Errorf("page %+v, want the join and left cards, both quiet", p)
+		t.Fatalf("page %+v, want the join and left cards, both quiet", p)
+	}
+	if want := "@charlie has left " + repoSubflux; p.Entries[1].Subject != want {
+		t.Errorf("left card subject %q, want %q", p.Entries[1].Subject, want)
 	}
 }
 
@@ -364,7 +370,7 @@ func TestInbox_aDormantSessionGetsTheReviveOffer(t *testing.T) {
 	bravo := regAt(t, s, "bravo", "/workspace/bravo")
 	direct(t, s, "alpha", "bravo", 2)
 	clk.set(bravo.Expires.Add(3*time.Hour + 59*time.Minute))
-	want := "your identity bravo expired 3 h ago with 2 unread; `grelot revive --ttl=<d>` restores it"
+	want := "your identity @bravo expired 3 h ago with 2 unread; `grelot revive --ttl=<d>` restores it; if reviving is refused or against the user's instructions, finish the user's task and tell the user"
 
 	_, err := s.Inbox(t.Context(), Caller{Session: sess("bravo")}, 0)
 	wantRefusal(t, err, KindGone, "dormant", want)

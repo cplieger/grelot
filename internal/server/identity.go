@@ -329,10 +329,10 @@ func (s *Server) hint(r *http.Request, c store.Caller) (*hintJSON, error) {
 		return nil, err
 	}
 	h := &hintJSON{Name: id.Name, State: id.State}
-	h.Line = fmt.Sprintf("you were %s before this session started; to go on as it, run `grelot register %s --take-over --ttl=<d>`",
+	h.Line = fmt.Sprintf("you were @%s before this session started; to go on as it, run `grelot register %s --take-over --ttl=<d>`",
 		id.Name, id.Name)
 	if id.State != stateLive {
-		h.Line = fmt.Sprintf("you were %s before this session started, and it is dormant since %s; to go on as it, run `grelot revive %s --ttl=<d>`",
+		h.Line = fmt.Sprintf("you were @%s before this session started, and it is dormant since %s; to go on as it, run `grelot revive %s --ttl=<d>`",
 			id.Name, id.DormantSince.UTC().Format("2006-01-02 15:04 UTC"), id.Name)
 	}
 	return h, nil

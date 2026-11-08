@@ -204,9 +204,9 @@ func TestDo_a429IsNotRetried(t *testing.T) {
 	}
 }
 
-func TestNewHookAPI_sendsAKeyedWriteOnce(t *testing.T) {
+func TestNewOnceAPI_sendsAKeyedWriteOnce(t *testing.T) {
 	f := newFake(t, answerJSON(http.StatusServiceUnavailable, `{"error":"store unavailable","code":"unavailable"}`))
-	a, err := NewHookAPI(&Config{Server: f.srv.URL, Token: "test-token"}, "v1.1.0", t.TempDir())
+	a, err := NewOnceAPI(&Config{Server: f.srv.URL, Token: "test-token"}, "v1.1.0", t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,9 +218,9 @@ func TestNewHookAPI_sendsAKeyedWriteOnce(t *testing.T) {
 	}
 }
 
-func TestNewHookAPI_sendsAGetOnce(t *testing.T) {
+func TestNewOnceAPI_sendsAGetOnce(t *testing.T) {
 	f := newFake(t, answerJSON(http.StatusServiceUnavailable, `{"error":"store unavailable","code":"unavailable"}`))
-	a, err := NewHookAPI(&Config{Server: f.srv.URL, Token: "test-token"}, "v1.1.0", t.TempDir())
+	a, err := NewOnceAPI(&Config{Server: f.srv.URL, Token: "test-token"}, "v1.1.0", t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,8 +288,8 @@ func TestDo_answerThatIsNotJSON(t *testing.T) {
 	a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
 	var out struct{}
 	_, err := a.Do(t.Context(), &Request{Method: http.MethodGet, Path: "/v1/me"}, &out)
-	if err == nil || !strings.Contains(err.Error(), "grelot me") {
-		t.Errorf("err = %v, want a line naming grelot me", err)
+	if err == nil || !strings.Contains(err.Error(), "grelot version") {
+		t.Errorf("err = %v, want a line naming grelot version", err)
 	}
 }
 
@@ -372,7 +372,7 @@ func TestDo_noRedirectFollowed(t *testing.T) {
 // missing-key 400, names the client to install; a refusal from a server
 // of the client's own build, or one an old client still reads, does not.
 func TestDo_aNewerServersRefusalNamesTheUpgrade(t *testing.T) {
-	const upgrade = "this client is v1.1.0-dev.24 and the server v1.1.0-dev.25: install grelot v1.1.0-dev.25 with go install github.com/cplieger/grelot@v1.1.0-dev.25 or from https://github.com/cplieger/grelot/releases/tag/v1.1.0-dev.25"
+	const upgrade = "this client is v1.1.0-dev.24 and the server v1.1.0-dev.25: install grelot v1.1.0-dev.25 with go install github.com/cplieger/grelot@v1.1.0-dev.25 or from https://github.com/cplieger/grelot/releases/tag/v1.1.0-dev.25, then check both with grelot version"
 	for _, tc := range []struct {
 		name, server string
 		status       int

@@ -117,7 +117,7 @@ func TestSweep_catchesUpAfterARestart(t *testing.T) {
 	t.Cleanup(func() { _ = s.Close() })
 
 	_, err = s.Inbox(t.Context(), Caller{Session: sess("bravo")}, 0)
-	wantRefusal(t, err, KindGone, "dormant", "your identity bravo expired 22 h ago with 0 unread")
+	wantRefusal(t, err, KindGone, "dormant", "your identity @bravo expired 22 h ago with 0 unread")
 
 	mustSweep(t, s)
 	if _, found := findMessage(t, s, dm.Message); found {
@@ -132,7 +132,7 @@ func TestSweep_catchesUpAfterARestart(t *testing.T) {
 	}
 	p := mustInbox(t, s, sess("carol"), 0)
 	if len(p.Entries) != 1 || p.Entries[0].Kind != kindIdentityExpiring ||
-		p.Entries[0].Text != "your identity carol expires in 20 min (at 2026-11-05 05:39 UTC); if you are still working on moving the run surface, run `grelot renew --ttl=24h`, otherwise do nothing" {
+		p.Entries[0].Text != "your identity @carol expires in 20 min (at 2026-11-05 05:39 UTC); if you are still working on moving the run surface, run `grelot renew --ttl=24h`, otherwise do nothing" {
 		t.Errorf("carol's inbox %+v, want the one identity_expiring written by the sweep after the restart", p.Entries)
 	}
 	mustSweep(t, s)

@@ -26,6 +26,14 @@ import (
 // testMachine is a machine id as the client reports one.
 const testMachine = "dmi:0123456789abcdef0123456789abcdef"
 
+// A session with no identity gets registerStart at session start,
+// registerPrompt at each turn start and registerHold at its first stop.
+const (
+	registerStart  = "grelot: not registered. Register so other agents can find and message you: run `grelot help`, then `grelot register` as it says. If registering is refused, blocked or against the user's instructions (a sandbox, an approval reviewer, an instruction not to run commands), finish the user's task and tell the user; grelot holds one turn end for it, never more."
+	registerPrompt = "grelot: not registered. Run `grelot help`, then `grelot register`. If refused, blocked or against the user's instructions, finish the task and tell the user."
+	registerHold   = "grelot: not registered. Register now if you can: run `grelot help`, then `grelot register` as it says. If registering is refused, blocked or against the user's instructions (a sandbox, an approval reviewer, an instruction not to run commands), finish the user's task and tell the user; grelot will not hold this session for it again."
+)
+
 // clock is the server's and the hooks' clock, which a test moves forward.
 type clock struct {
 	mu  sync.Mutex

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/transport"
 )
 
@@ -15,7 +16,7 @@ import (
 // agents' v1.1.0, and upgrade the line naming it.
 const (
 	newerServer = "v1.2.0"
-	upgrade     = "this client is v1.1.0 and the server v1.2.0: install grelot v1.2.0 with go install github.com/cplieger/grelot@v1.2.0 or from https://github.com/cplieger/grelot/releases/tag/v1.2.0"
+	upgrade     = "this client is v1.1.0 and the server v1.2.0: install grelot v1.2.0 with go install github.com/cplieger/grelot@v1.2.0 or from https://github.com/cplieger/grelot/releases/tag/v1.2.0, then check both with grelot version"
 )
 
 func refuseAck(r *http.Request) bool {
@@ -113,5 +114,27 @@ func TestHookStop_aClientThatCannotAckHoldsNoTurn(t *testing.T) {
 		if r.URL == "/v1/events/hold" {
 			t.Errorf("the stop hook sent a hold: %s", r.Body)
 		}
+	}
+}
+
+// A one-shot run's output stays its answer alone, so its stop prints no
+// upgrade notice; an interactive session's does.
+func TestHookStop_aOneShotRunGetsNoCannotAckNotice(t *testing.T) {
+	file := strings.Replace(hookTurnFile, "hooks:\n", "one_shot: {env: {ALPHA_MODE: [print]}}\nhooks:\n", 1)
+	notice := `{"systemMessage":"grelot: unread mail stays unread until this client is upgraded: ` + upgrade + `"}` + "\n"
+	for name, want := range map[string]string{"print": "", "": notice} {
+		t.Run("mode "+name, func(t *testing.T) {
+			ts := newServerAt(t, newerServer, refuseAck)
+			a := hooked(t, newAgent(t, ts, "s-1", ""), "alpha", file)
+			if name != "" {
+				a.vars["ALPHA_MODE"] = name
+			}
+			facts := client.LoadFacts(a.env.ConfigDir)
+			facts.Version, facts.AckRefused = newerServer, a.env.Version
+			client.SaveFacts(a.env.ConfigDir, facts)
+			if code, out := a.stopHook(); code != 0 || out != want {
+				t.Errorf("exit %d, stdout %q; want 0 and %q", code, out, want)
+			}
+		})
 	}
 }

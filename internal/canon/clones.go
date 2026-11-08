@@ -73,9 +73,6 @@ func (c *Clones) record(remote, toplevel string) {
 // preferring a clone where the file exists. ErrNotRepoPath and ErrNoClone
 // answer what it cannot map.
 func (r *Resolver) Local(ctx context.Context, canonical string) (string, error) {
-	if p, ok := r.unconverted(canonical); ok {
-		canonical = p
-	}
 	repo, rel, ok := r.splitCanonical(canonical)
 	if !ok {
 		return "", ErrNotRepoPath

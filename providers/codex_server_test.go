@@ -20,13 +20,15 @@ func codexShell(t *testing.T, srv *testServer, thread string) *shell {
 	return sh
 }
 
+// The exec run's payload under a codex with no subcommand is not known to
+// be one-shot (TestOneShot_unregistered).
 func TestCodexSessionStart_unregistered(t *testing.T) {
 	for _, name := range []string{"session_start-startup-exec", "session_start-startup-tui", "session_start-startup-after-new"} {
 		t.Run(name, func(t *testing.T) {
 			sh := codexShell(t, newServer(t), sessionOf(t, "codex", name))
 			sh.procs = under("codex.exe")
 			got := sh.hook("session_start", sh.fixture(name))
-			if got.Code != 0 || got.Stdout != registerLine+"\n" || got.Stderr != "" {
+			if got.Code != 0 || got.Stdout != registerStart+"\n" || got.Stderr != "" {
 				t.Errorf("exit %d, stdout %q, stderr %q; want 0 and only the register line as context", got.Code, got.Stdout, got.Stderr)
 			}
 			if len(got.Requests) != 1 || got.Requests[0].Path != "/v1/me" || got.Requests[0].Query != "" ||
@@ -37,6 +39,14 @@ func TestCodexSessionStart_unregistered(t *testing.T) {
 	}
 }
 
+// codexContextLimit is the bytes of hook context Codex gives the model
+// whole: 2,500 tokens by default (https://learn.chatgpt.com/docs/hooks,
+// "Large hook output") at 4 bytes a token (approx_token_count,
+// codex-rs/utils/string/src/truncate.rs at rust-v0.167.0).
+const codexContextLimit = 10000
+
+// A live thread's start gives it the card and the status line, and, since
+// the manual alone is over Codex's limit, the line that asks for grelot help.
 func TestCodexSessionStart_live(t *testing.T) {
 	for _, name := range []string{"session_start-startup-exec", "session_start-startup-tui"} {
 		t.Run(name, func(t *testing.T) {
@@ -52,8 +62,11 @@ func TestCodexSessionStart_live(t *testing.T) {
 			if i < 0 || !strings.Contains(lines[i], codexStart) {
 				t.Errorf("stdout %q, want a status line naming %q", got.Stdout, codexStart)
 			}
-			if !strings.HasSuffix(got.Stdout, manual) {
-				t.Errorf("stdout %q, want it to end with grelot help's text", got.Stdout)
+			if len(manual) <= codexContextLimit {
+				t.Fatalf("the manual is %d bytes, within the host's %d; this test needs it over", len(manual), codexContextLimit)
+			}
+			if len(got.Stdout) > codexContextLimit || strings.Contains(got.Stdout, "# grelot help") || !strings.HasSuffix(got.Stdout, "run `grelot help` now, it holds every command and rule\n") {
+				t.Errorf("stdout (%d bytes) %q, want at most %d bytes ending with the line that asks for grelot help, and no manual", len(got.Stdout), got.Stdout, codexContextLimit)
 			}
 		})
 	}
@@ -63,7 +76,7 @@ func TestCodexSessionStart_live(t *testing.T) {
 // identity that process held, unless the process is the daemon's shared
 // app-server. /new sends startup and never gets the hint.
 func TestCodexSessionStart_takeOver(t *testing.T) {
-	const hint = "grelot: you were codex-dev before this session started; to go on as it, run `grelot register codex-dev --take-over --ttl=<d>`"
+	const hint = "grelot: you were @codex-dev before this session started; to go on as it, run `grelot register codex-dev --take-over --ttl=<d>`"
 	for _, exe := range []string{"codex", "codex.exe"} {
 		t.Run(exe, func(t *testing.T) {
 			sh := codexShell(t, newServer(t), codexLinux)
@@ -72,7 +85,7 @@ func TestCodexSessionStart_takeOver(t *testing.T) {
 
 			sh.vars["CODEX_THREAD_ID"] = codexCleared
 			got := sh.hook("session_start", sh.fixture("session_start-clear"))
-			if got.Code != 0 || got.Stdout != registerLine+"\n"+hint+"\n" {
+			if got.Code != 0 || got.Stdout != registerStart+"\n"+hint+"\n" {
 				t.Errorf("clear: exit %d, stdout %q; want the register line, then %q", got.Code, got.Stdout, hint)
 			}
 			if len(got.Requests) != 1 || got.Requests[0].Query != "proc=200%3A20" {
@@ -81,7 +94,7 @@ func TestCodexSessionStart_takeOver(t *testing.T) {
 
 			sh.vars["CODEX_THREAD_ID"] = codexAfterNew
 			got = sh.hook("session_start", sh.fixture("session_start-startup-after-new"))
-			if got.Code != 0 || got.Stdout != registerLine+"\n" {
+			if got.Code != 0 || got.Stdout != registerStart+"\n" {
 				t.Errorf("/new: exit %d, stdout %q; want only the register line", got.Code, got.Stdout)
 			}
 			if len(got.Requests) != 1 || got.Requests[0].Query != "" {
@@ -95,7 +108,7 @@ func TestCodexSessionStart_takeOver(t *testing.T) {
 		sh.register("codex-dev")
 		sh.vars["CODEX_THREAD_ID"] = codexCleared
 		got := sh.hook("session_start", sh.fixture("session_start-clear"))
-		if got.Code != 0 || got.Stdout != registerLine+"\n" {
+		if got.Code != 0 || got.Stdout != registerStart+"\n" {
 			t.Errorf("exit %d, stdout %q; want only the register line", got.Code, got.Stdout)
 		}
 		if len(got.Requests) != 1 || got.Requests[0].Query != "" {
@@ -109,7 +122,7 @@ func TestCodexPrompt(t *testing.T) {
 	sh := codexShell(t, srv, codexTUI)
 	t.Run("unregistered", func(t *testing.T) {
 		got := sh.hook("prompt", sh.fixture("prompt-typed"))
-		if got.Code != 0 || got.Stdout != registerLine+"\n" {
+		if got.Code != 0 || got.Stdout != registerPrompt+"\n" {
 			t.Errorf("exit %d, stdout %q; want 0 and the register line as context", got.Code, got.Stdout)
 		}
 	})
@@ -177,7 +190,7 @@ func TestCodexStop(t *testing.T) {
 	t.Run("unregistered", func(t *testing.T) {
 		sh := codexShell(t, newServer(t), codexExec)
 		got := sh.hook("stop", sh.fixture("stop-first"))
-		if b := parseBlock(t, got.Stdout); got.Code != 0 || b.Reason != registerLine {
+		if b := parseBlock(t, got.Stdout); got.Code != 0 || b.Reason != registerHold {
 			t.Errorf("exit %d, reason %q; want 0 and the register line", got.Code, b.Reason)
 		}
 		if body := holdBody(t, got.Requests); body["for"] != "stop" || body["last"] != false {
@@ -271,16 +284,14 @@ func TestCodexSessionEnd(t *testing.T) {
 // https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/hooks/src/events/session_end.rs).
 func TestCodexSessionEnd_givesUpInsideCodexsLimit(t *testing.T) {
 	sh := codexShell(t, newServer(t), codexCleared)
-	url, hits := silentServer(t)
-	sh.useServer(url)
-	start := time.Now()
+	silent := newSilentServer(t)
+	sh.useServer(silent.URL)
 	got := sh.hook("session_end", sh.fixture("session_end-other"))
-	took := time.Since(start)
-	if got.Code != 0 || got.Stdout != "" || got.Stderr != "" || hits() != 1 {
-		t.Errorf("exit %d, stdout %q, stderr %q, %d requests; want 0, nothing and the one report", got.Code, got.Stdout, got.Stderr, hits())
+	if got.Code != 0 || got.Stdout != "" || got.Stderr != "" || silent.hits() != 1 {
+		t.Errorf("exit %d, stdout %q, stderr %q, %d requests; want 0, nothing and the one report", got.Code, got.Stdout, got.Stderr, silent.hits())
 	}
-	if took >= 3*time.Second {
-		t.Errorf("the hook took %s against a server that never answers, want under 3s", took)
+	if d := silent.waited(t); d >= 3*time.Second {
+		t.Errorf("the hook waited %s on a server that never answers, want under 3s", d)
 	}
 }
 

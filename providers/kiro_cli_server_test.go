@@ -35,9 +35,6 @@ const (
 	kiroCleared = "sess_863c88c8-0ef4-410e-810b-fab32cfa581f"
 )
 
-// registerLine is the turn-start text of a session with no identity.
-const registerLine = "grelot: not registered. Register before you start work: run `grelot help`, then `grelot register` as it says."
-
 // kiroShell is a shell of the named provider, kiro-cli or kiro-ide, whose
 // KIRO_SESSION_ID is session, with its own KIRO_HOME. A kiro-ide shell's
 // client config names its provider, as the host page has the user do,
@@ -120,7 +117,7 @@ func holdBody(t *testing.T, reqs []request) map[string]any {
 func TestKiroCLISessionStart_unregistered(t *testing.T) {
 	sh := kiroShell(t, newServer(t), "kiro-cli", kiroSession)
 	got := sh.hook("session_start", sh.fixture("session_start"))
-	if got.Code != 0 || got.Stdout != registerLine+"\n" || got.Stderr != "" {
+	if got.Code != 0 || got.Stdout != registerStart+"\n" || got.Stderr != "" {
 		t.Errorf("exit %d, stdout %q, stderr %q; want 0 and only the register line as context", got.Code, got.Stdout, got.Stderr)
 	}
 	if len(got.Requests) != 1 {
@@ -175,7 +172,7 @@ func TestKiroCLISessionStart_aStepPrintsNothing(t *testing.T) {
 // So every start there names the identity that process held, while a server
 // process (acp, serve) hosts many chats and never gets that hint.
 func TestKiroCLISessionStart_takeOverAfterClear(t *testing.T) {
-	const hint = "grelot: you were kiro-dev before this session started; to go on as it, run `grelot register kiro-dev --take-over --ttl=<d>`"
+	const hint = "grelot: you were @kiro-dev before this session started; to go on as it, run `grelot register kiro-dev --take-over --ttl=<d>`"
 	for _, c := range []struct {
 		name  string
 		procs processes
@@ -191,7 +188,7 @@ func TestKiroCLISessionStart_takeOverAfterClear(t *testing.T) {
 
 			sh.vars["KIRO_SESSION_ID"] = kiroCleared
 			got := sh.hook("session_start", sh.fixture("session_start-clear"))
-			if got.Code != 0 || got.Stdout != registerLine+"\n"+hint+"\n" {
+			if got.Code != 0 || got.Stdout != registerStart+"\n"+hint+"\n" {
 				t.Errorf("exit %d, stdout %q; want the register line, then %q", got.Code, got.Stdout, hint)
 			}
 			if len(got.Requests) != 1 || got.Requests[0].Query != "proc=200%3A20" {
@@ -214,7 +211,7 @@ func TestKiroCLISessionStart_takeOverAfterClear(t *testing.T) {
 
 			sh.vars["KIRO_SESSION_ID"] = kiroCleared
 			got := sh.hook("session_start", sh.fixture("session_start-clear"))
-			if got.Code != 0 || got.Stdout != registerLine+"\n" {
+			if got.Code != 0 || got.Stdout != registerStart+"\n" {
 				t.Errorf("exit %d, stdout %q; want only the register line", got.Code, got.Stdout)
 			}
 			if len(got.Requests) != 1 || got.Requests[0].Query != "" {
@@ -229,7 +226,7 @@ func TestKiroCLIPrompt(t *testing.T) {
 	sh := kiroShell(t, srv, "kiro-cli", kiroSession)
 	t.Run("unregistered", func(t *testing.T) {
 		got := sh.hook("prompt", sh.fixture("prompt"))
-		if got.Code != 0 || got.Stdout != registerLine+"\n" {
+		if got.Code != 0 || got.Stdout != registerPrompt+"\n" {
 			t.Errorf("exit %d, stdout %q; want 0 and the register line as context", got.Code, got.Stdout)
 		}
 		if len(got.Requests) != 1 || got.Requests[0].Path != "/v1/me" || got.Requests[0].Query != "turn=start" {
@@ -251,7 +248,7 @@ func TestKiroCLIStop(t *testing.T) {
 	t.Run("unregistered", func(t *testing.T) {
 		sh := kiroShell(t, newServer(t), "kiro-cli", kiroSession)
 		got := sh.hook("stop", sh.fixture("stop"))
-		if b := parseBlock(t, got.Stdout); got.Code != 0 || b.Reason != registerLine {
+		if b := parseBlock(t, got.Stdout); got.Code != 0 || b.Reason != registerHold {
 			t.Errorf("exit %d, reason %q; want 0 and the register line", got.Code, b.Reason)
 		}
 		if body := holdBody(t, got.Requests); body["for"] != "stop" || body["last"] != true {
@@ -438,8 +435,14 @@ func TestKiroIDE(t *testing.T) {
 		sh.register("kiro-dev")
 		sh.vars["KIRO_SESSION_ID"] = kiroCleared
 		got := sh.hook("session_start", sh.fixture("session_start-clear"))
-		if got.Stdout != registerLine+"\n" || len(got.Requests) != 1 || got.Requests[0].Query != "" {
+		if got.Stdout != registerStart+"\n" || len(got.Requests) != 1 || got.Requests[0].Query != "" {
 			t.Errorf("stdout %q, requests %v; want only the register line from one GET with no proc", got.Stdout, got.Requests)
+		}
+	})
+	// The IDE runs no one-shot chats.
+	t.Run("it declares no one-shot", func(t *testing.T) {
+		if len(ide.OneShot.Args) != 0 || len(ide.OneShot.Env) != 0 {
+			t.Errorf("one_shot %+v, want none", ide.OneShot)
 		}
 	})
 	t.Run("a Kiro shell is detected as kiro-cli", func(t *testing.T) {
@@ -451,11 +454,11 @@ func TestKiroIDE(t *testing.T) {
 	t.Run("kiro-cli's payloads", func(t *testing.T) {
 		sh := kiroShell(t, newServer(t), "kiro-ide", kiroSession)
 		got := sh.hook("session_start", sh.fixture("session_start"))
-		if got.Stdout != registerLine+"\n" || len(got.Requests) != 1 || got.Requests[0].Header.Get("Grelot-Session") != "kiro-ide:"+kiroSession {
+		if got.Stdout != registerStart+"\n" || len(got.Requests) != 1 || got.Requests[0].Header.Get("Grelot-Session") != "kiro-ide:"+kiroSession {
 			t.Errorf("session_start: stdout %q, requests %v; want the register line from one GET as kiro-ide:%s", got.Stdout, got.Requests, kiroSession)
 		}
 		got = sh.hook("stop", sh.fixture("stop"))
-		if b := parseBlock(t, got.Stdout); b.Reason != registerLine || holdBody(t, got.Requests)["last"] != true {
+		if b := parseBlock(t, got.Stdout); b.Reason != registerHold || holdBody(t, got.Requests)["last"] != true {
 			t.Errorf("stop: stdout %q, want the register block from a last hold", got.Stdout)
 		}
 		if got := sh.hook("session_end", sh.fixture("session_end-other")); got.Stdout != "" || len(got.Requests) != 0 {
