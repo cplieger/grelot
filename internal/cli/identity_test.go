@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -111,6 +112,24 @@ func TestRegister_sendsTheIdentityAndWhereItRuns(t *testing.T) {
 	c := body.Where.Checkouts[0]
 	if c.Repo != "/workspace/toolbelt" || c.Remote != toolbeltRemoteHash || !hex32.MatchString(c.ID) {
 		t.Errorf("checkout = %+v, want repo /workspace/toolbelt, remote hash %s and a 32-hex id", c, toolbeltRemoteHash)
+	}
+}
+
+// TestRegister_takesTheParseSafeForms runs the forms the manual teaches, as
+// a shell hands them over: --ttl=2h as one word, a quoted list as one.
+func TestRegister_takesTheParseSafeForms(t *testing.T) {
+	isolateGit(t)
+	ts := newServer(t)
+	a := newAgent(t, ts, "s-1", "")
+	clone := gitClone(t, filepath.Join(t.TempDir(), "toolbelt"), toolbeltRemote)
+	a.must("register", "toolbelt-dev", "--paths", clone+","+clone+"/internal", "--desc", "testing the client", "--ttl=2h")
+
+	var body sentRegister
+	if err := json.Unmarshal([]byte(ts.last(t, http.MethodPost, "/v1/register").Body), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.TTL != "2h" || !slices.Equal(body.Paths, []string{"/workspace/toolbelt", "/workspace/toolbelt/internal"}) {
+		t.Errorf("ttl %q, paths %q; want 2h and both paths", body.TTL, body.Paths)
 	}
 }
 
@@ -265,7 +284,7 @@ func TestRevive(t *testing.T) {
 
 	t.Run("the dormant session's me shows the revive offer", func(t *testing.T) {
 		out := a.must("me")
-		if !strings.Contains(out, "grelot revive --ttl <d>") || !strings.Contains(out, "dormant since 2026-11-05 11:00 UTC") {
+		if !strings.Contains(out, "grelot revive --ttl=<d>") || !strings.Contains(out, "dormant since 2026-11-05 11:00 UTC") {
 			t.Errorf("output = %q, want the revive offer and the dormant card", out)
 		}
 	})
@@ -352,7 +371,7 @@ func TestUnregistered_aCommandAnswersTheRegisterCommand(t *testing.T) {
 	for _, args := range [][]string{{"set", "--desc", "x"}, {"renew", "--ttl", "1h"}, {"bye"}} {
 		t.Run(args[0], func(t *testing.T) {
 			code, out, errOut := a.run(args...)
-			want := "grelot: this session has no identity: read grelot help, then run grelot register <name> --paths <path> --desc <what and why> --ttl <d>\n"
+			want := "grelot: this session has no identity: read grelot help, then run grelot register <name> --paths <path> --desc <what and why> --ttl=<d>\n"
 			if code != 1 || out != "" || errOut != want {
 				t.Errorf("exit %d, stdout %q, stderr %q; want 1, nothing, and %q", code, out, errOut, want)
 			}

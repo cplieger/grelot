@@ -6,7 +6,7 @@
           {
             "type": "command",
             "command": "grelot hook codex session_start",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       }
@@ -17,7 +17,7 @@
           {
             "type": "command",
             "command": "grelot hook codex prompt",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       }
@@ -28,7 +28,7 @@
           {
             "type": "command",
             "command": "grelot hook codex stop",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       }
@@ -50,7 +50,7 @@
           {
             "type": "command",
             "command": "grelot hook codex subagent_stop",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       }

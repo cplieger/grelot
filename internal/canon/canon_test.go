@@ -1,6 +1,7 @@
 package canon
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -155,6 +156,41 @@ func TestPath_windowsRootedPathIsGrelotForm(t *testing.T) {
 		if err != nil || loc.Canonical != want || loc.Clone != nil {
 			t.Errorf("Windows %q: got %+v, %v; want %q in no clone", local, loc, err, want)
 		}
+	}
+}
+
+// Git Bash hands a native program /workspace/x as C:/Program Files/Git/workspace/x.
+func TestPath_msysRewriteIsUndone(t *testing.T) {
+	const git = "C:/Program Files/Git"
+	gitBash := func(msys string, dirs ...string) *Resolver {
+		r := windowsResolver("/workspace", fakeGit{}, append([]string{"C:/", git, "D:/", "D:/tools"}, dirs...), []string{git + msysMarker})
+		r.msys = msys
+		return r
+	}
+	for name, tc := range map[string]struct {
+		r           *Resolver
+		local, want string
+	}{
+		"a repo path":              {gitBash("MINGW64"), git + "/workspace/grelot", "/workspace/grelot"},
+		"backslashes":              {gitBash("MINGW64"), `C:\Program Files\Git\workspace\grelot\x.go`, "/workspace/grelot/x.go"},
+		"the root itself":          {gitBash("MINGW64"), git + "/workspace", "/workspace"},
+		"an install file":          {gitBash("MINGW64"), git + "/usr/bin/bash", "/c/Program Files/Git/usr/bin/bash"},
+		"a longer name":            {gitBash("MINGW64"), git + "/workspaces/x", "/c/Program Files/Git/workspaces/x"},
+		"no MSYS shell":            {gitBash(""), git + "/workspace/grelot", "/c/Program Files/Git/workspace/grelot"},
+		"not an MSYS install":      {gitBash("MINGW64"), "D:/tools/workspace/x", "/d/tools/workspace/x"},
+		"a real folder there":      {gitBash("MINGW64", git+"/workspace"), git + "/workspace/x", "/c/Program Files/Git/workspace/x"},
+		"the root deeper in":       {gitBash("MINGW64"), git + "/workspace/a/workspace/b", "/workspace/a/workspace/b"},
+		"an unrewritten repo path": {gitBash("MINGW64"), "/workspace/grelot", "/workspace/grelot"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			loc, err := tc.r.Path(t.Context(), tc.local)
+			if err != nil || loc.Canonical != tc.want {
+				t.Errorf("%q: got %q, %v; want %q", tc.local, loc.Canonical, err, tc.want)
+			}
+		})
+	}
+	if _, err := gitBash("MINGW64").Local(t.Context(), git+"/workspace/toolbelt/a.go"); !errors.Is(err, ErrNoClone) {
+		t.Errorf("Local of a rewritten repo path: got %v; want ErrNoClone", err)
 	}
 }
 

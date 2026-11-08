@@ -277,7 +277,7 @@ func TestLoadRefuses(t *testing.T) {
 		{"duplicate door", "name: example\ndoors:\n  - {name: aa, layer: 2, transport: stdout}\n  - {name: aa, layer: 2, transport: exit}\n", []string{"doors[1].name", "twice"}},
 		{"asset outside folder", door("{name: oo, layer: 2, transport: stdout, asset: ../x}"), []string{"doors[0].asset"}},
 		{"event missing", "name: example\nhooks:\n  stop: {outputs: {block: {text: x}}}\n", []string{"hooks.stop.event"}},
-		{"budget over 3s", "name: example\nhooks:\n  session_end: {event: E, budget: 4s}\n", []string{"hooks.session_end.budget"}},
+		{"budget over the default", "name: example\nhooks:\n  session_end: {event: E, budget: 11s}\n", []string{"hooks.session_end.budget"}},
 		{"when without values", "name: example\nhooks:\n  session_end: {event: E, when: {reason: []}}\n", []string{"hooks.session_end.when.reason"}},
 		{"when path", "name: example\nhooks:\n  prompt: {event: P, when: {'a..b': [x]}}\n", []string{"hooks.prompt.when"}},
 		{"output text missing", "name: example\nhooks:\n  stop: {event: S, outputs: {block: {stream: stdout}}}\n", []string{"hooks.stop.outputs.block.text"}},

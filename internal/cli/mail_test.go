@@ -196,7 +196,7 @@ func TestPost_aPathThreadNobodyHearsNamesTheOtherTargets(t *testing.T) {
 	_, bdir := registerAt(t, ts, "s-2", "bee-dev")
 	lone := filepath.ToSlash(t.TempDir())
 	hint := "grelot: no other agent works in or follows " + lone + ", so nobody got this post: " +
-		"reach one agent with grelot post @<name> (grelot who lists them), or everyone with grelot post announce\n"
+		"reach one agent with grelot post '@<name>' (grelot who lists them), or everyone with grelot post announce\n"
 
 	t.Run("a path nobody covers", func(t *testing.T) {
 		out := a.must(append([]string{"post", lone, "Status"}, keep...)...)
@@ -324,7 +324,7 @@ func TestPost_andReserve_aTimeoutIsAnUnknownOutcome(t *testing.T) {
 		{"reserve", filepath.ToSlash(t.TempDir()), "--ttl", "1h", "--reason", "x"},
 	} {
 		code, _, errOut := a.run(args...)
-		want := "grelot: the server did not answer in time, so the outcome is unknown: check grelot history --from @me or grelot reservations before you try again\n"
+		want := "grelot: the server did not answer in time, so the outcome is unknown: check grelot history --from '@me' or grelot reservations before you try again\n"
 		if code != exitFailed || errOut != want {
 			t.Errorf("grelot %s: exit %d, stderr %q, want 1 and %q", args[0], code, errOut, want)
 		}

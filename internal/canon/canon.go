@@ -51,6 +51,7 @@ type Resolver struct {
 	repos  map[string]string
 	root   string
 	system string
+	msys   string // MSYSTEM: set in an MSYS shell such as Git Bash
 	home   string
 	temp   string
 }
@@ -68,6 +69,7 @@ func New(root string, repos map[string]string, clones *Clones) *Resolver {
 		repos:  repos,
 		root:   path.Clean(root),
 		system: runtime.GOOS,
+		msys:   os.Getenv("MSYSTEM"),
 		home:   home,
 		temp:   os.TempDir(),
 	}
@@ -77,6 +79,9 @@ func New(root string, repos map[string]string, clones *Clones) *Resolver {
 // against the working directory. It fails when git or the working directory
 // does.
 func (r *Resolver) Path(ctx context.Context, local string) (Location, error) {
+	if p, ok := r.unconverted(local); ok {
+		return Location{Canonical: p}, nil
+	}
 	if p, ok := r.grelotForm(local); ok {
 		return Location{Canonical: p}, nil
 	}
@@ -135,6 +140,40 @@ func (r *Resolver) grelotForm(local string) (string, bool) {
 		return "", false
 	}
 	return path.Clean(p), true
+}
+
+// msysMarker is the file that marks a folder as an MSYS install's root, the
+// folder an MSYS shell calls /: Git for Windows and MSYS2 both ship it.
+const msysMarker = "/usr/bin/msys-2.0.dll"
+
+// unconverted is the grelot form a path under the root had before an MSYS
+// shell rewrote it. Such a shell hands a native program the argument
+// /workspace/x as <install>/workspace/x (C:/Program Files/Git/workspace/x in
+// Git Bash), so a path is taken back when MSYSTEM is set, it is a drive path
+// holding the root, the part before the root is an MSYS install, and that
+// install holds no folder of the root's name, which would make the path a
+// real local one.
+func (r *Resolver) unconverted(local string) (string, bool) {
+	if !r.windows() || r.msys == "" || r.root == "/" {
+		return "", false
+	}
+	p := r.slash(local)
+	if !hasDrive(p) {
+		return "", false
+	}
+	for i := 0; ; {
+		j := strings.Index(p[i:], r.root)
+		if j < 0 {
+			return "", false
+		}
+		i += j
+		install, rest := p[:i], p[i:]
+		if (len(rest) == len(r.root) || rest[len(r.root)] == '/') &&
+			r.exists(install+msysMarker) && !r.isDir(install+r.root) {
+			return path.Clean(rest), true
+		}
+		i += len(r.root)
+	}
 }
 
 func (r *Resolver) slash(p string) string {

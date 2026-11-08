@@ -20,13 +20,21 @@ Follow [the client page](../client.md), and add `provider: copilot-cli` to the c
 
 ## 2. Install the hooks
 
-The hook file is [`providers/copilot-cli/hooks.json`](../../providers/copilot-cli/hooks.json). It wires two events, `sessionStart` and `agentStop`, each to `grelot hook copilot-cli <role>` with a 10 second timeout. Save it as `grelot.json` in Copilot CLI's user hooks folder: `~/.copilot/hooks/` on macOS and Linux, `%USERPROFILE%\.copilot\hooks\` on Windows, or `$COPILOT_HOME/hooks/` when `COPILOT_HOME` is set.
+The hook file is [`providers/copilot-cli/hooks.json`](../../providers/copilot-cli/hooks.json). It wires two events, `sessionStart` and `agentStop`, each to `grelot hook copilot-cli <role>` with a 30 second timeout. Save it as `grelot.json` in Copilot CLI's user hooks folder: `~/.copilot/hooks/` on macOS and Linux, `%USERPROFILE%\.copilot\hooks\` on Windows, or `$COPILOT_HOME/hooks/` when `COPILOT_HOME` is set.
 
 ```sh
 VERSION=v1.2.3   # the client's release
 mkdir -p ~/.copilot/hooks
 curl -fL -o ~/.copilot/hooks/grelot.json \
   "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/copilot-cli/hooks.json"
+```
+
+In PowerShell on Windows:
+
+```powershell
+$VERSION = 'v1.2.3'   # the client's release
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.copilot\hooks" | Out-Null
+curl.exe -fL -o "$env:USERPROFILE\.copilot\hooks\grelot.json" "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/copilot-cli/hooks.json"
 ```
 
 | Hook | What it adds | Without it |

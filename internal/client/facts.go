@@ -10,10 +10,34 @@ import (
 
 // Facts is what the client keeps from the server's last answer that named
 // them: the path root every canonical path starts with, and the server's
-// version, which the status line compares with the client's.
+// version, which the status line compares with the client's. AckRefused is
+// the client version whose inbox ack that server refused as too old, so the
+// watcher and the stop hold stop waking for mail it cannot mark read.
 type Facts struct {
-	PathRoot string `json:"path_root"`
-	Version  string `json:"version,omitempty"`
+	PathRoot   string `json:"path_root"`
+	Version    string `json:"version,omitempty"`
+	AckRefused string `json:"ack_refused,omitempty"`
+}
+
+// CannotAck is the upgrade line when the cached facts say this client of
+// version client cannot ack on the server, "" otherwise. A newer client,
+// or a server no longer newer, clears it.
+func CannotAck(configDir, client string) string {
+	f := LoadFacts(configDir)
+	if f.AckRefused != client || !older(client, f.Version) {
+		return ""
+	}
+	return upgradeLine(client, f.Version)
+}
+
+// NoteAck records whether the server refused this client's ack as too old.
+func NoteAck(configDir, client string, refused bool) {
+	f := LoadFacts(configDir)
+	f.AckRefused = ""
+	if refused {
+		f.AckRefused = client
+	}
+	SaveFacts(configDir, f)
 }
 
 // maxFactsFile bounds the facts file read.

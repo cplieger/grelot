@@ -145,7 +145,7 @@ The client's watcher, `grelot watch`, waits on the server and delivers each noti
 | `hold` | none | How long one run waits before it prints `idle`, for a tool that polls the command. An `exit` door then exits 0, and a `stdout` door goes on |
 | `idle` | none | What is printed when `hold` lapses. `hold` and `idle` go together |
 
-The end line says why the watcher stopped:
+The end line says why the watcher stopped: `ended` after the session's end report, `none` or `dormant` when the session has no live identity, and `upgrade` when the server refuses this client's inbox ack:
 
 ```text
 [grelot:end] grelot (automated, not the user): this watcher stopped (ended); run grelot me
@@ -172,7 +172,7 @@ Every role takes these keys:
 | --- | --- |
 | `event` | The tool's own name for the event. Required |
 | `when` | Stdin paths and the values each must hold for the role to act, such as `{reason: [delete]}` |
-| `budget` | How long the role may wait on the server, for a tool that allows less than the default 3 seconds |
+| `budget` | How long the role may wait on the server, for a tool that allows less than the default 10 seconds. A role that gets no answer within it prints that it could not check the session and holds nothing. Give the tool's hook a timeout of at least the budget plus the time the tool takes to start the hook, which is up to about 10 seconds on a slow Windows machine. A hook the tool stops at its timeout holds nothing either, and the next command's status line shows the state |
 | `once` | `true` prints the role's output only the first time in a session |
 
 And these, by role:

@@ -367,3 +367,45 @@ func TestDo_noRedirectFollowed(t *testing.T) {
 		t.Error("the redirect target was called, carrying the bearer")
 	}
 }
+
+// A refusal an older client cannot act on, such as a newer server's
+// missing-key 400, names the client to install; a refusal from a server
+// of the client's own build, or one an old client still reads, does not.
+func TestDo_aNewerServersRefusalNamesTheUpgrade(t *testing.T) {
+	const upgrade = "this client is v1.1.0-dev.24 and the server v1.1.0-dev.25: install grelot v1.1.0-dev.25 with go install github.com/cplieger/grelot@v1.1.0-dev.25 or from https://github.com/cplieger/grelot/releases/tag/v1.1.0-dev.25"
+	for _, tc := range []struct {
+		name, server string
+		status       int
+		want         string
+	}{
+		{"a newer server's 400", "v1.1.0-dev.25", http.StatusBadRequest, upgrade},
+		{"a newer server's 404", "v1.1.0-dev.25", http.StatusNotFound, upgrade},
+		{"a newer server's 422", "v1.1.0-dev.25", http.StatusUnprocessableEntity, upgrade},
+		{"a newer server's conflict", "v1.1.0-dev.25", http.StatusConflict, ""},
+		{"a newer server's 410", "v1.1.0-dev.25", http.StatusGone, ""},
+		{"the same server's 400", "v1.1.0-dev.24", http.StatusBadRequest, ""},
+		{"an older server's 400", "v1.1.0-dev.23", http.StatusBadRequest, ""},
+		{"a server naming no version", "", http.StatusBadRequest, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFake(t, func(w http.ResponseWriter, r *http.Request) {
+				if tc.server != "" {
+					w.Header().Set("Grelot-Version", tc.server)
+				}
+				answerJSON(tc.status, `{"error":"this route requires an Idempotency-Key","code":"invalid"}`)(w, r)
+			})
+			a, dir := newTestAPI(t, f.srv.URL, "v1.1.0-dev.24")
+			_, err := a.Do(t.Context(), &Request{Method: http.MethodPost, Path: "/v1/inbox/ack"}, nil)
+			ae, ok := errors.AsType[*APIError](err)
+			if !ok {
+				t.Fatalf("err = %v, want an *APIError", err)
+			}
+			if ae.Upgrade != tc.want {
+				t.Errorf("Upgrade = %q, want %q", ae.Upgrade, tc.want)
+			}
+			if got := LoadFacts(dir).Version; tc.server != "" && got != tc.server {
+				t.Errorf("cached server version %q, want %q", got, tc.server)
+			}
+		})
+	}
+}

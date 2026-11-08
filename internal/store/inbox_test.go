@@ -364,7 +364,7 @@ func TestInbox_aDormantSessionGetsTheReviveOffer(t *testing.T) {
 	bravo := regAt(t, s, "bravo", "/workspace/bravo")
 	direct(t, s, "alpha", "bravo", 2)
 	clk.set(bravo.Expires.Add(3*time.Hour + 59*time.Minute))
-	want := "your identity bravo expired 3 h ago with 2 unread; `grelot revive --ttl <d>` restores it"
+	want := "your identity bravo expired 3 h ago with 2 unread; `grelot revive --ttl=<d>` restores it"
 
 	_, err := s.Inbox(t.Context(), Caller{Session: sess("bravo")}, 0)
 	wantRefusal(t, err, KindGone, "dormant", want)

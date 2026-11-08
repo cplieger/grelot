@@ -122,11 +122,14 @@ type Response struct {
 
 // APIError is a non-2xx answer. Msg is the server's reason, one line naming
 // the fix; Code is its error code, such as conflict or the store's why.
+// Upgrade is set when a server newer than this client refused a request it
+// may have refused for that reason: the line naming the client to install.
 type APIError struct {
-	Status string
-	Msg    string
-	Code   string
-	HTTP   int
+	Status  string
+	Msg     string
+	Code    string
+	Upgrade string
+	HTTP    int
 }
 
 func (e *APIError) Error() string { return "grelot: " + e.Msg }
@@ -180,8 +183,9 @@ func (a *API) Do(ctx context.Context, r *Request, out any) (Response, error) {
 		return Response{}, &UnreachableError{Server: a.server, Timeout: callCtx.Err() != nil, Err: httpclient.LogSafeError(err)}
 	}
 	got := Response{Status: textsafe.SanitizeSingleLine(resp.Header.Get(headerStatus)), Body: body, Code: resp.StatusCode}
+	server := a.noteVersion(resp.Header.Get(headerVersion))
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		err := a.refusal(&got)
+		err := a.refusal(&got, server)
 		return got, err
 	}
 	if out != nil && json.Unmarshal(body, out) != nil {
@@ -247,8 +251,29 @@ type errorBody struct {
 	PathRoot string `json:"path_root"`
 }
 
-// refusal reads a non-2xx answer, caching the path root it names.
-func (a *API) refusal(r *Response) error {
+// noteVersion caches the server version an answer names and answers it,
+// or the cached one when the answer names none.
+func (a *API) noteVersion(v string) string {
+	f := LoadFacts(a.configDir)
+	if _, ok := parseVersion(v); !ok || v == f.Version {
+		return f.Version
+	}
+	f.Version = v
+	SaveFacts(a.configDir, f)
+	return v
+}
+
+// skewStatus are the refusals a newer server may answer a request it no
+// longer reads: a malformed request, a route or method it dropped, a body
+// it no longer takes.
+var skewStatus = map[int]bool{
+	http.StatusBadRequest: true, http.StatusNotFound: true, http.StatusMethodNotAllowed: true,
+	http.StatusUnsupportedMediaType: true, http.StatusUnprocessableEntity: true,
+}
+
+// refusal reads a non-2xx answer from a server of version server, caching
+// the path root it names.
+func (a *API) refusal(r *Response, server string) error {
 	var eb errorBody
 	if json.Unmarshal(r.Body, &eb) != nil || eb.Error == "" {
 		eb = errorBody{Error: fmt.Sprintf("the server answered %d %s", r.Code, http.StatusText(r.Code))}
@@ -258,11 +283,15 @@ func (a *API) refusal(r *Response) error {
 		f.PathRoot = eb.PathRoot
 		SaveFacts(a.configDir, f)
 	}
-	return &APIError{
+	ae := &APIError{
 		Status: r.Status, HTTP: r.Code,
 		Msg:  textsafe.SanitizeSingleLine(eb.Error),
 		Code: textsafe.SanitizeSingleLine(eb.Code),
 	}
+	if skewStatus[r.Code] && older(a.version, server) {
+		ae.Upgrade = upgradeLine(a.version, server)
+	}
+	return ae
 }
 
 // Me sends GET /v1/me with q and header and caches the path root and
@@ -273,6 +302,8 @@ func (a *API) Me(ctx context.Context, q url.Values, header http.Header) (*Me, Re
 	if err != nil {
 		return nil, resp, err
 	}
-	SaveFacts(a.configDir, Facts{PathRoot: me.PathRoot, Version: me.Version})
+	f := LoadFacts(a.configDir)
+	f.PathRoot, f.Version = me.PathRoot, me.Version
+	SaveFacts(a.configDir, f)
 	return &me, resp, nil
 }

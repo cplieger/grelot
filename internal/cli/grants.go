@@ -27,7 +27,7 @@ func (r *run) reserve(ctx context.Context, args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usagef(r.verb, "name one path: grelot reserve <path> --ttl <d> --reason <why> [--queue]")
+		return usagef(r.verb, "name one path: grelot reserve <path> --ttl=<d> --reason <why> [--queue]")
 	}
 	canonical, _, err := r.canonical(ctx, rest)
 	if err != nil {
@@ -48,7 +48,7 @@ func (r *run) reserve(ctx context.Context, args []string) error {
 			v.ID, safe(v.Path), behind, v.ID, dataLabel)
 		return nil
 	}
-	fmt.Fprintf(r.Stdout, "grelot: reservation %d held on %s until %s; renew with grelot renew %d --ttl <d>, release with grelot release %d\n",
+	fmt.Fprintf(r.Stdout, "grelot: reservation %d held on %s until %s; renew with grelot renew %d --ttl=<d>, release with grelot release %d\n",
 		v.ID, safe(v.Path), stamp(v.Expires), v.ID, v.ID)
 	return nil
 }
@@ -135,7 +135,7 @@ func (r *run) delegate(ctx context.Context, args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usagef(r.verb, "name one label: grelot delegate <label> --ttl <d> [--allow-thread <path>|announce] [--allow-agent <name>]")
+		return usagef(r.verb, "name one label: grelot delegate <label> --ttl=<d> [--allow-thread <path>|announce] [--allow-agent <name>]")
 	}
 	body := grantBody{Label: rest[0], TTL: *ttl, AllowAgents: names(allowAgents), DenyAgents: names(denyAgents)}
 	if body.AllowThreads, err = r.threadScope(ctx, allowThreads); err != nil {

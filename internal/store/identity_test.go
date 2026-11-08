@@ -266,7 +266,7 @@ func TestTakeOver_refusedOutsideTheEnvironmentOrProvider(t *testing.T) {
 			Where{Machine: machineID("1"), Environment: hex32("a")},
 			Where{Machine: dmi("1"), Environment: hex32("a")},
 			"other_environment",
-			[]string{"(unknown)"},
+			[]string{"(other environment, machine not comparable (dmi · machine-id))"},
 		},
 		{
 			"same environment, other provider", "claude-code:x", envA(), envA(), "other_provider",
@@ -366,7 +366,7 @@ func TestRegister_dormantNameNamesTheRow(t *testing.T) {
 			"subflux-dev is dormant until 2026-11-07 05:54 UTC; choose another or revive it from its own environment",
 			"host-a/app", "same environment", "provider kiro-cli", "dormant since 2026-11-04 05:54 UTC",
 			repoSubflux+", "+repoGrelot, "moving the run surface",
-			"`grelot revive subflux-dev --ttl <d>` only if it is your own earlier session")
+			"`grelot revive subflux-dev --ttl=<d>` only if it is your own earlier session")
 	}
 }
 

@@ -187,7 +187,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	handle("POST /v1/register", s.keyed(s.register))
 	handle("POST /v1/revive", s.keyed(s.revive))
 	handle("GET /v1/me", s.identity(s.me))
-	handle("PATCH /v1/me", s.keyed(s.patchMe))
+	handle("PATCH /v1/me", s.renewable(s.patchMe))
 	handle("DELETE /v1/me", s.keyed(s.deleteMe))
 	handle("GET /v1/identities", s.anyone(s.who))
 	handle("POST /v1/posts", s.keyed(s.post))

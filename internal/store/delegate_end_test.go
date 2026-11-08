@@ -249,7 +249,7 @@ func TestDelegate_expiryWarningNamesTheRenewalAsItsHandle(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("%d identity_expiring, want 1", len(got))
 	}
-	if want := "run `grelot as parent/review renew --ttl 2h`"; !strings.Contains(got[0].Text, want) {
+	if want := "run `grelot as parent/review renew --ttl=2h`"; !strings.Contains(got[0].Text, want) {
 		t.Errorf("text %q lacks %q", got[0].Text, want)
 	}
 }

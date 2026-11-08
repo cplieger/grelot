@@ -109,7 +109,7 @@ func TestRevive_leaseAndWhereRequired(t *testing.T) {
 		want string
 	}{
 		{name: "no where", edit: func(r *Revival) { r.Where = nil }, want: "where is required"},
-		{name: "no ttl", edit: func(r *Revival) { r.TTL = 0 }, want: "a ttl is required: pass --ttl <d>, from 15m to 24h"},
+		{name: "no ttl", edit: func(r *Revival) { r.TTL = 0 }, want: "a ttl is required: pass --ttl=<d>, from 15m to 24h"},
 		{name: "ttl under the bounds", edit: func(r *Revival) { r.TTL = 14 * time.Minute }, want: "from 15m to 24h"},
 		{name: "ttl over the bounds", edit: func(r *Revival) { r.TTL = 25 * time.Hour }, want: "from 15m to 24h"},
 		{name: "bad machine", edit: func(r *Revival) { r.Where.Machine = "dmi:xyz" }, want: "where.machine"},
@@ -219,7 +219,7 @@ func TestRevive_byNameRefusalsInOrder(t *testing.T) {
 		},
 		{
 			name: "a copied environment on a machine of another kind", session: sessB, target: "subflux-dev", caller: other(machineID("1"), hex32("a")),
-			kind: KindNotFound, why: "other_environment", want: "no dormant identity subflux-dev in this environment (unknown)",
+			kind: KindNotFound, why: "other_environment", want: "no dormant identity subflux-dev in this environment (other environment, machine not comparable (dmi · machine-id))",
 		},
 		{
 			name: "another provider", session: "claude-code:session-b", target: "subflux-dev", caller: envA(),

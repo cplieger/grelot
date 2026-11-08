@@ -48,7 +48,7 @@ const (
 )
 
 const (
-	lineDormant = "grelot: not registered: %s is dormant. Run `grelot revive --ttl <d>` to go on as it, or `grelot help`, then `grelot register` as it says."
+	lineDormant = "grelot: not registered: %s is dormant. Run `grelot revive --ttl=<d>` to go on as it, or `grelot help`, then `grelot register` as it says."
 	lineStale   = "grelot (automated, not the user): signal %d is stale; its mail has been read, so this turn ends"
 	lineHold    = "grelot (automated, not the user): unread %s; run grelot inbox before you stop"
 )
@@ -281,6 +281,12 @@ func (h *hookCall) stop(ctx context.Context, role *provider.StopRole) error {
 		postLifecycle(ctx, api, role.Budget, map[string]any{keyEvent: roleTurnEnd})
 		return nil
 	}
+	// Mail this client cannot ack stays unread, so a hold would hold every
+	// turn until the client is upgraded.
+	if line := client.CannotAck(h.ConfigDir, h.Version); line != "" {
+		postLifecycle(ctx, api, role.Budget, map[string]any{keyEvent: roleTurnEnd})
+		return h.emit(role.Outputs.Notice, "grelot: unread mail stays unread until this client is upgraded: "+line)
+	}
 	var held client.Held
 	// A host that cannot be held, or runs one stop per turn, ends the turn
 	// at this hold whatever it answers.
@@ -401,11 +407,11 @@ func (h *hookCall) sessionAPI(stdin string) (*client.API, error) {
 	return api, nil
 }
 
-// budgetCtx bounds one hook request by the role's budget, hookBudget when
+// budgetCtx bounds one hook request by the role's budget, provider.DefaultBudget when
 // the role sets none.
 func budgetCtx(ctx context.Context, budget time.Duration) (context.Context, context.CancelFunc) {
 	if budget == 0 {
-		budget = hookBudget
+		budget = provider.DefaultBudget
 	}
 	return context.WithTimeout(ctx, budget)
 }

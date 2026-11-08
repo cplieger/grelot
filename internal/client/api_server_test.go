@@ -109,7 +109,7 @@ func TestDo_oldClientGetsThe426(t *testing.T) {
 	if !errors.As(err, &ae) || ae.HTTP != http.StatusUpgradeRequired {
 		t.Fatalf("err = %v, want a 426 *APIError", err)
 	}
-	if !strings.Contains(ae.Msg, "install grelot v1.1.0") {
+	if !strings.Contains(ae.Msg, "install grelot "+serverVersion+" with go install github.com/cplieger/grelot@"+serverVersion) {
 		t.Errorf("426 line = %q, want it to name the version to install", ae.Msg)
 	}
 }

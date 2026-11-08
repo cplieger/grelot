@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/where"
 )
 
@@ -17,6 +18,19 @@ func TestRun_unknownCommand(t *testing.T) {
 	code, _, errOut := a.run("bogus")
 	if code != 2 || !strings.Contains(errOut, `unknown command "bogus"`) || !strings.Contains(errOut, "grelot help") {
 		t.Errorf("exit %d, stderr %q; want 2 naming the command and grelot help", code, errOut)
+	}
+}
+
+func TestRun_helpFlagsPrintTheManual(t *testing.T) {
+	a := newAgent(t, newServer(t), "s-1", "")
+	want := a.must("help")
+	for _, flag := range []string{"--help", "-h"} {
+		t.Run(flag, func(t *testing.T) {
+			code, out, errOut := a.run(flag)
+			if code != 0 || out != want || errOut != "" {
+				t.Errorf("grelot %s: exit %d, stdout %d bytes, stderr %q; want 0 and grelot help's text", flag, code, len(out), errOut)
+			}
+		})
 	}
 }
 
@@ -64,19 +78,43 @@ func TestRun_noConfigNamesTheFile(t *testing.T) {
 	}
 }
 
+// grelot me in a shell that holds no host session, a plain terminal, checks
+// the server and the token, then says why it has no identity to show.
 func TestRun_noSession(t *testing.T) {
-	a := newAgent(t, newServer(t), "s-1", "")
+	ts := newServer(t)
+	a := newAgent(t, ts, "s-1", "")
 	delete(a.vars, "ALPHA_ID")
+	reached := "grelot: the server at " + ts.URL + " answers and accepts this token\n"
+	inAgent := "grelot: run grelot me in your agent's shell for its status line and the register command\n"
 	t.Run("no provider detected", func(t *testing.T) {
-		code, _, errOut := a.run("me")
-		if code != 1 || !strings.Contains(errOut, "grelot cannot tell which host this shell runs in") {
-			t.Errorf("exit %d, stderr %q; want 1 with the detection line", code, errOut)
+		code, out, errOut := a.run("me")
+		if code != 0 || errOut != "" || !strings.HasPrefix(out, reached) || !strings.HasSuffix(out, inAgent) ||
+			!strings.Contains(out, "\ngrelot cannot tell which host this shell runs in (none matched)") {
+			t.Errorf("exit %d, stdout %q, stderr %q; want 0, the server check, the detection line and where to run it", code, out, errOut)
 		}
 	})
 	t.Run("a provider whose variable is unset", func(t *testing.T) {
-		code, _, errOut := a.run("--provider", "alpha", "me")
-		if code != 1 || errOut != "grelot: provider alpha keeps its session id in ALPHA_ID, which this shell does not set; run with --provider <name> for the host this shell runs in\n" {
-			t.Errorf("exit %d, stderr %q; want 1 with the no-session line", code, errOut)
+		code, out, errOut := a.run("--provider", "alpha", "me")
+		want := reached + "grelot: provider alpha keeps its session id in ALPHA_ID, which this shell does not set; run with --provider <name> for the host this shell runs in\n" + inAgent
+		if code != 0 || errOut != "" || out != want {
+			t.Errorf("exit %d, stdout %q, stderr %q; want 0 and %q", code, out, errOut, want)
+		}
+	})
+	t.Run("a token the server refuses", func(t *testing.T) {
+		b := newAgent(t, ts, "s-1", "")
+		delete(b.vars, "ALPHA_ID")
+		writeClientConfig(t, b.env.ConfigDir, "server: "+ts.URL+"\ntoken: wrong-token\n")
+		code, out, errOut := b.run("me")
+		if code != 1 || strings.Contains(out, "accepts this token") || !strings.Contains(errOut, client.ConfigFile(b.env.ConfigDir)) {
+			t.Errorf("exit %d, stdout %q, stderr %q; want 1 and the refusal naming the config file", code, out, errOut)
+		}
+	})
+	t.Run("an unreachable server", func(t *testing.T) {
+		b := newAgent(t, &testServer{URL: unreachableURL(t)}, "s-1", "")
+		delete(b.vars, "ALPHA_ID")
+		code, out, errOut := b.run("me")
+		if code != 1 || out != "" || errOut == "" {
+			t.Errorf("exit %d, stdout %q, stderr %q; want 1 and the unreachable line", code, out, errOut)
 		}
 	})
 }

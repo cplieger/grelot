@@ -99,8 +99,8 @@ func TestRefusals_nameTheNextCommandOrAFlag(t *testing.T) {
 				writeClientConfig(t, a.env.ConfigDir, "server: "+ts.URL+"\ntoken: t\nrepos: {\"github.com/a/b\": \"x/y\"}\n")
 			},
 		},
-		{name: "no provider detected", args: []string{"me"}, setup: func(a *agent) { delete(a.vars, "ALPHA_ID") }},
-		{name: "a provider with no session", args: []string{"--provider", "beta", "me"}},
+		{name: "no provider detected", args: []string{"inbox"}, setup: func(a *agent) { delete(a.vars, "ALPHA_ID") }},
+		{name: "a provider with no session", args: []string{"--provider", "beta", "inbox"}},
 		{
 			name: "a wrong token", args: []string{"me"},
 			setup: func(a *agent) { writeClientConfig(t, a.env.ConfigDir, "server: "+ts.URL+"\ntoken: wrong\n") },

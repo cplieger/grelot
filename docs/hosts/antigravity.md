@@ -20,12 +20,19 @@ Follow [the client page](../client.md), and add `provider: antigravity` to the c
 
 ## 2. Install the hooks
 
-The hook file is [`providers/antigravity/hooks.json`](../../providers/antigravity/hooks.json). It holds one named group, `grelot`, that wires `SessionStart` and `Stop` to `grelot hook antigravity <role>` with a 10 second timeout. Add the `grelot` group to `~/.gemini/config/hooks.json`, beside any groups the file already has. Where there is no such file, save the hook file there as it is.
+The hook file is [`providers/antigravity/hooks.json`](../../providers/antigravity/hooks.json). It holds one named group, `grelot`, that wires `SessionStart` and `Stop` to `grelot hook antigravity <role>` with a 30 second timeout. Add the `grelot` group to `~/.gemini/config/hooks.json`, beside any groups the file already has. Where there is no such file, save the hook file there as it is.
 
 ```sh
 VERSION=v1.2.3   # the client's release
 curl -fL -o grelot-hooks.json \
   "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/antigravity/hooks.json"
+```
+
+In PowerShell on Windows:
+
+```powershell
+$VERSION = 'v1.2.3'   # the client's release
+curl.exe -fL -o grelot-hooks.json "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/antigravity/hooks.json"
 ```
 
 | Hook | What it adds | Without it |

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/proctree"
+	"github.com/cplieger/grelot/internal/provider"
 	"github.com/cplieger/grelot/internal/where"
 )
 
@@ -78,7 +80,7 @@ func (r *run) register(ctx context.Context, args []string) error {
 		return nil
 	}
 	if len(rest) != 1 {
-		return usagef(r.verb, "name the identity once: grelot register <name> --paths <path> --desc <what and why> --ttl <d>")
+		return usagef(r.verb, "name the identity once: grelot register <name> --paths <path> --desc <what and why> --ttl=<d>")
 	}
 	p, err := r.provider()
 	if err != nil {
@@ -130,7 +132,7 @@ func (r *run) registered(got *client.Registered, delegate bool) {
 			"no environment id:", "no environment id ("+file+" could not be read or created):", 1))
 	}
 	if got.Existing {
-		fmt.Fprintf(r.Stdout, "grelot: this session already has the identity @%s, returned unchanged with its lease; run grelot renew --ttl <d> to extend it\n",
+		fmt.Fprintf(r.Stdout, "grelot: this session already has the identity @%s, returned unchanged with its lease; run grelot renew --ttl=<d> to extend it\n",
 			got.Identity.Name)
 	}
 	if got.Unread > 0 {
@@ -153,7 +155,7 @@ func (r *run) revive(ctx context.Context, args []string) error {
 		return err
 	}
 	if len(rest) > 1 {
-		return usagef(r.verb, "name at most one identity: grelot revive [<name>] --ttl <d>")
+		return usagef(r.verb, "name at most one identity: grelot revive [<name>] --ttl=<d>")
 	}
 	p, err := r.provider()
 	if err != nil {
@@ -184,8 +186,8 @@ func (r *run) revive(ctx context.Context, args []string) error {
 // none is listed; the server answers for a name it cannot revive.
 func (r *run) dormantPaths(ctx context.Context, name string) []string {
 	var got client.Peers
-	q := url.Values{"all": {"1"}, "q": {name}, "fields": {"paths,state"}}
-	if r.peek(ctx, &client.Request{Method: http.MethodGet, Path: "/v1/identities", Query: q}, &got) != nil {
+	q := url.Values{"all": {"1"}, "q": {name}, fieldsParam: {"paths,state"}}
+	if r.peek(ctx, &client.Request{Method: http.MethodGet, Path: identitiesPath, Query: q}, &got) != nil {
 		return nil
 	}
 	for i := range got.Identities {
@@ -202,6 +204,11 @@ func (r *run) me(ctx context.Context, args []string) error {
 	}
 	a, err := r.client(true)
 	if err != nil {
+		_, noHost := errors.AsType[*provider.DetectError](err)
+		ns, noSession := errors.AsType[*provider.NoSessionError](err)
+		if noHost || noSession && ns.Env != "" {
+			return r.meWithoutSession(ctx, err)
+		}
 		return err
 	}
 	me, resp, err := a.Me(ctx, url.Values{}, http.Header{})
@@ -218,6 +225,31 @@ func (r *run) me(ctx context.Context, args []string) error {
 	}
 	writeCard(r.Stdout, me.Identity)
 	writeMe(r.Stdout, me, where.EnvironmentFile(r.ConfigDir))
+	return nil
+}
+
+// meWithoutSession is grelot me in a shell that holds no host session,
+// such as a terminal no agent runs in: it checks the server and the token
+// with a read any caller may make, then prints why there is no identity
+// to show.
+func (r *run) meWithoutSession(ctx context.Context, why error) error {
+	a, err := r.client(false)
+	if err != nil {
+		return err
+	}
+	q := url.Values{fieldsParam: {"name"}}
+	resp, err := a.Do(ctx, r.bounded(&client.Request{Method: http.MethodGet, Path: identitiesPath, Query: q}), nil)
+	if err != nil {
+		return err
+	}
+	r.printStatus(resp.Status)
+	fmt.Fprintf(r.Stdout, "grelot: the server at %s answers and accepts this token\n", safe(r.cfg.Server))
+	line := safe(why.Error())
+	if !strings.HasPrefix(line, "grelot") {
+		line = "grelot: " + line
+	}
+	fmt.Fprintln(r.Stdout, line)
+	fmt.Fprintln(r.Stdout, "grelot: run grelot me in your agent's shell for its status line and the register command")
 	return nil
 }
 
@@ -291,7 +323,7 @@ func (r *run) renew(ctx context.Context, args []string) error {
 	}
 	switch {
 	case len(rest) > 1:
-		return usagef(r.verb, "name at most one reservation: grelot renew [<reservation id>] --ttl <d>")
+		return usagef(r.verb, "name at most one reservation: grelot renew [<reservation id>] --ttl=<d>")
 	case len(rest) == 1:
 		return r.renewReservation(ctx, rest[0], *ttl)
 	}

@@ -242,7 +242,7 @@ func TestRetire_needsALiveIdentity(t *testing.T) {
 	wantRefusal(t, err, KindGone, "none")
 	expireToDormant(t, s, clk, "subflux-dev")
 	_, _, err = s.Retire(t.Context(), Keyed{}, Caller{Session: sessA})
-	wantRefusal(t, err, KindGone, "dormant", "grelot revive --ttl <d>")
+	wantRefusal(t, err, KindGone, "dormant", "grelot revive --ttl=<d>")
 }
 
 func TestCards_neverCreateOrMoveAPathThread(t *testing.T) {

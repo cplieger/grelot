@@ -18,9 +18,6 @@ import (
 
 const verbHook = "hook"
 
-// hookBudget is a hook's request budget when its role sets none.
-const hookBudget = 3 * time.Second
-
 // The lines a hook prints of its own.
 const (
 	lineUnregistered = "grelot: not registered. Register before you start work: run `grelot help`, then `grelot register` as it says."
@@ -46,6 +43,8 @@ type hookCall struct {
 	// printed are the marks emit sets once it has printed the text that
 	// carries them; a run that prints nothing spends none.
 	printed [][2]string
+	// unconfigured is a client config that does not load.
+	unconfigured bool
 }
 
 // onPrint sets the mark when this run's emit prints.
@@ -84,6 +83,12 @@ func (r *run) hook(ctx context.Context, args []string) error {
 	r.prov = p
 	r.hookSession = p.Name + ":" + own
 	h := &hookCall{run: r, in: in, session: session, own: own, marks: hook.NewMarks(r.ConfigDir, r.now)}
+	// A client with no usable config writes no state, and its roles print
+	// only the could-not-check line that names the config's fault.
+	if _, err := r.config(); err != nil {
+		h.unconfigured = true
+		h.marks = hook.ReadMarks(r.ConfigDir, r.now)
+	}
 	return h.role(ctx, args[1])
 }
 
@@ -281,10 +286,11 @@ func (h *hookCall) childStart(ctx context.Context, c hook.Class, subagent bool, 
 	return fmt.Sprintf(lineHandle, name, name) + "\n"
 }
 
-// forkLine is the fork's one line the first time a role of the fork asks.
+// forkLine is the fork's one line the first time a role of the fork asks,
+// and nothing from a client with no config, which could not keep it once.
 func (h *hookCall) forkLine(c hook.Class) string {
 	key := h.prov.Name + ":" + c.Stdin
-	if h.marks.Has(markFork, key) {
+	if h.unconfigured || h.marks.Has(markFork, key) {
 		return ""
 	}
 	h.onPrint(markFork, key)
@@ -294,7 +300,7 @@ func (h *hookCall) forkLine(c hook.Class) string {
 // hookMe sends GET /v1/me within the role's budget.
 func hookMe(ctx context.Context, api *client.API, budget time.Duration, q url.Values, header http.Header) (*client.Me, client.Response, error) {
 	if budget == 0 {
-		budget = hookBudget
+		budget = provider.DefaultBudget
 	}
 	ctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
@@ -306,7 +312,7 @@ func hookMe(ctx context.Context, api *client.API, budget time.Duration, q url.Va
 // check and why, so neither an outage nor a client fault holds the agent.
 func failLine(err error, budget time.Duration) string {
 	if budget == 0 {
-		budget = hookBudget
+		budget = provider.DefaultBudget
 	}
 	var why string
 	ae, isAPI := errors.AsType[*client.APIError](err)

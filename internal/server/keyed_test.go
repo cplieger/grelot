@@ -414,3 +414,40 @@ func TestKeyedWrites_reSendAnswersTheFirstAnswerWhereARunWouldRefuse(t *testing.
 		}
 	})
 }
+
+// A renewal alone needs no key: a re-sent one only moves the expiry, so a
+// client older than the key rule still renews; every other change to the
+// identity still needs its key.
+func TestPatchMe_aRenewalAloneTakesNoKey(t *testing.T) {
+	h := newHarness(t)
+	h.mustRegister(sessA, "renewer")
+	noKey := map[string]string{headerSession: sessA, headerKey: ""}
+	for _, c := range []struct {
+		body any
+		name string
+		want int
+	}{
+		{name: "ttl and where", body: map[string]any{"ttl": "3h", "where": where("a")}, want: http.StatusOK},
+		{name: "sent again", body: map[string]any{"ttl": "4h", "where": where("a")}, want: http.StatusOK},
+		{name: "ttl and a description", body: map[string]any{"ttl": "4h", "description": "other work"}, want: http.StatusBadRequest},
+		{name: "a description", body: map[string]any{"description": "other work"}, want: http.StatusBadRequest},
+		{name: "not an object", body: []string{"ttl"}, want: http.StatusBadRequest},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := h.request(http.MethodPatch, "/v1/me", c.body, noKey)
+			if r.status != c.want {
+				t.Fatalf("%d %s, want %d", r.status, r.raw, c.want)
+			}
+			if c.want == http.StatusBadRequest && !strings.Contains(r.str("error"), "requires an Idempotency-Key") {
+				t.Errorf("refusal %q, want it to name the missing key", r.str("error"))
+			}
+		})
+	}
+	me := h.as(sessA, http.MethodGet, "/v1/me", nil)
+	if got := me.body["identity"].(map[string]any)["description"]; got != "building the HTTP API" {
+		t.Errorf("description %v, want the unkeyed change refused", got)
+	}
+	if got := me.body["identity"].(map[string]any)["ttl"]; got != "4h0m0s" {
+		t.Errorf("ttl %v, want the last renewal's 4h0m0s", got)
+	}
+}

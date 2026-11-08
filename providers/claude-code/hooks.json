@@ -6,7 +6,7 @@
           {
             "type": "command",
             "command": "grelot hook claude-code session_start",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       }
@@ -17,7 +17,7 @@
           {
             "type": "command",
             "command": "grelot hook claude-code prompt",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       }
@@ -28,7 +28,7 @@
           {
             "type": "command",
             "command": "grelot hook claude-code stop",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       }
@@ -39,7 +39,7 @@
           {
             "type": "command",
             "command": "grelot hook claude-code session_end",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       }

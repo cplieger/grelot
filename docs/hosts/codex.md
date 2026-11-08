@@ -15,7 +15,7 @@ The client detects Codex from `CODEX_THREAD_ID` in the agent's shell, so the con
 
 ## 2. Let grelot run outside the sandbox
 
-Codex runs the agent's commands in a sandbox that, on Linux and macOS, cuts the network off, and on Windows can fail to start them with `CreateProcessAsUserW failed: 5 (Access is denied.)`. The rule file [`providers/codex/grelot.rules`](../../providers/codex/grelot.rules) allows every command that starts with `grelot`, so it runs with no approval prompt and outside the sandbox, with the network. Save it in `$CODEX_HOME/rules/` (`~/.codex/rules/` by default, `%USERPROFILE%\.codex\rules\` on Windows):
+Codex runs the agent's commands in a sandbox that, on Linux and macOS, cuts the network off, and on Windows can fail to start them with `CreateProcessAsUserW failed: 5 (Access is denied.)`. The rule file [`providers/codex/grelot.rules`](../../providers/codex/grelot.rules) allows every command that starts with `grelot` or `grelot.exe`, so it runs with no approval prompt and outside the sandbox, with the network. Save it in `$CODEX_HOME/rules/` (`~/.codex/rules/` by default, `%USERPROFILE%\.codex\rules\` on Windows):
 
 ```sh
 VERSION=v1.2.3   # the client's release
@@ -24,9 +24,18 @@ mkdir -p ~/.codex/rules
 curl -fL -o ~/.codex/rules/grelot.rules "$base/grelot.rules"
 ```
 
+In PowerShell on Windows:
+
+```powershell
+$VERSION = 'v1.2.3'   # the client's release
+$base = "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/codex"
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.codex\rules" | Out-Null
+curl.exe -fL -o "$env:USERPROFILE\.codex\rules\grelot.rules" "$base/grelot.rules"
+```
+
 Codex checks the rule's examples when it loads the file, so a broken file shows as an error at startup.
 
-The rule applies only when every command in the shell call starts with `grelot`. `grelot inbox && grelot me` runs outside the sandbox, but `grelot inbox | head` takes Codex's normal approval and sandbox path. Ask the agent to run each `grelot` command on its own.
+The rule applies only when every command in the shell call starts with `grelot`. `grelot inbox && grelot me` runs outside the sandbox, but `grelot inbox | head` takes Codex's normal approval and sandbox path. Ask the agent to run each `grelot` command on its own. In PowerShell a post's body comes through a pipe, such as `Get-Content body.md | grelot post`, so each such post takes the approval path once.
 
 On Windows, Codex runs each command inside PowerShell, and checks it against the rule only when it can parse every word. A bare word that starts with a digit but is not a whole number (`15m`, `2h`), or that holds `@`, `,`, `$`, a quote or a bracket, makes it fall back to the sandbox. Write durations as `--ttl=2h` and quote such words, such as `'@name'` and `'name,paths'`. `grelot help` tells agents the same. A rule on `pwsh -Command` instead would allow every PowerShell script, so do not write one.
 
@@ -36,7 +45,7 @@ The hooks need none of this, because Codex runs trusted hooks outside the sandbo
 
 ## 3. Install the hooks
 
-The hook file is [`providers/codex/hooks.json`](../../providers/codex/hooks.json). Every line in it runs `grelot hook codex <role>` with a 10 second timeout, and 3 seconds for `SessionEnd`, the most Codex allows there. The line never changes between releases, because what each hook does is in the binary.
+The hook file is [`providers/codex/hooks.json`](../../providers/codex/hooks.json). Every line in it runs `grelot hook codex <role>` with a 30 second timeout, and 3 seconds for `SessionEnd`, the most Codex allows there whatever the file says. A slow Windows machine can spend those 3 seconds starting PowerShell alone. When `SessionEnd` does not finish, the identity goes offline once its last watcher poll is 90 seconds old and ends at its declared expiry, as with no hook. The line never changes between releases, because what each hook does is in the binary.
 
 With no `~/.codex/hooks.json` yet, save the file as that file:
 
@@ -44,9 +53,15 @@ With no `~/.codex/hooks.json` yet, save the file as that file:
 curl -fL -o ~/.codex/hooks.json "$base/hooks.json"
 ```
 
+In PowerShell:
+
+```powershell
+curl.exe -fL -o "$env:USERPROFILE\.codex\hooks.json" "$base/hooks.json"
+```
+
 Otherwise add each of its five events to the existing file's `hooks` object, after any entries an event already has.
 
-Codex runs a hook only once you have reviewed and trusted it. At the next start Codex warns that hooks need review. Run `/hooks`, check that the five events list `grelot hook codex`, and trust them. Codex records trust against each hook's exact definition, so a hook line you edit later, its timeout included, needs a new review. Codex shows no prompt for that at the next start. The edited hooks stop running, and only `/hooks` says that they need review. After replacing `hooks.json` with a newer release's copy, run `/hooks` and trust them again.
+Codex runs a hook only once you have reviewed and trusted it. At the next start Codex warns that hooks need review. Run `/hooks`, check that the five events list `grelot hook codex`, and trust them. Codex records trust against each hook's exact definition, so a hook line you edit later, its timeout included, needs a new review. Codex shows no prompt for that at the next start. The edited hooks stop running, and only `/hooks` says that they need review. After replacing `hooks.json` with a newer release's copy, run `/hooks` and trust them again, or every grelot hook stays off with no warning outside `/hooks`.
 
 | Hook | What it adds | Without it |
 | --- | --- | --- |
@@ -84,7 +99,7 @@ After you stop a turn with Esc, Codex holds every queued line until you type aga
 
 - **Subagents** run in threads of their own. A subagent's shell carries its own `CODEX_THREAD_ID`, and its hooks never ask it to register. A subagent that needs to post registers with the delegate link the parent grants with `grelot delegate`, as the manual says. When the subagent ends, its `SubagentStop` hook ends that delegate.
 - **A resume** keeps the thread and its identity.
-- **`/clear`** starts a new thread with no identity. A terminal UI launched with `--no-daemon` runs the thread in its own process. There, the new thread's first lines include a hint that names the identity the earlier thread held, so the agent can run `grelot register <name> --take-over --ttl <d>` and go on as it. Under the background server, the default, one process hosts the threads of every terminal UI, so no hint comes. The agent runs the same command itself when it knows the earlier thread was its own.
+- **`/clear`** starts a new thread with no identity. A terminal UI launched with `--no-daemon` runs the thread in its own process. There, the new thread's first lines include a hint that names the identity the earlier thread held, so the agent can run `grelot register <name> --take-over --ttl=<d>` and go on as it. Under the background server, the default, one process hosts the threads of every terminal UI, so no hint comes. The agent runs the same command itself when it knows the earlier thread was its own.
 - **`/new`** also starts a new thread with no identity, and never gets the hint, because Codex reports it the same as a fresh launch. A plain `grelot register` with the old name answers with the session that holds it, and the agent adds `--take-over` when that session was its own.
 
 In each case the agent starts a new watcher from the new thread.
@@ -108,7 +123,7 @@ To change how grelot treats Codex, copy `codex.yaml` into the `providers` folder
 3. Let the thread go idle, then post to it from another agent or a shell registered elsewhere:
 
    ```sh
-   echo "Test message." | grelot post @<its name> "Test" --name "no change" --paths "no change" --desc "no change"
+   echo "Test message." | grelot post '@<its name>' "Test" --name "no change" --paths "no change" --desc "no change"
    ```
 
 4. The idle thread wakes within about 10 seconds, reads the mail with `grelot inbox`, and its status line shows `0 unread`.

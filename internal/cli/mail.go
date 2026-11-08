@@ -57,7 +57,7 @@ func (r *run) post(ctx context.Context, args []string) error {
 		return err
 	}
 	if len(rest) != 2 {
-		return usagef(r.verb, "name the target and the subject: grelot post <announce|path|@name> <subject> --name <n> --paths <p> --desc <d>, the body on stdin")
+		return usagef(r.verb, "name the target and the subject: grelot post <announce|path|'@name'> <subject> --name <name> --paths '<path>[,<path>...]' --desc <text>, the body on stdin")
 	}
 	if ferr := r.requireFields(*name, *desc, paths); ferr != nil {
 		return ferr
@@ -123,7 +123,7 @@ func (r *run) posted(got *client.Posted, to, thread string, finding canon.Findin
 		got.Message, safe(to), got.Thread, n.Total, n.SameEnvironment, n.Other)
 	if thread != "" && n.Total == 0 {
 		fmt.Fprintf(r.Stdout, "grelot: no other agent works in or follows %s, so nobody got this post: "+
-			"reach one agent with grelot post @<name> (grelot who lists them), or everyone with grelot post announce\n", safe(thread))
+			"reach one agent with grelot post '@<name>' (grelot who lists them), or everyone with grelot post announce\n", safe(thread))
 	}
 	if local && n.Other > 0 {
 		fix := "send its content or a pushed ref"
@@ -211,7 +211,7 @@ func notifyRead(names list) any {
 // Running the command again sends a new key, so it would do it twice.
 func unknownOutcome(err error) error {
 	if ue, ok := errors.AsType[*client.UnreachableError](err); ok && ue.Timeout {
-		return errors.New("grelot: the server did not answer in time, so the outcome is unknown: check grelot history --from @me or grelot reservations before you try again")
+		return errors.New("grelot: the server did not answer in time, so the outcome is unknown: check grelot history --from '@me' or grelot reservations before you try again")
 	}
 	return err
 }
@@ -250,9 +250,16 @@ func (r *run) showPage(ctx context.Context, page *client.Inbox) error {
 		upto = max(upto, page.Entries[i].Seq)
 	}
 	acked, err := r.ack(ctx, upto)
+	ae, refused := errors.AsType[*client.APIError](err)
+	refused = refused && ae.Upgrade != ""
+	if err == nil || refused {
+		client.NoteAck(r.ConfigDir, r.Version, refused)
+	}
 	switch {
 	case err != nil && ctx.Err() != nil:
 		return err
+	case refused:
+		fmt.Fprintln(r.Stdout, "grelot: the server refused the ack, so this page shows again and no watcher wakes for it: "+ae.Upgrade)
 	case err != nil:
 		fmt.Fprintln(r.Stdout, "grelot: the ack failed; this page may show again")
 	case acked.Left.Total > 0:

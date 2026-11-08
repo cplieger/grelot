@@ -50,7 +50,8 @@ func TestScanLocal(t *testing.T) {
 		want       Finding
 	}{
 		{"temp dir", "the log is at " + h.temp + "/build.log", Finding{Token: h.temp + "/build.log"}},
-		{"home by tilde", "see ~/notes for the plan", Finding{Token: "~/notes"}},
+		{"home by absolute path", "see " + h.home + "/notes for the plan", Finding{Token: h.home + "/notes"}},
+		{"trailing ellipsis on a real name", "the log at " + h.temp + "/build.log...", Finding{Token: h.temp + "/build.log"}},
 		{"non-clone tree under the root", "read " + h.notes, Finding{Token: h.notes}},
 		{"clone at another local root", "the bug is in " + h.subflux + "/x.go", Finding{Token: h.subflux + "/x.go", Canonical: h.root + "/subflux/x.go"}},
 		{"subdirectory of that clone", "and " + h.subflux + "/pkg/y.go", Finding{Token: h.subflux + "/pkg/y.go", Canonical: h.root + "/subflux/pkg/y.go"}},
@@ -70,11 +71,17 @@ func TestScanLocal(t *testing.T) {
 func TestScanLocal_none(t *testing.T) {
 	h := newScanHost(t)
 	for name, body := range map[string]string{
-		"clone at its canonical root":    "write " + h.root + "/toolbelt/engine.go",
-		"canonical path missing locally": "write " + h.root + "/subflux/x.go",
-		"API route":                      "call /v1/me first",
-		"no component":                   "a / b // c ~/ d",
-		"no path":                        "nothing to see",
+		"clone at its canonical root":        "write " + h.root + "/toolbelt/engine.go",
+		"canonical path missing locally":     "write " + h.root + "/subflux/x.go",
+		"API route":                          "call /v1/me first",
+		"no component":                       "a / b // c ~/ d",
+		"no path":                            "nothing to see",
+		"the path root itself":               "everything under " + h.root + " is shared",
+		"the path root before a placeholder": "write `" + h.root + "/...` paths",
+		"a placeholder inside a path":        "see " + h.home + "/.../notes",
+		"an ellipsis character":              "see " + h.temp + "/…",
+		"a named placeholder":                "read " + h.temp + "/<name>.log",
+		"the recipient's own home":           "add the rule to ~/.codex/rules/grelot.rules",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if got, ok := h.r.ScanLocal(t.Context(), body); ok {
@@ -114,6 +121,9 @@ func TestScanLocal_windows(t *testing.T) {
 				t.Errorf("got %+v, %v; want %+v", got, ok, tt.want)
 			}
 		})
+	}
+	if got, ok := r.ScanLocal(t.Context(), `see C:\Users\U\...\notes.md`); ok {
+		t.Errorf("a placeholder in a drive path: got %+v, want none", got)
 	}
 	if got, ok := r.ScanLocal(t.Context(), `D:\elsewhere\f.txt`); ok {
 		t.Errorf("a missing path outside home and temp: got %+v, want none", got)

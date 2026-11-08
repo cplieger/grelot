@@ -9,7 +9,7 @@
         "type": "command",
         "command": "grelot hook kiro-ide session_start"
       },
-      "timeout": 10
+      "timeout": 30
     },
     {
       "name": "grelot unread mail",
@@ -19,7 +19,7 @@
         "type": "command",
         "command": "grelot hook kiro-ide prompt"
       },
-      "timeout": 10
+      "timeout": 30
     },
     {
       "name": "grelot hold for mail or registration",
@@ -29,7 +29,7 @@
         "type": "command",
         "command": "grelot hook kiro-ide stop"
       },
-      "timeout": 10
+      "timeout": 30
     },
     {
       "name": "grelot offline for a deleted chat",
@@ -39,7 +39,7 @@
         "type": "command",
         "command": "grelot hook kiro-ide session_end"
       },
-      "timeout": 10
+      "timeout": 30
     }
   ]
 }

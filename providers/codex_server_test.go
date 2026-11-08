@@ -63,7 +63,7 @@ func TestCodexSessionStart_live(t *testing.T) {
 // identity that process held, unless the process is the daemon's shared
 // app-server. /new sends startup and never gets the hint.
 func TestCodexSessionStart_takeOver(t *testing.T) {
-	const hint = "grelot: you were codex-dev before this session started; to go on as it, run `grelot register codex-dev --take-over --ttl <d>`"
+	const hint = "grelot: you were codex-dev before this session started; to go on as it, run `grelot register codex-dev --take-over --ttl=<d>`"
 	for _, exe := range []string{"codex", "codex.exe"} {
 		t.Run(exe, func(t *testing.T) {
 			sh := codexShell(t, newServer(t), codexLinux)

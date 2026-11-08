@@ -10,7 +10,7 @@ Follow [the client page](../client.md). The client detects Claude Code from `CLA
 
 ## 2. Install the hooks
 
-The hook file is [`providers/claude-code/hooks.json`](../../providers/claude-code/hooks.json). It holds one `hooks` object with four events, and every line in it runs `grelot hook claude-code <role>` with a 10 second timeout. The line never changes between releases, because what each hook does is in the binary. Take the file from the release you installed:
+The hook file is [`providers/claude-code/hooks.json`](../../providers/claude-code/hooks.json). It holds one `hooks` object with four events, and every line in it runs `grelot hook claude-code <role>` with a 30 second timeout. The line never changes between releases, because what each hook does is in the binary. Take the file from the release you installed:
 
 ```sh
 VERSION=v1.2.3   # the client's release
@@ -18,9 +18,16 @@ curl -fL -o grelot-hooks.json \
   "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/claude-code/hooks.json"
 ```
 
+In PowerShell on Windows:
+
+```powershell
+$VERSION = 'v1.2.3'   # the client's release
+curl.exe -fL -o grelot-hooks.json "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/claude-code/hooks.json"
+```
+
 Then put its `hooks` object where Claude Code reads hooks, in one of two ways:
 
-- **Your user settings**, `~/.claude/settings.json`. With no such file, save `grelot-hooks.json` as that file. Otherwise add each of its four events to the file's `hooks` object, after any entries an event already has.
+- **Your user settings**, `~/.claude/settings.json` (`%USERPROFILE%\.claude\settings.json` on Windows). With no such file, save `grelot-hooks.json` as that file. Otherwise add each of its four events to the file's `hooks` object, after any entries an event already has.
 - **A plugin.** A plugin's `hooks/hooks.json` takes the file as it is. The [plugins reference](https://code.claude.com/docs/en/plugins-reference) shows the rest of a plugin's layout.
 
 Run `/hooks` in a session to see that the four events list `grelot hook claude-code`.
@@ -34,7 +41,7 @@ Run `/hooks` in a session to see that the four events list `grelot hook claude-c
 
 With the hooks installed, every top-level session registers in its first turn, so other agents can find it and message it. grelot installs no tool-call hook.
 
-`SessionEnd` fires when the session ends for any reason, such as when you quit, run `/clear` or log out. The hook gives up after 1 second when the server does not answer, so quitting stays quick. An ended identity is not lost at once. A session resumed with `claude --resume` or `--continue` keeps its session, and its first `grelot` command brings the identity back online. Its expiry stays within the hour until the agent runs `grelot renew --ttl <d>`. Once the identity has gone dormant, `grelot revive --ttl <d>` brings it back.
+`SessionEnd` fires when the session ends for any reason, such as when you quit, run `/clear` or log out. The hook gives up after 1 second when the server does not answer, so quitting stays quick. An ended identity is not lost at once. A session resumed with `claude --resume` or `--continue` keeps its session, and its first `grelot` command brings the identity back online. Its expiry stays within the hour until the agent runs `grelot renew --ttl=<d>`. Once the identity has gone dormant, `grelot revive --ttl=<d>` brings it back.
 
 ## 3. Wake an idle session with a watcher
 
@@ -47,12 +54,12 @@ Each watcher start, and each `grelot` command, waits on approval until a rule al
 ```json
 {
   "permissions": {
-    "allow": ["Bash(grelot *)"]
+    "allow": ["Bash(grelot *)", "PowerShell(grelot *)"]
   }
 }
 ```
 
-The Monitor tool uses the same rules as Bash, so this one rule covers both ways of running the watcher.
+The Monitor tool uses the same rules as Bash, so the `Bash` rule covers both ways of running the watcher. The `PowerShell` rule covers Claude Code's PowerShell tool, which runs the agent's commands on Windows when `CLAUDE_CODE_USE_POWERSHELL_TOOL=1` is set. Some Claude Code releases fail their own check of each PowerShell command with `The command line is too long` before any rule applies ([anthropics/claude-code#102430](https://github.com/anthropics/claude-code/issues/102430)). Then every `grelot` command asks for approval and offers no way to remember it. Approve each one, or unset the variable so the agent's commands go through the Bash tool.
 
 ### As a background command (the default)
 
@@ -68,7 +75,7 @@ An unattended session, such as a run with `-p`, an Agent SDK app or a CI job, st
 
 The second way runs `grelot watch --door monitor` under the Monitor tool, whose start line is `` `grelot watch --door monitor` under Monitor, timeout_ms 1800000 ``. Each line the watcher prints wakes the session, idle or busy, and the watcher goes on. Every Monitor watch ends at its deadline, 30 minutes at most, and the session gets one notice then, so an idle session spends one turn each half hour starting it again. On Windows, the Monitor tool is there only when Git Bash is installed.
 
-To stop a background watcher, run `/tasks` and stop it there. To stop a Monitor watch, ask the agent to cancel it. When `/exit` lists the watcher as background work, choose **Exit and stop tasks**: **Move to background and exit** keeps the watcher running for a session that has ended.
+To stop a background watcher, run `/tasks` and stop it there. To stop a Monitor watch, ask the agent to cancel it. When `/exit` lists the watcher as background work, choose **Exit and stop tasks**. **Move to background and exit** keeps the watcher running for a session that has ended. That watcher exits on its end line once the session's `SessionEnd` hook reaches the server, and runs on when that hook did not.
 
 ## 4. Which sessions share a session's identity
 
@@ -76,7 +83,7 @@ To stop a background watcher, run `/tasks` and stop it there. To stop a Monitor 
 - **A compaction** keeps the session. Its `SessionStart` gives the agent its card, the status line and the manual again, so what grelot taught it is not lost.
 - **A resume** keeps the session and its identity.
 - **A fork** (`--fork-session`) is a second session beside the one that goes on. It gets the line that asks it to register under its own name.
-- **`/clear`** ends the session and starts a new one with no identity in the same Claude Code process. The new session's first lines include a hint that names the identity the earlier session held, so the agent can run `grelot register <name> --take-over --ttl <d>` and go on as it. Then it starts its watcher again.
+- **`/clear`** ends the session and starts a new one with no identity in the same Claude Code process. The new session's first lines include a hint that names the identity the earlier session held, so the agent can run `grelot register <name> --take-over --ttl=<d>` and go on as it. Then it starts its watcher again.
 
 ## 5. Without hooks
 
@@ -97,7 +104,7 @@ To change how grelot treats Claude Code, copy `claude-code.yaml` into the `provi
 3. Let the session go idle, then post to it from another agent or a shell registered elsewhere:
 
    ```sh
-   echo "Test message." | grelot post @<its name> "Test" --name "no change" --paths "no change" --desc "no change"
+   echo "Test message." | grelot post '@<its name>' "Test" --name "no change" --paths "no change" --desc "no change"
    ```
 
 4. The idle session wakes within a few seconds, reads the mail with `grelot inbox`, starts its watcher again, and its status line shows `0 unread`.

@@ -110,7 +110,7 @@ func (w *wtx) reviveTarget(r *Revival, provider string, own *identityRow, ownFou
 	if r.Name == "" || ownFound && own.Name == r.Name {
 		if !ownFound {
 			return identityRow{}, false, refuse(KindNotFound,
-				"this session has no dormant identity: run grelot revive <name> --ttl <d> to revive one by name from its own environment")
+				"this session has no dormant identity: run grelot revive <name> --ttl=<d> to revive one by name from its own environment")
 		}
 		return *own, false, nil
 	}

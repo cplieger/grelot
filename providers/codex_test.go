@@ -56,15 +56,16 @@ func TestCodexHookEvents(t *testing.T) {
 	}
 }
 
-// The rule file allows grelot and nothing that only starts with its name,
-// so Codex runs it outside the sandbox with no approval.
+// The rule file allows grelot, and grelot.exe as Windows names it, and
+// nothing that only starts with either name, so Codex runs it outside the
+// sandbox with no approval.
 func TestCodexRules(t *testing.T) {
 	const want = `prefix_rule(
-    pattern = ["grelot"],
+    pattern = [["grelot", "grelot.exe"]],
     decision = "allow",
     justification = "grelot messaging client",
-    match = ["grelot inbox", "grelot watch --door queue"],
-    not_match = ["grelotx inbox"],
+    match = ["grelot inbox", "grelot watch --door queue", "grelot.exe inbox"],
+    not_match = ["grelotx inbox", "grelot.exex inbox"],
 )
 `
 	got, err := os.ReadFile(filepath.Join("codex", "grelot.rules"))

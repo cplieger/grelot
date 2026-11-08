@@ -32,7 +32,7 @@ func TestReserve_holdsQueuesAndHandsOff(t *testing.T) {
 
 	held, out := a.mustReserve(file, "--ttl", "1h", "--reason", "splitting the engine")
 	if want := "grelot: reservation " + held + " held on " + file + " until 2026-11-05 10:00 UTC; renew with grelot renew " + held +
-		" --ttl <d>, release with grelot release " + held + "\n"; !strings.Contains(out, want) {
+		" --ttl=<d>, release with grelot release " + held + "\n"; !strings.Contains(out, want) {
 		t.Errorf("reserve printed %q, want %q", out, want)
 	}
 	var sentBody struct {

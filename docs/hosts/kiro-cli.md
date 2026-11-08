@@ -19,7 +19,15 @@ curl -fL -o ~/.kiro/hooks/grelot.json \
   "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/kiro-cli/hooks.json"
 ```
 
-Every line in it runs `grelot hook kiro-cli <role>` with a 10 second timeout. The line never changes between releases, because what each hook does is in the binary.
+In PowerShell on Windows, where `~/.kiro` is `%USERPROFILE%\.kiro`:
+
+```powershell
+$VERSION = 'v1.2.3'   # the client's release
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.kiro\hooks" | Out-Null
+curl.exe -fL -o "$env:USERPROFILE\.kiro\hooks\grelot.json" "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/kiro-cli/hooks.json"
+```
+
+Every line in it runs `grelot hook kiro-cli <role>` with a 30 second timeout. The line never changes between releases, because what each hook does is in the binary.
 
 | Hook | What it adds | Without it |
 | --- | --- | --- |
@@ -50,6 +58,15 @@ base="https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/kiro-
 mkdir -p ~/.kiro/workflows ~/.kiro/agents
 curl -fL -o ~/.kiro/workflows/grelot-watch.workflow.json "$base/grelot-watch.workflow.json"
 curl -fL -o ~/.kiro/agents/grelot-notifier.md "$base/grelot-notifier.md"
+```
+
+In PowerShell:
+
+```powershell
+$base = "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/kiro-cli"
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.kiro\workflows", "$env:USERPROFILE\.kiro\agents" | Out-Null
+curl.exe -fL -o "$env:USERPROFILE\.kiro\workflows\grelot-watch.workflow.json" "$base/grelot-watch.workflow.json"
+curl.exe -fL -o "$env:USERPROFILE\.kiro\agents\grelot-notifier.md" "$base/grelot-notifier.md"
 ```
 
 Every new-mail line costs one turn of the notifier agent, which only relays the line. The workflow names no model, so that turn runs on the model and effort of the chat that started the run. To save cost, set a small model on the `notify` step in `grelot-watch.workflow.json`. A `model:` line in the notifier's front matter does not change the step's model (measured on kiro-cli 3.1.0).
@@ -87,7 +104,7 @@ With workflows off, the chat still has the hooks and the status line, but an idl
 
 - **Workflow steps, subagents and tangent chats** share the chat's session, and their hooks never ask them to register. A tangent's first turn says once that it shares the chat's identity and posts only as a delegate. A step, subagent or tangent that runs `grelot post` posts as the chat, so the chat grants it a delegate with `grelot delegate` first, as the manual says.
 - **A rewind** starts a new session for the same agent, which keeps its identity. Its first turn says that a grelot-watch run started before the rewind still wakes the old session, which the TUI no longer shows. Stop that run, as above, and let the agent start a new one. A turn the run opens in the old session can read the identity's mail where nobody sees it.
-- **`/clear`** starts a new chat with no identity, and the old chat does not end. In the TUI, the new chat's first lines include a hint that names the identity the earlier chat of the same TUI held. The agent can then run `grelot register <name> --take-over --ttl <d>` and go on as it.
+- **`/clear`** starts a new chat with no identity, and the old chat does not end. In the TUI, the new chat's first lines include a hint that names the identity the earlier chat of the same TUI held. The agent can then run `grelot register <name> --take-over --ttl=<d>` and go on as it.
 - **`/clear` in an app** that hosts chats through `kiro-cli acp` or `kiro-cli serve` gives no hint, because one server process holds many chats. The agent runs the same command itself when it knows the earlier chat was its own.
 
 After a `/clear`, stop the old chat's grelot-watch run and start a new one from the new chat.
@@ -111,7 +128,7 @@ To change how grelot treats kiro-cli, copy `kiro-cli.yaml` into the `providers` 
 3. Let the chat go idle, then post to it from another agent or a shell registered elsewhere:
 
    ```sh
-   echo "Test message." | grelot post @<its name> "Test" --name "no change" --paths "no change" --desc "no change"
+   echo "Test message." | grelot post '@<its name>' "Test" --name "no change" --paths "no change" --desc "no change"
    ```
 
 4. The idle chat wakes at the run's next poll, reads the mail with `grelot inbox`, and its status line shows `0 unread`.

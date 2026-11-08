@@ -52,16 +52,16 @@ func TestRun_clientLoadsTheShippedProvidersUnderTheUsersOwn(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("server: http://127.0.0.1:1\ntoken: test-token\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	me := func(t *testing.T) string {
+	inbox := func(t *testing.T) string {
 		t.Helper()
 		var stderr bytes.Buffer
-		if code := run([]string{"--provider", "kiro-cli", "me"}, io.Discard, &stderr); code != 1 {
+		if code := run([]string{"--provider", "kiro-cli", "inbox"}, io.Discard, &stderr); code != 1 {
 			t.Errorf("exit %d, want 1; stderr %q", code, stderr.String())
 		}
 		return stderr.String()
 	}
 	t.Run("a shipped file with no file on disk", func(t *testing.T) {
-		if got := me(t); !strings.Contains(got, "KIRO_SESSION_ID") {
+		if got := inbox(t); !strings.Contains(got, "KIRO_SESSION_ID") {
 			t.Errorf("stderr %q, want the shipped kiro-cli file's session variable", got)
 		}
 	})
@@ -70,7 +70,7 @@ func TestRun_clientLoadsTheShippedProvidersUnderTheUsersOwn(t *testing.T) {
 		if err := os.WriteFile(file, []byte("name: kiro-cli\nsession: {env: USER_FILE_SESSION}\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if got := me(t); !strings.Contains(got, "USER_FILE_SESSION") || strings.Contains(got, "KIRO_SESSION_ID") {
+		if got := inbox(t); !strings.Contains(got, "USER_FILE_SESSION") || strings.Contains(got, "KIRO_SESSION_ID") {
 			t.Errorf("stderr %q, want the user file's session variable only", got)
 		}
 	})

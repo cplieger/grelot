@@ -17,17 +17,18 @@ type Finding struct {
 }
 
 // ScanLocal finds the first absolute path in body that is local to this
-// host: under the home or temp dir, a leading ~/ expanded first, or existing
-// on disk. A path in a clone whose local root is its canonical root
-// <root>/<repo> is exempt, since every host names it the same way; a path
-// that neither exists nor lies under home or temp, such as an API route or
-// another host's canonical path, is left alone.
+// host: under the home or temp dir, or existing on disk. A path in a clone
+// whose local root is its canonical root <root>/<repo> is exempt, since
+// every host names it the same way; so are the path root itself, a path
+// with a placeholder component (..., …, <name>) and a ~/ path, which each
+// reader takes as its own home. A path that neither exists nor lies under
+// home or temp, such as an API route or another host's canonical path, is
+// left alone.
 func (r *Resolver) ScanLocal(ctx context.Context, body string) (Finding, bool) {
 	trees := map[string]tree{}
 	checked := 0
 	for field := range strings.FieldsSeq(body) {
-		tok := strings.TrimRight(strings.TrimLeft(field, "\"'`([{<"), "\"'`)]}>.,;:!?")
-		p, ok := r.candidate(tok)
+		tok, p, ok := r.token(field)
 		if !ok {
 			continue
 		}
@@ -56,6 +57,19 @@ func (r *Resolver) ScanLocal(ctx context.Context, body string) (Finding, bool) {
 	return Finding{}, false
 }
 
+// token is field with its surrounding quotes, brackets and punctuation
+// trimmed, and p its candidate path; ok is false for a placeholder or a
+// token that is no candidate.
+func (r *Resolver) token(field string) (tok, p string, ok bool) {
+	lead := strings.TrimLeft(field, "\"'`([{<")
+	if placeholder(lead) {
+		return "", "", false
+	}
+	tok = strings.TrimRight(lead, "\"'`)]}>.,;:!?")
+	p, ok = r.candidate(tok)
+	return tok, p, ok
+}
+
 type tree struct {
 	prefix string
 	clone  Clone
@@ -75,15 +89,11 @@ func (r *Resolver) treeAt(ctx context.Context, dir string) tree {
 }
 
 // candidate is tok as an absolute path in slash form, when tok is one that
-// names at least one component: /x, ~/x or a drive path C:\x or C:/x.
+// names at least one component below the path root: /x or a drive path C:\x
+// or C:/x.
 func (r *Resolver) candidate(tok string) (string, bool) {
 	var p string
 	switch {
-	case strings.HasPrefix(tok, "~/"):
-		if r.home == "" || strings.Trim(tok[2:], "/") == "" {
-			return "", false
-		}
-		p = r.slash(r.home) + tok[1:]
 	case strings.HasPrefix(tok, "/"):
 		p = tok
 	case hasDrive(tok) && len(tok) > 2 && (tok[2] == '\\' || tok[2] == '/'):
@@ -92,10 +102,26 @@ func (r *Resolver) candidate(tok string) (string, bool) {
 		return "", false
 	}
 	p = r.clean(p)
-	if strings.Trim(p, "/") == "" || len(p) == 3 && hasDrive(p) {
+	if strings.Trim(p, "/") == "" || len(p) == 3 && hasDrive(p) || r.fold(p) == r.fold(r.clean(r.root)) {
 		return "", false
 	}
 	return p, true
+}
+
+// placeholder reports whether a component of tok stands for a path rather
+// than naming one: ... or … (closing punctuation aside), or one opening <.
+// A trailing ellipsis on a real name (/tmp/build.log...) is no placeholder.
+func placeholder(tok string) bool {
+	for c := range strings.FieldsFuncSeq(tok, func(c rune) bool { return c == '/' || c == '\\' }) {
+		if strings.HasPrefix(c, "<") {
+			return true
+		}
+		switch strings.TrimRight(c, "\"'`)]}>,;:!?") {
+		case "...", "…":
+			return true
+		}
+	}
+	return false
 }
 
 // under reports whether p is dir or inside it; a root or empty dir holds
