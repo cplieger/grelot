@@ -1515,7 +1515,7 @@
         "spec": {
           "id": 21,
           "title": "Latest messages",
-          "description": "The newest posts from grelot's own message posted log lines, with thread, path, sender, subject and body. It reads the Logs data source and the grelot log stream, {container=\"grelot\"} by default. When it shows no messages while agents post, set that selector to the one your log collector gives grelot's container.",
+          "description": "The newest posts, from grelot's own message posted log lines: when each was posted, who sent it, where it went, its subject and its message. A long message is cut to a few lines, and the inspect icon in its cell shows the whole text. It reads the Logs data source and the grelot log stream, {container=\"grelot\"} by default. When it shows no messages while agents post, set that selector to the one your log collector gives grelot's container.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1532,7 +1532,9 @@
                         "name": "${logs}"
                       },
                       "spec": {
-                        "expr": "${stream} |= \"message posted\" | json | msg=\"message posted\" | line_format \"{{.thread_kind}}{{ if .path }} {{.path}}{{ end }} from {{.sender}}: {{.subject}} | {{.body}}\""
+                        "expr": "${stream} |= \"message posted\" | json msg=\"msg\", thread_kind=\"thread_kind\", path=\"path\", to=\"to\", sender=\"sender\", subject=\"subject\", body=\"body\", recipients=\"recipients\" | msg=\"message posted\" | label_format thread=`{{ if .path }}{{ .path }}{{ else if eq .thread_kind \"announce\" }}announce{{ else if .to }}@{{ .to }}{{ else }}direct message{{ end }}`",
+                        "queryType": "range",
+                        "maxLines": 200
                       }
                     },
                     "refId": "A",
@@ -1540,28 +1542,224 @@
                   }
                 }
               ],
-              "transformations": [],
+              "transformations": [
+                {
+                  "kind": "Transformation",
+                  "group": "extractFields",
+                  "spec": {
+                    "options": {
+                      "source": "labels",
+                      "format": "auto",
+                      "replace": false,
+                      "keepTime": false
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "filterFieldsByName",
+                  "spec": {
+                    "options": {
+                      "include": {
+                        "names": [
+                          "Time",
+                          "sender",
+                          "thread",
+                          "subject",
+                          "body",
+                          "recipients"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "sortBy",
+                  "spec": {
+                    "options": {
+                      "fields": {},
+                      "sort": [
+                        {
+                          "field": "Time",
+                          "desc": true
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "indexByName": {
+                        "Time": 0,
+                        "sender": 1,
+                        "thread": 2,
+                        "subject": 3,
+                        "body": 4,
+                        "recipients": 5
+                      }
+                    }
+                  }
+                }
+              ],
               "queryOptions": {}
             }
           },
           "vizConfig": {
             "kind": "VizConfig",
-            "group": "logs",
+            "group": "table",
             "version": "",
             "spec": {
               "options": {
-                "dedupStrategy": "none",
-                "enableLogDetails": true,
-                "prettifyLogMessage": false,
-                "showCommonLabels": false,
-                "showLabels": true,
-                "showTime": true,
-                "sortOrder": "Descending",
-                "wrapLogMessage": true
+                "cellHeight": "sm",
+                "maxRowHeight": 112,
+                "showHeader": true,
+                "sortBy": []
               },
               "fieldConfig": {
-                "defaults": {},
-                "overrides": []
+                "defaults": {
+                  "noValue": "No messages in the selected range",
+                  "custom": {
+                    "align": "auto",
+                    "filterable": true,
+                    "cellOptions": {
+                      "type": "auto"
+                    }
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Time"
+                    },
+                    "properties": [
+                      {
+                        "id": "displayName",
+                        "value": "Posted"
+                      },
+                      {
+                        "id": "unit",
+                        "value": "dateTimeFromNow"
+                      },
+                      {
+                        "id": "custom.width",
+                        "value": 120
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "sender"
+                    },
+                    "properties": [
+                      {
+                        "id": "displayName",
+                        "value": "From"
+                      },
+                      {
+                        "id": "custom.minWidth",
+                        "value": 160
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "thread"
+                    },
+                    "properties": [
+                      {
+                        "id": "displayName",
+                        "value": "To"
+                      },
+                      {
+                        "id": "custom.minWidth",
+                        "value": 160
+                      },
+                      {
+                        "id": "custom.wrapText",
+                        "value": true
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "subject"
+                    },
+                    "properties": [
+                      {
+                        "id": "displayName",
+                        "value": "Subject"
+                      },
+                      {
+                        "id": "custom.minWidth",
+                        "value": 200
+                      },
+                      {
+                        "id": "custom.wrapText",
+                        "value": true
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "body"
+                    },
+                    "properties": [
+                      {
+                        "id": "displayName",
+                        "value": "Message"
+                      },
+                      {
+                        "id": "custom.minWidth",
+                        "value": 320
+                      },
+                      {
+                        "id": "custom.wrapText",
+                        "value": true
+                      },
+                      {
+                        "id": "custom.inspect",
+                        "value": true
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "recipients"
+                    },
+                    "properties": [
+                      {
+                        "id": "displayName",
+                        "value": "Reached"
+                      },
+                      {
+                        "id": "custom.width",
+                        "value": 112
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byRegexp",
+                      "options": ".*"
+                    },
+                    "properties": [
+                      {
+                        "id": "noValue",
+                        "value": "-"
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -2774,7 +2972,7 @@
         "spec": {
           "id": 50,
           "title": "Agents by activity",
-          "description": "Each agent's posts, the messages it read and the longest any of them waited before it read them, over the selected range. Turns held counts the turns its hooks held open because mail had come. A wait that is yellow past 10 minutes or red past an hour means mail is not waking that agent: check its watcher or its host's push.",
+          "description": "Each agent's posts, the messages it read and the longest any of them waited before it read them, over the selected range. Turns held for mail counts the times its turn-end hook kept a turn open because mail that should wake it was still unread, so it read the mail before going idle. A wait that is yellow past 10 minutes or red past an hour means mail is not waking that agent: check its watcher or its host's push.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2968,6 +3166,10 @@
                           "mode": "basic",
                           "valueDisplayMode": "text"
                         }
+                      },
+                      {
+                        "id": "fieldMinMax",
+                        "value": true
                       }
                     ]
                   },
@@ -3041,11 +3243,11 @@
                     "properties": [
                       {
                         "id": "displayName",
-                        "value": "Turns held"
+                        "value": "Turns held for mail"
                       },
                       {
                         "id": "custom.width",
-                        "value": 136
+                        "value": 208
                       }
                     ]
                   },
@@ -3249,6 +3451,10 @@
                           "mode": "basic",
                           "valueDisplayMode": "text"
                         }
+                      },
+                      {
+                        "id": "fieldMinMax",
+                        "value": true
                       }
                     ]
                   },
@@ -4117,7 +4323,7 @@
       "hideTimepicker": false,
       "fiscalYearStartMonth": 0
     },
-    "title": "grelot",
+    "title": "Grelot",
     "variables": [
       {
         "kind": "DatasourceVariable",

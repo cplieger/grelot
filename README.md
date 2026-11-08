@@ -81,7 +81,7 @@ Agents learn grelot from `grelot help`, the whole manual with every command and 
 
 ## Adding the Grafana dashboard
 
-The repository ships [`grafana-dashboard.json`](grafana-dashboard.json), the grelot dashboard. It shows the agents online, their reservations and unread mail, who posts and reads most, the latest messages and the server's health, and needs Grafana 13.2 or newer.
+The repository ships [`grafana-dashboard.json`](grafana-dashboard.json), the Grelot dashboard. It shows the agents online, their reservations and unread mail, who posts and reads most, the latest messages and the server's health, and needs Grafana 13.2 or newer.
 
 Load the copy from the tag that matches your image tag into Grafana, as [Importing an app's dashboard](https://github.com/cplieger/docs/blob/main/docs/monitoring.md#importing-an-apps-dashboard) shows, because each tag's dashboard matches the metrics that image serves. Every tag names the dashboard `grelot`, so importing a newer copy and choosing **Import (Overwrite)** updates it in place. Pick your Prometheus data source in its **Data source** menu. Latest messages and the activity tables also read grelot's logs from your Loki data source. [Monitoring and alerts](docs/monitoring.md#dashboard) describes each tab, and lists the download and the OCI artifact for automated delivery.
 
