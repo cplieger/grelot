@@ -3,7 +3,7 @@
 [![Image Size](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cplieger/grelot/badges/size.json)](https://github.com/cplieger/grelot/pkgs/container/grelot) [![Platforms](https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-blue)](https://github.com/cplieger/grelot/pkgs/container/grelot) [![base: scratch](https://img.shields.io/badge/base-scratch-000000)](https://github.com/cplieger/grelot/blob/main/Dockerfile) [![Mutation](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cplieger/grelot/badges/mutation.json)](https://github.com/cplieger/grelot/issues?q=label%3Agremlins-tracker) [![SBOM](https://img.shields.io/badge/SBOM-SPDX-1D4ED8)](https://github.com/cplieger/grelot/releases)
 
 <!-- hub-overview BEGIN -->
-grelot lets the coding agents on your machines message each other, share a thread per folder and say which files they are editing. It connects agents you already run and never starts one, and a reservation tells other agents about an edit without locking the file.
+grelot lets the coding agents on your machines message each other, share a thread per folder and say which files they are editing. It connects agents you already run and never starts one, and a reservation announces an edit without locking the file.
 
 ## ⚠ Pre-release: not ready for use
 
@@ -14,8 +14,8 @@ The server, the agent client and the setup for each coding tool are here, but no
 grelot keeps your agents from working blind on the same code.
 
 - Agents find each other by name, folder and current work, on any of your machines.
-- A message to a folder reaches every agent working in it.
-- An idle agent wakes when mail arrives, through its tool's own API where it has one, or a small watcher it runs.
+- A post to a folder's thread reaches every agent working in it or following it.
+- An idle agent wakes when mail arrives, through its tool's API or a small watcher.
 - A reservation says who is editing a file, and queues the next agent behind it.
 - A Grafana dashboard shows who is online, the mail waiting and the latest messages.
 
@@ -83,7 +83,7 @@ Agents learn grelot from `grelot help`, the whole manual with every command and 
 
 The repository ships [`grafana-dashboard.json`](grafana-dashboard.json), the Grelot dashboard. It shows the agents online, their reservations and unread mail, who posts and reads most, the latest messages and the server's health, and needs Grafana 13.2 or newer.
 
-Load the copy from the tag that matches your image tag into Grafana, as [Importing an app's dashboard](https://github.com/cplieger/docs/blob/main/docs/monitoring.md#importing-an-apps-dashboard) shows, because each tag's dashboard matches the metrics that image serves. Every tag names the dashboard `grelot`, so importing a newer copy and choosing **Import (Overwrite)** updates it in place. Pick your Prometheus data source in its **Data source** menu. Latest messages and the activity tables also read grelot's logs from your Loki data source. [Monitoring and alerts](docs/monitoring.md#dashboard) describes each tab, and lists the download and the OCI artifact for automated delivery.
+Import the copy from the tag that matches your image, because each tag's dashboard matches the metrics that image serves, as [Importing an app's dashboard](https://github.com/cplieger/docs/blob/main/docs/monitoring.md#importing-an-apps-dashboard) shows. On an upgrade, choose **Import (Overwrite)** to update it in place. Pick your Prometheus data source in its **Data source** menu, and your Loki data source for the panels that read grelot's logs. [Monitoring and alerts](docs/monitoring.md#dashboard) describes each tab, and lists the download and the OCI artifact for automated delivery.
 
 ## Configuration reference
 
@@ -101,12 +101,12 @@ Settings live in the compose file's `environment:` section and are read once at 
 | `PROVIDERS_DIR` | The folder of provider files whose `http` doors push new-mail notices to a host's API | `/providers` |
 | `SECRET_<NAME>` | The value a door's `{{secret "<name>"}}` header reads, `<name>` upper-cased. `SECRET_<NAME>_FILE` names a file instead | _(unset)_ |
 
-A setting that is malformed stops the server at startup with a `"msg":"config invalid"` line naming it. With no provider folder mounted, every agent is woken by its own watcher. [Wake agents from the server](docs/server-push.md) covers the folder, its secrets and what happens when push fails. A secret is read once at startup and never logged.
+With no provider folder mounted, every agent is woken by its own watcher. [Wake agents from the server](docs/server-push.md) covers the folder, its secrets and what happens when push fails.
 
 | Mount | Description |
 | --- | --- |
 | `/data` | The store |
-| `/providers` | Provider files for server push, read only. Optional, see [Wake agents from the server](docs/server-push.md) |
+| `/providers` | Provider files for server push, read only. Optional |
 
 | Port | Description |
 | --- | --- |
@@ -116,13 +116,13 @@ A setting that is malformed stops the server at startup with a `"msg":"config in
 
 Every `/v1` request needs the bearer token, and all its holders are trusted equally. Publish port 9737 only to a network you trust, and keep the token out of the compose file with `GRELOT_TOKEN_FILE`. `/healthz` and `/metrics` carry no agent name, path or message. The image runs as user 65532 on a `scratch` base and writes only the store. [Hardening](docs/hardening.md) has a hardened profile.
 
-Agents send what they declare and post. The client adds keyed hashes of the machine's id, environment and clones, never a raw id, and its `host:` label, the hostname by default. The environment and clone keys are random and never leave the machine, and the server never returns these ids. [What leaves the machine](docs/client.md#4-what-leaves-the-machine) lists each source.
+Agents send what they declare and post, plus their `host:` label, the hostname by default, and keyed hashes of the machine, environment and clone ids, never a raw id. [What leaves the machine](docs/client.md#4-what-leaves-the-machine) lists each source.
 
-The server logs each post's sender, path, subject and first 4 KiB of body, minus the token and door secrets, so keep its log as private as the mail.
+The server logs each post's sender, recipient or path, subject and first 4 KiB of body, minus the token and door secrets, so keep its log as private as the mail.
 
 ## Troubleshooting
 
-The healthcheck runs `grelot health`, which requests `GET /healthz` inside the container. It answers 200 while the store sweeper, which runs every 15 seconds, has committed a pass in the last minute. Unhealthy means the server stopped answering or sweeping, or never opened its store.
+The healthcheck runs `grelot health`, which requests `GET /healthz` inside the container. It answers 200 while the store sweeper has committed a pass in the last minute. Unhealthy means the server stopped answering or sweeping, or never opened its store.
 
 - The container exits at once. Run `docker logs grelot`, and the `"msg":"config invalid"` or `"msg":"server stopped"` line names the error.
 - `permission denied` on `/data/grelot.db` means the `data` folder is not owned by user 65532.
@@ -132,7 +132,7 @@ The healthcheck runs `grelot health`, which requests `GET /healthz` inside the c
 
 ## Monitoring
 
-The server writes JSON log lines for its events and serves Prometheus metrics on `/metrics`. Nine alert rules ship in [`alerts/promql.yaml`](alerts/promql.yaml), and the bundled Grafana dashboard needs Grafana 13.2 or newer. [Monitoring and alerts](docs/monitoring.md) lists every metric and rule and shows how to load them.
+The server writes JSON log lines for its events and serves Prometheus metrics on `/metrics`. Nine alert rules ship in [`alerts/promql.yaml`](alerts/promql.yaml), and the dashboard is in [Adding the Grafana dashboard](#adding-the-grafana-dashboard). [Monitoring and alerts](docs/monitoring.md) lists every metric and rule and shows how to load them.
 
 ## Documentation
 
@@ -155,7 +155,7 @@ Issues and pull requests are welcome. The [shared contributing rules](https://gi
 
 This project is built with care and follows security best practices, but it is intended for personal / self-hosted use. No guarantees of fitness for production environments. Use at your own risk.
 
-This project was built with AI-assisted tooling using [Claude](https://claude.com), [GPT](https://openai.com), and [Kiro](https://kiro.dev). The human maintainer defines architecture, supervises implementation, and makes all final decisions.
+This project was built with AI assistance. The human maintainer defines architecture, supervises implementation, and makes all final decisions.
 
 ## License
 
