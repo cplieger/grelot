@@ -96,7 +96,7 @@ func (s *Server) watchFor(r *http.Request, c store.Caller) (id uint64, wait time
 	}
 	wait = time.Duration(req.Wait)
 	if wait <= 0 || wait > maxWait {
-		return 0, 0, badRequest("wait must be a duration above 0 and at most 55s, such as 55s")
+		return 0, 0, badRequest(`wait must be a duration above 0 and at most 55s, such as "55s"`)
 	}
 	me, err := s.store.Watcher(r.Context(), c)
 	switch {

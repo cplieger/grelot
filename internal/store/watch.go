@@ -31,7 +31,7 @@ func (n NotifyRead) check() error {
 	case n.By < 0:
 		return refuse(KindInvalid, "--by must be a positive duration")
 	case n.By > 0 && !n.set():
-		return refuse(KindInvalid, "--by needs --notify-read all or @names")
+		return refuse(KindInvalid, "--by needs --notify-read all or --notify-read '@a,@b'")
 	}
 	for _, name := range n.Names {
 		if !namePattern.MatchString(name) && !isHandle(name) {

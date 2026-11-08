@@ -102,7 +102,7 @@ func (c *Config) readLimits() []error {
 	}{{&c.ThreadTTL, keyThreadTTL}, {&c.DormantTTL, keyDormantTTL}, {&c.ReservationMaxTTL, keyReservationMaxTTL}} {
 		switch v, ok, err := envx.DurationStrict(d.key); {
 		case err != nil || (ok && v <= 0):
-			errs = append(errs, fmt.Errorf("%s must be a positive duration such as 72h", d.key))
+			errs = append(errs, fmt.Errorf("%s must be a positive duration such as %s=72h", d.key, d.key))
 		case ok:
 			*d.v = v
 		}

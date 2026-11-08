@@ -268,7 +268,7 @@ type duration time.Duration
 type durationError struct{ value string }
 
 func (e *durationError) Error() string {
-	return "a duration must be a string such as 90m or 2h, got " + e.value
+	return `a duration must be a string such as "90m" or "2h", got ` + e.value
 }
 
 func (d *duration) UnmarshalJSON(b []byte) error {

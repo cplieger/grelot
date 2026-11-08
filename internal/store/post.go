@@ -90,7 +90,7 @@ func checkMessage(p *Posting) error {
 		}
 	}
 	if targets != 1 {
-		return refuse(KindInvalid, "a post goes to exactly one target: announce, a path or @name")
+		return refuse(KindInvalid, "a post goes to exactly one target: announce, a path or '@name'")
 	}
 	if p.To.Path != "" {
 		if _, err := checkPaths([]string{p.To.Path}); err != nil {
