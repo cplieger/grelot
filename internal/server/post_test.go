@@ -72,6 +72,9 @@ func TestPost_logLineIsOneRedactedCappedLine(t *testing.T) {
 		attrs[a.Key] = a.Value.String()
 		return true
 	})
+	if attrs["to"] != "reader" {
+		t.Errorf("to = %q, want the direct post's recipient, reader", attrs["to"])
+	}
 	for _, k := range []string{"subject", "body"} {
 		if strings.Contains(attrs[k], testToken) {
 			t.Errorf("%s carries the bearer token: %q", k, attrs[k])
