@@ -292,7 +292,7 @@ func (r *run) wait(ctx context.Context, args []string) error {
 	case len(rest) > 0:
 		return usagef(r.verb, "unexpected %q: grelot wait takes only --timeout", rest[0])
 	case *timeout <= 0:
-		return usagef(r.verb, "--timeout needs a duration above 0, such as 10m")
+		return usagef(r.verb, "--timeout needs a duration above 0, such as --timeout=10m")
 	}
 	// A session waits on a reply right after granting, when the delegate gate
 	// would refuse an unnamed request; as <handle> wait keeps the handle.

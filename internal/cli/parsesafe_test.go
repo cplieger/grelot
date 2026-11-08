@@ -153,6 +153,29 @@ func spans(text string) []string {
 // usage error or a hint printed outside a backtick span is checked too.
 func literalCommands(t *testing.T, src []byte) []string {
 	t.Helper()
+	var out []string
+	for _, text := range literals(t, src) {
+		for _, m := range literalCommand.FindAllStringIndex(text, -1) {
+			if _, ok := verbs[strings.Fields(text[m[0]:])[1]]; !ok {
+				continue
+			}
+			cmd := text[m[0]:]
+			// A placeholder's own words ("<what and why>") never end it.
+			masked := placeholder.ReplaceAllStringFunc(cmd, func(p string) string {
+				return strings.Repeat("x", len(p))
+			})
+			if i := clauseEnd.FindStringIndex(masked); i != nil {
+				cmd = cmd[:i[0]]
+			}
+			out = append(out, cmd)
+		}
+	}
+	return out
+}
+
+// literals are the unquoted string literals of a Go source.
+func literals(t *testing.T, src []byte) []string {
+	t.Helper()
 	fset := token.NewFileSet()
 	var s scanner.Scanner
 	s.Init(fset.AddFile("", fset.Base(), len(src)), src, nil, 0)
@@ -169,20 +192,7 @@ func literalCommands(t *testing.T, src []byte) []string {
 		if err != nil {
 			t.Fatalf("unquote %s: %v", lit, err)
 		}
-		for _, m := range literalCommand.FindAllStringIndex(text, -1) {
-			if _, ok := verbs[strings.Fields(text[m[0]:])[1]]; !ok {
-				continue
-			}
-			cmd := text[m[0]:]
-			// A placeholder's own words ("<what and why>") never end it.
-			masked := placeholder.ReplaceAllStringFunc(cmd, func(p string) string {
-				return strings.Repeat("x", len(p))
-			})
-			if i := clauseEnd.FindStringIndex(masked); i != nil {
-				cmd = cmd[:i[0]]
-			}
-			out = append(out, cmd)
-		}
+		out = append(out, text)
 	}
 }
 
@@ -243,6 +253,14 @@ func TestUnsafeWord(t *testing.T) {
 	if got := filled("grelot post @<name> --paths <path>[,<path>...] --ttl <d> [--by <d>] [--fields <a,b>] <<'EOF'"); got != "grelot post @toolbelt-dev --paths x,x --ttl 2h --by 2h --fields x,x" {
 		t.Errorf("filled = %q", got)
 	}
+	for text, want := range map[string]bool{
+		"--timeout needs a duration above 0, such as 10m": true, "such as --timeout=10m": false,
+		"--by needs --notify-read all or @names": true, "a path or @name": true, "all or --notify-read '@a,@b'": false,
+	} {
+		if got := hintForm.MatchString(text); got != want {
+			t.Errorf("hintForm.MatchString(%q) = %v, want %v", text, got, want)
+		}
+	}
 }
 
 // TestManual_everyCommandIsParseSafe holds the manual's commands to the
@@ -288,16 +306,34 @@ func TestHints_everyCommandIsParseSafe(t *testing.T) {
 		}
 		if strings.HasSuffix(f, ".go") {
 			checkParseSafe(t, f+" literals", literalCommands(t, b))
+			for _, lit := range literals(t, b) {
+				checkHintForms(t, f, lit)
+			}
+		} else {
+			checkHintForms(t, f, text)
 		}
 		checkBareForms(t, f, text)
 	}
 	checkBareForms(t, "manual", manual)
+	checkHintForms(t, "manual", manual)
 }
 
 func checkBareForms(t *testing.T, where, text string) {
 	t.Helper()
 	for _, m := range bareForm.FindAllString(text, -1) {
 		t.Errorf("%s: %q: write --ttl=<d> and quote '@name'", where, m)
+	}
+}
+
+// hintForm is a refused word an error hint teaches away from its flag: a
+// bare example duration ("such as 10m") or an unquoted @name offered as
+// an alternative ("all or @names").
+var hintForm = regexp.MustCompile(`such as [0-9]|\b(all|or) @`)
+
+func checkHintForms(t *testing.T, where, text string) {
+	t.Helper()
+	for _, m := range hintForm.FindAllString(text, -1) {
+		t.Errorf("%s: %q in %q: show the example as --flag=<d> or quoted '@name'", where, m, text)
 	}
 }
 

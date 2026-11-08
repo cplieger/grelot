@@ -183,7 +183,7 @@ func waitParam(r *http.Request) (time.Duration, error) {
 	}
 	d, err := time.ParseDuration(v)
 	if err != nil || d < 0 || d > maxWait {
-		return 0, badRequest("wait must be a duration from 0 to 55s, such as 55s")
+		return 0, badRequest("wait must be a duration from 0 to 55s, such as wait=55s")
 	}
 	return d, nil
 }

@@ -152,7 +152,7 @@ func timeParam(v, name string, now time.Time) (time.Time, error) {
 	if t, err := time.Parse(time.RFC3339, v); err == nil {
 		return t, nil
 	}
-	return time.Time{}, badRequest(name + " must be a duration such as 2h or an RFC 3339 time")
+	return time.Time{}, badRequest("--" + name + " must be a duration such as --" + name + "=2h or an RFC 3339 time")
 }
 
 // intParam reads a non-negative integer query parameter; 0 when absent.
