@@ -1,12 +1,16 @@
-# Codex. Measured on Codex 0.166.0 on Windows and Linux.
+# Codex. Measured on Codex 0.166.0 on Windows and Linux, and 0.167.0 on
+# Windows.
 name: codex
 evidence: measured
 detect:
   env: [CODEX_THREAD_ID]
 session:
-  # The thread id in the agent's shell commands. Hook processes do not
-  # carry it, so hooks act as their stdin session_id, which is the same id
-  # for a root thread.
+  # The thread id in the agent's shell commands. Codex never sets it in a
+  # hook process, so hooks act as their stdin session_id, which is the same
+  # id for a root thread. A codex started from a thread's shell passes that
+  # thread's id to its hooks (Hooks::new copies the process environment in
+  # https://github.com/openai/codex/blob/rust-v0.167.0/codex-rs/hooks/src/registry.rs),
+  # and the hooks ignore it.
   env: CODEX_THREAD_ID
   stdin: session_id
   hooks_without_env: true
@@ -15,6 +19,14 @@ session:
   # attached to it; that one never counts as one session's process.
   process: [codex, codex.exe]
   process_shared: [app-server]
+# codex exec (alias e) and codex review answer one prompt with nobody at the
+# terminal, so their hooks never ask them to register or hold the turn for
+# that. Codex puts no variable of its own in a hook's environment, so the
+# subcommand on an outer codex process is the only sign (exec measured on
+# 0.167.0; e and review from the Subcommand enum in
+# https://github.com/openai/codex/blob/rust-v0.167.0/codex-rs/cli/src/main.rs).
+one_shot:
+  args: [exec, e, review]
 doors:
   # codex queue adds a message to the thread's queue, which starts a turn on
   # an idle thread within about 10 seconds and waits for a busy one to end.
@@ -33,12 +45,26 @@ doors:
       a TUI without one quits), or until /stop. Install grelot.rules in
       ~/.codex/rules/ so grelot runs outside the sandbox with no approval.
 hooks:
+  # Codex skips a new or changed hook until the person trusts it in /hooks,
+  # and codex exec and the VS Code extension skip it with no warning
+  # (https://learn.chatgpt.com/docs/hooks, openai/codex#42959). A grelot
+  # release that edits hooks.json turns the hooks off in every thread
+  # started after the edit (hook_trust_status in
+  # https://github.com/openai/codex/blob/rust-v0.167.0/codex-rs/hooks/src/engine/discovery.rs).
+  lost_fix: re-trust grelot's hooks in /hooks
   session_start:
     event: SessionStart
     # /clear starts a new thread in the same process, which may be the same
     # agent going on. /new sends startup, as a new codex run does, so it
     # gets no hint.
     source: {path: source, take_over: [clear]}
+    # Codex saves a hook's context over about 2,500 tokens to a file and
+    # gives the model a preview (https://learn.chatgpt.com/docs/hooks,
+    # "Large hook output"); it counts 4 bytes as a token, so the limit is
+    # 10,000 bytes (approx_token_count, codex-rs/utils/string/src/truncate.rs
+    # at rust-v0.167.0). The shipped hooks.json leaves additionalContextLimit
+    # unset: a changed hooks.json turns the hooks off until re-trusted.
+    context_limit: 10000
     outputs:
       context: {text: "{{.Context}}"}
   prompt:

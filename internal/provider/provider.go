@@ -51,12 +51,29 @@ type Provider struct {
 	Notes    string   `yaml:"notes"`
 	Detect   Detect   `yaml:"detect"`
 	Doors    []Door   `yaml:"doors"`
+	OneShot  OneShot  `yaml:"one_shot"`
 	Session  Session  `yaml:"session"`
 }
 
 // Detect identifies the host from the agent's shell environment.
 type Detect struct {
 	Env []string `yaml:"env"`
+}
+
+// OneShot tells a one-shot run, one prompt with no person at the terminal,
+// from an interactive session. Each match is positive evidence only: no
+// match means the run is not known to be one-shot.
+type OneShot struct {
+	// Env matches when any named variable of the hook's environment holds
+	// one of its listed values.
+	Env map[string][]string `yaml:"env"`
+	// Args are the arguments that mark a session.process ancestor as a
+	// one-shot run: an option (-p) matched whole; an option ending in "="
+	// (--prompt=) as a prefix; an option with its value (--format=json) as
+	// one argument or as the option followed by the value; and a word
+	// (exec) as the subcommand, the first argument that is not an option,
+	// when every option before it carries its value after "=".
+	Args []string `yaml:"args"`
 }
 
 // Session says where the host keeps its session id.
@@ -67,8 +84,9 @@ type Session struct {
 	Process       []string `yaml:"process"`
 	ProcessShared []string `yaml:"process_shared"`
 	// HooksWithoutEnv says the host leaves Env out of hook processes, so a
-	// hook acts as its Stdin session. Without it, such a hook is another
-	// host running this provider's hook lines, and it writes nothing.
+	// hook acts as its Stdin session and ignores an Env value it inherited.
+	// Without it, a hook with no Env is another host running this
+	// provider's hook lines, and it writes nothing.
 	HooksWithoutEnv bool `yaml:"hooks_without_env"`
 }
 
@@ -127,6 +145,10 @@ type Hooks struct {
 	TurnEnd      *LifecycleRole    `yaml:"turn_end"`
 	SessionEnd   *LifecycleRole    `yaml:"session_end"`
 	SubagentStop *SubagentStopRole `yaml:"subagent_stop"`
+	// LostFix is the person's fix, a verb phrase ("re-trust ..."), for
+	// hooks the host stops running with no sign to the agent; "" for a
+	// host that never loses them that way.
+	LostFix string `yaml:"lost_fix"`
 }
 
 // DefaultBudget is how long a hook role waits on the server when its role
@@ -173,6 +195,10 @@ type SessionStartRole struct {
 	Stdin   Stdin        `yaml:"stdin"`
 	Outputs StartOutputs `yaml:"outputs"`
 	Role    `yaml:",inline"`
+	// ContextLimit is the most bytes of rendered context the host gives the
+	// model whole, 0 for no limit; over it the start leaves the manual out.
+	// Bytes never undercount a host that counts characters.
+	ContextLimit int `yaml:"context_limit"`
 	// TakeOverEveryStart says every start but a fork source may get the
 	// take-over hint, for a host that reports no source and starts a session
 	// in its process only for a chat with no history.

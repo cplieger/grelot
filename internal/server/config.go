@@ -5,7 +5,9 @@ package server
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/cplieger/go/envx"
@@ -77,6 +79,9 @@ func LoadConfig() (Config, error) {
 	if v := envx.String(keyStorePath); v != "" {
 		c.StorePath = v
 	}
+	if !namesFile(c.StorePath) {
+		errs = append(errs, fmt.Errorf("%s must name the database file, such as %s", keyStorePath, defaultStorePath))
+	}
 	if v := envx.String(keyProvidersDir); v != "" {
 		c.ProvidersDir = v
 	}
@@ -85,6 +90,14 @@ func LoadConfig() (Config, error) {
 	}
 	errs = append(errs, c.readLimits()...)
 	return c, errors.Join(errs...)
+}
+
+// namesFile is bolttable's own rule for a database path, checked here so a
+// bad STORE_PATH fails as a config error naming the key: a path ending in a
+// separator, "." or ".." names no file.
+func namesFile(p string) bool {
+	base := filepath.Base(p)
+	return p != "" && !os.IsPathSeparator(p[len(p)-1]) && base != "." && base != ".."
 }
 
 // readLimits reads the store's size and lifetime settings into c.

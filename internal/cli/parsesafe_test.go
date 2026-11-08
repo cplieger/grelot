@@ -281,7 +281,7 @@ var bareForm = regexp.MustCompile(`--(ttl|timeout|by|since|until) [<0-9%]|(post|
 // TestHints_everyCommandIsParseSafe holds the commands the client's lines,
 // the provider files and the docs print to the same forms as the manual.
 func TestHints_everyCommandIsParseSafe(t *testing.T) {
-	checkParseSafe(t, "hook lines", spans(lineDormant+" "+lineUnregistered))
+	checkParseSafe(t, "hook lines", spans(strings.Join([]string{lineDormant, lineUnregistered, lineRegisterTurn, lineRegisterHold, lineManualLeftOut, lineCardLeftOut}, " ")))
 	var files []string
 	for _, g := range []string{"../*/*.go", "../../*.go", "../../providers/*.yaml", "../../docs/*.md", "../../docs/hosts/*.md", "../../README.md"} {
 		m, _ := filepath.Glob(g)

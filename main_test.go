@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,6 +76,61 @@ func TestRun_clientLoadsTheShippedProvidersUnderTheUsersOwn(t *testing.T) {
 			t.Errorf("stderr %q, want the user file's session variable only", got)
 		}
 	})
+}
+
+// stamp sets main.version as -ldflags -X would, for one test that runs
+// before the parallel ones.
+func stamp(t *testing.T, v string) {
+	t.Helper()
+	old := version
+	version = v
+	t.Cleanup(func() { version = old })
+}
+
+// A build stamped with a version the server would refuse prints it, and
+// sends the server the development version instead.
+func TestRun_versionSendsTheWireVersion(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("GRELOT_TOKEN_FILE", "")
+	const pseudo = "v1.2.4-0.20261105101010-0123456789ab"
+	stamp(t, pseudo)
+	sent := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case sent <- r.Header.Get("Grelot-Version"):
+		default:
+		}
+		w.Header().Set("Grelot-Version", "v1.2.3")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"version":"v1.2.3"}`)
+	}))
+	t.Cleanup(srv.Close)
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(configDir, "grelot")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("server: "+srv.URL+"\ntoken: test-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"version"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit %d, stderr %q", code, stderr.String())
+	}
+	if want := "grelot client " + pseudo + "\ngrelot server v1.2.3\n"; stdout.String() != want {
+		t.Errorf("stdout %q, want %q", stdout.String(), want)
+	}
+	select {
+	case got := <-sent:
+		if got != "dev" {
+			t.Errorf("Grelot-Version sent %q, want dev", got)
+		}
+	default:
+		t.Error("the server got no request")
+	}
 }
 
 func TestRun_clientVerbs(t *testing.T) {

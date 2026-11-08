@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/cplieger/grelot/internal/hook"
+	"github.com/cplieger/grelot/internal/proctree"
 	"github.com/cplieger/grelot/internal/provider"
 )
 
@@ -24,6 +27,10 @@ type documentedHost struct {
 	events []string
 	// door is the watcher door, "" for none.
 	door, start string
+	// cli is the CLI's executable, "" for one grelot cannot name, and
+	// oneShot the docs' argument lists that run one prompt and exit.
+	cli     string
+	oneShot [][]string
 }
 
 var documentedHosts = []documentedHost{
@@ -36,6 +43,9 @@ var documentedHosts = []documentedHost{
 		block:   func(s string) any { return map[string]any{"decision": "block", "reason": s} },
 		door:    "async-shell",
 		start:   "run `grelot watch --door async-shell` with mode async",
+		// https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference
+		cli:     "copilot",
+		oneShot: [][]string{{"-p", "fix the tests"}, {"--prompt", "fix the tests"}, {"--prompt=fix the tests"}},
 	},
 	{
 		name:   "antigravity",
@@ -48,6 +58,14 @@ var documentedHosts = []documentedHost{
 		block: func(s string) any { return map[string]any{"decision": "continue", "reason": s} },
 		door:  "background-task",
 		start: "run `grelot watch --door background-task` in the background",
+		// https://antigravity.google/docs/cli/headless/
+		cli: "agy",
+		oneShot: [][]string{
+			{"-p", "fix the tests"},
+			{"--print", "fix the tests"},
+			{"--prompt", "fix the tests"},
+			{"-p", "fix the tests", "--output-format", "json"},
+		},
 	},
 	{
 		name:    "cursor",
@@ -56,6 +74,8 @@ var documentedHosts = []documentedHost{
 		events:  []string{"sessionStart", "stop"},
 		context: func(s string) any { return map[string]any{"additional_context": s} },
 		block:   func(s string) any { return map[string]any{"followup_message": s} },
+		// The CLI's -p (https://cursor.com/docs/cli/reference/parameters)
+		// runs under the node its launcher execs, a name Cursor cannot claim.
 	},
 }
 
@@ -120,6 +140,49 @@ func TestDocumentedHosts_outputsTakeTheDocsShapes(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// A run of the CLI given a one-shot form its docs name is one-shot, and the
+// CLI started with no arguments, or a host naming no CLI, never is.
+func TestDocumentedHosts_oneShot(t *testing.T) {
+	noEnv := func(string) (string, bool) { return "", false }
+	under := func(name string, args ...string) func() []proctree.Process {
+		return func() []proctree.Process {
+			return []proctree.Process{
+				{Name: "sh", Args: []string{"sh", "-c", "grelot hook"}},
+				{Name: name, Args: append([]string{name}, args...)},
+			}
+		}
+	}
+	for _, h := range documentedHosts {
+		p := shipped(t, h.name)
+		t.Run(h.name+"_process", func(t *testing.T) {
+			want := []string{h.cli, h.cli + ".exe"}
+			if h.cli == "" {
+				want = nil
+			}
+			if !slices.Equal(p.Session.Process, want) {
+				t.Errorf("session.process %v, want %v", p.Session.Process, want)
+			}
+		})
+		for _, args := range h.oneShot {
+			t.Run(h.name+"_"+strings.Join(args, "_"), func(t *testing.T) {
+				for _, name := range []string{h.cli, h.cli + ".exe"} {
+					if !hook.OneShot(p, noEnv, under(name, args...)) {
+						t.Errorf("%s %q is not one-shot, want one-shot (%s)", name, args, h.docs)
+					}
+				}
+			})
+		}
+		t.Run(h.name+"_interactive", func(t *testing.T) {
+			if hook.OneShot(p, noEnv, under(h.cli)) {
+				t.Errorf("%s alone is one-shot, want interactive", h.cli)
+			}
+			if h.cli == "" && (len(p.OneShot.Args) != 0 || len(p.OneShot.Env) != 0) {
+				t.Errorf("one_shot %+v, want none for a host whose CLI grelot cannot name", p.OneShot)
+			}
+		})
 	}
 }
 

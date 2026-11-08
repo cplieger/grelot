@@ -65,7 +65,7 @@ func (w *wtx) revive(r *Revival, provider string) (Revived, error) {
 	}
 	if ownFound && own.State == stateLive {
 		return Revived{}, refuse(KindConflict,
-			fmt.Sprintf("this session already has the live identity %s; revive from a session with none", own.Name))
+			fmt.Sprintf("this session already has the live identity @%s; revive from a session with none", own.Name))
 	}
 	row, moved, err := w.reviveTarget(r, provider, &own, ownFound)
 	if err != nil {

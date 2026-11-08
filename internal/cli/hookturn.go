@@ -32,6 +32,9 @@ const (
 	markTurn = "turn"
 	// markHeld is the last stop the stop role held.
 	markHeld = "held"
+	// markAsked is the stop that asked a session to register or revive,
+	// keyed by the session and the server's state, so it asks once.
+	markAsked = "asked"
 )
 
 const (
@@ -48,9 +51,14 @@ const (
 )
 
 const (
-	lineDormant = "grelot: not registered: %s is dormant. Run `grelot revive --ttl=<d>` to go on as it, or `grelot help`, then `grelot register` as it says."
-	lineStale   = "grelot (automated, not the user): signal %d is stale; its mail has been read, so this turn ends"
-	lineHold    = "grelot (automated, not the user): unread %s; run grelot inbox before you stop"
+	// lineRegisterTurn and lineDormant are prompt lines, under 30 words
+	// as turnLine says.
+	lineRegisterTurn = "grelot: not registered. Run `grelot help`, then `grelot register`. If refused, blocked or against the user's instructions, finish the task and tell the user."
+	lineDormant      = "grelot: not registered: %s is dormant; run `grelot revive --ttl=<d>` (see `grelot help`). If refused, blocked or against the user's instructions, finish the task and tell the user."
+	lineRegisterHold = "grelot: not registered. Register now if you can: run `grelot help`, then `grelot register` as it says. " + lineRefused + "; " + lineAskedOnce
+	lineAskedOnce    = "grelot will not hold this session for it again."
+	lineStale        = "grelot (automated, not the user): signal %d is stale; its mail has been read, so this turn ends"
+	lineHold         = "grelot (automated, not the user): unread %s; run grelot inbox before you stop"
 )
 
 // signalRE reads a fixed signal line; transport.SignalLine owns its form,
@@ -106,7 +114,7 @@ func (h *hookCall) prompt(ctx context.Context, role *provider.PromptRole) error 
 	seq, isSignal := signalSeq(role, h.in.String(role.Stdin.Prompt))
 	me, err := h.promptMe(ctx, role, seq)
 	if err != nil {
-		return h.emit(out, failLine(err, role.Budget))
+		return h.emit(out, h.failText(err, role.Budget))
 	}
 	if role.Once {
 		h.onPrint(hook.MarkOnce, key)
@@ -182,26 +190,28 @@ func (h *hookCall) promptMe(ctx context.Context, role *provider.PromptRole, seq 
 
 // promptLine is the prompt's line for the server's answer.
 func (h *hookCall) promptLine(me *client.Me) string {
-	switch me.State {
-	case client.StateLive:
+	switch {
+	case me.State == client.StateLive:
 		if me.Identity == nil {
 			return ""
 		}
 		return h.turnLine(me)
-	case client.StateDormant:
+	case h.oneShot():
+		return ""
+	case me.State == client.StateDormant:
 		name := ""
 		if me.Identity != nil {
 			name = me.Identity.Name
 		}
 		return dormantLine(name)
 	}
-	return lineUnregistered
+	return lineRegisterTurn
 }
 
 func dormantLine(name string) string {
-	who := "this session's identity"
+	who := "your identity"
 	if name != "" {
-		who = "your identity @" + safe(name)
+		who = "@" + safe(name)
 	}
 	return fmt.Sprintf(lineDormant, who)
 }
@@ -260,9 +270,10 @@ func ago(d time.Duration) string {
 }
 
 // stop runs at turn end: POST /v1/events/hold holds the turn once for
-// unread wake mail, or for a session with no live identity. A second stop
-// in one turn holds nothing and reports the turn's end, so a first nudge
-// the open turn deferred goes out at once.
+// unread wake mail, and a session with no live identity once in the
+// session's life, never a one-shot run. A second stop in one turn holds
+// nothing and reports the turn's end, so a first nudge the open turn
+// deferred goes out at once.
 func (h *hookCall) stop(ctx context.Context, role *provider.StopRole) error {
 	c := h.classify(role.Stdin.AgentID)
 	if c.Kind == hook.Replaced || c.Kind == hook.Child {
@@ -275,7 +286,7 @@ func (h *hookCall) stop(ctx context.Context, role *provider.StopRole) error {
 	h.self = true
 	api, err := h.client(true)
 	if err != nil {
-		return h.emit(role.Outputs.Notice, failLine(err, role.Budget))
+		return h.emit(role.Outputs.Notice, h.failText(err, role.Budget))
 	}
 	if h.heldThisTurn(c) {
 		postLifecycle(ctx, api, role.Budget, map[string]any{keyEvent: roleTurnEnd})
@@ -285,6 +296,9 @@ func (h *hookCall) stop(ctx context.Context, role *provider.StopRole) error {
 	// turn until the client is upgraded.
 	if line := client.CannotAck(h.ConfigDir, h.Version); line != "" {
 		postLifecycle(ctx, api, role.Budget, map[string]any{keyEvent: roleTurnEnd})
+		if h.oneShot() {
+			return nil
+		}
 		return h.emit(role.Outputs.Notice, "grelot: unread mail stays unread until this client is upgraded: "+line)
 	}
 	var held client.Held
@@ -296,9 +310,9 @@ func (h *hookCall) stop(ctx context.Context, role *provider.StopRole) error {
 		Method: http.MethodPost, Path: "/v1/events/hold", Body: map[string]any{"for": "stop", "last": last}, Once: true,
 	}, &held)
 	cancel()
-	text, block, err := h.stopText(&held, err)
+	text, block, err := h.stopText(&held, err, h.chatKey(c))
 	if err != nil {
-		return h.emit(role.Outputs.Notice, failLine(err, role.Budget))
+		return h.emit(role.Outputs.Notice, h.failText(err, role.Budget))
 	}
 	out := role.Outputs.Notice
 	if block {
@@ -326,8 +340,9 @@ func (h *hookCall) heldThisTurn(c hook.Class) bool {
 
 // stopText is the stop hold's reason, and whether it holds the turn; the
 // error is a hold the server did not answer. A hold with only a down wake
-// prints nothing: the prompt line names the start line every turn.
-func (h *hookCall) stopText(held *client.Held, err error) (text string, block bool, _ error) {
+// prints nothing: the prompt line names the start line every turn. The
+// register or revive hold is spent once printed, per chat and state.
+func (h *hookCall) stopText(held *client.Held, err error, chat string) (text string, block bool, _ error) {
 	if err == nil {
 		if !held.Block {
 			return "", false, nil
@@ -340,14 +355,20 @@ func (h *hookCall) stopText(held *client.Held, err error) (text string, block bo
 	}
 	ae, isAPI := errors.AsType[*client.APIError](err)
 	switch {
-	case isAPI && ae.HTTP == http.StatusGone && ae.Code == client.StateNone:
-		return lineUnregistered, true, nil
-	case isAPI && ae.HTTP == http.StatusGone && ae.Code == client.StateDormant:
-		return dormantLine(""), true, nil
-	case isAPI && ae.HTTP == http.StatusGone:
+	case !isAPI || ae.HTTP != http.StatusGone:
+		return "", false, err
+	case ae.Code != client.StateNone && ae.Code != client.StateDormant, h.oneShot():
 		return "", false, nil
 	}
-	return "", false, err
+	key := chat + "\x00" + ae.Code
+	if h.marks.Has(markAsked, key) {
+		return "", false, nil
+	}
+	h.onPrint(markAsked, key)
+	if ae.Code == client.StateNone {
+		return lineRegisterHold, true, nil
+	}
+	return dormantLine("") + " " + lineAskedOnce, true, nil
 }
 
 // lifecycle reports turn_end or session_end and prints nothing, whatever
@@ -399,7 +420,7 @@ func (h *hookCall) sessionAPI(stdin string) (*client.API, error) {
 	if err != nil {
 		return nil, err
 	}
-	api, err := client.NewHookAPI(cfg, h.Version, h.ConfigDir)
+	api, err := client.NewOnceAPI(cfg, h.Version, h.ConfigDir)
 	if err != nil {
 		return nil, err
 	}

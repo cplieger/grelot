@@ -20,10 +20,17 @@ const verbHook = "hook"
 
 // The lines a hook prints of its own.
 const (
-	lineUnregistered = "grelot: not registered. Register before you start work: run `grelot help`, then `grelot register` as it says."
-	lineFork         = "grelot: this chat is a fork of another chat; it shares that chat's identity and posts only as a delegate the parent grants"
-	lineHandle       = "grelot: you are @%s; prefix every grelot command with `grelot as %s`"
-	lineNoCheck      = "grelot: could not check this session's identity (%s); nothing is held"
+	lineUnregistered = "grelot: not registered. Register so other agents can find and message you: run `grelot help`, then `grelot register` as it says. " + lineRefused + "; grelot holds one turn end for it, never more."
+	// lineRefused keeps a refused registration from costing the user's
+	// task: a model reads a bare register line as a precondition of it.
+	lineRefused = "If registering is refused, blocked or against the user's instructions (a sandbox, an approval reviewer, an instruction not to run commands), finish the user's task and tell the user"
+	lineFork    = "grelot: this chat is a fork of another chat; it shares that chat's identity and posts only as a delegate the parent grants"
+	lineHandle  = "grelot: you are @%s; prefix every grelot command with `grelot as %s`"
+	lineNoCheck = "grelot: could not check this session's identity (%s); nothing is held"
+	// A host keeps only a preview of a text over its context limit and does
+	// not ask the model to read the rest, so these lines ask instead.
+	lineManualLeftOut = "grelot: the manual is left out here to fit this host's context limit; run `grelot help` now, it holds every command and rule"
+	lineCardLeftOut   = "grelot: your card and the manual are left out here to fit this host's context limit; run `grelot help` now, it holds every command and rule, and `grelot me` for your card"
 )
 
 // markFork is a fork's one line, printed once per fork session whichever
@@ -45,6 +52,15 @@ type hookCall struct {
 	printed [][2]string
 	// unconfigured is a client config that does not load.
 	unconfigured bool
+}
+
+// oneShot reports a one-shot run of the host (hook.OneShot), which the
+// hooks never ask to register nor hold for it. It is asked only when the
+// server answered that the session has no live identity, or did not say
+// whether it has one, or this client cannot ack, since walking the
+// process tree reads every ancestor.
+func (h *hookCall) oneShot() bool {
+	return hook.OneShot(h.prov, h.Lookup, h.tree)
 }
 
 // onPrint sets the mark when this run's emit prints.
@@ -70,12 +86,16 @@ func (r *run) hook(ctx context.Context, args []string) error {
 	}
 	// A host that leaves its session variable out of hook processes says
 	// so, and the hook acts as its stdin session, the one the agent's own
-	// shell carries in that variable. Any other hook with no variable is
-	// another host running these hook lines, and prints nothing.
-	session, _ := p.SessionID(r.Lookup)
-	own := session
-	if own == "" && p.Session.HooksWithoutEnv {
+	// shell carries in that variable. A value such a hook finds was
+	// inherited from the shell of another session that started this host,
+	// so it is ignored. Any other hook with no variable is another host
+	// running these hook lines, and prints nothing.
+	var session, own string
+	if p.Session.HooksWithoutEnv {
 		own = in.String(p.Session.Stdin)
+	} else {
+		session, _ = p.SessionID(r.Lookup)
+		own = session
 	}
 	if own == "" {
 		return nil
@@ -89,8 +109,29 @@ func (r *run) hook(ctx context.Context, args []string) error {
 		h.unconfigured = true
 		h.marks = hook.ReadMarks(r.ConfigDir, r.now)
 	}
+	h.touchHooked()
 	return h.role(ctx, args[1])
 }
+
+// touchHooked marks that the host's hooks run, for run.hooksLost: on this
+// machine, for the hook's session, and for a subagent's own session where
+// the provider names it, which is the one that subagent's shell carries.
+func (h *hookCall) touchHooked() {
+	if h.prov.Hooks.LostFix == "" {
+		return
+	}
+	h.marks.Touch(hook.MarkHostHooked, h.prov.Name, hookedRefresh)
+	h.marks.Touch(hook.MarkSessionHooked, h.hookSession, hookedRefresh)
+	if sub := h.prov.Hooks.SubagentStop; sub != nil && sub.Stdin.Session != "" {
+		if id := h.in.String(sub.Stdin.Session); id != "" {
+			h.marks.Touch(hook.MarkSessionHooked, h.prov.Name+":"+id, hookedRefresh)
+		}
+	}
+}
+
+// hookedRefresh is how often a hook rewrites its hooked marks: each run
+// costs one read otherwise.
+const hookedRefresh = 24 * time.Hour
 
 // The roles grelot hook runs, as provider files name them.
 const (
@@ -172,7 +213,7 @@ func (h *hookCall) sessionStart(ctx context.Context, role *provider.SessionStart
 	}
 	text, err := h.parentStart(ctx, role)
 	if err != nil {
-		return h.emit(out, failLine(err, role.Budget))
+		return h.emit(out, h.failText(err, role.Budget))
 	}
 	if role.Once {
 		h.onPrint(hook.MarkOnce, key)
@@ -195,7 +236,7 @@ func (h *hookCall) parentStart(ctx context.Context, role *provider.SessionStartR
 	if err != nil {
 		return "", err
 	}
-	return h.startText(me, resp.Status), nil
+	return h.startText(role, me, resp.Status), nil
 }
 
 // startRequest is session start's query and headers: proc only for a
@@ -233,25 +274,42 @@ func (h *hookCall) takesOver(role *provider.SessionStartRole) bool {
 	return role.TakeOverEveryStart || slices.Contains(s.TakeOver, source)
 }
 
-func (h *hookCall) startText(me *client.Me, status string) string {
-	var b strings.Builder
+func (h *hookCall) startText(role *provider.SessionStartRole, me *client.Me, status string) string {
+	if me.State != client.StateLive && h.oneShot() {
+		return ""
+	}
 	switch me.State {
 	case client.StateLive, client.StateDormant:
+		return h.identityStart(role, me, status)
+	}
+	text := lineUnregistered + "\n"
+	if me.Hint != nil && me.Hint.Line != "" {
+		text += "grelot: " + safe(me.Hint.Line) + "\n"
+	}
+	return text
+}
+
+// identityStart is the card, the status line and the manual, or, when that
+// is over the host's context limit, the most of it that fits with a line
+// naming what was left out; the leanest form is printed whatever its size.
+func (h *hookCall) identityStart(role *provider.SessionStartRole, me *client.Me, status string) string {
+	var b strings.Builder
+	writeCard(&b, me.Identity)
+	card := b.String()
+	line := h.statusLine(status) + "\n"
+	join := func(card, tail string) string {
 		if me.State == client.StateDormant {
-			b.WriteString(h.statusLine(status) + "\n")
+			return line + card + tail
 		}
-		writeCard(&b, me.Identity)
-		if me.State == client.StateLive {
-			b.WriteString(h.statusLine(status) + "\n")
-		}
-		b.WriteString(manual)
-	default:
-		b.WriteString(lineUnregistered + "\n")
-		if me.Hint != nil && me.Hint.Line != "" {
-			b.WriteString("grelot: " + safe(me.Hint.Line) + "\n")
+		return card + line + tail
+	}
+	texts := []string{join(card, manual), join(card, lineManualLeftOut+"\n"), join("", lineCardLeftOut+"\n")}
+	for _, text := range texts[:len(texts)-1] {
+		if role.ContextLimit == 0 || len(rendered(role.Outputs.Context, text)) <= role.ContextLimit {
+			return text
 		}
 	}
-	return b.String()
+	return texts[len(texts)-1]
 }
 
 // childStart is a child's session start text: the fork's one line once,
@@ -270,7 +328,7 @@ func (h *hookCall) childStart(ctx context.Context, c hook.Class, subagent bool, 
 	if err != nil {
 		return failLine(err, budget)
 	}
-	api, err := client.NewHookAPI(cfg, h.Version, h.ConfigDir)
+	api, err := client.NewOnceAPI(cfg, h.Version, h.ConfigDir)
 	if err != nil {
 		return failLine(err, budget)
 	}
@@ -307,6 +365,15 @@ func hookMe(ctx context.Context, api *client.API, budget time.Duration, q url.Va
 	return api.Me(ctx, q, header)
 }
 
+// failText is failLine outside a one-shot run, whose output stays its
+// answer alone whatever the server does.
+func (h *hookCall) failText(err error, budget time.Duration) string {
+	if h.oneShot() {
+		return ""
+	}
+	return failLine(err, budget)
+}
+
 // failLine is what a hook prints when the server did not say whether the
 // session has an identity: the 426's own line, or that grelot could not
 // check and why, so neither an outage nor a client fault holds the agent.
@@ -338,20 +405,13 @@ func failLine(err error, budget time.Duration) string {
 func (h *hookCall) emit(out *provider.Output, text string) error {
 	printed := h.printed
 	h.printed = nil
-	text = strings.TrimSuffix(text, "\n")
-	if out == nil || text == "" {
-		return nil
-	}
-	s, err := out.Render(&provider.Data{Context: text, Reason: text})
-	if err != nil {
+	s := rendered(out, text)
+	if s == "" {
 		return nil
 	}
 	w := h.Stdout
 	if out.Stream == provider.StreamStderr {
 		w = h.Stderr
-	}
-	if !strings.HasSuffix(s, "\n") {
-		s += "\n"
 	}
 	if _, err := fmt.Fprint(w, s); err != nil {
 		return nil
@@ -363,4 +423,21 @@ func (h *hookCall) emit(out *provider.Output, text string) error {
 		return &exitError{code: out.Exit}
 	}
 	return nil
+}
+
+// rendered is text as emit prints it through out, ending in a newline, or
+// "" when out is nil, the text is empty or the template fails.
+func rendered(out *provider.Output, text string) string {
+	text = strings.TrimSuffix(text, "\n")
+	if out == nil || text == "" {
+		return ""
+	}
+	s, err := out.Render(&provider.Data{Context: text, Reason: text})
+	if err != nil {
+		return ""
+	}
+	if !strings.HasSuffix(s, "\n") {
+		s += "\n"
+	}
+	return s
 }

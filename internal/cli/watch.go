@@ -253,7 +253,7 @@ func (ws *watcher) once(ctx context.Context, hold time.Duration) (got polled, do
 	}
 	var n client.Nudge
 	if json.Unmarshal(resp.Body, &n) != nil {
-		return polled{}, false, errors.New("grelot watch: the server's nudge is not the JSON this client reads; check that the client and server versions match with grelot me")
+		return polled{}, false, errors.New("grelot watch: the server's nudge is not the JSON this client reads; check that the client and server versions match with grelot version")
 	}
 	return polled{nudge: &n}, true, nil
 }

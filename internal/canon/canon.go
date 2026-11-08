@@ -146,6 +146,16 @@ func (r *Resolver) grelotForm(local string) (string, bool) {
 // folder an MSYS shell calls /: Git for Windows and MSYS2 both ship it.
 const msysMarker = "/usr/bin/msys-2.0.dll"
 
+// AsTyped is arg as the agent typed it: a grelot path under the root that an
+// MSYS shell rewrote is given back as that path (see unconverted), and any
+// other argument is returned unchanged.
+func (r *Resolver) AsTyped(arg string) string {
+	if p, ok := r.unconverted(arg); ok {
+		return p
+	}
+	return arg
+}
+
 // unconverted is the grelot form a path under the root had before an MSYS
 // shell rewrote it. Such a shell hands a native program the argument
 // /workspace/x as <install>/workspace/x (C:/Program Files/Git/workspace/x in

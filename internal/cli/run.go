@@ -9,6 +9,7 @@ import (
 
 	"github.com/cplieger/grelot/internal/canon"
 	"github.com/cplieger/grelot/internal/client"
+	"github.com/cplieger/grelot/internal/hook"
 	"github.com/cplieger/grelot/internal/proctree"
 	"github.com/cplieger/grelot/internal/provider"
 	"github.com/cplieger/grelot/internal/where"
@@ -93,7 +94,7 @@ func (r *run) client(identity bool) (*client.API, error) {
 	}
 	newAPI := client.NewAPI
 	if r.verb == verbHook {
-		newAPI = client.NewHookAPI
+		newAPI = client.NewOnceAPI
 	}
 	a, err := newAPI(cfg, r.Version, r.ConfigDir)
 	if err != nil {
@@ -170,8 +171,25 @@ func (r *run) statusLine(server string) string {
 	}
 	if r.prov != nil {
 		s.Start = client.FirstStart(r.prov)
+		s.HooksLost = r.hooksLost()
 	}
 	return s.Line()
+}
+
+// hooksLost is the provider's fix for hooks it stopped running, for a
+// session's own command when this session's hooks never ran on a machine
+// where the host's did; "" otherwise. A delegate (grelot as) acts for an
+// identity another session's hooks serve, and a one-shot run needs none.
+func (r *run) hooksLost() string {
+	fix := r.prov.Hooks.LostFix
+	if fix == "" || r.handle != "" || r.api == nil || r.api.Session == "" {
+		return ""
+	}
+	m := hook.ReadMarks(r.ConfigDir, r.now)
+	if !m.Has(hook.MarkHostHooked, r.prov.Name) || m.Has(hook.MarkSessionHooked, r.api.Session) || hook.OneShot(r.prov, r.Lookup, r.tree) {
+		return ""
+	}
+	return fix
 }
 
 func (r *run) printStatus(server string) {

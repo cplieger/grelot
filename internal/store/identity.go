@@ -566,7 +566,7 @@ func (s *Store) lookupIdentity(r *bolttable.ReadTx, ix *bolttable.Index[uint64, 
 func noIdentity() *Error {
 	return &Error{
 		Kind: KindGone, Why: "none",
-		Msg: "this session has no identity: read grelot help, then run grelot register <name> --paths <path> --desc <what and why> --ttl=<d>",
+		Msg: "this session has no identity: read grelot help, then run grelot register <name> --paths <path> --desc <what and why> --ttl=<d>; if registering is refused or against the user's instructions, finish the user's task and tell the user",
 	}
 }
 
@@ -579,7 +579,7 @@ func (s *Store) dormantIdentity(r *bolttable.ReadTx, row *identityRow, now time.
 	}
 	return &Error{
 		Kind: KindGone, Why: "dormant",
-		Msg: fmt.Sprintf("your identity %s expired %d h ago with %d unread; `grelot revive --ttl=<d>` restores it",
+		Msg: fmt.Sprintf("your identity @%s expired %d h ago with %d unread; `grelot revive --ttl=<d>` restores it; if reviving is refused or against the user's instructions, finish the user's task and tell the user",
 			row.Name, int(now.Sub(row.DormantSince).Hours()), n),
 	}
 }

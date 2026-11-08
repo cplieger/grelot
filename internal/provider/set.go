@@ -135,7 +135,11 @@ func resolve(p *Provider, loaded map[string]*Provider, invalid map[string]error)
 	case parent.Extends != "":
 		return nil, fail(fmt.Sprintf("provider %s extends another; extends is one level only", p.Extends))
 	}
-	return merge(parent, p), nil
+	m := merge(parent, p)
+	if err := m.checkOneShotProcess(); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // merge builds child over parent: every key but detect is inherited, doors
@@ -158,6 +162,9 @@ func merge(parent, child *Provider) *Provider {
 	}
 	if child.has("hooks") {
 		m.Hooks = child.Hooks
+	}
+	if child.has(keyOneShot) {
+		m.OneShot = child.OneShot
 	}
 	m.Doors = slices.Clone(parent.Doors)
 	for i := range child.Doors {

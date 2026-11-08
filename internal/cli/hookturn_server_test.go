@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -125,14 +126,14 @@ func TestHookPrompt_unregisteredAndDormant(t *testing.T) {
 	t.Run("unregistered", func(t *testing.T) {
 		a := hooked(t, newAgent(t, ts, "s-9", ""), "alpha", hookTurnFile)
 		in := `{"session_id":"s-9","prompt":"x"}`
-		if code, out, _ := a.hook("prompt", in); code != 0 || out != registerLine+"\n" {
-			t.Errorf("exit %d, stdout %q; want 0 and %q", code, out, registerLine)
+		if code, out, _ := a.hook("prompt", in); code != 0 || out != registerPrompt+"\n" {
+			t.Errorf("exit %d, stdout %q; want 0 and %q", code, out, registerPrompt)
 		}
 	})
 	t.Run("dormant", func(t *testing.T) {
 		a := turnAgent(t, ts, hookTurnFile)
 		ts.clock.advance(3 * time.Hour)
-		want := "grelot: not registered: your identity @toolbelt-dev is dormant. Run `grelot revive --ttl=<d>` to go on as it, or `grelot help`, then `grelot register` as it says.\n"
+		want := "grelot: not registered: @toolbelt-dev is dormant; run `grelot revive --ttl=<d>` (see `grelot help`). If refused, blocked or against the user's instructions, finish the task and tell the user.\n"
 		if _, out := a.prompt("x"); out != want {
 			t.Errorf("stdout %q, want %q", out, want)
 		}
@@ -476,22 +477,56 @@ func TestHookStop_holdsOnceForUnreadMail(t *testing.T) {
 	})
 }
 
+// A session the agent cannot or may not register is held once in its
+// life, so a refusal costs one turn end, never every one.
 func TestHookStop_holdsAnUnregisteredSessionOnce(t *testing.T) {
 	ts := newServer(t)
 	a := hooked(t, newAgent(t, ts, "s-1", ""), "alpha", hookTurnFile)
 	a.prompt("x")
-	if _, out := a.stopHook(); blockReason(t, out) != registerLine {
-		t.Errorf("first: stdout %q, want the block with %q", out, registerLine)
+	if _, out := a.stopHook(); blockReason(t, out) != registerHold {
+		t.Errorf("first: stdout %q, want the block with %q", out, registerHold)
 	}
 	if _, out := a.stopHook(); out != "" {
 		t.Errorf("second: stdout %q, want nothing", out)
 	}
-	t.Run("a dormant identity is held with the revive line", func(t *testing.T) {
-		d := turnAgent(t, ts, hookTurnFile)
+	t.Run("a later turn is not held again", func(t *testing.T) {
+		for range 2 {
+			ts.clock.advance(time.Minute)
+			a.prompt("x")
+			if code, out := a.stopHook(); code != 0 || out != "" {
+				t.Errorf("exit %d, stdout %q; want 0 and nothing", code, out)
+			}
+		}
+	})
+	t.Run("another session of the client is held once of its own", func(t *testing.T) {
+		a.vars["ALPHA_ID"] = "s-2"
+		t.Cleanup(func() { a.vars["ALPHA_ID"] = "s-1" })
+		a.hook("prompt", `{"session_id":"s-2","prompt":"x"}`)
+		if _, out, _ := a.hook("stop", `{"session_id":"s-2"}`); blockReason(t, out) != registerHold {
+			t.Errorf("stdout %q, want the block with %q", out, registerHold)
+		}
+	})
+	t.Run("registered later, unread mail still holds", func(t *testing.T) {
+		a.must("register", "toolbelt-dev", "--paths", filepath.ToSlash(t.TempDir()), "--desc", "testing the client", "--ttl", "2h")
+		b, _ := registerAt(t, ts, "s-3", "bee-dev")
+		b.postTo("@toolbelt-dev", "a question")
+		ts.clock.advance(time.Second)
+		a.prompt("x")
+		if _, out := a.stopHook(); !strings.HasPrefix(blockReason(t, out), "grelot (automated, not the user): unread ") {
+			t.Errorf("stdout %q, want the unread hold", out)
+		}
+	})
+	t.Run("gone dormant, it is held once to revive", func(t *testing.T) {
+		const want = "grelot: not registered: your identity is dormant; run `grelot revive --ttl=<d>` (see `grelot help`). If refused, blocked or against the user's instructions, finish the task and tell the user. grelot will not hold this session for it again."
 		ts.clock.advance(3 * time.Hour)
-		d.prompt("x")
-		if _, out := d.stopHook(); !strings.Contains(blockReason(t, out), "grelot revive --ttl=<d>") {
-			t.Errorf("stdout %q, want the revive line", out)
+		a.prompt("x")
+		if _, out := a.stopHook(); blockReason(t, out) != want {
+			t.Errorf("first: stdout %q, want the block with %q", out, want)
+		}
+		ts.clock.advance(time.Minute)
+		a.prompt("x")
+		if _, out := a.stopHook(); out != "" {
+			t.Errorf("a later turn: stdout %q, want nothing", out)
 		}
 	})
 }

@@ -206,14 +206,14 @@ func TestReserve_conflictWordsAnExactPathAsReserved(t *testing.T) {
 	mustReserve(t, s, reserving("holder", pathMarotte, time.Hour))
 	t.Run("the same path", func(t *testing.T) {
 		_, _, err := s.Reserve(t.Context(), Keyed{}, new(reserving("other", pathMarotte, time.Hour)))
-		wantRefusal(t, err, KindConflict, "reserved", pathMarotte+" is reserved by holder")
+		wantRefusal(t, err, KindConflict, "reserved", pathMarotte+" is reserved by @holder")
 		if err != nil && strings.Contains(err.Error(), "overlaps") {
 			t.Errorf("refusal %q says the path overlaps itself", err)
 		}
 	})
 	t.Run("a path under it", func(t *testing.T) {
 		_, _, err := s.Reserve(t.Context(), Keyed{}, new(reserving("other", pathWeb, time.Hour)))
-		wantRefusal(t, err, KindConflict, "reserved", pathWeb+" overlaps "+pathMarotte+", reserved by holder")
+		wantRefusal(t, err, KindConflict, "reserved", pathWeb+" overlaps "+pathMarotte+", reserved by @holder")
 	})
 }
 
@@ -228,7 +228,7 @@ func TestReserve_newcomerSubpathWaitsBehindAQueuedParent(t *testing.T) {
 		t.Errorf("the parent waits behind %+v, want web-holder's grant", parent.Behind)
 	}
 	_, _, err := s.Reserve(t.Context(), Keyed{}, new(reserving("newcomer", pathAPI, time.Hour)))
-	wantRefusal(t, err, KindConflict, "queued", pathMarotte, "parent", "queued first", "reason of parent", "--queue")
+	wantRefusal(t, err, KindConflict, "queued", pathMarotte, "queued first by @parent", "reason of parent", "--queue")
 	got := mustQueue(t, s, reserving("newcomer", pathAPI, time.Hour))
 	if got.Behind == nil || got.Behind.ID != parent.Reservation.ID {
 		t.Errorf("the newcomer waits behind %+v, want the parent's queue entry", got.Behind)

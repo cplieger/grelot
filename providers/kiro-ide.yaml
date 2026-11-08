@@ -26,4 +26,7 @@ session:
       before the rewind still wakes the old session, which this chat never sees.
       Ask the user to stop it from the Workflows area above the chat, then
       start a new one with the start line below.
+# The IDE runs no one-shot chats, and kiro-cli's one_shot reads arguments of
+# a session.process this session does not name.
+one_shot: {}
 notes: docs/hosts/kiro-ide.md

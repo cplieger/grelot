@@ -1,0 +1,9 @@
+{
+  "session_id": "01a19def-c194-7ff3-9007-5062de12f462",
+  "transcript_path": null,
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\work\\codex-x",
+  "hook_event_name": "SessionStart",
+  "model": "openai.gpt-6.1-sol",
+  "permission_mode": "default",
+  "source": "startup"
+}

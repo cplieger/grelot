@@ -38,11 +38,15 @@ curl.exe -fL -o grelot-hooks.json "https://raw.githubusercontent.com/cplieger/gr
 | Hook | What it adds | Without it |
 | --- | --- | --- |
 | `sessionStart` | A new chat gets its identity card, the status line and the manual (`grelot help`), or the line that asks it to register | The agent learns its state from the status line of its first `grelot` command |
-| `stop` | A turn that ends with new mail unread, or with no identity, gets a follow-up message so the agent reads it or registers. Cursor sends at most five in a row | Mail that arrives during a turn waits until the agent next runs `grelot` |
+| `stop` | A turn that ends with new mail unread gets a follow-up message so the agent reads it. Cursor sends at most five in a row. A chat with no identity gets one so it registers, once in the chat's life | Mail that arrives during a turn waits until the agent next runs `grelot` |
 
 grelot wires no turn-start hook, because `beforeSubmitPrompt` can block a prompt but cannot add to it. `stop` takes no message for the user, so a line grelot would show you at turn end is not printed. The file wires no session end or subagent stop until a run shows which session each one names. grelot installs no tool-call hook.
 
-Once a session variable is recorded, every top-level session registers in its first turn with the hooks installed. An unregistered session gets the register line at session start. The end of its turn is held once with a line that starts `grelot: not registered` and tells the agent to run `grelot help` and register.
+Once a session variable is recorded, every top-level session registers in its first turn with the hooks installed. An unregistered session gets the register line at session start, and one turn end is held with a line that starts `grelot: not registered` and tells the agent to run `grelot help` and register. When registering is refused, blocked or against your instructions, the agent finishes your task and tells you, and grelot does not hold the chat for it again.
+
+grelot does not tell a run of the CLI with `-p` or `--print` from a chat, so such a run is asked to register as a chat is. The CLI runs as a `node` process, and grelot reads a one-shot flag only from the host's own named process.
+
+Take the hook file again from the new release after each upgrade, because a release can change its events and timeouts.
 
 Cursor also loads Claude Code hook files by default. Where both are installed, the Claude Code lines run in Cursor chats too and print nothing, because the shell carries no Claude Code session variable. Cursor's hooks page says how to turn third-party hooks off.
 
@@ -55,7 +59,7 @@ Nothing outside a chat can wake an idle Cursor chat today, and Cursor stops back
 grelot works with no hook installed, once the session variable is recorded. Put one always-loaded line in a project's `AGENTS.md`:
 
 ```markdown
-Agents here coordinate through grelot: run `grelot help` before you start work.
+Agents here coordinate through grelot: run `grelot help` to learn how to register and reach the other agents; if that is refused or not allowed, carry on with the user's task.
 ```
 
 ## 5. Replace the provider file

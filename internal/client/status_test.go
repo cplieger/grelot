@@ -37,12 +37,12 @@ func TestStatus_Line(t *testing.T) {
 		{
 			"another release base names the server's own tag",
 			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "v1.1.0", ServerVersion: "v1.2.0-dev.3"},
-			"grelot: @a · 0 unread · wake: watcher · this client is v1.1.0 and the server v1.2.0-dev.3: install grelot v1.2.0-dev.3 with go install github.com/cplieger/grelot@v1.2.0-dev.3 or from https://github.com/cplieger/grelot/releases/tag/v1.2.0-dev.3",
+			"grelot: @a · 0 unread · wake: watcher · this client is v1.1.0 and the server v1.2.0-dev.3: install grelot v1.2.0-dev.3 with go install github.com/cplieger/grelot@v1.2.0-dev.3 or from https://github.com/cplieger/grelot/releases/tag/v1.2.0-dev.3, then check both with grelot version",
 		},
 		{
 			"an earlier dev build of the server's release",
 			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "v1.1.0-dev.24", ServerVersion: "v1.1.0-dev.25"},
-			"grelot: @a · 0 unread · wake: watcher · this client is v1.1.0-dev.24 and the server v1.1.0-dev.25: install grelot v1.1.0-dev.25 with go install github.com/cplieger/grelot@v1.1.0-dev.25 or from https://github.com/cplieger/grelot/releases/tag/v1.1.0-dev.25",
+			"grelot: @a · 0 unread · wake: watcher · this client is v1.1.0-dev.24 and the server v1.1.0-dev.25: install grelot v1.1.0-dev.25 with go install github.com/cplieger/grelot@v1.1.0-dev.25 or from https://github.com/cplieger/grelot/releases/tag/v1.1.0-dev.25, then check both with grelot version",
 		},
 		{
 			"a later dev build than the server says nothing",
@@ -70,6 +70,21 @@ func TestStatus_Line(t *testing.T) {
 			"grelot: @a · 0 unread · wake: watcher · provider beta invalid: run grelot provider check on its file",
 		},
 		{
+			"hooks lost under an identity's line",
+			Status{Server: "grelot: @a · 0 unread · wake: watcher", HooksLost: "re-trust the hooks in /hooks"},
+			"grelot: @a · 0 unread · wake: watcher · grelot's hooks did not run in this session; ask the user to re-trust the hooks in /hooks",
+		},
+		{
+			"hooks lost with no identity says nothing of them",
+			Status{Server: "grelot: this session has no identity; run grelot register", HooksLost: "re-trust the hooks in /hooks"},
+			"grelot: this session has no identity; run grelot register",
+		},
+		{
+			"hooks lost with no server line says nothing of them",
+			Status{HooksLost: "re-trust the hooks in /hooks"},
+			"",
+		},
+		{
 			"no server line with an invalid file",
 			Status{Invalid: []string{"beta", "gamma"}},
 			"grelot: provider beta invalid: run grelot provider check on its file · provider gamma invalid: run grelot provider check on its file",
@@ -86,7 +101,7 @@ func TestStatus_Line(t *testing.T) {
 }
 
 func TestStatus_LineIsOneSafeLine(t *testing.T) {
-	s := Status{Server: "grelot: @a\x1b[2J · 1 unread\n · wake: down", Start: "run\rgrelot\u202ewatch"}
+	s := Status{Server: "grelot: @a\x1b[2J · 1 unread\n · wake: down", Start: "run\rgrelot\u202ewatch", HooksLost: "re-trust\x1b[2J\n/hooks"}
 	got := s.Line()
 	if strings.ContainsAny(got, "\x1b\r\n\u202e") {
 		t.Errorf("Line() = %q, want no escape, line break or bidi control", got)

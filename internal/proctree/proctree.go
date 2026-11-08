@@ -1,5 +1,6 @@
 // Package proctree reads the process's ancestors, which name the host CLI a
-// hook runs under for provider detection and the take-over hint's proc.
+// hook runs under for provider detection and the take-over hint's proc, and
+// whose arguments tell a one-shot run.
 package proctree
 
 import (
@@ -61,6 +62,24 @@ func Names(ancestors []Process) []string {
 	return names
 }
 
+// Host answers the host CLI's processes, nearest first: the nearest unbroken
+// run of ancestors whose name is in names (a provider's session.process), or
+// nil. One host can run as several processes in a row (a launcher and the
+// binary it starts), while a host started from another host's shell has that
+// shell between them, which ends the run.
+func Host(ancestors []Process, names []string) []Process {
+	named := func(p Process) bool { return slices.Contains(names, p.Name) }
+	i := slices.IndexFunc(ancestors, named)
+	if i < 0 {
+		return nil
+	}
+	n := slices.IndexFunc(ancestors[i:], func(p Process) bool { return !named(p) })
+	if n < 0 {
+		n = len(ancestors) - i
+	}
+	return ancestors[i : i+n]
+}
+
 // Proc answers the take-over hint's proc, "<pid>:<start>" of the nearest
 // ancestor whose name is in names (a provider's session.process), or "".
 // It answers "" without looking further up when that ancestor's arguments
@@ -68,11 +87,11 @@ func Names(ancestors []Process) []string {
 // process serving several sessions must never offer one session's identity
 // to another.
 func Proc(ancestors []Process, names, shared []string) string {
-	i := slices.IndexFunc(ancestors, func(p Process) bool { return slices.Contains(names, p.Name) })
-	if i < 0 {
+	host := Host(ancestors, names)
+	if len(host) == 0 {
 		return ""
 	}
-	p := ancestors[i]
+	p := host[0]
 	if len(p.Args) == 0 || slices.ContainsFunc(p.Args[1:], func(a string) bool { return slices.Contains(shared, a) }) {
 		return ""
 	}

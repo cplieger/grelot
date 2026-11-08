@@ -14,6 +14,7 @@ import (
 
 	"github.com/cplieger/go/httpclient"
 	"github.com/cplieger/go/textsafe"
+	"github.com/cplieger/grelot/internal/version"
 )
 
 // The headers the API reads and writes.
@@ -57,14 +58,14 @@ type API struct {
 	Self      bool
 }
 
-// NewAPI builds the API for cfg. version goes out as Grelot-Version; the
+// NewAPI builds the API for cfg. clientVersion goes out as Grelot-Version; the
 // path root an answer names is cached under configDir. A GET, and a write
 // carrying its Idempotency-Key (every one but a Request.Once), is retried
 // with backoff on a network error or a retryable status other than 429,
 // which answers at once naming its wait. No redirect is followed, since
 // one would carry the bearer and the key elsewhere.
-func NewAPI(cfg *Config, version, configDir string) (*API, error) {
-	return newAPI(cfg, version, configDir, httpclient.TransportConfig{BaseDelay: retryDelay, CheckRetry: checkRetry})
+func NewAPI(cfg *Config, clientVersion, configDir string) (*API, error) {
+	return newAPI(cfg, clientVersion, configDir, httpclient.TransportConfig{BaseDelay: retryDelay, CheckRetry: checkRetry})
 }
 
 // checkRetry is the library's verdict less 429: a rate-limited post's wait
@@ -76,20 +77,21 @@ func checkRetry(_ context.Context, resp *http.Response, err error) (bool, error)
 	return resp.StatusCode != http.StatusTooManyRequests && httpclient.IsRetryableStatus(resp.StatusCode), nil
 }
 
-// NewHookAPI is NewAPI sending every request once, since a hook makes at
-// most one request within its budget.
-func NewHookAPI(cfg *Config, version, configDir string) (*API, error) {
-	return newAPI(cfg, version, configDir, httpclient.TransportConfig{MaxAttempts: -1})
+// NewOnceAPI is NewAPI sending every request once: a hook makes at most
+// one request within its budget, and a version check reports a server
+// that does not answer at once.
+func NewOnceAPI(cfg *Config, clientVersion, configDir string) (*API, error) {
+	return newAPI(cfg, clientVersion, configDir, httpclient.TransportConfig{MaxAttempts: -1})
 }
 
-func newAPI(cfg *Config, version, configDir string, retry httpclient.TransportConfig) (*API, error) {
+func newAPI(cfg *Config, clientVersion, configDir string, retry httpclient.TransportConfig) (*API, error) {
 	base, err := httpclient.CloneDefaultTransport()
 	if err != nil {
 		return nil, err
 	}
 	c := httpclient.NewRetry(base, httpclient.RefuseAllRedirects, retry)
 	c.Timeout = clientTimeout
-	return &API{http: c, server: cfg.Server, token: cfg.Token, version: version, configDir: configDir}, nil
+	return &API{http: c, server: cfg.Server, token: cfg.Token, version: clientVersion, configDir: configDir}, nil
 }
 
 // retryDelay is the first backoff of a retried call: a command waits on
@@ -112,12 +114,14 @@ type Request struct {
 	Once    bool
 }
 
-// Response is a 2xx answer: its status line, sanitized to one line, and its
-// raw body.
+// Response is an answer: its status line and the server version it names,
+// each sanitized to one line, and its raw body. Do returns it beside an
+// *APIError too.
 type Response struct {
-	Status string
-	Body   []byte
-	Code   int
+	Status  string
+	Version string
+	Body    []byte
+	Code    int
 }
 
 // APIError is a non-2xx answer. Msg is the server's reason, one line naming
@@ -182,14 +186,18 @@ func (a *API) Do(ctx context.Context, r *Request, out any) (Response, error) {
 		}
 		return Response{}, &UnreachableError{Server: a.server, Timeout: callCtx.Err() != nil, Err: httpclient.LogSafeError(err)}
 	}
-	got := Response{Status: textsafe.SanitizeSingleLine(resp.Header.Get(headerStatus)), Body: body, Code: resp.StatusCode}
+	got := Response{
+		Status:  textsafe.SanitizeSingleLine(resp.Header.Get(headerStatus)),
+		Version: textsafe.SanitizeSingleLine(resp.Header.Get(headerVersion)),
+		Body:    body, Code: resp.StatusCode,
+	}
 	server := a.noteVersion(resp.Header.Get(headerVersion))
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		err := a.refusal(&got, server)
 		return got, err
 	}
 	if out != nil && json.Unmarshal(body, out) != nil {
-		return got, fmt.Errorf("grelot: the server's answer to %s %s is not the JSON this client reads; check that the client and server versions match with grelot me", r.Method, r.Path)
+		return got, fmt.Errorf("grelot: the server's answer to %s %s is not the JSON this client reads; check that the client and server versions match with grelot version", r.Method, r.Path)
 	}
 	return got, nil
 }
@@ -255,7 +263,7 @@ type errorBody struct {
 // or the cached one when the answer names none.
 func (a *API) noteVersion(v string) string {
 	f := LoadFacts(a.configDir)
-	if _, ok := parseVersion(v); !ok || v == f.Version {
+	if _, ok := version.Parse(v); !ok || v == f.Version {
 		return f.Version
 	}
 	f.Version = v

@@ -35,8 +35,10 @@ const hookTurnFile = hookAlphaFile + `  prompt:
 `
 
 const (
-	registerLine = "grelot: not registered. Register before you start work: run `grelot help`, then `grelot register` as it says."
-	blockPrefix  = `{"decision":"block","reason":`
+	registerStart  = "grelot: not registered. Register so other agents can find and message you: run `grelot help`, then `grelot register` as it says. If registering is refused, blocked or against the user's instructions (a sandbox, an approval reviewer, an instruction not to run commands), finish the user's task and tell the user; grelot holds one turn end for it, never more."
+	registerPrompt = "grelot: not registered. Run `grelot help`, then `grelot register`. If refused, blocked or against the user's instructions, finish the task and tell the user."
+	registerHold   = "grelot: not registered. Register now if you can: run `grelot help`, then `grelot register` as it says. If registering is refused, blocked or against the user's instructions (a sandbox, an approval reviewer, an instruction not to run commands), finish the user's task and tell the user; grelot will not hold this session for it again."
+	blockPrefix    = `{"decision":"block","reason":`
 )
 
 // prompt runs the prompt hook of session s-1 with text as the prompt.

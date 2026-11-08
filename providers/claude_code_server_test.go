@@ -38,12 +38,14 @@ func claudeShell(t *testing.T, srv *testServer, session string) *shell {
 	return newShell(t, srv, "claude-code", map[string]string{"CLAUDE_CODE_SESSION_ID": session})
 }
 
+// The -p run's payload, without its variables or ancestors, is not known to
+// be one-shot (TestOneShot_unregistered).
 func TestClaudeCodeSessionStart_unregistered(t *testing.T) {
 	for _, name := range []string{"session_start-startup-print", "session_start-startup-tui", "session_start-resume", "session_start-compact"} {
 		t.Run(name, func(t *testing.T) {
 			sh := claudeShell(t, newServer(t), sessionOf(t, "claude-code", name))
 			got := sh.hook("session_start", sh.fixture(name))
-			if got.Code != 0 || got.Stdout != registerLine+"\n" || got.Stderr != "" {
+			if got.Code != 0 || got.Stdout != registerStart+"\n" || got.Stderr != "" {
 				t.Errorf("exit %d, stdout %q, stderr %q; want 0 and only the register line as context", got.Code, got.Stdout, got.Stderr)
 			}
 			if len(got.Requests) != 1 || got.Requests[0].Path != "/v1/me" || got.Requests[0].Query != "" {
@@ -53,8 +55,14 @@ func TestClaudeCodeSessionStart_unregistered(t *testing.T) {
 	}
 }
 
+// claudeContextLimit is the most characters of hook stdout Claude Code
+// gives the model whole (https://code.claude.com/docs/en/hooks, "JSON
+// output"); a text's bytes are never fewer than its characters.
+const claudeContextLimit = 10000
+
 // Every start a live session reports, compaction included, gives it the
-// card, the status line and the manual again.
+// card and the status line again, and, since the manual alone is over
+// Claude Code's limit, the line that asks the agent to run grelot help.
 func TestClaudeCodeSessionStart_live(t *testing.T) {
 	for _, name := range []string{"session_start-startup-tui", "session_start-resume", "session_start-compact"} {
 		t.Run(name, func(t *testing.T) {
@@ -70,8 +78,11 @@ func TestClaudeCodeSessionStart_live(t *testing.T) {
 			if i < 0 || !strings.Contains(lines[i], claudeStart) {
 				t.Errorf("stdout %q, want a status line naming %q", got.Stdout, claudeStart)
 			}
-			if !strings.HasSuffix(got.Stdout, manual) {
-				t.Errorf("stdout %q, want it to end with grelot help's text", got.Stdout)
+			if len(manual) <= claudeContextLimit {
+				t.Fatalf("the manual is %d bytes, within the host's %d; this test needs it over", len(manual), claudeContextLimit)
+			}
+			if len(got.Stdout) > claudeContextLimit || strings.Contains(got.Stdout, "# grelot help") || !strings.HasSuffix(got.Stdout, "run `grelot help` now, it holds every command and rule\n") {
+				t.Errorf("stdout (%d bytes) %q, want at most %d bytes ending with the line that asks for grelot help, and no manual", len(got.Stdout), got.Stdout, claudeContextLimit)
 			}
 		})
 	}
@@ -81,7 +92,7 @@ func TestClaudeCodeSessionStart_live(t *testing.T) {
 // the identity that process held; a fork is a second session and never
 // gets that hint.
 func TestClaudeCodeSessionStart_takeOverAndFork(t *testing.T) {
-	const hint = "grelot: you were claude-dev before this session started; to go on as it, run `grelot register claude-dev --take-over --ttl=<d>`"
+	const hint = "grelot: you were @claude-dev before this session started; to go on as it, run `grelot register claude-dev --take-over --ttl=<d>`"
 	for _, exe := range []string{"claude.exe", "claude"} {
 		t.Run(exe, func(t *testing.T) {
 			srv := newServer(t)
@@ -91,7 +102,7 @@ func TestClaudeCodeSessionStart_takeOverAndFork(t *testing.T) {
 
 			sh.vars["CLAUDE_CODE_SESSION_ID"] = claudeCleared
 			got := sh.hook("session_start", sh.fixture("session_start-clear"))
-			if got.Code != 0 || got.Stdout != registerLine+"\n"+hint+"\n" {
+			if got.Code != 0 || got.Stdout != registerStart+"\n"+hint+"\n" {
 				t.Errorf("clear: exit %d, stdout %q; want the register line, then %q", got.Code, got.Stdout, hint)
 			}
 			if len(got.Requests) != 1 || got.Requests[0].Query != "proc=200%3A20" {
@@ -100,7 +111,7 @@ func TestClaudeCodeSessionStart_takeOverAndFork(t *testing.T) {
 
 			sh.vars["CLAUDE_CODE_SESSION_ID"] = claudeFork
 			got = sh.hook("session_start", sh.fixture("session_start-fork"))
-			if got.Code != 0 || got.Stdout != registerLine+"\n" {
+			if got.Code != 0 || got.Stdout != registerStart+"\n" {
 				t.Errorf("fork: exit %d, stdout %q; want only the register line", got.Code, got.Stdout)
 			}
 			if len(got.Requests) != 1 || got.Requests[0].Query != "" {
@@ -115,7 +126,7 @@ func TestClaudeCodePrompt(t *testing.T) {
 	sh := claudeShell(t, srv, claudeTUI)
 	t.Run("unregistered", func(t *testing.T) {
 		got := sh.hook("prompt", sh.fixture("prompt-typed"))
-		if got.Code != 0 || got.Stdout != registerLine+"\n" {
+		if got.Code != 0 || got.Stdout != registerPrompt+"\n" {
 			t.Errorf("exit %d, stdout %q; want 0 and the register line as context", got.Code, got.Stdout)
 		}
 	})
@@ -172,7 +183,7 @@ func TestClaudeCodeStop(t *testing.T) {
 	t.Run("unregistered", func(t *testing.T) {
 		sh := claudeShell(t, newServer(t), claudePrint)
 		got := sh.hook("stop", sh.fixture("stop-first"))
-		if b := parseBlock(t, got.Stdout); got.Code != 0 || b.Reason != registerLine {
+		if b := parseBlock(t, got.Stdout); got.Code != 0 || b.Reason != registerHold {
 			t.Errorf("exit %d, reason %q; want 0 and the register line", got.Code, b.Reason)
 		}
 		if body := holdBody(t, got.Requests); body["for"] != "stop" || body["last"] != false {
@@ -284,16 +295,14 @@ func TestClaudeCodeSessionEnd(t *testing.T) {
 	// (https://code.claude.com/docs/en/hooks, the timeout field).
 	t.Run("it gives up inside Claude Code's 1.5 s", func(t *testing.T) {
 		sh := claudeShell(t, newServer(t), claudeEnded)
-		url, hits := silentServer(t)
-		sh.useServer(url)
-		start := time.Now()
+		silent := newSilentServer(t)
+		sh.useServer(silent.URL)
 		got := sh.hook("session_end", sh.fixture("session_end-other"))
-		took := time.Since(start)
-		if got.Code != 0 || got.Stdout != "" || got.Stderr != "" || hits() != 1 {
-			t.Errorf("exit %d, stdout %q, stderr %q, %d requests; want 0, nothing and the one report", got.Code, got.Stdout, got.Stderr, hits())
+		if got.Code != 0 || got.Stdout != "" || got.Stderr != "" || silent.hits() != 1 {
+			t.Errorf("exit %d, stdout %q, stderr %q, %d requests; want 0, nothing and the one report", got.Code, got.Stdout, got.Stderr, silent.hits())
 		}
-		if took >= 1500*time.Millisecond {
-			t.Errorf("the hook took %s against a server that never answers, want under 1.5s", took)
+		if d := silent.waited(t); d >= 1500*time.Millisecond {
+			t.Errorf("the hook waited %s on a server that never answers, want under 1.5s", d)
 		}
 	})
 }

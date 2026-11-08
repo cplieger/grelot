@@ -190,6 +190,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	handle("PATCH /v1/me", s.renewable(s.patchMe))
 	handle("DELETE /v1/me", s.keyed(s.deleteMe))
 	handle("GET /v1/identities", s.anyone(s.who))
+	handle("GET /v1/version", s.anyone(s.serverVersion))
 	handle("POST /v1/posts", s.keyed(s.post))
 	handle("GET /v1/threads", s.identity(s.threads))
 	handle("GET /v1/messages/{id}/receipts", s.identity(s.receipts))

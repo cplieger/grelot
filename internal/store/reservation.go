@@ -172,12 +172,12 @@ func (w *wtx) conflict(me *identityRow, path string, b *reservationRow) (*Error,
 	}
 	if b.State == reservationHeld {
 		return &Error{Kind: KindConflict, Why: "reserved", Msg: fmt.Sprintf(
-			"%s reserved by %s (%s · %s) until %s for %q: add --queue to be granted it when it frees",
+			"%s reserved by @%s (%s · %s) until %s for %q: add --queue to be granted it when it frees",
 			subject, h.Name, h.Host, rel, fmtTime(b.Lease.Expires), b.Reason,
 		)}, nil
 	}
 	return &Error{Kind: KindConflict, Why: "queued", Msg: fmt.Sprintf(
-		"%s queued first by %s (%s · %s) since %s for %q, waiting until %s at the latest: add --queue to wait behind it",
+		"%s queued first by @%s (%s · %s) since %s for %q, waiting until %s at the latest: add --queue to wait behind it",
 		subject, h.Name, h.Host, rel, fmtTime(b.Since), b.Reason, fmtTime(h.Lease.Expires),
 	)}, nil
 }

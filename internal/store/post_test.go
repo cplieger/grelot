@@ -320,7 +320,7 @@ func TestPost_dormantRecipientGetsItsMailAndTheSenderIsTold(t *testing.T) {
 	clk.advance(20 * time.Minute)
 	mustSweep(t, s)
 	direct := mustPost(t, s, posting(sess("alpha"), Target{Agent: "bravo"}))
-	want := "bravo is dormant since 2026-11-04 05:54 UTC; it gets this if it revives before 2026-11-07 05:54 UTC"
+	want := "@bravo is dormant since 2026-11-04 05:54 UTC; it gets this if it revives before 2026-11-07 05:54 UTC"
 	if direct.Delivered != 1 || !slices.Equal(direct.Notices, []string{want}) {
 		t.Errorf("delivered %d notices %q, want 1 and %q", direct.Delivered, direct.Notices, want)
 	}

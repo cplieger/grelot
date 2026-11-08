@@ -208,6 +208,43 @@ hooks:
 	})
 }
 
+func TestLoadSetExtendsOneShot(t *testing.T) {
+	oneShotParent := parentFile + "one_shot: {env: {BASE_MODE: [batch]}, args: [--once]}\n"
+	t.Run("args read the inherited session.process", func(t *testing.T) {
+		p, err := mustSet(t, files("base", parentFile, "child", "name: child\nextends: base\none_shot: {args: [--once]}\n")).Get("child")
+		if err != nil {
+			t.Fatalf("Get(child): %v", err)
+		}
+		if !slices.Equal(p.OneShot.Args, []string{"--once"}) || !slices.Equal(p.Session.Process, []string{"base"}) {
+			t.Errorf("one_shot %+v, session.process %v", p.OneShot, p.Session.Process)
+		}
+	})
+	t.Run("a child that leaves one_shot out inherits it", func(t *testing.T) {
+		p, err := mustSet(t, files("base", oneShotParent, "child", "name: child\nextends: base\n")).Get("child")
+		if err != nil {
+			t.Fatalf("Get(child): %v", err)
+		}
+		if !slices.Equal(p.OneShot.Args, []string{"--once"}) || !slices.Equal(p.OneShot.Env["BASE_MODE"], []string{"batch"}) {
+			t.Errorf("one_shot = %+v", p.OneShot)
+		}
+	})
+	t.Run("a child's one_shot replaces the parent's whole", func(t *testing.T) {
+		p, err := mustSet(t, files("base", oneShotParent, "child", "name: child\nextends: base\none_shot: {args: [-q]}\n")).Get("child")
+		if err != nil {
+			t.Fatalf("Get(child): %v", err)
+		}
+		if !slices.Equal(p.OneShot.Args, []string{"-q"}) || p.OneShot.Env != nil {
+			t.Errorf("one_shot = %+v, want only the child's args", p.OneShot)
+		}
+	})
+	t.Run("a session without process under inherited args is refused", func(t *testing.T) {
+		_, err := mustSet(t, files("base", oneShotParent, "child", "name: child\nextends: base\nsession: {env: CHILD_ID}\n")).Get("child")
+		if le, ok := errors.AsType[*LoadError](err); !ok || le.Provider != "child" || le.Key != "one_shot.args" {
+			t.Errorf("Get(child) = %v, want a one_shot.args LoadError for child", err)
+		}
+	})
+}
+
 func TestLoadSetExtendsRefuses(t *testing.T) {
 	cases := []struct {
 		name  string

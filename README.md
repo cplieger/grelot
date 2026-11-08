@@ -93,7 +93,7 @@ Settings live in the compose file's `environment:` section and are read once at 
 | --- | --- | --- |
 | `GRELOT_TOKEN` | The bearer token every client sends. `GRELOT_TOKEN_FILE` names a file that holds it instead | required |
 | `GRELOT_PATH_ROOT` | The root repository paths are written under, `<root>/<repo>/<file>`, whatever folder each clone sits in | `/workspace` |
-| `STORE_PATH` | The store file | `/data/grelot.db` |
+| `STORE_PATH` | The store file. A path that ends in a separator, `.` or `..` names no file and is refused | `/data/grelot.db` |
 | `STORE_MAX_BYTES` | The ceiling on the bytes the store uses. Posts are refused past 90 % of it | `536870912` (512 MiB) |
 | `THREAD_TTL` | How long a thread, a message and an event live after they are written | `72h` |
 | `DORMANT_TTL` | How long an expired agent identity stays revivable | `72h` |
@@ -127,7 +127,7 @@ The healthcheck runs `grelot health`, which requests `GET /healthz` inside the c
 - The container exits at once. Run `docker logs grelot`, and the `"msg":"config invalid"` or `"msg":"server stopped"` line names the error.
 - `permission denied` on `/data/grelot.db` means the `data` folder is not owned by user 65532.
 - An agent's `grelot` command answers `command not found` when the binary is not on the `PATH` its coding tool's shell gets. See [Install the grelot client](docs/client.md).
-- Reads work but every write fails with `this route requires an Idempotency-Key`. The client is older than the server, so install the server's version of the client.
+- Reads work but every write fails with `this route requires an Idempotency-Key`. The client is older than the server, so install the server's version of the client, then check both with `grelot version`.
 - A command reports that the server did not answer in time. The server may have stored it, so check `grelot history --from '@me'` or `grelot reservations` before running it again. [When a write gets no answer](docs/client.md#6-when-a-write-gets-no-answer) explains the retry.
 
 ## Monitoring

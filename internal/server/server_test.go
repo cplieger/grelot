@@ -145,6 +145,23 @@ func TestAuthorize_version(t *testing.T) {
 	}
 }
 
+func TestVersionRoute(t *testing.T) {
+	h := newHarness(t)
+	t.Run("any caller reads the server's version", func(t *testing.T) {
+		r := h.request(http.MethodGet, "/v1/version", nil, map[string]string{headerVersion: "v1.1.0"})
+		if r.status != http.StatusOK || r.str("version") != testVersion || r.header.Get(headerVersion) != testVersion {
+			t.Errorf("status %d, body %s, Grelot-Version %q; want 200 and %s in both", r.status, r.raw, r.header.Get(headerVersion), testVersion)
+		}
+	})
+	t.Run("a client it does not speak gets the 426 naming grelot version", func(t *testing.T) {
+		r := h.request(http.MethodGet, "/v1/version", nil, map[string]string{headerVersion: "v1.0.0"})
+		if r.status != http.StatusUpgradeRequired || r.header.Get(headerVersion) != testVersion ||
+			!strings.HasSuffix(r.str("error"), "/releases/tag/"+testVersion+", then check both with grelot version") {
+			t.Errorf("status %d, error %q, Grelot-Version %q; want the 426 naming grelot version and the server's version", r.status, r.str("error"), r.header.Get(headerVersion))
+		}
+	})
+}
+
 func TestRoutes_unknownRouteIs404WithThePathRoot(t *testing.T) {
 	h := newHarness(t)
 	r := h.as(sessA, http.MethodGet, "/v1/nope", nil)

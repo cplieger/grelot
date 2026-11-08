@@ -88,9 +88,18 @@ func TestRun_noSession(t *testing.T) {
 	inAgent := "grelot: run grelot me in your agent's shell for its status line and the register command\n"
 	t.Run("no provider detected", func(t *testing.T) {
 		code, out, errOut := a.run("me")
-		if code != 0 || errOut != "" || !strings.HasPrefix(out, reached) || !strings.HasSuffix(out, inAgent) ||
-			!strings.Contains(out, "\ngrelot cannot tell which host this shell runs in (none matched)") {
-			t.Errorf("exit %d, stdout %q, stderr %q; want 0, the server check, the detection line and where to run it", code, out, errOut)
+		want := reached + "grelot: this shell is not an agent's session: no host's session variable is set here\n" + inAgent
+		if code != 0 || errOut != "" || out != want {
+			t.Errorf("exit %d, stdout %q, stderr %q; want 0 and %q", code, out, errOut, want)
+		}
+	})
+	t.Run("two hosts detected", func(t *testing.T) {
+		b := newAgent(t, ts, "s-1", "")
+		b.vars["BETA_ID"] = "s-2"
+		code, out, errOut := b.run("me")
+		want := reached + "grelot cannot tell which host this shell runs in (matched alpha, beta); run with --provider <name>, or set provider: <name> in the client config\n" + inAgent
+		if code != 0 || errOut != "" || out != want {
+			t.Errorf("exit %d, stdout %q, stderr %q; want 0 and %q", code, out, errOut, want)
 		}
 	})
 	t.Run("a provider whose variable is unset", func(t *testing.T) {

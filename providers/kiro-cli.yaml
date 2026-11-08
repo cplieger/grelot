@@ -1,5 +1,5 @@
 # The Kiro CLI, and any host that runs its agent server. Measured on
-# kiro-cli 2.37.1 and 3.0.0 on Linux.
+# kiro-cli 2.37.1, 3.0.0 and 3.1.0 on Linux.
 name: kiro-cli
 evidence: measured
 detect:
@@ -27,6 +27,15 @@ session:
       before the rewind still wakes the old session, which this chat never sees.
       Ask the user to stop it (ctrl+g, select the run, ctrl+x twice), then
       start a new one with the start line below.
+# kiro-cli chat --no-interactive answers one prompt and exits, and
+# --output-format stream-json implies it (kiro-cli chat --help, 3.1.0). Its
+# hooks run under that kiro-cli process, and no KIRO_ variable in them names
+# the mode, so its arguments tell it apart (measured on 3.1.0 on Linux with
+# --v3; without it, a --no-interactive run takes the V2 engine, which runs
+# no hooks from ~/.kiro/hooks). stream-json counts only as --output-format's
+# value: alone it is a first question, which a TUI may be given.
+one_shot:
+  args: [--no-interactive, --output-format=stream-json]
 doors:
   # One grelot watch run is one poll of the workflow's command watch: it
   # prints one JSON result line and always exits 0, since the watch reads

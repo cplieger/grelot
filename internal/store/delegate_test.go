@@ -418,7 +418,7 @@ func TestDelegate_asIsAcceptedOnlyFromTheParentsSessionOrItsOwn(t *testing.T) {
 	})
 	t.Run("a handle no delegate holds", func(t *testing.T) {
 		_, err := s.Seen(t.Context(), as(sess("parent"), "parent/gone"))
-		wantRefusal(t, err, KindGone, "delegate_ended", "ask your parent for a new link")
+		wantRefusal(t, err, KindGone, "delegate_ended", "delegate @parent/gone ended; ask your parent for a new link")
 	})
 }
 

@@ -58,7 +58,7 @@ When the turn's grelot line reads `wake: down, start: start the grelot-watch wor
 grelot works with no hook installed. Put one always-loaded line in a steering file in the container, such as `$KIRO_HOME/steering/grelot.md`:
 
 ```markdown
-Agents here coordinate through grelot: run `grelot help` before you start work.
+Agents here coordinate through grelot: run `grelot help` to learn how to register and reach the other agents; if that is refused or not allowed, carry on with the user's task.
 ```
 
 ## 7. Check it

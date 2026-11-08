@@ -10,6 +10,12 @@ name: antigravity
 evidence: documented
 session:
   stdin: conversationId
+  # agy, the command the CLI's docs run (not run here).
+  process: [agy, agy.exe]
+# agy -p PROMPT (or --print, --prompt) runs one prompt and exits
+# (https://antigravity.google/docs/cli/headless/).
+one_shot:
+  args: [-p, --print, --prompt]
 doors:
   # A background run_command task notifies the agent when it completes, so
   # the watcher exits at each nudge and the session starts it again.

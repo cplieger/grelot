@@ -361,8 +361,9 @@ func TestMe_unregistered(t *testing.T) {
 	code, out, _ := a.run("me")
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	if code != 0 || len(lines) != 2 || !strings.Contains(lines[0], "grelot register <name>") ||
-		lines[1] != "grelot: read grelot help first, then register as the line above says" {
-		t.Errorf("exit %d, output %q; want 0, the register command, then the line to read grelot help first", code, out)
+		!strings.HasSuffix(lines[0], "; if registering is refused or against the user's instructions, finish the user's task and tell the user") ||
+		lines[1] != "grelot: grelot help says how to register, with the command the line above names" {
+		t.Errorf("exit %d, output %q; want 0, the register command with the refusal clause, then the line pointing at grelot help", code, out)
 	}
 }
 
@@ -371,7 +372,7 @@ func TestUnregistered_aCommandAnswersTheRegisterCommand(t *testing.T) {
 	for _, args := range [][]string{{"set", "--desc", "x"}, {"renew", "--ttl", "1h"}, {"bye"}} {
 		t.Run(args[0], func(t *testing.T) {
 			code, out, errOut := a.run(args...)
-			want := "grelot: this session has no identity: read grelot help, then run grelot register <name> --paths <path> --desc <what and why> --ttl=<d>\n"
+			want := "grelot: this session has no identity: read grelot help, then run grelot register <name> --paths <path> --desc <what and why> --ttl=<d>; if registering is refused or against the user's instructions, finish the user's task and tell the user\n"
 			if code != 1 || out != "" || errOut != want {
 				t.Errorf("exit %d, stdout %q, stderr %q; want 1, nothing, and %q", code, out, errOut, want)
 			}

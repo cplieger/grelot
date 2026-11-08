@@ -130,6 +130,53 @@ func TestProc(t *testing.T) {
 	}
 }
 
+func TestHost(t *testing.T) {
+	claudeNames := []string{"claude", "claude.exe"}
+	codexNames := []string{"codex", "codex.exe"}
+	// The ancestor chains recorded on Windows 11: a claude -p run (Claude
+	// Code 2.1.319) and a codex exec run launched from an interactive Claude
+	// Code session's shell (Codex 0.167.0).
+	gitBash := Process{PID: 10, Name: "bash.exe", Args: []string{"bash.exe", "-c", "grelot hook"}}
+	claudeInner := Process{PID: 11, Name: "claude.exe", Args: []string{`\\?\C:\x\claude.exe`, "--settings", "s.json"}}
+	claudeBin := Process{PID: 12, Name: "claude.exe", Args: []string{`C:\x\bin\claude.exe`, "-p", "Reply OK", "--settings", "s.json"}}
+	claudeLauncher := Process{PID: 13, Name: "claude.exe", Args: []string{"claude.exe", "-p", "Reply OK"}}
+	terminal := Process{PID: 14, Name: "windowsterminal.exe"}
+	pwsh := Process{PID: 20, Name: "pwsh.exe", Args: []string{"pwsh.exe", "-NoProfile", "-Command", "grelot hook"}}
+	codexInner := Process{PID: 21, Name: "codex.exe", Args: []string{`\\?\C:\x\codex.exe`, "-c", "a=1", "-c", "b=2"}}
+	codexBin := Process{PID: 22, Name: "codex.exe", Args: []string{`C:\x\bin\codex.exe`, "exec", "-s", "read-only", "-"}}
+	codexLauncher := Process{PID: 23, Name: "codex.exe", Args: []string{"codex.exe", "exec", "-"}}
+	claudeShell := Process{PID: 24, Name: "bash.exe", Args: []string{"bash.exe", "-c", "codex exec -"}}
+	tests := []struct {
+		name      string
+		ancestors []Process
+		names     []string
+		want      []int
+	}{
+		{
+			"every claude process from the hook's shells up to the launcher",
+			[]Process{gitBash, gitBash, claudeInner, claudeBin, claudeLauncher, terminal},
+			claudeNames,
+			[]int{11, 12, 13},
+		},
+		{
+			"codex's run ends at the shell of the host that launched it",
+			[]Process{pwsh, codexInner, codexBin, codexLauncher, claudeShell, claudeInner, claudeLauncher},
+			codexNames,
+			[]int{21, 22, 23},
+		},
+		{"a run that reaches the end of the walk", []Process{gitBash, claudeInner, claudeBin}, claudeNames, []int{11, 12}},
+		{"no ancestor named", []Process{gitBash, terminal}, claudeNames, []int{}},
+		{"a provider naming no process", []Process{claudeInner}, nil, []int{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := pids(Host(tt.ancestors, tt.names)); !slices.Equal(got, tt.want) {
+				t.Errorf("Host = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestProc_sharedNamesAnArgument(t *testing.T) {
 	// The listed word as the program itself is not an argument.
 	p := Process{PID: 5, Name: "serve-many", Start: 50, Args: []string{"serve-many", "--stdio"}}

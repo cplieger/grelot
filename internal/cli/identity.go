@@ -218,7 +218,7 @@ func (r *run) me(ctx context.Context, args []string) error {
 	r.printStatus(resp.Status)
 	switch {
 	case me.State == client.StateNone:
-		fmt.Fprintln(r.Stdout, "grelot: read grelot help first, then register as the line above says")
+		fmt.Fprintln(r.Stdout, "grelot: grelot help says how to register, with the command the line above names")
 		return nil
 	case me.Identity == nil:
 		return nil
@@ -244,13 +244,23 @@ func (r *run) meWithoutSession(ctx context.Context, why error) error {
 	}
 	r.printStatus(resp.Status)
 	fmt.Fprintf(r.Stdout, "grelot: the server at %s answers and accepts this token\n", safe(r.cfg.Server))
+	fmt.Fprintln(r.Stdout, noSessionLine(why))
+	fmt.Fprintln(r.Stdout, "grelot: run grelot me in your agent's shell for its status line and the register command")
+	return nil
+}
+
+// noSessionLine says why me has no session to show. A shell where no host
+// matched and no provider file failed is a plain terminal, where the
+// --provider advice of the detection error is wrong, so it gets its own line.
+func noSessionLine(why error) string {
+	if d, ok := errors.AsType[*provider.DetectError](why); ok && len(d.Matched) == 0 && len(d.Invalid) == 0 {
+		return "grelot: this shell is not an agent's session: no host's session variable is set here"
+	}
 	line := safe(why.Error())
 	if !strings.HasPrefix(line, "grelot") {
 		line = "grelot: " + line
 	}
-	fmt.Fprintln(r.Stdout, line)
-	fmt.Fprintln(r.Stdout, "grelot: run grelot me in your agent's shell for its status line and the register command")
-	return nil
+	return line
 }
 
 func (r *run) set(ctx context.Context, args []string) error {
