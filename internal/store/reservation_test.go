@@ -87,7 +87,7 @@ func eventsOf(t *testing.T, s *Store, id uint64, kind string) []deliveryRow {
 	return out
 }
 
-func openReservationStore(t *testing.T, maxTTL time.Duration) (*Store, *clock) {
+func openReservationStore(t *testing.T, maxTTL time.Duration) *Store {
 	t.Helper()
 	clk := &clock{t: testNow}
 	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{
@@ -97,7 +97,7 @@ func openReservationStore(t *testing.T, maxTTL time.Duration) (*Store, *clock) {
 		t.Fatalf("Open: %v", err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
-	return s, clk
+	return s
 }
 
 func TestReserve_warningLeadScalesWithTheTTL(t *testing.T) {
@@ -132,7 +132,7 @@ func TestReserve_ttlBounds(t *testing.T) {
 	_, _, err := s.Reserve(t.Context(), Keyed{}, &queued)
 	wantRefusal(t, err, KindInvalid, "", "a ttl is required")
 
-	short, _ := openReservationStore(t, 2*time.Hour)
+	short := openReservationStore(t, 2*time.Hour)
 	regAt(t, short, "holder")
 	_, _, err = short.Reserve(t.Context(), Keyed{}, new(reserving("holder", pathMarotte, 3*time.Hour)))
 	wantRefusal(t, err, KindInvalid, "", "1m to 2h")

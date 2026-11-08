@@ -17,9 +17,9 @@ import (
 
 func mustMeasure(t *testing.T, s *Store) Space {
 	t.Helper()
-	sp, err := s.Measure()
+	sp, err := s.measure()
 	if err != nil {
-		t.Fatalf("Measure: %v", err)
+		t.Fatalf("measure: %v", err)
 	}
 	if sp.InUseBytes <= 0 || sp.InUseBytes+sp.FreeBytes > sp.FileBytes {
 		t.Errorf("in use %d and free %d, want both within the %d byte file", sp.InUseBytes, sp.FreeBytes, sp.FileBytes)

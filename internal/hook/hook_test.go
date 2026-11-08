@@ -11,7 +11,7 @@ import (
 )
 
 func TestInput_String(t *testing.T) {
-	in, err := ParseInput([]byte(`{"session_id":"s1","n":42,"ok":true,"off":false,"nul":null,"tool":{"input":{"command":"ls"}},"list":["a"]}`))
+	in, err := parseInput([]byte(`{"session_id":"s1","n":42,"ok":true,"off":false,"nul":null,"tool":{"input":{"command":"ls"}},"list":["a"]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestReadInput_refusals(t *testing.T) {
 }
 
 func TestInput_Matches(t *testing.T) {
-	in, _ := ParseInput([]byte(`{"reason":"delete","kind":{"main":"yes"}}`))
+	in, _ := parseInput([]byte(`{"reason":"delete","kind":{"main":"yes"}}`))
 	cases := []struct {
 		when map[string][]string
 		name string
@@ -139,7 +139,7 @@ func (f *fixture) record(session, body string) {
 
 func (f *fixture) classify(stdin string) Class {
 	f.t.Helper()
-	in, err := ParseInput([]byte(stdin))
+	in, err := parseInput([]byte(stdin))
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -157,8 +157,8 @@ func TestClassify(t *testing.T) {
 		stdin string
 		want  Class
 	}{
-		{name: "same session", stdin: `{"session_id":"root"}`, want: Class{Stdin: "root", Kind: Parent}},
-		{name: "no stdin session", stdin: `{}`, want: Class{Kind: Parent}},
+		{name: "same session", stdin: `{"session_id":"root"}`, want: Class{Stdin: "root", Kind: parent}},
+		{name: "no stdin session", stdin: `{}`, want: Class{Kind: parent}},
 		{name: "agent_id", stdin: `{"session_id":"root","agent_id":"a1"}`, want: Class{Stdin: "root", Kind: Child}},
 		{name: "a step's record has no parent", stdin: `{"session_id":"step"}`, want: Class{Stdin: "step", Kind: Child}},
 		{name: "a fork beside its parent", stdin: `{"session_id":"tangent"}`, want: Class{Stdin: "tangent", Kind: Child, Fork: true}},
@@ -178,9 +178,9 @@ func TestClassify(t *testing.T) {
 
 func TestClassify_differingIDsWithoutARecordRunForTheParent(t *testing.T) {
 	p := loadProvider(t, "plain", "name: plain\nsession: {env: PLAIN_ID, stdin: session_id}\n")
-	in, _ := ParseInput([]byte(`{"session_id":"other"}`))
+	in, _ := parseInput([]byte(`{"session_id":"other"}`))
 	got := Classify(p, in, "agent_id", Shell{Session: "root"}, NewMarks(t.TempDir(), time.Now))
-	if got.Kind != Parent {
+	if got.Kind != parent {
 		t.Errorf("Kind = %v, want Parent", got.Kind)
 	}
 }
@@ -191,7 +191,7 @@ func TestClassify_rewindReplacesItsParent(t *testing.T) {
 	f := newFixture(t)
 	f.record("r1", `{"meta":{"parentSessionId":"root","createdReason":"rewind"}}`)
 	f.record("r2", `{"meta":{"parentSessionId":"r1","createdReason":"rewind"}}`)
-	if got := f.classify(`{"session_id":"root"}`).Kind; got != Parent {
+	if got := f.classify(`{"session_id":"root"}`).Kind; got != parent {
 		t.Fatalf("root before any rewind: Kind = %v, want Parent", got)
 	}
 	if got := f.classify(`{"session_id":"r1"}`).Kind; got != SameAgent {

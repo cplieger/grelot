@@ -13,19 +13,19 @@ import (
 	"strings"
 )
 
-// WorkTree is what git reports for a directory inside a working tree.
-type WorkTree struct {
+// workTree is what git reports for a directory inside a working tree.
+type workTree struct {
 	Toplevel string // in git's slash form
 	GitDir   string // this working tree's own git dir
 	Prefix   string // the directory relative to Toplevel: "" or ending in "/"
 	Remote   string // origin's URL, else the only remote's, else ""
 }
 
-// Git reads working trees; execGit runs the git binary.
-type Git interface {
+// gitReader reads working trees; execGit runs the git binary.
+type gitReader interface {
 	// WorkTree describes the working tree holding dir, answering false when
 	// dir is in none.
-	WorkTree(ctx context.Context, dir string) (WorkTree, bool, error)
+	WorkTree(ctx context.Context, dir string) (workTree, bool, error)
 }
 
 // Clone is the working tree a path lies in.
@@ -44,7 +44,7 @@ type Location struct {
 
 // Resolver canonicalizes paths under one path root.
 type Resolver struct {
-	git    Git
+	git    gitReader
 	isDir  func(string) bool
 	exists func(string) bool
 	clones *Clones
@@ -108,7 +108,7 @@ func (r *Resolver) Path(ctx context.Context, local string) (Location, error) {
 	return Location{Canonical: path.Join(r.root, c.Repo, wt.Prefix, tail), Clone: &c}, nil
 }
 
-func (r *Resolver) clone(wt WorkTree) Clone {
+func (r *Resolver) clone(wt workTree) Clone {
 	c := Clone{Toplevel: wt.Toplevel, GitDir: wt.GitDir}
 	if norm, ok := NormalizeRemote(wt.Remote); ok {
 		c.Remote, c.Repo = norm, repoName(norm, r.repos)

@@ -151,7 +151,7 @@ func TestLoadFull(t *testing.T) {
 	})
 	t.Run("set keys", func(t *testing.T) {
 		for _, k := range []string{"name", "detect", "session", "doors", "hooks", "notes", "evidence"} {
-			if !p.Has(k) {
+			if !p.has(k) {
 				t.Errorf("Has(%q) = false", k)
 			}
 		}
@@ -190,7 +190,7 @@ hooks:
 		}
 	})
 	t.Run("unset keys", func(t *testing.T) {
-		if p.Has("detect") || p.Has("session") || p.Has("extends") {
+		if p.has("detect") || p.has("session") || p.has("extends") {
 			t.Errorf("Has reports keys the file left out")
 		}
 	})

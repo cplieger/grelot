@@ -31,9 +31,9 @@ const (
 	HeaderMachine     = "Grelot-Machine"
 )
 
-// DefaultTimeout bounds a call, its retries included, when its Request sets
+// defaultTimeout bounds a call, its retries included, when its Request sets
 // none.
-const DefaultTimeout = 15 * time.Second
+const defaultTimeout = 15 * time.Second
 
 // maxResponse bounds a response body: an inbox page of 20 bodies of 64 KiB
 // with their headers fits several times over.
@@ -98,7 +98,7 @@ const retryDelay = 250 * time.Millisecond
 
 // Request is one API call. Path is the route under the server URL, such as
 // /v1/me; Header adds to the identity headers; Body, when not nil, goes out
-// as JSON. Timeout bounds the call with its retries, DefaultTimeout when
+// as JSON. Timeout bounds the call with its retries, defaultTimeout when
 // zero. A write other than a GET carries a new Idempotency-Key, which every
 // retry of the call re-sends, unless Once is set: the route takes no key
 // and the call is sent once.
@@ -158,7 +158,7 @@ func (e *UnreachableError) Unwrap() error { return e.Err }
 func (a *API) Do(ctx context.Context, r *Request, out any) (Response, error) {
 	timeout := r.Timeout
 	if timeout <= 0 {
-		timeout = DefaultTimeout
+		timeout = defaultTimeout
 	}
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

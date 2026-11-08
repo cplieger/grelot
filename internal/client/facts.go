@@ -43,10 +43,10 @@ func NoteAck(configDir, client string, refused bool) {
 // maxFactsFile bounds the facts file read.
 const maxFactsFile = 4 << 10
 
-// StateDir is the folder of the client's own state files.
-func StateDir(configDir string) string { return filepath.Join(Dir(configDir), "state") }
+// stateDir is the folder of the client's own state files.
+func stateDir(configDir string) string { return filepath.Join(Dir(configDir), "state") }
 
-func factsFile(configDir string) string { return filepath.Join(StateDir(configDir), "server.json") }
+func factsFile(configDir string) string { return filepath.Join(stateDir(configDir), "server.json") }
 
 // LoadFacts reads the cached facts. A missing, unreadable or malformed file,
 // or a path root that is not absolute and clean, gives the server's default

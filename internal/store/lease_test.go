@@ -73,7 +73,7 @@ func TestLease_capHoldsTheExpiryAndItsWarning(t *testing.T) {
 func TestLease_postsCarryAnExpiryAndNoWarning(t *testing.T) {
 	// threads, messages and deliveries expire THREAD_TTL after the post
 	// and are never warned.
-	s, _ := openTestStore(t)
+	s := openTestStore(t)
 	regAt(t, s, "alpha", "/workspace/alpha")
 	b := regAt(t, s, "bravo", "/workspace/bravo")
 	p := say(t, s, "alpha", Target{Agent: "bravo"}, "hello")
@@ -130,7 +130,7 @@ func TestSweep_expiresEachRowAtItsOwnTime(t *testing.T) {
 	})
 
 	clk.set(testNow.Add(time.Minute - time.Nanosecond))
-	if _, err := s.Sweep(t.Context()); err != nil {
+	if _, err := s.sweep(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if n := countRows(t, s, s.t.deliveries.table); n != 2 {
@@ -138,7 +138,7 @@ func TestSweep_expiresEachRowAtItsOwnTime(t *testing.T) {
 	}
 
 	clk.set(testNow.Add(time.Minute))
-	if _, err := s.Sweep(t.Context()); err != nil {
+	if _, err := s.sweep(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	for name, n := range map[string]int{
@@ -163,7 +163,7 @@ func TestSweep_aThreadTakesItsMessagesWithIt(t *testing.T) {
 		return s.t.messages.table.Put(w.tx, pairKey(1, 1), &messageRow{Thread: 1, ID: 1, Lease: lease{Expires: testNow.Add(time.Hour)}})
 	})
 	clk.set(testNow.Add(time.Minute))
-	if _, err := s.Sweep(t.Context()); err != nil {
+	if _, err := s.sweep(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if n := countRows(t, s, s.t.messages.table); n != 0 {
@@ -186,12 +186,12 @@ func TestSweep_runsInBoundedBatches(t *testing.T) {
 	})
 	before := commitCount(t, s)
 	clk.set(testNow.Add(time.Second))
-	got, err := s.Sweep(t.Context())
+	got, err := s.sweep(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != n {
-		t.Errorf("Sweep expired %d, want %d", got, n)
+		t.Errorf("sweep expired %d, want %d", got, n)
 	}
 	if left := countRows(t, s, s.t.deliveries.table); left != 0 {
 		t.Errorf("%d deliveries left", left)

@@ -86,8 +86,8 @@ func TestOpen_heldLockFailsAndLeavesTheFileUntouched(t *testing.T) {
 
 	_, err = openAt(t, path, newLogSink())
 
-	if !errors.Is(err, ErrLocked) {
-		t.Fatalf("second Open error = %v, want ErrLocked", err)
+	if !errors.Is(err, errLocked) {
+		t.Fatalf("second Open error = %v, want errLocked", err)
 	}
 	after, err := os.ReadFile(path)
 	if err != nil {
@@ -345,7 +345,7 @@ func TestOpen_otherErrorsLeaveThePathUntouched(t *testing.T) {
 
 		_, err := openAt(t, path, newLogSink())
 
-		if err == nil || errors.Is(err, ErrLocked) {
+		if err == nil || errors.Is(err, errLocked) {
 			t.Fatalf("Open error = %v, want a plain failure", err)
 		}
 		if fi, err := os.Stat(filepath.Join(path, "inside")); err != nil || !fi.IsDir() {
@@ -363,7 +363,7 @@ func TestOpen_otherErrorsLeaveThePathUntouched(t *testing.T) {
 
 		_, err := openAt(t, filepath.Join(parent, "grelot.db"), newLogSink())
 
-		if err == nil || errors.Is(err, ErrLocked) {
+		if err == nil || errors.Is(err, errLocked) {
 			t.Fatalf("Open error = %v, want a plain failure", err)
 		}
 		if b, err := os.ReadFile(parent); err != nil || string(b) != "x" {

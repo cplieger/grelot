@@ -22,7 +22,7 @@ func (s *Store) Run(ctx context.Context, beat func()) error {
 	tick := time.NewTicker(SweepEvery)
 	defer tick.Stop()
 	for {
-		if _, err := s.Sweep(ctx); err == nil {
+		if _, err := s.sweep(ctx); err == nil {
 			s.m.SweepLastSuccess.Set(float64(s.now().UnixNano()) / 1e9)
 			beat()
 		} else if ctx.Err() == nil {

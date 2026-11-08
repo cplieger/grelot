@@ -47,7 +47,7 @@ func TestLoadFacts_badFileGivesTheDefault(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
-			file := filepath.Join(StateDir(dir), "server.json")
+			file := filepath.Join(stateDir(dir), "server.json")
 			if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
 				t.Fatal(err)
 			}

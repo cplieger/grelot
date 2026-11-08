@@ -452,8 +452,8 @@ func (d *Door) RenderRequest(data *Data) (Request, error) {
 	return req, nil
 }
 
-// SecretNames lists the secret names an http door's headers call, each once.
-func (d *Door) SecretNames() []string {
+// secretNames lists the secret names an http door's headers call, each once.
+func (d *Door) secretNames() []string {
 	if d.tmpl == nil {
 		return nil
 	}
@@ -477,7 +477,7 @@ func (d *Door) ResolveSecrets(lookup func(name string) (string, error)) error {
 		return errNotLoaded
 	}
 	values := map[string]string{}
-	for _, name := range d.SecretNames() {
+	for _, name := range d.secretNames() {
 		v, err := lookup(name)
 		if err != nil {
 			return fmt.Errorf("secret %s: %w", name, err)

@@ -154,14 +154,14 @@ func TestInbox_aPageSmallerThanTheUnreadAcksOnlyWhatItShowed(t *testing.T) {
 func TestInbox_limit(t *testing.T) {
 	s, _ := openClockStore(t)
 	me := regAt(t, s, "bravo", "/workspace/bravo")
-	deliverEvents(t, s, me.ID, DefaultInboxLimit+5)
-	if p := mustInbox(t, s, sess("bravo"), 0); len(p.Entries) != DefaultInboxLimit || total(p.Unread) != DefaultInboxLimit+5 {
-		t.Errorf("default page %d of %d, want %d of %d", len(p.Entries), total(p.Unread), DefaultInboxLimit, DefaultInboxLimit+5)
+	deliverEvents(t, s, me.ID, defaultInboxLimit+5)
+	if p := mustInbox(t, s, sess("bravo"), 0); len(p.Entries) != defaultInboxLimit || total(p.Unread) != defaultInboxLimit+5 {
+		t.Errorf("default page %d of %d, want %d of %d", len(p.Entries), total(p.Unread), defaultInboxLimit, defaultInboxLimit+5)
 	}
-	if p := mustInbox(t, s, sess("bravo"), MaxInboxLimit); len(p.Entries) != DefaultInboxLimit+5 {
+	if p := mustInbox(t, s, sess("bravo"), maxInboxLimit); len(p.Entries) != defaultInboxLimit+5 {
 		t.Errorf("page of %d at the largest limit, want every one", len(p.Entries))
 	}
-	for _, bad := range []int{-1, MaxInboxLimit + 1} {
+	for _, bad := range []int{-1, maxInboxLimit + 1} {
 		_, err := s.Inbox(t.Context(), Caller{Session: sess("bravo")}, bad)
 		wantRefusal(t, err, KindInvalid, "", "limit", "1 to 100")
 	}

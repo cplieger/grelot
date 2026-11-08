@@ -71,9 +71,9 @@ func outsideForm(p string) string {
 
 // fakeGit answers WorkTree for the directories it lists, for paths of another
 // OS than the test's.
-type fakeGit map[string]WorkTree
+type fakeGit map[string]workTree
 
-func (f fakeGit) WorkTree(_ context.Context, dir string) (WorkTree, bool, error) {
+func (f fakeGit) WorkTree(_ context.Context, dir string) (workTree, bool, error) {
 	wt, ok := f[dir]
 	return wt, ok, nil
 }

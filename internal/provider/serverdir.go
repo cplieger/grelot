@@ -89,7 +89,7 @@ func (s *ServerDoors) add(p *Provider) *LoadError {
 // the values, or the problem that names the failed one.
 func resolveSecrets(d *Door) (values []string, problem string) {
 	resolved := map[string]string{}
-	for _, name := range d.SecretNames() {
+	for _, name := range d.secretNames() {
 		v, err := envx.Secret(secretKey(name))
 		if err != nil {
 			return nil, secretProblem(name, err)

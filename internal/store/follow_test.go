@@ -167,9 +167,9 @@ func TestUnfollow_refusedUnderAWorkPath(t *testing.T) {
 // first, a subpath thread and a later unrelated thread that outlive it,
 // and has bravo follow x, charlie the subpath and delta the later thread.
 // alpha posted at x, so it follows x too.
-func followThreadsFixture(t *testing.T) (s *Store, clk *clock, ids map[string]uint64) {
+func followThreadsFixture(t *testing.T) (s *Store, ids map[string]uint64) {
 	t.Helper()
-	s, clk = openShortThreadStore(t)
+	s, clk := openShortThreadStore(t)
 	ids = map[string]uint64{}
 	for _, n := range []string{"alpha", "bravo", "charlie", "delta"} {
 		ids[n] = regAt(t, s, n, "/workspace/"+n).ID
@@ -184,13 +184,13 @@ func followThreadsFixture(t *testing.T) (s *Store, clk *clock, ids map[string]ui
 	// x expires at its last post plus the thread TTL, half an hour before
 	// the others.
 	clk.advance(shortThreadTTL - 30*time.Minute)
-	return s, clk, ids
+	return s, ids
 }
 
 const sharedX = "/workspace/shared/x"
 
 func TestThreadExpiry_dropsExactlyItsFollows(t *testing.T) {
-	s, _, ids := followThreadsFixture(t)
+	s, ids := followThreadsFixture(t)
 	mustSweep(t, s)
 	want := map[string][]string{
 		"alpha":   {sharedX + "/sub", "/workspace/shared/y"},
@@ -217,7 +217,7 @@ func TestThreadExpiry_dropsExactlyItsFollows(t *testing.T) {
 }
 
 func TestThreadExpiry_dropsItsFollowsEagerly(t *testing.T) {
-	s, _, ids := followThreadsFixture(t)
+	s, ids := followThreadsFixture(t)
 	// charlie's post meets the expired thread before any sweep.
 	got := mustPost(t, s, posting(sess("charlie"), Target{Path: sharedX}))
 	if got.Delivered != 0 {

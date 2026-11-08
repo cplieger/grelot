@@ -303,7 +303,7 @@ func TestHistory_limitKeepsTheNewestWithTheNewestLast(t *testing.T) {
 	wantSubjects(t, "limit 100", historySubjects(t, s, sess("bravo"), HistoryQuery{Limit: 100}), all...)
 	say(t, s, "bravo", Target{Agent: "alpha"}, "own")
 	wantSubjects(t, "limit 2 with an own post", historySubjects(t, s, sess("bravo"), HistoryQuery{Limit: 2}), all[24], "own")
-	for _, bad := range []int{-1, MaxHistoryLimit + 1} {
+	for _, bad := range []int{-1, maxHistoryLimit + 1} {
 		_, err := s.History(t.Context(), Caller{Session: sess("bravo")}, &HistoryQuery{Limit: bad})
 		wantRefusal(t, err, KindInvalid, "", "limit")
 	}

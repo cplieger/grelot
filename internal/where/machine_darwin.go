@@ -23,7 +23,7 @@ func Machine(ctx context.Context) string {
 	if m == nil {
 		return ""
 	}
-	return machineValue(KindMacOS, string(m[1]))
+	return machineValue(kindMacOS, string(m[1]))
 }
 
 // InContainer is false: the container check reads Linux marker files.

@@ -22,8 +22,8 @@ import (
 )
 
 var (
-	// ErrLocked reports that another process holds the store file.
-	ErrLocked = errors.New("store: file held by another process")
+	// errLocked reports that another process holds the store file.
+	errLocked = errors.New("store: file held by another process")
 	// ErrClosed reports a call on a closed store, as during shutdown.
 	ErrClosed = errors.New("store: closed")
 )
@@ -92,7 +92,7 @@ type Store struct {
 }
 
 // Open opens or creates the store file at path. A file another process
-// holds fails with ErrLocked, and any other failure leaves the path as it
+// holds fails with errLocked, and any other failure leaves the path as it
 // was, but for three repairs: a file of another format is reset to empty,
 // with a WARN; a file bbolt cannot read is renamed
 // <path>.<UTC stamp>.invalid and replaced by an empty store, with an
@@ -109,7 +109,7 @@ func Open(path string, o *Options) (*Store, error) {
 	}
 	db, err := bolttable.Open(path, schema, openOptions)
 	if errors.Is(err, bolttable.ErrLocked) {
-		return nil, fmt.Errorf("%w: %w", ErrLocked, err)
+		return nil, fmt.Errorf("%w: %w", errLocked, err)
 	}
 	if err != nil {
 		return nil, err
@@ -268,10 +268,10 @@ func (s *Store) read(ctx context.Context, fn func(*bolttable.ReadTx) error) erro
 // never holds the write lock for long.
 const sweepBatch = 256
 
-// Sweep runs every due warning and expiry in batches, one transaction
+// sweep runs every due warning and expiry in batches, one transaction
 // each, until none is due, and reports how many rows it handled. It also
 // forgets the request time of every identity whose row is gone.
-func (s *Store) Sweep(ctx context.Context) (int, error) {
+func (s *Store) sweep(ctx context.Context) (int, error) {
 	total := 0
 	for first := true; ; first = false {
 		n := 0

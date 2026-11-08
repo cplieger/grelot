@@ -44,10 +44,10 @@ const (
 
 // The defaults of the optional keys.
 const (
-	DefaultStorePath = "/data/grelot.db"
-	// DefaultProvidersDir holds no file in the image, so a server with no
+	defaultStorePath = "/data/grelot.db"
+	// defaultProvidersDir holds no file in the image, so a server with no
 	// folder mounted pushes to no host.
-	DefaultProvidersDir = "/providers"
+	defaultProvidersDir = "/providers"
 )
 
 // LoadConfig reads the configuration from the environment. Its error names
@@ -55,12 +55,12 @@ const (
 func LoadConfig() (Config, error) {
 	c := Config{
 		PathRoot:          protopath.DefaultRoot,
-		StorePath:         DefaultStorePath,
+		StorePath:         defaultStorePath,
 		MaxBytes:          store.DefaultMaxBytes,
 		ThreadTTL:         store.DefaultThreadTTL,
 		DormantTTL:        store.DefaultDormantTTL,
 		ReservationMaxTTL: store.DefaultReservationMaxTTL,
-		ProvidersDir:      DefaultProvidersDir,
+		ProvidersDir:      defaultProvidersDir,
 	}
 	var errs []error
 	token, err := envx.Secret(keyToken)

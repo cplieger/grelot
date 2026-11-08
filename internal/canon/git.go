@@ -20,32 +20,32 @@ const gitTimeout = 15 * time.Second
 
 type execGit struct{}
 
-var _ Git = execGit{}
+var _ gitReader = execGit{}
 
-func (execGit) WorkTree(ctx context.Context, dir string) (WorkTree, bool, error) {
+func (execGit) WorkTree(ctx context.Context, dir string) (workTree, bool, error) {
 	out, err := runGit(ctx, dir, "rev-parse", "--show-toplevel", "--absolute-git-dir", "--show-prefix")
 	if err != nil {
 		if exitErr := (*exec.ExitError)(nil); errors.As(err, &exitErr) && !underDotGit(dir) {
-			return WorkTree{}, false, nil
+			return workTree{}, false, nil
 		}
-		return WorkTree{}, false, err
+		return workTree{}, false, err
 	}
 	lines := strings.Split(strings.TrimRight(out, "\r\n"), "\n")
 	if len(lines) < 2 {
-		return WorkTree{}, false, fmt.Errorf("git rev-parse in %s printed %q", dir, out)
+		return workTree{}, false, fmt.Errorf("git rev-parse in %s printed %q", dir, out)
 	}
-	wt := WorkTree{Toplevel: trimCR(lines[0]), GitDir: trimCR(lines[1])}
+	wt := workTree{Toplevel: trimCR(lines[0]), GitDir: trimCR(lines[1])}
 	if len(lines) > 2 {
 		wt.Prefix = trimCR(lines[2])
 	}
 	names, err := runGit(ctx, wt.Toplevel, "remote")
 	if err != nil {
-		return WorkTree{}, false, err
+		return workTree{}, false, err
 	}
 	if name, ok := pickRemote(strings.Fields(names)); ok {
 		u, err := runGit(ctx, wt.Toplevel, "remote", "get-url", name)
 		if err != nil {
-			return WorkTree{}, false, err
+			return workTree{}, false, err
 		}
 		wt.Remote = strings.TrimSpace(u)
 	}

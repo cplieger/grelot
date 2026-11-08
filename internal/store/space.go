@@ -13,9 +13,9 @@ type Space struct {
 	InUseBytes int64
 }
 
-// Measure reads the file's space without a transaction or a page walk.
+// measure reads the file's space without a transaction or a page walk.
 // After Close it fails with ErrClosed.
-func (s *Store) Measure() (Space, error) {
+func (s *Store) measure() (Space, error) {
 	sp, err := s.space()
 	if err != nil {
 		return Space{}, closed(err)
@@ -25,6 +25,6 @@ func (s *Store) Measure() (Space, error) {
 
 // nearlyFull reports the bytes in use past 90 % of the ceiling.
 func (s *Store) nearlyFull() (bool, error) {
-	sp, err := s.Measure()
+	sp, err := s.measure()
 	return sp.InUseBytes*10 > s.maxBytes*9, err
 }
