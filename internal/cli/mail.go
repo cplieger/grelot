@@ -122,8 +122,10 @@ func (r *run) posted(got *client.Posted, to, thread string, finding canon.Findin
 	fmt.Fprintf(r.Stdout, "grelot: message %d posted to %s (thread %d): delivered to %d: %d same environment, %d other\n",
 		got.Message, safe(to), got.Thread, n.Total, n.SameEnvironment, n.Other)
 	if thread != "" && n.Total == 0 {
-		fmt.Fprintf(r.Stdout, "grelot: no other agent works in or follows %s, so nobody got this post: "+
-			"reach one agent with grelot post '@<name>' (grelot who lists them), or everyone with grelot post announce\n", safe(thread))
+		fmt.Fprintf(r.Stdout, "grelot: no other agent works in or follows %s yet, so nobody got this post now: "+
+			"it stays in the thread's history while the thread lives, for anyone who follows later (grelot history --path %s); "+
+			"if one agent must act on it, send that agent a direct message naming message %d (grelot post '@<name>')\n",
+			safe(thread), safe(thread), got.Message)
 	}
 	if local && n.Other > 0 {
 		fix := "send its content or a pushed ref"
