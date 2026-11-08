@@ -1,0 +1,11 @@
+{
+  "description": "Fields deadset-go cannot see json.Marshal read.",
+  "ignore": [
+    {
+      "code": "DS1301",
+      "symbol": "go://github.com/cplieger/grelot/internal/cli#postTo.Agent",
+      "path": "internal/cli/mail.go",
+      "reason": "Sent as JSON through client.Request.Body. deadset-go v2.0.0-dev.43 does not follow a value stored in an interface-typed field to json.Marshal, which reads this field; v2.0.0-dev.44 does, so this entry goes when the CI pin passes it."
+    }
+  ]
+}
