@@ -12,10 +12,10 @@ import (
 
 // Receipt states.
 const (
-	ReceiptRead    = "read"
-	ReceiptUnread  = "unread"
-	ReceiptDormant = "dormant"
-	ReceiptRetired = "retired"
+	receiptRead    = "read"
+	receiptUnread  = "unread"
+	receiptDormant = "dormant"
+	receiptRetired = "retired"
 )
 
 // Receipt is one recipient of a post, as the post fanned out. A retired
@@ -150,9 +150,9 @@ func (s *Store) receipt(r *bolttable.ReadTx, me *identityRow, m *messageRow, d *
 		return out, err
 	}
 	if !found {
-		out.Relation, out.State = relationUnknown, ReceiptRetired
+		out.Relation, out.State = relationUnknown, receiptRetired
 		if !d.ReadAt.IsZero() {
-			out.State = ReceiptRead
+			out.State = receiptRead
 		}
 		return out, nil
 	}
@@ -164,11 +164,11 @@ func (s *Store) receipt(r *bolttable.ReadTx, me *identityRow, m *messageRow, d *
 	out.Relation = party{where: me.Where, id: me.ID}.relationTo(party{where: where, id: v.ID}, m.Path)
 	switch {
 	case v.Read >= d.Seq:
-		out.State = ReceiptRead
+		out.State = receiptRead
 	case v.State == stateDormant:
-		out.State = ReceiptDormant
+		out.State = receiptDormant
 	default:
-		out.State = ReceiptUnread
+		out.State = receiptUnread
 	}
 	return out, nil
 }

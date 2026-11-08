@@ -100,7 +100,7 @@ func summaryStep(t *testing.T, s *Store, clk *clock, r *rand.Rand) string {
 		clk.advance(time.Duration(1+r.IntN(9)) * time.Minute)
 	case k == 10:
 		op = "sweep"
-		_, err = s.Sweep(t.Context())
+		_, err = s.sweep(t.Context())
 	case k == 11:
 		op = "reserve"
 		_, _, err = s.Reserve(t.Context(), Keyed{}, &Reserving{

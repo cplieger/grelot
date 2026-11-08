@@ -16,11 +16,11 @@ import (
 type Kind int
 
 const (
-	// Parent runs for the environment session's identity, sending
+	// parent runs for the environment session's identity, sending
 	// Grelot-Self.
-	Parent Kind = iota
+	parent Kind = iota
 	// SameAgent is the same agent going on in a new session: it runs as
-	// Parent does.
+	// parent does.
 	SameAgent
 	// Child is a subagent, a workflow step or a fork beside a parent that
 	// goes on: it never acts for the parent.
@@ -56,7 +56,7 @@ const maxRecord = 1 << 20
 // the subagent id. A SameAgent result records its parent as replaced in
 // marks, so the old session's hooks go quiet from then on.
 func Classify(p *provider.Provider, in Input, agentID string, sh Shell, marks *Marks) Class {
-	c := Class{Stdin: in.String(p.Session.Stdin), Kind: Parent}
+	c := Class{Stdin: in.String(p.Session.Stdin), Kind: parent}
 	if c.Stdin != "" && marks.Has(markReplaced, p.Name+":"+c.Stdin) {
 		c.Kind = Replaced
 		return c
@@ -105,7 +105,7 @@ func readRecord(rec *provider.Record, session string, sh Shell) (parent, reason 
 	if err != nil {
 		return "", "", err
 	}
-	in, err := ParseInput(data)
+	in, err := parseInput(data)
 	if err != nil {
 		return "", "", err
 	}

@@ -207,7 +207,7 @@ func (w *wtx) registerRow(r *Registration, provider string) (row identityRow, ad
 	}
 	switch {
 	case held && row.State == stateDormant:
-		return identityRow{}, nil, false, w.s.dormantNameRefusal(&row, *r.Where)
+		return identityRow{}, nil, false, dormantNameRefusal(&row, *r.Where)
 	case held && !r.TakeOver:
 		return identityRow{}, nil, false, w.s.liveNameRefusal(&row, *r.Where)
 	case held:
@@ -593,7 +593,7 @@ func (s *Store) liveNameRefusal(holder *identityRow, caller Where) *Error {
 	))
 }
 
-func (s *Store) dormantNameRefusal(holder *identityRow, caller Where) *Error {
+func dormantNameRefusal(holder *identityRow, caller Where) *Error {
 	return refuse(KindConflict, fmt.Sprintf(
 		"%s is dormant until %s; choose another or revive it from its own environment\n%s · %s · provider %s · dormant since %s\npaths: %s\ndescription: %s\n`grelot revive %s --ttl=<d>` only if it is your own earlier session",
 		holder.Name, fmtTime(holder.Lease.Expires), holder.Host, relation(caller, holder.Where, ""), holder.Provider,

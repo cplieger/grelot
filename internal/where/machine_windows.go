@@ -19,7 +19,7 @@ func Machine(context.Context) string {
 	if err != nil {
 		return ""
 	}
-	return machineValue(KindWindows, raw)
+	return machineValue(kindWindows, raw)
 }
 
 // InContainer is false: the container check reads Linux marker files.

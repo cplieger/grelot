@@ -67,7 +67,7 @@ func (s *Store) Census(ctx context.Context, online func(*Identity) bool) (Census
 	if err != nil {
 		return Census{}, err
 	}
-	out.Space, err = s.Measure()
+	out.Space, err = s.measure()
 	out.MaxBytes = s.maxBytes
 	return out, err
 }

@@ -104,8 +104,8 @@ func openClockStore(t *testing.T) (*Store, *clock) {
 
 func mustSweep(t *testing.T, s *Store) {
 	t.Helper()
-	if _, err := s.Sweep(t.Context()); err != nil {
-		t.Fatalf("Sweep: %v", err)
+	if _, err := s.sweep(t.Context()); err != nil {
+		t.Fatalf("sweep: %v", err)
 	}
 }
 
@@ -139,16 +139,15 @@ func getIdentity(t *testing.T, s *Store, id uint64) identityRow {
 
 // openTestStore opens a store in a fresh directory with the fixed clock and
 // a capturing logger, closing it when the test ends.
-func openTestStore(t *testing.T) (*Store, logSink) {
+func openTestStore(t *testing.T) *Store {
 	t.Helper()
-	sink := newLogSink()
 	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{
-		Logger: slog.New(sink),
+		Logger: slog.New(newLogSink()),
 		Now:    func() time.Time { return testNow },
 	})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
-	return s, sink
+	return s
 }

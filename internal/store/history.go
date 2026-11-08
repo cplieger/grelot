@@ -15,11 +15,11 @@ import (
 )
 
 // History page sizes and window: a limit of 0 takes the default, and a
-// zero Since the last DefaultHistoryWindow, except with LastRead.
+// zero Since the last defaultHistoryWindow, except with LastRead.
 const (
-	DefaultHistoryLimit  = 20
-	MaxHistoryLimit      = 100
-	DefaultHistoryWindow = 24 * time.Hour
+	defaultHistoryLimit  = 20
+	maxHistoryLimit      = 100
+	defaultHistoryWindow = 24 * time.Hour
 )
 
 // HistoryQuery filters History; every filter set must hold. Thread is a
@@ -85,9 +85,9 @@ func (s *Store) History(ctx context.Context, c Caller, query *HistoryQuery) (His
 func checkHistory(q *HistoryQuery) error {
 	switch {
 	case q.Limit == 0:
-		q.Limit = DefaultHistoryLimit
-	case q.Limit < 0 || q.Limit > MaxHistoryLimit:
-		return refuse(KindInvalid, fmt.Sprintf("the history limit must be 1 to %d", MaxHistoryLimit))
+		q.Limit = defaultHistoryLimit
+	case q.Limit < 0 || q.Limit > maxHistoryLimit:
+		return refuse(KindInvalid, fmt.Sprintf("the history limit must be 1 to %d", maxHistoryLimit))
 	}
 	if q.Path != "" {
 		if _, err := checkPaths([]string{q.Path}); err != nil {
@@ -163,7 +163,7 @@ func historySince(q *HistoryQuery, now time.Time) (time.Time, error) {
 	if !q.Since.IsZero() || q.LastRead {
 		return q.Since, nil
 	}
-	since := now.Add(-DefaultHistoryWindow)
+	since := now.Add(-defaultHistoryWindow)
 	if !q.Until.IsZero() && since.After(q.Until) {
 		return since, refuse(KindInvalid, "--until is before the default 24 h window: pass --since too")
 	}

@@ -250,6 +250,6 @@ type SubagentStdin struct {
 	Session string `yaml:"session"`
 }
 
-// Has reports whether the file set the top-level key itself, which extends
+// has reports whether the file set the top-level key itself, which extends
 // needs to tell an inherited key from one the file replaces.
-func (p *Provider) Has(key string) bool { return p.set[key] }
+func (p *Provider) has(key string) bool { return p.set[key] }

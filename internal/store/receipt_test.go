@@ -51,7 +51,7 @@ func wantStates(t *testing.T, rs Receipts, want ...string) {
 // readAll reads and acks every unread delivery of name.
 func readAll(t *testing.T, s *Store, name string) {
 	t.Helper()
-	page := mustInbox(t, s, sess(name), MaxInboxLimit)
+	page := mustInbox(t, s, sess(name), maxInboxLimit)
 	if len(page.Entries) > 0 {
 		mustAck(t, s, sess(name), page.Entries[len(page.Entries)-1].Seq)
 	}
@@ -155,7 +155,7 @@ func TestReceipts_dormantAndRetiredRecipientsKeptApart(t *testing.T) {
 		clk.advance(time.Hour)
 		mustSweep(t, s)
 		r := mustReceipts(t, s, plain("subflux-dev"), msg).Recipients[0]
-		if r.Name != "cloudy-lake" || r.State != ReceiptRetired || r.Relation != "unknown" {
+		if r.Name != "cloudy-lake" || r.State != receiptRetired || r.Relation != "unknown" {
 			t.Errorf("purged recipient %+v, want cloudy-lake retired, relation unknown", r)
 		}
 	})

@@ -241,7 +241,7 @@ func TestKeyedWrites_reSendAnswersTheFirstResultWhereARunWouldRefuse(t *testing.
 		}
 	})
 	t.Run("reserve", func(t *testing.T) {
-		s, _ := openReservationStore(t, 0)
+		s := openReservationStore(t, 0)
 		regAt(t, s, "holder")
 		r := reserving("holder", pathMarotte, time.Hour)
 		k := keyFor(r.Caller, "key-one", "reserve")
@@ -261,7 +261,7 @@ func TestKeyedWrites_reSendAnswersTheFirstResultWhereARunWouldRefuse(t *testing.
 }
 
 func TestReserve_conflictRecordsNothingSoItsReSendRuns(t *testing.T) {
-	s, _ := openReservationStore(t, 0)
+	s := openReservationStore(t, 0)
 	regAt(t, s, "holder")
 	regAt(t, s, "other")
 	held := mustReserve(t, s, reserving("holder", pathMarotte, time.Hour))

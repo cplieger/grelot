@@ -37,19 +37,19 @@ func TestMachineValue(t *testing.T) {
 	tests := []struct {
 		name, kind, raw, want string
 	}{
-		{"dmi", KindDMI, "4c4c4544-0042-3510-8051-b4c04f334a32", dmi},
-		{"upper case", KindDMI, "4C4C4544-0042-3510-8051-B4C04F334A32", dmi},
-		{"trailing newline", KindDMI, "4c4c4544-0042-3510-8051-b4c04f334a32\n", dmi},
-		{"all zero", KindDMI, "00000000-0000-0000-0000-000000000000", ""},
-		{"all F", KindDMI, "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF", ""},
-		{"placeholder", KindDMI, "03000200-0400-0500-0006-000700080009", ""},
-		{"placeholder upper case", KindDMI, "5C4606FA-192F-453A-B299-7B088C63BB9B", ""},
-		{"placeholder 3", KindDMI, "00020003-0004-0005-0006-000700080009", ""},
-		{"placeholder 4", KindDMI, "31393138-3538-5a43-3135-353130323750", ""},
-		{"placeholder 5", KindDMI, "00000000-0000-0000-0807-060504030201", ""},
-		{"forty digits", KindDMI, "00000000-2093bfe3-e53b-4fc3-9cb1-9217ea6228c7", ""},
-		{"non-hex character", KindDMI, "4c4c4544-0042-3510-8051-b4c04f334a3g", ""},
-		{"empty", KindDMI, "", ""},
+		{"dmi", kindDMI, "4c4c4544-0042-3510-8051-b4c04f334a32", dmi},
+		{"upper case", kindDMI, "4C4C4544-0042-3510-8051-B4C04F334A32", dmi},
+		{"trailing newline", kindDMI, "4c4c4544-0042-3510-8051-b4c04f334a32\n", dmi},
+		{"all zero", kindDMI, "00000000-0000-0000-0000-000000000000", ""},
+		{"all F", kindDMI, "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF", ""},
+		{"placeholder", kindDMI, "03000200-0400-0500-0006-000700080009", ""},
+		{"placeholder upper case", kindDMI, "5C4606FA-192F-453A-B299-7B088C63BB9B", ""},
+		{"placeholder 3", kindDMI, "00020003-0004-0005-0006-000700080009", ""},
+		{"placeholder 4", kindDMI, "31393138-3538-5a43-3135-353130323750", ""},
+		{"placeholder 5", kindDMI, "00000000-0000-0000-0807-060504030201", ""},
+		{"forty digits", kindDMI, "00000000-2093bfe3-e53b-4fc3-9cb1-9217ea6228c7", ""},
+		{"non-hex character", kindDMI, "4c4c4544-0042-3510-8051-b4c04f334a3g", ""},
+		{"empty", kindDMI, "", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

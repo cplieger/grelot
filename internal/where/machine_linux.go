@@ -18,7 +18,7 @@ func InContainer() bool { return inContainer(os.DirFS("/")) }
 // only outside one.
 func linuxMachine(sys fs.FS) string {
 	if raw, err := readSmall(sys, "sys/class/dmi/id/product_uuid"); err == nil {
-		if v := machineValue(KindDMI, raw); v != "" {
+		if v := machineValue(kindDMI, raw); v != "" {
 			return v
 		}
 	}
@@ -26,7 +26,7 @@ func linuxMachine(sys fs.FS) string {
 		return ""
 	}
 	if raw, err := readSmall(sys, "etc/machine-id"); err == nil {
-		return machineValue(KindMachineID, raw)
+		return machineValue(kindMachineID, raw)
 	}
 	return ""
 }

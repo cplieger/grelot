@@ -147,16 +147,16 @@ func merge(parent, child *Provider) *Provider {
 	m.set = maps.Clone(parent.set)
 	maps.Copy(m.set, child.set)
 	delete(m.set, keyDetect)
-	if child.Has("evidence") {
+	if child.has("evidence") {
 		m.Evidence = child.Evidence
 	}
-	if child.Has("notes") {
+	if child.has("notes") {
 		m.Notes = child.Notes
 	}
-	if child.Has("session") {
+	if child.has("session") {
 		m.Session = child.Session
 	}
-	if child.Has("hooks") {
+	if child.has("hooks") {
 		m.Hooks = child.Hooks
 	}
 	m.Doors = slices.Clone(parent.Doors)

@@ -22,10 +22,10 @@ import (
 
 // Machine kinds, the prefix of a machine value.
 const (
-	KindDMI       = "dmi"
-	KindMacOS     = "macos"
-	KindWindows   = "windows"
-	KindMachineID = "machine-id"
+	kindDMI       = "dmi"
+	kindMacOS     = "macos"
+	kindWindows   = "windows"
+	kindMachineID = "machine-id"
 )
 
 // machineKey is published on purpose: the hash keeps the raw id out of the

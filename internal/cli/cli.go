@@ -41,7 +41,7 @@ type Env struct {
 	ConfigDir string
 	Version   string
 	PID       int
-	// Timeout bounds each API call, client.DefaultTimeout when zero.
+	// Timeout bounds each API call; zero takes the client's default.
 	Timeout time.Duration
 }
 

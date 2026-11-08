@@ -177,12 +177,12 @@ hooks:
 		if p.Session.Env != "BASE_ID" || p.Notes != "docs/base.md" {
 			t.Errorf("session %+v, notes %q", p.Session, p.Notes)
 		}
-		if !p.Has("session") {
+		if !p.has("session") {
 			t.Error("Has(session) = false for an inherited key")
 		}
 	})
 	t.Run("detect is not inherited", func(t *testing.T) {
-		if len(p.Detect.Env) != 0 || p.Has("detect") {
+		if len(p.Detect.Env) != 0 || p.has("detect") {
 			t.Errorf("detect = %+v", p.Detect)
 		}
 	})

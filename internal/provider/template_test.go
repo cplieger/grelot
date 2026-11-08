@@ -105,8 +105,8 @@ func TestTemplateSecret(t *testing.T) {
 	const header = "    url: 'https://receiver/x'\n    body: '{}'\n    headers:\n      Authorization: 'Bearer {{secret \"door_token\"}}'\n      X-Other: '{{secret \"door_token\"}}{{secret \"other_key\"}}'\n      X-Plain: plain\n"
 	t.Run("names", func(t *testing.T) {
 		p := mustLoad(t, httpDoor(header))
-		if got, want := p.Doors[0].SecretNames(), []string{"door_token", "other_key"}; !slices.Equal(got, want) {
-			t.Errorf("SecretNames = %v, want %v", got, want)
+		if got, want := p.Doors[0].secretNames(), []string{"door_token", "other_key"}; !slices.Equal(got, want) {
+			t.Errorf("secretNames = %v, want %v", got, want)
 		}
 	})
 	t.Run("unresolved refuses to render", func(t *testing.T) {

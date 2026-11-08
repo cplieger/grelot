@@ -13,8 +13,8 @@ import (
 
 // Inbox page sizes: a limit of 0 takes the default.
 const (
-	DefaultInboxLimit = 20
-	MaxInboxLimit     = 100
+	defaultInboxLimit = 20
+	maxInboxLimit     = 100
 )
 
 // Entry is one delivery, or in history one of the reader's own posts, as
@@ -125,14 +125,14 @@ type Held struct {
 
 // Inbox returns up to limit of c's unexpired deliveries past read,
 // oldest first, and moves no cursor: the caller acks what it printed.
-// Refusals: KindInvalid for a limit outside 0 to MaxInboxLimit; KindGone
+// Refusals: KindInvalid for a limit outside 0 to maxInboxLimit; KindGone
 // for a session with no live identity.
 func (s *Store) Inbox(ctx context.Context, c Caller, limit int) (Page, error) {
 	switch {
 	case limit == 0:
-		limit = DefaultInboxLimit
-	case limit < 0 || limit > MaxInboxLimit:
-		return Page{}, refuse(KindInvalid, fmt.Sprintf("the inbox limit must be 1 to %d", MaxInboxLimit))
+		limit = defaultInboxLimit
+	case limit < 0 || limit > maxInboxLimit:
+		return Page{}, refuse(KindInvalid, fmt.Sprintf("the inbox limit must be 1 to %d", maxInboxLimit))
 	}
 	if _, err := s.Seen(ctx, c); err != nil {
 		return Page{}, err

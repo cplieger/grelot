@@ -31,11 +31,11 @@ func ReadInput(r io.Reader) (Input, error) {
 	if len(data) > maxInput {
 		return Input{}, errors.New("hook input over 1 MiB")
 	}
-	return ParseInput(data)
+	return parseInput(data)
 }
 
-// ParseInput reads data as one JSON object.
-func ParseInput(data []byte) (Input, error) {
+// parseInput reads data as one JSON object.
+func parseInput(data []byte) (Input, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return Input{}, nil
 	}
