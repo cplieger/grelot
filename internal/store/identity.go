@@ -74,6 +74,9 @@ type Identity struct {
 	TTL              time.Duration
 	EnvironmentKnown bool
 	Ended            bool
+	// Threaded is set once the identity has followed a path or posted in
+	// a path thread, and stays set.
+	Threaded bool
 }
 
 // Registration is a register request from Session, "<provider>:<id>".
@@ -803,6 +806,7 @@ func (s *Store) view(r *identityRow) Identity {
 		MachineKind: machineKindOf(r.Where.Machine),
 		Paths:       slices.Clone(r.Paths), Follows: slices.Clone(r.Follows),
 		ID: r.ID, Read: r.Read, TTL: r.TTL, EnvironmentKnown: r.Where.Environment != "", Ended: r.Ended,
+		Threaded: r.Threaded,
 	}
 }
 

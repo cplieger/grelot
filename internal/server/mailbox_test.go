@@ -234,8 +234,12 @@ func TestFollows_followAndUnfollowALiveThread(t *testing.T) {
 	if got := follows(h.as(sessA, http.MethodPut, "/v1/follows?path=/workspace/other", nil)); fmt.Sprint(got) != "[/workspace/other]" {
 		t.Errorf("follows after follow = %v", got)
 	}
-	if got := follows(h.as(sessA, http.MethodDelete, "/v1/follows?path=/workspace/other", nil)); len(got) != 0 {
+	unfollowed := h.as(sessA, http.MethodDelete, "/v1/follows?path=/workspace/other", nil)
+	if got := follows(unfollowed); len(got) != 0 {
 		t.Errorf("follows after unfollow = %v", got)
+	}
+	if got := unfollowed.body["identity"].(map[string]any)["threaded"]; got != true {
+		t.Errorf("threaded after a follow and its unfollow = %v, want true", got)
 	}
 	if r := h.as(sessA, http.MethodPut, "/v1/follows?path=/workspace/none", nil); r.status != http.StatusOK || !strings.Contains(fmt.Sprint(r.body["notices"]), "no thread lives at /workspace/none") {
 		t.Errorf("follow with no thread: %d %s, want 200 saying no thread lives there", r.status, r.raw)

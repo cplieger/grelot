@@ -265,6 +265,9 @@ func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 	}); err != nil {
 		return route{}, err
 	}
+	if me.Parent == 0 {
+		me.Threaded = true
+	}
 	switch {
 	case me.Parent != 0, slices.Contains(me.Follows, p):
 	case len(me.Follows) >= maxFollows:

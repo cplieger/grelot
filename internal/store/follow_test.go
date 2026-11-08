@@ -84,6 +84,38 @@ func TestFollow_withNoThreadYetReceivesTheFirstPost(t *testing.T) {
 	wantRefusal(t, err, KindInvalid, "", "canonical")
 }
 
+func TestThreaded_setForGoodByAFollowOrAPathPost(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	const p = "/workspace/marotte"
+	follower := regAt(t, s, "alpha", repoGrelot)
+	poster := regAt(t, s, "bravo", repoGrelot)
+	other := regAt(t, s, "charlie", repoGrelot)
+	d := scopedDelegate(t, s, "charlie", "review", func(g *Grant) { g.AllowThreads = []string{p} })
+	if got := mustFollow(t, s, sess("alpha"), p); !got.Threaded {
+		t.Errorf("the follow's identity %+v, want it threaded", got)
+	}
+	if _, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("alpha")}, p); err != nil {
+		t.Fatal(err)
+	}
+	mustPost(t, s, posting(sess("bravo"), Target{Path: p}))
+	mustPost(t, s, selfPost("charlie", Target{Announce: true}))
+	mustPost(t, s, selfPost("charlie", Target{Agent: "alpha"}))
+	mustPost(t, s, asPost("charlie", d.Name, Target{Path: p}))
+	for name, tc := range map[string]struct {
+		id   uint64
+		want bool
+	}{
+		"a follower after its unfollow": {follower.ID, true},
+		"a path poster":                 {poster.ID, true},
+		"an announce and direct poster": {other.ID, false},
+		"a delegate's path post":        {d.ID, false},
+	} {
+		if got := getIdentity(t, s, tc.id).Threaded; got != tc.want {
+			t.Errorf("%s: threaded %v, want %v", name, got, tc.want)
+		}
+	}
+}
+
 func mustFollowed(t *testing.T, s *Store, session, path string) Followed {
 	t.Helper()
 	got, err := s.Follow(t.Context(), Keyed{}, Caller{Session: session}, path)

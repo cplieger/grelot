@@ -149,8 +149,10 @@ func TestHookPrompt_underThirtyWords(t *testing.T) {
 	for range 12 {
 		b.postTo("@toolbelt-dev", "x")
 	}
-	ts.clock.advance(90 * time.Minute)
 	lines := map[string]string{}
+	ts.clock.advance(31 * time.Minute)
+	_, lines["live, with the thread ask and the start line"] = a.prompt("x")
+	ts.clock.advance(59 * time.Minute)
 	_, lines["live, with the reminder and the start line"] = a.prompt("x")
 	ts.clock.advance(time.Hour)
 	_, lines["dormant"] = a.prompt("x")
@@ -171,6 +173,67 @@ func TestHookPrompt_underThirtyWords(t *testing.T) {
 	if !strings.Contains(lines["live, with the reminder and the start line"], "still true?") {
 		t.Errorf("live line %q lacks the reminder it was meant to measure", lines["live, with the reminder and the start line"])
 	}
+	if !strings.Contains(lines["live, with the thread ask and the start line"], segThread) {
+		t.Errorf("live line %q lacks the thread ask it was meant to measure", lines["live, with the thread ask and the start line"])
+	}
+}
+
+// The prompt line asks an identity that follows no thread and has posted
+// in none, once per session and only after the registering turn, never in
+// a one-shot run.
+func TestHookPrompt_asksOnceToFollowOrStartAThread(t *testing.T) {
+	ts := newServer(t)
+	a := turnAgent(t, ts, hookTurnFile)
+	at := func(session, name, file string) *agent {
+		b, _ := registerAt(t, ts, session, name)
+		return hooked(t, b, "alpha", file)
+	}
+	follower := at("s-2", "bee-dev", hookTurnFile)
+	follower.must("follow", "/workspace/arrapi")
+	poster := at("s-3", "cee-dev", hookTurnFile)
+	poster.mustPost("x", "/workspace/cee", "Start: cee", "--name", "no change", "--paths", "no change", "--desc", "no change")
+	poster.must("unfollow", "/workspace/cee")
+	oneShotFile := strings.Replace(hookTurnFile, "hooks:\n", "one_shot: {env: {ALPHA_MODE: [print]}}\nhooks:\n", 1)
+	oneShot := at("s-4", "dee-dev", oneShotFile)
+	oneShot.vars["ALPHA_MODE"] = "print"
+	interactive := at("s-5", "eee-dev", oneShotFile)
+	late := at("s-6", "fff-dev", hookTurnFile)
+
+	ts.clock.advance(29 * time.Minute)
+	if _, out := a.prompt("x"); strings.Contains(out, segThread) {
+		t.Errorf("at 29 min: stdout %q, want no ask yet", out)
+	}
+	ts.clock.advance(2 * time.Minute)
+	if _, out := a.prompt("x"); out != "grelot: @toolbelt-dev · 0 unread · desc set 31 min ago · "+segThread+" · grelot help\n" {
+		t.Errorf("at 31 min: stdout %q, want the ask", out)
+	}
+	if _, out := a.prompt("x"); strings.Contains(out, segThread) {
+		t.Errorf("the next turn: stdout %q, want the ask spent", out)
+	}
+	prompt := func(b *agent, session string) string {
+		_, out, _ := b.hook("prompt", `{"session_id":"`+session+`","prompt":"x"}`)
+		return out
+	}
+	for name, who := range map[string]struct {
+		a       *agent
+		session string
+	}{"a follower": {follower, "s-2"}, "a path poster that unfollowed": {poster, "s-3"}, "a one-shot run": {oneShot, "s-4"}} {
+		if out := prompt(who.a, who.session); out == "" || strings.Contains(out, segThread) {
+			t.Errorf("%s: stdout %q, want the line without the ask", name, out)
+		}
+	}
+	if out := prompt(interactive, "s-5"); !strings.Contains(out, segThread) {
+		t.Errorf("the one-shot file's interactive run: stdout %q, want the ask", out)
+	}
+	t.Run("the description reminder goes first, and the ask the turn after", func(t *testing.T) {
+		ts.clock.advance(30 * time.Minute)
+		if out := prompt(late, "s-6"); !strings.Contains(out, "still true?") || strings.Contains(out, segThread) {
+			t.Errorf("first turn at 61 min: stdout %q, want the description reminder alone", out)
+		}
+		if out := prompt(late, "s-6"); !strings.Contains(out, segThread) {
+			t.Errorf("the next turn: stdout %q, want the ask", out)
+		}
+	})
 }
 
 func TestHookPrompt_sendsTheSignalItCarries(t *testing.T) {

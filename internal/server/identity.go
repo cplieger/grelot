@@ -32,6 +32,7 @@ type identityJSON struct {
 	Follows          []string  `json:"follows"`
 	EnvironmentKnown bool      `json:"environment_known"`
 	Ended            bool      `json:"ended,omitempty"`
+	Threaded         bool      `json:"threaded"`
 }
 
 func identityOut(id *store.Identity) identityJSON {
@@ -42,7 +43,7 @@ func identityOut(id *store.Identity) identityJSON {
 		Host: id.Host, OS: id.OS, Arch: id.Arch, Provider: id.Provider,
 		MachineKind: id.MachineKind, TTL: id.TTL.String(), Notice: id.Notice,
 		Paths: nonNil(id.Paths), Follows: nonNil(id.Follows),
-		EnvironmentKnown: id.EnvironmentKnown, Ended: id.Ended,
+		EnvironmentKnown: id.EnvironmentKnown, Ended: id.Ended, Threaded: id.Threaded,
 	}
 }
 

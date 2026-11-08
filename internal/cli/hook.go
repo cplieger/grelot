@@ -55,10 +55,9 @@ type hookCall struct {
 }
 
 // oneShot reports a one-shot run of the host (hook.OneShot), which the
-// hooks never ask to register nor hold for it. It is asked only when the
-// server answered that the session has no live identity, or did not say
-// whether it has one, or this client cannot ack, since walking the
-// process tree reads every ancestor.
+// hooks never ask to register, follow a thread, nor hold for it. Callers
+// ask it last, once every cheaper check has said a line is due, since
+// walking the process tree reads every ancestor.
 func (h *hookCall) oneShot() bool {
 	return hook.OneShot(h.prov, h.Lookup, h.tree)
 }

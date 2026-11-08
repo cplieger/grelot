@@ -35,12 +35,18 @@ const (
 	// markAsked is the stop that asked a session to register or revive,
 	// keyed by the session and the server's state, so it asks once.
 	markAsked = "asked"
+	// markThread is the prompt line's one ask to follow or start a thread.
+	markThread = "thread"
 )
 
 const (
 	// reminderAge is how old a description is before the prompt line asks
 	// whether it still holds, and how often it asks again.
 	reminderAge = time.Hour
+	// threadAge is how long an identity lives before the prompt line asks
+	// it to follow or start a thread: the turn that registered it has had
+	// the register answer's ask and time to act on it.
+	threadAge = 30 * time.Minute
 	// turnLapse is the server's bound on a turn no hook reports the end of;
 	// with no prompt role to mark turn starts, a stop held within it counts
 	// as held this turn.
@@ -60,6 +66,11 @@ const (
 	lineStale        = "grelot (automated, not the user): signal %d is stale; its mail has been read, so this turn ends"
 	lineHold         = "grelot (automated, not the user): unread %s; run grelot inbox before you stop"
 )
+
+// segThread is the prompt line's ask to follow or start a thread. It
+// never shares a line with the description reminder, which would take the
+// line past 30 words.
+const segThread = "no thread followed: `grelot follow <path>` or start yours"
 
 // signalRE reads a fixed signal line; transport.SignalLine owns its form,
 // and a match counts only when SignalLine prints it back the same.
@@ -225,8 +236,11 @@ func (h *hookCall) turnLine(me *client.Me) string {
 	}
 	age := h.descAge(me.Identity)
 	parts := []string{"grelot: @" + safe(me.Identity.Name), fmt.Sprintf("%d unread", unread), "desc set " + ago(age) + " ago"}
-	if age > reminderAge && h.reminderDue() {
+	switch {
+	case age > reminderAge && h.reminderDue():
 		parts = append(parts, "still true? `grelot set --desc` if not")
+	case h.threadDue(me.Identity):
+		parts = append(parts, segThread)
 	}
 	if me.Wake == wakeDown {
 		if start := client.FirstStart(h.prov); start != "" {
@@ -255,6 +269,17 @@ func (h *hookCall) reminderDue() bool {
 		return false
 	}
 	h.onPrint(markReminder, key)
+	return true
+}
+
+// threadDue reports, once per session, an identity past threadAge that
+// followsNoThread, outside a one-shot run.
+func (h *hookCall) threadDue(id *client.Identity) bool {
+	key := h.identityKey()
+	if !followsNoThread(id) || h.now().Sub(id.RegisteredAt) < threadAge || h.marks.Has(markThread, key) || h.oneShot() {
+		return false
+	}
+	h.onPrint(markThread, key)
 	return true
 }
 

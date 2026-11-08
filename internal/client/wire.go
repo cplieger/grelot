@@ -47,6 +47,9 @@ type Identity struct {
 	Paths            []string  `json:"paths"`
 	Follows          []string  `json:"follows"`
 	EnvironmentKnown bool      `json:"environment_known"`
+	// Threaded says the identity has followed a path or posted in a path
+	// thread, for good; a server older than the field leaves it false.
+	Threaded bool `json:"threaded"`
 }
 
 // Hint is the take-over hint a session with no identity may get: Line

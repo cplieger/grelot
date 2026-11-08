@@ -103,6 +103,9 @@ type identityRow struct {
 	Nudges int           `json:"nudges"`
 	// Parent is a delegate's parent identity, 0 on any other row.
 	Parent uint64 `json:"parent,omitempty"`
+	// Threaded is set for good by the identity's first follow or path
+	// post, whatever it unfollows later.
+	Threaded bool `json:"threaded,omitempty"`
 	// Ended is the SessionEnd report, cleared by the session's next
 	// request other than the standing wait.
 	Ended bool `json:"ended,omitempty"`
