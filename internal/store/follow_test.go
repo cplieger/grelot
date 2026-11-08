@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -28,11 +29,7 @@ func openShortThreadStore(t *testing.T) (*Store, *clock) {
 
 func mustFollow(t *testing.T, s *Store, session, path string) Identity {
 	t.Helper()
-	got, err := s.Follow(t.Context(), Keyed{}, Caller{Session: session}, path)
-	if err != nil {
-		t.Fatalf("Follow(%s, %s): %v", session, path, err)
-	}
-	return got
+	return mustFollowed(t, s, session, path).Identity
 }
 
 func TestFollow_aLiveThreadAddsItOnce(t *testing.T) {
@@ -56,28 +53,44 @@ func TestFollow_aLiveThreadAddsItOnce(t *testing.T) {
 	}
 }
 
-func TestFollow_needsALiveThread(t *testing.T) {
+func TestFollow_withNoThreadYetReceivesTheFirstPost(t *testing.T) {
 	s, clk := openShortThreadStore(t)
 	const p = "/workspace/marotte/web"
 	regAt(t, s, "alpha", repoGrelot)
 	b := regAt(t, s, "bravo", repoSubflux)
-	_, err := s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
-	wantRefusal(t, err, KindNotFound, "", "no thread at "+p+"; post there to start one")
-	// A direct thread's key is no path, and the announcements are no path
-	// thread either.
-	mustPost(t, s, posting(sess("alpha"), Target{Agent: "bravo"}))
-	_, err = s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, "/workspace")
-	wantRefusal(t, err, KindNotFound, "", "no thread at /workspace")
-	mustPost(t, s, posting(sess("alpha"), Target{Path: p}))
+	got, err := s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
+	if err != nil {
+		t.Fatalf("follow with no thread: %v, want it followed", err)
+	}
+	if len(got.Notices) != 1 || !strings.Contains(got.Notices[0], "no thread lives at "+p) || !strings.Contains(got.Notices[0], "grelot threads") {
+		t.Errorf("notices %q, want one saying no thread lives at %s and naming grelot threads", got.Notices, p)
+	}
+	if !slices.Equal(got.Identity.Follows, []string{p}) {
+		t.Errorf("follows %v, want [%s]", got.Identity.Follows, p)
+	}
+	first := mustPost(t, s, posting(sess("alpha"), Target{Path: p}))
+	if ds := deliveriesTo(t, s, b.ID); len(ds) != 1 || ds[0].Message != first.Message {
+		t.Errorf("the follower's deliveries %+v, want the thread's first post %d", ds, first.Message)
+	}
+	if again := mustFollowed(t, s, sess("bravo"), p); len(again.Notices) != 0 {
+		t.Errorf("following a live thread: notices %q, want none", again.Notices)
+	}
 	// The thread is past its expiry, unswept.
 	clk.advance(shortThreadTTL)
-	_, err = s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
-	wantRefusal(t, err, KindNotFound, "", "no thread at "+p)
-	if f := getIdentity(t, s, b.ID).Follows; len(f) != 0 {
-		t.Errorf("follows %v after refusals, want none", f)
+	if after := mustFollowed(t, s, sess("bravo"), p); len(after.Notices) != 1 {
+		t.Errorf("following an expired thread: notices %q, want the no-thread line", after.Notices)
 	}
 	_, err = s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, "workspace/x")
 	wantRefusal(t, err, KindInvalid, "", "canonical")
+}
+
+func mustFollowed(t *testing.T, s *Store, session, path string) Followed {
+	t.Helper()
+	got, err := s.Follow(t.Context(), Keyed{}, Caller{Session: session}, path)
+	if err != nil {
+		t.Fatalf("Follow(%s, %s): %v", session, path, err)
+	}
+	return got
 }
 
 func TestFollow_refusedAtTheCap(t *testing.T) {
@@ -189,12 +202,14 @@ func followThreadsFixture(t *testing.T) (s *Store, ids map[string]uint64) {
 
 const sharedX = "/workspace/shared/x"
 
-func TestThreadExpiry_dropsExactlyItsFollows(t *testing.T) {
-	s, ids := followThreadsFixture(t)
-	mustSweep(t, s)
+// wantFollowsKept checks that every fixture identity still follows what
+// it followed before x expired, and that the next post at x reaches x's
+// followers, alpha and bravo.
+func wantFollowsKept(t *testing.T, s *Store, ids map[string]uint64) {
+	t.Helper()
 	want := map[string][]string{
-		"alpha":   {sharedX + "/sub", "/workspace/shared/y"},
-		"bravo":   nil,
+		"alpha":   {sharedX, sharedX + "/sub", "/workspace/shared/y"},
+		"bravo":   {sharedX},
 		"charlie": {sharedX + "/sub"},
 		"delta":   {"/workspace/shared/y"},
 	}
@@ -207,26 +222,28 @@ func TestThreadExpiry_dropsExactlyItsFollows(t *testing.T) {
 			t.Errorf("%s is %s, want the follower identity kept live", n, row.State)
 		}
 	}
-	// A thread recreated at the same path starts with no followers.
-	mustPost(t, s, posting(sess("charlie"), Target{Path: sharedX}))
+	got := mustPost(t, s, posting(sess("charlie"), Target{Path: sharedX}))
+	if got.Delivered != 2 {
+		t.Errorf("the recreated thread's first post delivered to %d, want alpha and bravo", got.Delivered)
+	}
 	for _, n := range []string{"alpha", "bravo"} {
-		if ds := deliveriesTo(t, s, ids[n]); len(ds) != 0 {
-			t.Errorf("%s, a follower of the expired thread, got %d deliveries of the new one", n, len(ds))
+		if ds := deliveriesTo(t, s, ids[n]); len(ds) != 1 || ds[0].Message != got.Message {
+			t.Errorf("%s, a follower of x, got %+v, want the new post %d", n, ds, got.Message)
 		}
 	}
 }
 
-func TestThreadExpiry_dropsItsFollowsEagerly(t *testing.T) {
+func TestThreadExpiry_keepsItsFollows(t *testing.T) {
 	s, ids := followThreadsFixture(t)
-	// charlie's post meets the expired thread before any sweep.
-	got := mustPost(t, s, posting(sess("charlie"), Target{Path: sharedX}))
-	if got.Delivered != 0 {
-		t.Errorf("delivered %d, want 0: the old thread's followers are gone", got.Delivered)
+	mustSweep(t, s)
+	if ths, err := s.Threads(t.Context(), Caller{Session: sess("alpha")}, sharedX); err != nil || len(ths) != 1 || ths[0].Path != sharedX+"/sub" {
+		t.Fatalf("threads under x after the sweep %+v, %v: want only the subpath's, x expired", ths, err)
 	}
-	if f := getIdentity(t, s, ids["bravo"]).Follows; len(f) != 0 {
-		t.Errorf("bravo follows %v, want none", f)
-	}
-	if f := getIdentity(t, s, ids["charlie"]).Follows; !slices.Equal(f, []string{sharedX + "/sub", sharedX}) {
-		t.Errorf("charlie follows %v, want its subpath and the new thread it posted in", f)
-	}
+	wantFollowsKept(t, s, ids)
+}
+
+func TestThreadExpiry_unsweptKeepsItsFollows(t *testing.T) {
+	s, ids := followThreadsFixture(t)
+	// charlie's post in wantFollowsKept meets the expired thread before any sweep.
+	wantFollowsKept(t, s, ids)
 }

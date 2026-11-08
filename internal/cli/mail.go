@@ -504,5 +504,8 @@ func (r *run) following(ctx context.Context, args []string, method, done string)
 		follows = joined(got.Identity.Follows)
 	}
 	fmt.Fprintf(r.Stdout, "grelot: %s %s; @%s follows %s\n", done, canonical[0], safe(got.Identity.Name), follows)
+	for _, line := range got.Notices {
+		fmt.Fprintln(r.Stdout, "grelot: "+safe(line))
+	}
 	return nil
 }

@@ -52,7 +52,9 @@ type History struct {
 
 // History reads c's own mailbox, its deliveries read and unread and,
 // unless From names another identity or LastRead is set, its own posts in
-// the same threads, merged in time order. It moves no cursor. An own post
+// the same threads, merged in time order. With Path and no LastRead it
+// also reads every post of the live path threads at or under Path, so a
+// reader sees a thread's posts from before it followed. It moves no cursor. An own post
 // carries no Seq and the relation "you". Refusals: KindInvalid for a bad
 // limit, path or time window, From with FromMe, or With naming the caller;
 // KindNotFound for an unknown name; KindGone for a session with no live
@@ -122,6 +124,7 @@ type walk struct {
 	lastRead    bool
 	deliveries  bool
 	posts       bool
+	fromMe      bool
 }
 
 // historyWalk resolves q's names and defaults for me; ok is false when
@@ -151,6 +154,7 @@ func (s *Store) historyWalk(r *bolttable.ReadTx, me *identityRow, q *HistoryQuer
 	if q.LastRead {
 		w.seqs = me.LastPage
 	}
+	w.fromMe = fromMe
 	w.deliveries = !fromMe
 	w.posts = !q.LastRead && w.sender == 0
 	return w, true, nil
@@ -199,8 +203,9 @@ func unknownIdentity(name string) *Error {
 	return refuse(KindNotFound, fmt.Sprintf("no identity %s: grelot who --all lists them", name))
 }
 
-// read walks me's deliveries and posts newest first, each stopping at the
-// since bound or at limit matches, and returns the newest limit of both.
+// read walks me's deliveries, and its posts or with a path the path
+// threads, newest first, each stopping at the since bound or at limit
+// matches, and returns the newest limit of them.
 func (w *walk) read(r *bolttable.ReadTx) ([]Entry, error) {
 	var out []Entry
 	if w.deliveries {
@@ -210,7 +215,22 @@ func (w *walk) read(r *bolttable.ReadTx) ([]Entry, error) {
 		}
 		out = ds
 	}
-	if w.posts {
+	switch {
+	case w.path != "" && !w.lastRead:
+		ts, err := w.walkThreads(r)
+		if err != nil {
+			return nil, err
+		}
+		delivered := map[uint64]bool{}
+		for i := range out {
+			delivered[out[i].Message] = true
+		}
+		for i := range ts {
+			if !delivered[ts[i].Message] {
+				out = append(out, ts[i])
+			}
+		}
+	case w.posts:
 		ps, err := w.walkPosts(r)
 		if err != nil {
 			return nil, err
@@ -322,6 +342,44 @@ func (w *walk) walkPosts(r *bolttable.ReadTx) ([]Entry, error) {
 			out = append(out, e)
 		}
 		return len(out) < w.limit, nil
+	})
+	return out, err
+}
+
+// walkThreads reads every post of the live path threads at or under
+// w.path, delivered to me or not, but those of threads a delegate's scope
+// leaves out. A message id grows with its post, so each thread's walk
+// stops at since.
+func (w *walk) walkThreads(r *bolttable.ReadTx) ([]Entry, error) {
+	var out []Entry
+	author := w.sender
+	if w.fromMe {
+		author = w.me.ID
+	}
+	err := w.s.t.threadKey.Scan(r, bolttable.Range{Prefix: []byte(w.path)}, func(_ []byte, id uint64, _ []byte) (bool, error) {
+		th, found, err := w.s.t.threads.table.Get(r, id)
+		if err != nil || !found || th.Kind != kindPath || th.Lease.due(w.now) || !under(th.Path, w.path) ||
+			(w.me.Parent != 0 && !w.me.Scope.allowsPath(th.Path)) {
+			return err == nil, err
+		}
+		n := 0
+		err = w.s.t.messages.table.Scan(r, bolttable.Range{Prefix: be64(th.ID), Reverse: true}, func(_ []byte, m *messageRow) (bool, error) {
+			if m.PostedAt.Before(w.since) {
+				return false, nil
+			}
+			if m.Lease.due(w.now) || !w.postMatches(m) || (author != 0 && m.Sender != author) ||
+				(!w.until.IsZero() && m.PostedAt.After(w.until)) {
+				return true, nil
+			}
+			e := Entry{Kind: m.Kind, Written: m.PostedAt, Message: m.ID, Thread: m.Thread}
+			fillMessage(&e, w.me, m)
+			if w.grepMatches(&e) {
+				out = append(out, e)
+				n++
+			}
+			return n < w.limit, nil
+		})
+		return err == nil, err
 	})
 	return out, err
 }

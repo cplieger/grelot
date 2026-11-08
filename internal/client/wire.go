@@ -131,8 +131,10 @@ type Registered struct {
 	Existing      bool     `json:"existing"`
 }
 
-// IdentityAnswer is PATCH /v1/me's answer.
+// IdentityAnswer is the answer of PATCH /v1/me and of the follow routes,
+// whose Notices are lines for the caller.
 type IdentityAnswer struct {
+	Notices  []string `json:"notices"`
 	Identity Identity `json:"identity"`
 }
 

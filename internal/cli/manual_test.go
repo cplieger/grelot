@@ -27,7 +27,7 @@ func TestManual_opensWithTheGuidanceThenTheCommands(t *testing.T) {
 	for _, want := range []string{
 		"grelot register <repo>-<role>", "--ttl", "grelot renew --ttl", "grelot revive --ttl",
 		"wake: down", "start the watcher", "grelot inbox` at the start and end of each task",
-		"`no change`", "Which thread", "`announce`", "Grelot paths", "grelot path --local",
+		"`no change`", "## How to communicate", "`announce`", "Grelot paths", "grelot path --local",
 		"same environment", "grelot who --json", "--holds", "grelot delegate <label>",
 		"grelot as <handle>", "--self", "grelot: not registered", "is held once",
 		"never asked to register", "grelot set --desc", "repos:",
@@ -41,6 +41,49 @@ func TestManual_opensWithTheGuidanceThenTheCommands(t *testing.T) {
 	}
 	if !strings.Contains(commands, "\n## Setup\n") || !strings.Contains(commands, "GRELOT_TOKEN_FILE") {
 		t.Error("the manual does not end with the client config keys")
+	}
+}
+
+func TestManual_howToCommunicateCoversSendingAndReceivingOnce(t *testing.T) {
+	_, rest, ok := strings.Cut(manual, "\n## How to communicate\n")
+	if !ok {
+		t.Fatal("the manual has no How to communicate section")
+	}
+	comm, _, ok := strings.Cut(rest, "\n## Commands\n")
+	if !ok {
+		t.Fatal("How to communicate does not come before the Commands part")
+	}
+	sending, receiving, ok := strings.Cut(comm, "**Receiving:**")
+	if !ok || !strings.Contains(sending, "**Sending:**") {
+		t.Fatal("How to communicate has no Sending half followed by a Receiving half")
+	}
+	for _, want := range []string{
+		"goes in that path's thread, even when nobody follows it", "`announce`", "`@name` is for a question or request",
+		"never in several direct messages", "a reply to a thread post goes in that thread",
+		"`--notify-read all`", "`--notify-read '@a,@b'`", "`--by=<d>`", "with or without `--notify-read`", "only a reply confirms",
+	} {
+		if !strings.Contains(sending, want) {
+			t.Errorf("Sending does not say %q", want)
+		}
+	}
+	for _, want := range []string{
+		"`grelot follow /workspace/<repo>`", "`grelot unfollow <path>`", "`grelot history --path <p>`",
+		"`grelot wait --timeout=<d>`", "\"" + strings.TrimPrefix(dataLabel, " · ") + "\"", "ask your user before",
+		"Never send a bare acknowledgment", "`grelot receipts`",
+	} {
+		if !strings.Contains(receiving, want) {
+			t.Errorf("Receiving does not say %q", want)
+		}
+	}
+	// Each rule is stated once, here, and the old advice to move a
+	// thread post that reached nobody into a direct message is gone.
+	for phrase, want := range map[string]int{
+		"grelot inbox` at the start and end of each task": 1, "Never put a secret": 1, "Unfollow a thread": 1,
+		"Which thread": 0, "send it to `@name` or `announce` instead": 0, "message each one": 0,
+	} {
+		if n := strings.Count(manual, phrase); n != want {
+			t.Errorf("the manual says %q %d times, want %d", phrase, n, want)
+		}
 	}
 }
 

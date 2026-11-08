@@ -8,40 +8,51 @@ import (
 	"slices"
 )
 
-// Follow adds the live path thread at path to c's identity's
-// follows and returns the identity; following it again changes nothing.
+// Followed is what a follow answers: the identity, and lines for the
+// caller, such as no thread living at the path yet.
+type Followed struct {
+	Notices  []string
+	Identity Identity
+}
+
+// Follow adds path to c's identity's follows, so every post in its path
+// thread reaches it, the thread's first post included when none lives
+// there yet; following it again changes nothing. A follow lasts until an
+// unfollow or the identity's end, across the thread's expiries.
 // Refusals: KindInvalid for a bad path; KindGone for a session with no
-// live identity; KindForbidden for a delegate; KindNotFound for no live
-// thread there; KindConflict at the follow cap.
-func (s *Store) Follow(ctx context.Context, k Keyed, c Caller, path string) (Identity, error) {
+// live identity; KindForbidden for a delegate; KindConflict at the
+// follow cap.
+func (s *Store) Follow(ctx context.Context, k Keyed, c Caller, path string) (Followed, error) {
 	if _, err := checkPaths([]string{path}); err != nil {
-		return Identity{}, err
+		return Followed{}, err
 	}
-	return keyedResult(ctx, s, k, func(w *wtx) (Identity, error) {
+	return keyedResult(ctx, s, k, func(w *wtx) (Followed, error) {
 		_, live, err := w.thread(path)
 		if err != nil {
-			return Identity{}, err
+			return Followed{}, err
 		}
 		me, err := w.liveAs(c)
 		if err != nil {
-			return Identity{}, err
+			return Followed{}, err
 		}
 		switch {
 		case me.Parent != 0:
-			return Identity{}, refuse(KindForbidden, "a delegate follows nothing: its scope decides what it receives")
-		case !live:
-			return Identity{}, refuse(KindNotFound, fmt.Sprintf("no thread at %s; post there to start one", path))
+			return Followed{}, refuse(KindForbidden, "a delegate follows nothing: its scope decides what it receives")
 		case slices.Contains(me.Follows, path):
 		case len(me.Follows) >= maxFollows:
-			return Identity{}, refuse(KindConflict, fmt.Sprintf("you follow %d threads, the most allowed: grelot unfollow one first", maxFollows))
+			return Followed{}, refuse(KindConflict, fmt.Sprintf("you follow %d threads, the most allowed: grelot unfollow one first", maxFollows))
 		default:
 			me.Follows = append(me.Follows, path)
 		}
 		w.touch(&me)
 		if err := s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {
-			return Identity{}, err
+			return Followed{}, err
 		}
-		return s.view(&me), nil
+		out := Followed{Identity: s.view(&me)}
+		if !live {
+			out.Notices = []string{fmt.Sprintf("no thread lives at %s now: its next post reaches you (grelot threads lists the live ones)", path)}
+		}
+		return out, nil
 	})
 }
 

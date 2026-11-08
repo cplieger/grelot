@@ -603,8 +603,15 @@ func TestThreadsFollowAndUnfollow(t *testing.T) {
 	if u := ts.last(t, http.MethodPut, "/v1/follows").URL; u != "/v1/follows?path="+url.QueryEscape(sub) {
 		t.Errorf("follow sent %s, want the path in the query", u)
 	}
+	if strings.Contains(out, "no thread lives") {
+		t.Errorf("follow of a live thread printed %q, want no no-thread line", out)
+	}
 	out = c.must("unfollow", sub)
 	if want := "grelot: no longer following " + sub + "; @cat-dev follows nothing\n"; !strings.Contains(out, want) {
 		t.Errorf("unfollow printed %q, want %q", out, want)
+	}
+	out = c.must("follow", adir)
+	if want := "grelot: no thread lives at " + adir + " now: its next post reaches you (grelot threads lists the live ones)\n"; !strings.Contains(out, want) {
+		t.Errorf("follow of a path with no thread printed %q, want %q", out, want)
 	}
 }

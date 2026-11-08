@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -236,8 +237,11 @@ func TestFollows_followAndUnfollowALiveThread(t *testing.T) {
 	if got := follows(h.as(sessA, http.MethodDelete, "/v1/follows?path=/workspace/other", nil)); len(got) != 0 {
 		t.Errorf("follows after unfollow = %v", got)
 	}
-	if r := h.as(sessA, http.MethodPut, "/v1/follows?path=/workspace/none", nil); r.status != http.StatusNotFound {
-		t.Errorf("follow with no thread: %d, want 404", r.status)
+	if r := h.as(sessA, http.MethodPut, "/v1/follows?path=/workspace/none", nil); r.status != http.StatusOK || !strings.Contains(fmt.Sprint(r.body["notices"]), "no thread lives at /workspace/none") {
+		t.Errorf("follow with no thread: %d %s, want 200 saying no thread lives there", r.status, r.raw)
+	}
+	if r := h.as(sessA, http.MethodPut, "/v1/follows?path=/workspace/other", nil); r.status != http.StatusOK || fmt.Sprint(r.body["notices"]) != "[]" {
+		t.Errorf("follow of a live thread: %d %s, want 200 with no notice", r.status, r.raw)
 	}
 	h.as(sessA, http.MethodPut, "/v1/follows?path="+repoGrelot, nil)
 	if r := h.as(sessA, http.MethodDelete, "/v1/follows?path="+repoGrelot, nil); r.status != http.StatusConflict {
