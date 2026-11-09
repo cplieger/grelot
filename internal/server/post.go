@@ -111,6 +111,9 @@ func (s *Server) post(r *http.Request, c store.Caller, k store.Keyed) (status in
 		s.log.Info("message posted", "thread_kind", kind, "path", s.redact(to.Path), "to", to.Agent, "sender", got.Identity.Name,
 			"message", got.Message, "recipients", got.Delivered, "same_environment", got.SameEnvironment,
 			"other", got.Other, "subject", s.redact(req.Subject), "body", s.redact(req.Body))
+		if to.Agent != "" && s.fanOut.record(got.Identity.ID, got.Thread, req.Subject, s.now()) {
+			got.Notices = append(got.Notices, fanOutHint)
+		}
 	}
 	return http.StatusCreated, postOut(&got), nil
 }
