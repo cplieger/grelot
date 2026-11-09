@@ -10,9 +10,10 @@ import (
 
 // The end reasons the server answers a watcher's wait with.
 const (
-	EndDormant = "dormant"
-	EndNone    = "none"
-	EndEnded   = "ended"
+	EndDormant  = "dormant"
+	EndNone     = "none"
+	EndEnded    = "ended"
+	EndReplaced = "replaced"
 )
 
 // endReasonRE bounds an end reason to one short lowercase word, so no text but

@@ -32,27 +32,35 @@ var errSessionEnded = &apiError{
 	msg: "session ended: its end was reported, so its watcher stops; any other grelot command from this session reopens it",
 }
 
+// errReplaced answers a standing wait once a newer one of its session
+// opened, so that each nudge wakes the session once.
+var errReplaced = &apiError{
+	status: http.StatusGone, code: transport.EndReplaced,
+	msg: "replaced: a newer watcher of this session took over, so this one stops",
+}
+
 // standingWait is POST /v1/events/wait: it holds until a nudge for the
 // caller's identity goes out, sending a due one itself unless host push
-// works, and returns it; 204 when wait passes with none.
+// works, and returns it; 204 when wait passes with none, and 410 replaced
+// once a newer standing wait of the caller's session opens.
 func (s *Server) standingWait(r *http.Request, c store.Caller) (status int, body any, err error) {
 	ctx := r.Context()
 	id, wait, err := s.watchFor(r, c)
 	if err != nil {
 		return 0, nil, err
 	}
-	since := s.presence.opened(id)
-	defer func() { s.presence.closed(id, s.now()) }()
+	t := s.presence.opened(id, c.Session)
+	defer func() { s.presence.closed(t, s.now()) }()
 	deadline := s.now().Add(wait)
 	for {
 		wake, release := s.hub.take(id)
-		step, err := s.look(ctx, c, id, since)
+		step, err := s.look(ctx, c, t)
 		if err == nil && step.nudge == nil && !step.done {
 			until := deadline
 			if !step.until.IsZero() && step.until.Before(deadline) {
 				until = step.until
 			}
-			err = s.hold(ctx, wake, until)
+			err = s.hold(ctx, wake, t.replaced, until)
 		}
 		release()
 		switch {
@@ -117,12 +125,12 @@ type watchStep struct {
 	done  bool
 }
 
-// look reads id's nudge state and sends what is due through the standing
+// look reads t's nudge state and sends what is due through the standing
 // wait; of two waits racing on one send, the one RecordNudge refuses reads
 // again.
-func (s *Server) look(ctx context.Context, c store.Caller, id uint64, since sendCount) (watchStep, error) {
+func (s *Server) look(ctx context.Context, c store.Caller, t waitTicket) (watchStep, error) {
 	for {
-		step, due, err := s.due(ctx, c, id, since)
+		step, due, err := s.due(ctx, c, t)
 		if err != nil || due == nil {
 			return step, err
 		}
@@ -132,17 +140,19 @@ func (s *Server) look(ctx context.Context, c store.Caller, id uint64, since send
 		}
 		if recorded {
 			n := nudgeJSON{Seq: got.Seq, Count: got.Count, Attempt: got.Attempt}
-			s.watcherSent(id, n)
+			if s.handOff(t, n) {
+				return watchStep{}, errReplaced
+			}
 			return watchStep{nudge: &n}, nil
 		}
 	}
 }
 
-// due is look's read: the nudge a standing wait of id is to send now, or
-// the step to take when there is none. A wait whose id is gone, while its
-// session holds another identity, ends with none: the next wait holds for
-// that one.
-func (s *Server) due(ctx context.Context, c store.Caller, id uint64, since sendCount) (watchStep, *store.Nudge, error) {
+// due is look's read: the nudge a standing wait t is to send or return
+// now, or the step to take when there is none. A wait whose identity is
+// gone, while its session holds another identity, ends with none: the next
+// wait holds for that one.
+func (s *Server) due(ctx context.Context, c store.Caller, t waitTicket) (watchStep, *store.Nudge, error) {
 	me, err := s.store.Watcher(ctx, c)
 	switch {
 	case err != nil:
@@ -150,9 +160,14 @@ func (s *Server) due(ctx context.Context, c store.Caller, id uint64, since sendC
 	case me.Ended:
 		return watchStep{}, nil, errSessionEnded
 	}
-	if n, ok := s.presence.sentSince(id, since); ok {
-		return watchStep{nudge: &n}, nil, nil
+	handed, replaced := s.presence.next(t)
+	switch {
+	case replaced:
+		return watchStep{}, nil, errReplaced
+	case handed != nil:
+		return watchStep{nudge: handed}, nil, nil
 	}
+	id := t.id
 	if s.push.State(id) == pushOK {
 		return watchStep{}, nil, nil
 	}
@@ -169,12 +184,15 @@ func (s *Server) due(ctx context.Context, c store.Caller, id uint64, since sendC
 	return watchStep{}, st.Due, nil
 }
 
-// watcherSent records n, which a standing wait of id sent, for id's other
-// waits. The send's own commit woke them before sentSince could show it,
-// so they are woken again to look.
-func (s *Server) watcherSent(id uint64, n nudgeJSON) {
-	s.presence.watcherSent(id, n)
-	s.hub.Woke([]uint64{id})
+// handOff reports whether t was replaced when it sent n, which its
+// session's newest wait then returns instead. The send's own commit woke
+// that wait before it could take n, so it is woken again to look.
+func (s *Server) handOff(t waitTicket, n nudgeJSON) (replaced bool) {
+	handed, replaced := s.presence.handOff(t, n)
+	if handed {
+		s.hub.Woke([]uint64{t.id})
+	}
+	return replaced
 }
 
 // deferred reports whether due, a first nudge, waits for the hooks: while
@@ -192,13 +210,15 @@ func (s *Server) deferred(id uint64, due *store.Nudge) (until time.Time, ok bool
 	return s.presence.inTurnHolds(id, due.Seq, s.now())
 }
 
-// hold blocks until wake closes, the clock reaches until, ctx ends or
-// Release is called, which it answers with errShuttingDown.
-func (s *Server) hold(ctx context.Context, wake <-chan struct{}, until time.Time) error {
+// hold blocks until wake or replaced closes (a nil channel never does),
+// the clock reaches until, ctx ends or Release is called, which it answers
+// with errShuttingDown.
+func (s *Server) hold(ctx context.Context, wake, replaced <-chan struct{}, until time.Time) error {
 	t := time.NewTimer(until.Sub(s.now()))
 	defer t.Stop()
 	select {
 	case <-wake:
+	case <-replaced:
 	case <-t.C:
 	case <-ctx.Done():
 		return ctx.Err()
