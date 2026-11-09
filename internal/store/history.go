@@ -52,13 +52,12 @@ type History struct {
 
 // History reads c's own mailbox, its deliveries read and unread and,
 // unless From names another identity or LastRead is set, its own posts in
-// the same threads, merged in time order. With Path and no LastRead it
-// also reads every post of the live path threads at or under Path, so a
-// reader sees a thread's posts from before it followed. It moves no cursor. An own post
-// carries no Seq and the relation "you". Refusals: KindInvalid for a bad
-// limit, path or time window, From with FromMe, or With naming the caller;
-// KindNotFound for an unknown name; KindGone for a session with no live
-// identity.
+// the same threads, merged in time order; with Path and no LastRead, also
+// every post of the live path threads under Path, from before c followed
+// too. It moves no cursor. An own post carries no Seq and the relation
+// "you". Refusals: KindInvalid for a bad limit, path or time window, From
+// with FromMe, or With naming the caller; KindNotFound for an unknown
+// name; KindGone for a session with no live identity.
 func (s *Store) History(ctx context.Context, c Caller, query *HistoryQuery) (History, error) {
 	q := *query
 	if err := checkHistory(&q); err != nil {
@@ -217,19 +216,11 @@ func (w *walk) read(r *bolttable.ReadTx) ([]Entry, error) {
 	}
 	switch {
 	case w.path != "" && !w.lastRead:
-		ts, err := w.walkThreads(r)
+		ts, err := w.walkThreads(r, messageIDs(out))
 		if err != nil {
 			return nil, err
 		}
-		delivered := map[uint64]bool{}
-		for i := range out {
-			delivered[out[i].Message] = true
-		}
-		for i := range ts {
-			if !delivered[ts[i].Message] {
-				out = append(out, ts[i])
-			}
-		}
+		out = append(out, ts...)
 	case w.posts:
 		ps, err := w.walkPosts(r)
 		if err != nil {
@@ -346,42 +337,62 @@ func (w *walk) walkPosts(r *bolttable.ReadTx) ([]Entry, error) {
 	return out, err
 }
 
-// walkThreads reads every post of the live path threads at or under
-// w.path, delivered to me or not, but those of threads a delegate's scope
-// leaves out. A message id grows with its post, so each thread's walk
-// stops at since.
-func (w *walk) walkThreads(r *bolttable.ReadTx) ([]Entry, error) {
+// walkThreads reads the posts of the live path threads at or under w.path
+// that readsThread lets me read, delivered to me or not, but the messages
+// in seen.
+func (w *walk) walkThreads(r *bolttable.ReadTx, seen map[uint64]bool) ([]Entry, error) {
 	var out []Entry
+	err := w.s.t.threadKey.Scan(r, bolttable.Range{Prefix: []byte(w.path)}, func(_ []byte, id uint64, _ []byte) (bool, error) {
+		th, found, err := w.s.t.threads.table.Get(r, id)
+		if err != nil || !found || !w.readsThread(&th) {
+			return err == nil, err
+		}
+		ps, err := w.threadPosts(r, th.ID, seen)
+		out = append(out, ps...)
+		return err == nil, err
+	})
+	return out, err
+}
+
+// readsThread is false for a thread outside w.path, an expired or
+// non-path thread, and one a delegate's scope leaves out.
+func (w *walk) readsThread(th *threadRow) bool {
+	return th.Kind == kindPath && !th.Lease.due(w.now) && under(th.Path, w.path) &&
+		(w.me.Parent == 0 || w.me.Scope.allowsPath(th.Path))
+}
+
+// threadPosts reads thread's matching posts newest first, up to limit. A
+// message id grows with its post, so the walk stops at since.
+func (w *walk) threadPosts(r *bolttable.ReadTx, thread uint64, seen map[uint64]bool) ([]Entry, error) {
 	author := w.sender
 	if w.fromMe {
 		author = w.me.ID
 	}
-	err := w.s.t.threadKey.Scan(r, bolttable.Range{Prefix: []byte(w.path)}, func(_ []byte, id uint64, _ []byte) (bool, error) {
-		th, found, err := w.s.t.threads.table.Get(r, id)
-		if err != nil || !found || th.Kind != kindPath || th.Lease.due(w.now) || !under(th.Path, w.path) ||
-			(w.me.Parent != 0 && !w.me.Scope.allowsPath(th.Path)) {
-			return err == nil, err
+	var out []Entry
+	err := w.s.t.messages.table.Scan(r, bolttable.Range{Prefix: be64(thread), Reverse: true}, func(_ []byte, m *messageRow) (bool, error) {
+		if m.PostedAt.Before(w.since) {
+			return false, nil
 		}
-		n := 0
-		err = w.s.t.messages.table.Scan(r, bolttable.Range{Prefix: be64(th.ID), Reverse: true}, func(_ []byte, m *messageRow) (bool, error) {
-			if m.PostedAt.Before(w.since) {
-				return false, nil
-			}
-			if m.Lease.due(w.now) || !w.postMatches(m) || (author != 0 && m.Sender != author) ||
-				(!w.until.IsZero() && m.PostedAt.After(w.until)) {
-				return true, nil
-			}
-			e := Entry{Kind: m.Kind, Written: m.PostedAt, Message: m.ID, Thread: m.Thread}
-			fillMessage(&e, w.me, m)
-			if w.grepMatches(&e) {
-				out = append(out, e)
-				n++
-			}
-			return n < w.limit, nil
-		})
-		return err == nil, err
+		if seen[m.ID] || m.Lease.due(w.now) || !w.postMatches(m) || (author != 0 && m.Sender != author) ||
+			(!w.until.IsZero() && m.PostedAt.After(w.until)) {
+			return true, nil
+		}
+		e := Entry{Kind: m.Kind, Written: m.PostedAt, Message: m.ID, Thread: m.Thread}
+		fillMessage(&e, w.me, m)
+		if w.grepMatches(&e) {
+			out = append(out, e)
+		}
+		return len(out) < w.limit, nil
 	})
 	return out, err
+}
+
+func messageIDs(es []Entry) map[uint64]bool {
+	ids := make(map[uint64]bool, len(es))
+	for i := range es {
+		ids[es[i].Message] = true
+	}
+	return ids
 }
 
 func (w *walk) postMatches(m *messageRow) bool {
