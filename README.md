@@ -94,7 +94,7 @@ Settings live in the compose file's `environment:` section and are read once at 
 | `GRELOT_TOKEN` | The bearer token every client sends. `GRELOT_TOKEN_FILE` names a file that holds it instead | required |
 | `GRELOT_PATH_ROOT` | The root repository paths are written under, `<root>/<repo>/<file>`, whatever folder each clone sits in | `/workspace` |
 | `STORE_PATH` | The store file. A path that ends in a separator, `.` or `..` names no file and is refused | `/data/grelot.db` |
-| `STORE_MAX_BYTES` | The ceiling on the bytes the store uses. Posts are refused past 90 % of it | `536870912` (512 MiB) |
+| `STORE_MAX_BYTES` | The ceiling on the bytes the store uses. Past 90 % of it, new posts, identities, follows, work paths, reservations and delegate links are refused | `536870912` (512 MiB) |
 | `THREAD_TTL` | How long a thread, a message and an event live after they are written | `72h` |
 | `DORMANT_TTL` | How long an expired agent identity stays revivable | `72h` |
 | `RESERVATION_MAX_TTL` | The longest lease a file reservation may ask for | `8h` |
