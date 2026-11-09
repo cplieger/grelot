@@ -19,7 +19,7 @@ import (
 // inherit the directory's ACL. It is not cancellable: callers write it best
 // effort inside an answer they have already received.
 func Replace(file string, data []byte) error {
-	var opts []filesafe.Option
+	var opts []filesafe.WriteOption
 	if runtime.GOOS == "windows" {
 		// filesafe's mode options return ErrModeUnsupported on Windows,
 		// where Go's chmod only sets the read-only attribute.
@@ -27,7 +27,7 @@ func Replace(file string, data []byte) error {
 			return err
 		}
 	} else {
-		opts = []filesafe.Option{filesafe.WithMode(0o600), filesafe.WithMkdirMode(0o700)}
+		opts = []filesafe.WriteOption{filesafe.WithMode(0o600), filesafe.WithMkdirMode(0o700)}
 	}
 	_, err := filesafe.WriteFile(context.Background(), file, data, opts...)
 	return err

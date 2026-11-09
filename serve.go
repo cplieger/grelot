@@ -94,7 +94,7 @@ func serve(ctx context.Context, cfg *server.Config, addr string, logger *slog.Lo
 		swept <- st.Run(ctx, func() { srv.Beat(ctx) })
 	}()
 	logger.Info("listening", "addr", ln.Addr().String(), "version", buildVersion())
-	err = httpserver.Run(ctx, srv.HTTPServer(), ln, nil,
+	err = httpserver.Run(ctx, srv.HTTPServer(), ln,
 		httpserver.WithPreDrain(func(context.Context) { srv.Release() }))
 	cancel()
 	if serr := <-swept; err == nil {

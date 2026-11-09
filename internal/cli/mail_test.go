@@ -500,7 +500,7 @@ func TestInbox_aPageSmallerThanTheUnreadCountSaysWhatIsLeft(t *testing.T) {
 }
 
 // TestInbox_theAckIsOneKeyedCall pins the ack as one call: the transport
-// sends it at most 3 times (httpclient.DefaultMaxAttempts), each with the
+// sends it at most 3 times (httpclient's default MaxAttempts), each with the
 // call's one Idempotency-Key.
 func TestInbox_theAckIsOneKeyedCall(t *testing.T) {
 	cases := []struct {
