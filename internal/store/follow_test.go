@@ -90,10 +90,12 @@ func TestThreaded_setForGoodByAFollowOrAPathPost(t *testing.T) {
 	follower := regAt(t, s, "alpha", repoGrelot)
 	poster := regAt(t, s, "bravo", repoGrelot)
 	other := regAt(t, s, "charlie", repoGrelot)
+	own := regAt(t, s, "delta", repoGrelot)
 	d := scopedDelegate(t, s, "charlie", "review", func(g *Grant) { g.AllowThreads = []string{p} })
 	if got := mustFollow(t, s, sess("alpha"), p); !got.Threaded {
 		t.Errorf("the follow's identity %+v, want it threaded", got)
 	}
+	mustFollow(t, s, sess("delta"), repoGrelot)
 	if _, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("alpha")}, p); err != nil {
 		t.Fatal(err)
 	}
@@ -109,6 +111,7 @@ func TestThreaded_setForGoodByAFollowOrAPathPost(t *testing.T) {
 		"a path poster":                 {poster.ID, true},
 		"an announce and direct poster": {other.ID, false},
 		"a delegate's path post":        {d.ID, false},
+		"a follow of its own work path": {own.ID, false},
 	} {
 		if got := getIdentity(t, s, tc.id).Threaded; got != tc.want {
 			t.Errorf("%s: threaded %v, want %v", name, got, tc.want)
@@ -181,12 +184,6 @@ func TestFollow_replacesTheFollowsUnderIt(t *testing.T) {
 		return strings.Contains(n, "replaces") && strings.Contains(n, full[0]+", "+full[1])
 	}) {
 		t.Errorf("notices %q, want one naming the replaced %s and %s", got.Notices, full[0], full[1])
-	}
-	editIdentity(t, s, b.ID, func(r *identityRow) { r.Follows = []string{"/workspace/other"} })
-	mustPost(t, s, posting(sess("bravo"), Target{Path: lib + "/table.go"}))
-	mustPost(t, s, posting(sess("bravo"), Target{Path: lib}))
-	if f := getIdentity(t, s, b.ID).Follows; !slices.Equal(f, []string{"/workspace/other", lib}) {
-		t.Errorf("follows after posts at %s/table.go then %s: %v, want the post at %s to replace the subpath's", lib, lib, f, lib)
 	}
 }
 

@@ -43,7 +43,9 @@ func (s *Store) Follow(ctx context.Context, k Keyed, c Caller, path string) (Fol
 		if err != nil {
 			return Followed{}, err
 		}
-		me.Threaded = true
+		if len(me.Follows) > 0 {
+			me.Threaded = true
+		}
 		w.touch(&me)
 		if err := s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {
 			return Followed{}, err

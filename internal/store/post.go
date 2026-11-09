@@ -249,7 +249,8 @@ func (w *wtx) announceRoute() (route, error) {
 // Walking p's ancestors shortest first leaves each recipient labelled with
 // its most specific match. The sender follows p unless its work path or
 // a follow already reaches p, it is at the cap, or it is a delegate,
-// whose scope already delivers p.
+// whose scope already delivers p. Unlike grelot follow, this follow keeps
+// the sender's follows under p, so a post never removes one it chose.
 func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 	th, _, err := w.thread(p)
 	if err != nil {
@@ -268,12 +269,47 @@ func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 	if me.Parent != 0 || reachedBy(me, p) != "" {
 		return rt, nil
 	}
-	if _, ok := addFollow(me, p); !ok {
+	if len(me.Follows) >= maxFollows {
 		rt.notices = append(rt.notices, fmt.Sprintf(
 			"you follow %d threads, the most allowed, so this post did not follow %s: grelot unfollow one to follow it", maxFollows, p,
 		))
+		return rt, nil
 	}
-	return rt, nil
+	me.Follows = append(me.Follows, p)
+	n, werr := w.wideFollow(me, p)
+	if n != "" {
+		rt.notices = append(rt.notices, n)
+	}
+	return rt, werr
+}
+
+// wideFollow is the notice for a post's new follow of p when it reaches
+// more than p's own thread, a live path thread or a follow of me's under
+// p; "" otherwise.
+func (w *wtx) wideFollow(me *identityRow, p string) (string, error) {
+	inside := slices.DeleteFunc(slices.Clone(me.Follows), func(f string) bool { return f == p || !under(f, p) })
+	if len(inside) == 0 {
+		live, err := w.liveThreadUnder(p)
+		if err != nil || !live {
+			return "", err
+		}
+	}
+	n := fmt.Sprintf("this post follows %s so its replies reach you, and that follow also reaches every thread under it: unfollow %s to stop hearing them", p, p)
+	if len(inside) > 0 {
+		n += "; your follows under it stay: " + strings.Join(inside, ", ")
+	}
+	return n, nil
+}
+
+// liveThreadUnder reports whether a live path thread lives strictly under p.
+func (w *wtx) liveThreadUnder(p string) (bool, error) {
+	found := false
+	err := w.s.t.threadKey.Scan(w.r, bolttable.Range{Prefix: []byte(strings.TrimSuffix(p, "/") + "/")}, func(_ []byte, id uint64, _ []byte) (bool, error) {
+		th, ok, err := w.s.t.threads.table.Get(w.r, id)
+		found = err == nil && ok && th.Kind == kindPath && !th.Lease.due(w.now)
+		return err == nil && !found, err
+	})
+	return found, err
 }
 
 // matchAt labels with a the recipients of a post at p that a matches: a
