@@ -73,7 +73,7 @@ const (
 // segThread is the prompt line's ask to follow or start a thread. It
 // never shares a line with the description reminder, which would take the
 // line past 30 words.
-const segThread = "no thread followed: `grelot follow <path>` or start yours"
+const segThread = "`grelot follow <path>` or start a thread"
 
 // signalRE reads a fixed signal line; transport.SignalLine owns its form,
 // and a match counts only when SignalLine prints it back the same.

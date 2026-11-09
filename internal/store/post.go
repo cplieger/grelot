@@ -243,13 +243,13 @@ func (w *wtx) announceRoute() (route, error) {
 	return rt, err
 }
 
-// pathRoute reaches the identities with a work path or a held reservation
-// at p or above it, the delegates whose scope allows p, and p's followers.
+// pathRoute reaches the identities with a work path, a held reservation
+// or a follow at p or above it, and the delegates whose scope allows p.
 // Posts go down the tree only, so a work path under p does not match.
 // Walking p's ancestors shortest first leaves each recipient labelled with
-// its most specific match; a follow is of p itself, the most specific of
-// all. The sender follows p unless it is at the cap or a delegate, whose
-// scope already delivers p.
+// its most specific match. The sender follows p unless a follow already
+// covers it, it is at the cap, or it is a delegate, whose scope already
+// delivers p.
 func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 	th, _, err := w.thread(p)
 	if err != nil {
@@ -262,17 +262,11 @@ func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 			return route{}, err
 		}
 	}
-	if err := scanExact(w.r, w.s.t.byFollow, p, func(id uint64) (bool, error) {
-		rt.recipients[id] = p
-		return true, nil
-	}); err != nil {
-		return route{}, err
-	}
 	if me.Parent == 0 {
 		me.Threaded = true
 	}
 	switch {
-	case me.Parent != 0, slices.Contains(me.Follows, p):
+	case me.Parent != 0, followCovering(me, p) != "":
 	case len(me.Follows) >= maxFollows:
 		rt.notices = append(rt.notices, fmt.Sprintf(
 			"you follow %d threads, the most allowed, so this post did not follow %s: grelot unfollow one to follow it", maxFollows, p,
@@ -284,13 +278,17 @@ func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 }
 
 // matchAt labels with a the recipients of a post at p that a matches: a
-// work path, a held reservation, or a delegate's allowed thread whose
-// scope does not deny p.
+// work path, a follow, a held reservation, or a delegate's allowed thread
+// whose scope does not deny p.
 func (w *wtx) matchAt(rt *route, a, p string) error {
-	if err := scanExact(w.r, w.s.t.byPath, a, func(id uint64) (bool, error) {
+	label := func(id uint64) (bool, error) {
 		rt.recipients[id] = a
 		return true, nil
-	}); err != nil {
+	}
+	if err := scanExact(w.r, w.s.t.byPath, a, label); err != nil {
+		return err
+	}
+	if err := scanExact(w.r, w.s.t.byFollow, a, label); err != nil {
 		return err
 	}
 	if err := scanExact(w.r, w.s.t.resvPath, a, func(id uint64) (bool, error) {
@@ -309,6 +307,15 @@ func (w *wtx) matchAt(rt *route, a, p string) error {
 		}
 		return err == nil, err
 	})
+}
+
+// followCovering is the follow of me's that delivers p, p itself or a
+// path above it, or "" when none does.
+func followCovering(me *identityRow, p string) string {
+	if i := slices.IndexFunc(me.Follows, func(f string) bool { return under(p, f) }); i >= 0 {
+		return me.Follows[i]
+	}
+	return ""
 }
 
 // ancestors lists p and every path above it, shortest first.

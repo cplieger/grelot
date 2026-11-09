@@ -212,7 +212,7 @@ func TestPost_pathReachesWorkPathsAtOrAboveItOnce(t *testing.T) {
 	}
 }
 
-func TestPost_followCoversOneThreadNotItsSubtree(t *testing.T) {
+func TestPost_followCoversItsPathAndTheThreadsUnderIt(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	const p = "/workspace/marotte/web"
 	regAt(t, s, "alpha", repoGrelot)
@@ -220,20 +220,21 @@ func TestPost_followCoversOneThreadNotItsSubtree(t *testing.T) {
 	c := regAt(t, s, "charlie", repoGrelot)
 	d := regAt(t, s, "delta", repoGrelot)
 	e := regAt(t, s, "echo", repoGrelot)
-	for id, follows := range map[uint64][]string{b.ID: {p}, c.ID: {p + "/sub"}, d.ID: {"/workspace/marotte"}, e.ID: {p}} {
+	f := regAt(t, s, "foxtrot", repoGrelot)
+	for id, follows := range map[uint64][]string{b.ID: {p}, c.ID: {p + "/sub"}, d.ID: {"/workspace/marotte"}, e.ID: {p}, f.ID: {"/workspace/marot"}} {
 		editIdentity(t, s, id, func(r *identityRow) { r.Follows = follows })
 	}
 	got := mustPost(t, s, posting(sess("alpha"), Target{Path: p}))
-	if got.Delivered != 2 {
-		t.Errorf("delivered %d, want 2", got.Delivered)
+	if got.Delivered != 3 {
+		t.Errorf("delivered %d, want 3", got.Delivered)
 	}
-	for _, id := range []uint64{b.ID, e.ID} {
+	for id, via := range map[uint64]string{b.ID: p, e.ID: p, d.ID: "/workspace/marotte"} {
 		ds := deliveriesTo(t, s, id)
-		if len(ds) != 1 || ds[0].Path != p {
-			t.Errorf("identity %d: %+v, want one delivery labelled with the followed %s", id, ds, p)
+		if len(ds) != 1 || ds[0].Path != via {
+			t.Errorf("identity %d: %+v, want one delivery labelled with the followed %s", id, ds, via)
 		}
 	}
-	for name, id := range map[string]uint64{"a subpath's follower": c.ID, "a parent thread's follower": d.ID} {
+	for name, id := range map[string]uint64{"a subpath's follower": c.ID, "a name-prefix sibling's follower": f.ID} {
 		if ds := deliveriesTo(t, s, id); len(ds) != 0 {
 			t.Errorf("%s got %d deliveries", name, len(ds))
 		}

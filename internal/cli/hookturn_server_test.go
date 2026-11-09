@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/cplieger/grelot/internal/client"
+	"github.com/cplieger/grelot/internal/provider"
+	"github.com/cplieger/grelot/providers"
 )
 
 // turnAgent is a registered agent of session s-1 with the turn roles.
@@ -140,10 +142,35 @@ func TestHookPrompt_unregisteredAndDormant(t *testing.T) {
 	})
 }
 
+// longestStart is the wordiest layer-2 start line a shipped provider
+// prints when the watcher is down.
+func longestStart(t *testing.T) string {
+	t.Helper()
+	set, err := provider.LoadSet(providers.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var longest string
+	for _, name := range set.Names() {
+		p, err := set.Get(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if start := client.FirstStart(p); words(start) > words(longest) {
+			longest = start
+		}
+	}
+	if longest == "" {
+		t.Fatal("no shipped provider has a layer-2 start line")
+	}
+	return longest
+}
+
 // The turn-start line stays under 30 words in every state.
 func TestHookPrompt_underThirtyWords(t *testing.T) {
 	ts := newServer(t)
-	file := hookTurnFile + "doors:\n  - {name: tray, layer: 2, transport: stdout, start: grelot watch --door tray}\n"
+	start := longestStart(t)
+	file := hookTurnFile + "doors:\n  - {name: tray, layer: 2, transport: stdout, start: " + strconv.Quote(start) + "}\n"
 	a := turnAgent(t, ts, file)
 	b, _ := registerAt(t, ts, "s-2", "bee-dev")
 	for range 12 {
@@ -172,6 +199,11 @@ func TestHookPrompt_underThirtyWords(t *testing.T) {
 	}
 	if !strings.Contains(lines["live, with the reminder and the start line"], "still true?") {
 		t.Errorf("live line %q lacks the reminder it was meant to measure", lines["live, with the reminder and the start line"])
+	}
+	for _, state := range []string{"live, with the reminder and the start line", "live, with the thread ask and the start line"} {
+		if !strings.Contains(lines[state], "wake: down, start: "+start) {
+			t.Errorf("%s: line %q lacks the start line %q it was meant to measure", state, lines[state], start)
+		}
 	}
 	if !strings.Contains(lines["live, with the thread ask and the start line"], segThread) {
 		t.Errorf("live line %q lacks the thread ask it was meant to measure", lines["live, with the thread ask and the start line"])

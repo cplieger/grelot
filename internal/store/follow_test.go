@@ -125,6 +125,43 @@ func mustFollowed(t *testing.T, s *Store, session, path string) Followed {
 	return got
 }
 
+func TestFollow_aPathItsFollowsCoverIsNotAdded(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	const lib = "/workspace/bolttable"
+	b := regAt(t, s, "bravo", repoSubflux)
+	mustFollow(t, s, sess("bravo"), lib)
+	got := mustFollowed(t, s, sess("bravo"), lib+"/table.go")
+	if !slices.Equal(got.Identity.Follows, []string{lib}) {
+		t.Errorf("follows %v, want [%s] alone", got.Identity.Follows, lib)
+	}
+	if !slices.ContainsFunc(got.Notices, func(n string) bool { return strings.Contains(n, "your follow of "+lib) }) {
+		t.Errorf("notices %q, want one naming the follow of %s that covers it", got.Notices, lib)
+	}
+	mustPost(t, s, posting(sess("bravo"), Target{Path: lib + "/index.go"}))
+	if f := getIdentity(t, s, b.ID).Follows; !slices.Equal(f, []string{lib}) {
+		t.Errorf("follows after a post under %s: %v, want [%s] alone", lib, f, lib)
+	}
+}
+
+func TestUnfollow_refusedUnderAnotherFollow(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	const lib = "/workspace/bolttable"
+	b := regAt(t, s, "bravo", repoSubflux)
+	follows := []string{lib, lib + "/table.go"}
+	editIdentity(t, s, b.ID, func(r *identityRow) { r.Follows = follows })
+	for _, p := range []string{lib + "/table.go", lib + "/never-followed"} {
+		_, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
+		wantRefusal(t, err, KindConflict, "", p, "your follow of "+lib)
+	}
+	got, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, lib)
+	if err != nil {
+		t.Fatalf("unfollowing the covering follow: %v", err)
+	}
+	if !slices.Equal(got.Follows, follows[1:]) {
+		t.Errorf("follows %v, want %v", got.Follows, follows[1:])
+	}
+}
+
 func TestFollow_refusedAtTheCap(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	const p = "/workspace/one-more"
@@ -211,7 +248,7 @@ func TestUnfollow_refusedUnderAWorkPath(t *testing.T) {
 // followThreadsFixture posts a thread at /workspace/shared/x that expires
 // first, a subpath thread and a later unrelated thread that outlive it,
 // and has bravo follow x, charlie the subpath and delta the later thread.
-// alpha posted at x, so it follows x too.
+// alpha's posts follow x and y; its follow of x covers the subpath.
 func followThreadsFixture(t *testing.T) (s *Store, ids map[string]uint64) {
 	t.Helper()
 	s, clk := openShortThreadStore(t)
@@ -240,7 +277,7 @@ const sharedX = "/workspace/shared/x"
 func wantFollowsKept(t *testing.T, s *Store, ids map[string]uint64) {
 	t.Helper()
 	want := map[string][]string{
-		"alpha":   {sharedX, sharedX + "/sub", "/workspace/shared/y"},
+		"alpha":   {sharedX, "/workspace/shared/y"},
 		"bravo":   {sharedX},
 		"charlie": {sharedX + "/sub"},
 		"delta":   {"/workspace/shared/y"},
@@ -259,8 +296,8 @@ func wantFollowsKept(t *testing.T, s *Store, ids map[string]uint64) {
 		t.Errorf("the recreated thread's first post delivered to %d, want alpha and bravo", got.Delivered)
 	}
 	for _, n := range []string{"alpha", "bravo"} {
-		if ds := deliveriesTo(t, s, ids[n]); len(ds) != 1 || ds[0].Message != got.Message {
-			t.Errorf("%s, a follower of x, got %+v, want the new post %d", n, ds, got.Message)
+		if ds := deliveriesTo(t, s, ids[n]); len(ds) == 0 || ds[len(ds)-1].Message != got.Message {
+			t.Errorf("%s, a follower of x, got %+v, want the new post %d last", n, ds, got.Message)
 		}
 	}
 }

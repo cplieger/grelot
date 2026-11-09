@@ -15,10 +15,11 @@ type Followed struct {
 	Identity Identity
 }
 
-// Follow adds path to c's identity's follows, so every post in its path
-// thread reaches it, the thread's first post included when none lives
-// there yet; following it again changes nothing. A follow lasts until an
-// unfollow or the identity's end, across the thread's expiries.
+// Follow adds path to c's identity's follows, so every post in a thread
+// at or under path reaches it, the first post included when no thread
+// lives there yet; a path its follows already cover is not added. A
+// follow lasts until an unfollow or the identity's end, across the
+// threads' expiries.
 // Refusals: KindInvalid for a bad path; KindGone for a session with no
 // live identity; KindForbidden for a delegate; KindConflict at the
 // follow cap.
@@ -35,10 +36,13 @@ func (s *Store) Follow(ctx context.Context, k Keyed, c Caller, path string) (Fol
 		if err != nil {
 			return Followed{}, err
 		}
-		switch {
+		var notices []string
+		switch f := followCovering(&me, path); {
 		case me.Parent != 0:
 			return Followed{}, refuse(KindForbidden, "a delegate follows nothing: its scope decides what it receives")
-		case slices.Contains(me.Follows, path):
+		case f == path:
+		case f != "":
+			notices = append(notices, fmt.Sprintf("your follow of %s already reaches %s, so nothing was added", f, path))
 		case len(me.Follows) >= maxFollows:
 			return Followed{}, refuse(KindConflict, fmt.Sprintf("you follow %d threads, the most allowed: grelot unfollow one first", maxFollows))
 		default:
@@ -49,20 +53,19 @@ func (s *Store) Follow(ctx context.Context, k Keyed, c Caller, path string) (Fol
 		if err := s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {
 			return Followed{}, err
 		}
-		out := Followed{Identity: s.view(&me)}
 		if !live {
-			out.Notices = []string{fmt.Sprintf("no thread lives at %s now: its next post reaches you (grelot threads lists the live ones)", path)}
+			notices = append(notices, fmt.Sprintf("no thread lives at %s now: its next post reaches you (grelot threads lists the live ones)", path))
 		}
-		return out, nil
+		return Followed{Identity: s.view(&me), Notices: notices}, nil
 	})
 }
 
 // Unfollow takes path out of c's identity's follows and returns the
 // identity; a path it does not follow changes nothing. A thread at or
-// under a work path or a held reservation cannot be muted, since that
-// delivers it. Refusals: KindInvalid for a bad path; KindGone for a
-// session with no live identity; KindConflict under a work path or a held
-// reservation.
+// under a work path, a held reservation or another follow cannot be
+// muted, since that delivers it. Refusals: KindInvalid for a bad path;
+// KindGone for a session with no live identity; KindConflict under a work
+// path, a held reservation or another follow.
 func (s *Store) Unfollow(ctx context.Context, k Keyed, c Caller, path string) (Identity, error) {
 	if _, err := checkPaths([]string{path}); err != nil {
 		return Identity{}, err
@@ -84,6 +87,11 @@ func (s *Store) Unfollow(ctx context.Context, k Keyed, c Caller, path string) (I
 		if i := slices.IndexFunc(held, func(r reservationRow) bool { return r.Holder == me.ID && under(path, r.Path) }); i >= 0 {
 			return Identity{}, refuse(KindConflict, fmt.Sprintf(
 				"%s is under your reservation %d on %s, which delivers it whatever you follow: release %d first", path, held[i].ID, held[i].Path, held[i].ID,
+			))
+		}
+		if i := slices.IndexFunc(me.Follows, func(f string) bool { return f != path && under(path, f) }); i >= 0 {
+			return Identity{}, refuse(KindConflict, fmt.Sprintf(
+				"%s is under your follow of %s, which delivers it whatever else you follow: unfollow that one to stop hearing both", path, me.Follows[i],
 			))
 		}
 		me.Follows = slices.DeleteFunc(me.Follows, func(f string) bool { return f == path })

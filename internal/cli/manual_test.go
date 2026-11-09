@@ -69,7 +69,7 @@ func TestManual_howToCommunicateCoversSendingAndReceivingOnce(t *testing.T) {
 	for _, want := range []string{
 		"`grelot follow /workspace/<repo>`", "`grelot unfollow <path>`", "`grelot history --path <p>`",
 		"`grelot wait --timeout=<d>`", "\"" + strings.TrimPrefix(dataLabel, " · ") + "\"", "ask your user before",
-		"Never send a bare acknowledgment", "`grelot receipts`",
+		"Never send a bare acknowledgment", "`grelot receipts`", "every thread under it",
 	} {
 		if !strings.Contains(receiving, want) {
 			t.Errorf("Receiving does not say %q", want)
@@ -80,7 +80,7 @@ func TestManual_howToCommunicateCoversSendingAndReceivingOnce(t *testing.T) {
 	for phrase, want := range map[string]int{
 		"grelot inbox` at the start and end of each task": 1, "Never put a secret": 1, "Unfollow a thread": 1,
 		"Which thread": 0, "send it to `@name` or `announce` instead": 0, "message each one": 0,
-		"To tell a specific agent about your work": 0, "If several fit": 0,
+		"To tell a specific agent about your work": 0, "If several fit": 0, "at its start and end": 0, "at each task boundary": 0,
 	} {
 		if n := strings.Count(manual, phrase); n != want {
 			t.Errorf("the manual says %q %d times, want %d", phrase, n, want)
