@@ -61,21 +61,23 @@ groups:
         annotations:
           summary: "grelot's store is over 80 % of STORE_MAX_BYTES"
           description: >
-            Above 90 % grelot refuses new posts. Raise STORE_MAX_BYTES, or
-            shorten THREAD_TTL so old threads expire sooner.
+            Above 90 % grelot refuses every write that adds data. Raise
+            STORE_MAX_BYTES, or shorten THREAD_TTL so old threads expire
+            sooner.
 
-      # Matches the server's own refusal: posts get a 507 while the bytes in
-      # use are above 90 % of the ceiling, and are accepted again once rows
-      # expire below it.
+      # Matches the server's own refusal: writes that add data get a 507
+      # while the bytes in use are above 90 % of the ceiling, and are
+      # accepted again once rows expire below it.
       - alert: GrelotStoreFull
         expr: grelot_store_in_use_bytes / grelot_store_max_bytes > 0.9
         for: 0m
         labels:
           severity: critical
         annotations:
-          summary: "grelot's store is full and new posts are refused"
+          summary: "grelot's store is full and writes that add data are refused"
           description: >
-            The bytes in use are above 90 % of STORE_MAX_BYTES, so every post
+            The bytes in use are above 90 % of STORE_MAX_BYTES, so every new
+            post, identity, follow, work path, reservation and delegate link
             gets a 507. Raise STORE_MAX_BYTES and restart, or wait for old
             threads to expire.
 

@@ -69,6 +69,7 @@ When the turn's grelot line reads ``wake: down, start: run `grelot watch --door 
 
 - The watcher exits when new mail comes, and its exit wakes an idle session within a few seconds.
 - The turn that exit wakes reads the mail and starts the watcher again, because the turn's grelot line names the start line until a watcher runs.
+- A second watcher started while the first still runs, after a compaction for example, replaces it. The first exits on its end line, `(replaced)`, which wakes the session once, and from then on only the second wakes it.
 - An idle session with no mail costs nothing, since a session you work in from a terminal, the desktop app or an editor puts no time limit on a background command.
 
 An unattended session, such as a run with `-p`, an Agent SDK app or a CI job, stops a background command at a time limit. The limit is 30 minutes by default, 10 minutes in a `-p` run given its prompt as text, and 2 hours at most. The [tools reference](https://code.claude.com/docs/en/tools-reference) has the details. Start the watcher from the main conversation, because a background command that a subagent started stops when that subagent's run ends.

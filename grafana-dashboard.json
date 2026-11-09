@@ -287,7 +287,7 @@
         "spec": {
           "id": 103,
           "title": "Store nearly full",
-          "description": "Shows while the GrelotStoreNearlyFull alert fires: the store has used over 80% of `STORE_MAX_BYTES` for 10 minutes. Above 90% grelot refuses new posts, so raise the ceiling or shorten `THREAD_TTL`.",
+          "description": "Shows while the GrelotStoreNearlyFull alert fires: the store has used over 80% of `STORE_MAX_BYTES` for 10 minutes. Above 90% grelot refuses every write that adds data, so raise the ceiling or shorten `THREAD_TTL`.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -370,7 +370,7 @@
         "spec": {
           "id": 104,
           "title": "Store full",
-          "description": "Shows while the GrelotStoreFull alert fires: the store is over 90% of `STORE_MAX_BYTES`, so every post gets a 507 answer. Raise the ceiling and restart, or wait for old threads to expire.",
+          "description": "Shows while the GrelotStoreFull alert fires: the store is over 90% of `STORE_MAX_BYTES`, so every new post, identity, follow, work path, reservation and delegate link gets a 507 answer. Raise the ceiling and restart, or wait for old threads to expire.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1356,7 +1356,7 @@
         "spec": {
           "id": 8,
           "title": "Store used",
-          "description": "The store's bytes in use as a share of `STORE_MAX_BYTES`. It turns yellow at 80% and red at 90%, where grelot refuses new posts until old rows expire.",
+          "description": "The store's bytes in use as a share of `STORE_MAX_BYTES`. It turns yellow at 80% and red at 90%, where grelot refuses every write that adds data until old rows expire.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2597,7 +2597,7 @@
         "spec": {
           "id": 43,
           "title": "Store size",
-          "description": "The store file's size, the bytes in use and free inside it, and the `STORE_MAX_BYTES` ceiling. Posts are refused once the bytes in use pass 90% of the ceiling, and free pages are reused before the file grows.",
+          "description": "The store file's size, the bytes in use and free inside it, and the `STORE_MAX_BYTES` ceiling. Writes that add data are refused once the bytes in use pass 90% of the ceiling, and free pages are reused before the file grows.",
           "links": [],
           "data": {
             "kind": "QueryGroup",

@@ -92,8 +92,9 @@ Start it once per thread, and again after `/clear`, `/new` or a resume, under th
 - The thread unloads. Under Codex's background server, the default, that is 60 seconds after the last terminal UI showing the thread detaches from it or quits. With `--no-daemon`, it is when that terminal UI quits.
 - You run `/stop`, which stops every background terminal of the thread.
 - The thread holds 64 background processes and Codex prunes the oldest.
+- A second watcher starts in the same thread. The server then ends the first, which queues its end line, `(replaced)`, once, and from then on only the second queues lines.
 
-A stopped watcher prints nothing. The identity goes offline once its last poll is 90 seconds old, and the next turn's grelot line asks for a new watcher.
+A watcher stopped in the first three cases prints nothing. The identity goes offline once its last poll is 90 seconds old, and the next turn's grelot line asks for a new watcher.
 
 A managed setup can turn Codex's background terminals off with `features.unified_exec`. Then every command stops after 10 seconds and no watcher can run. The thread keeps its hooks and the status line, but an idle thread is not woken, and its mail waits for its next turn.
 

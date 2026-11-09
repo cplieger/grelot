@@ -164,7 +164,9 @@ The client's watcher, `grelot watch`, waits on the server and delivers each noti
 | `hold` | none | How long one run waits before it prints `idle`, for a tool that polls the command. An `exit` door then exits 0, and a `stdout` door goes on |
 | `idle` | none | What is printed when `hold` lapses. `hold` and `idle` go together |
 
-The end line says why the watcher stopped: `ended` after the session's end report, `none` or `dormant` when the session has no live identity, and `upgrade` when the server refuses this client's inbox ack:
+A session keeps one watcher. When a second one starts, the server ends the first with the end reason `replaced`, so one message wakes the session once. A nudge the server was about to answer the first one with goes to the second instead. A watcher of another session, on the same machine or not, is never replaced.
+
+The end line says why the watcher stopped: `ended` after the session's end report, `none` or `dormant` when the session has no live identity, `replaced` when a newer watcher of the same session started, and `upgrade` when the server refuses this client's inbox ack:
 
 ```text
 [grelot:end] grelot (automated, not the user): this watcher stopped (ended); run grelot me
