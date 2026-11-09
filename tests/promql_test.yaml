@@ -130,7 +130,7 @@ tests:
         exp_alerts:
           - exp_labels: {severity: critical, job: grelot, instance: "a:9737"}
             exp_annotations:
-              summary: "grelot's store is full and new posts, identities, follows, work paths, reservations and delegate links are refused"
+              summary: "grelot's store is full and new posts and follows are refused"
               description: >
                 The bytes in use are above 90 % of STORE_MAX_BYTES, so every new
                 post, identity, follow, work path, reservation and delegate link
