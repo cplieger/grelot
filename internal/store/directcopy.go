@@ -14,7 +14,7 @@ import (
 const copyWindow = time.Hour
 
 // copyScanCap bounds the posts each copy scan reads under the write lock:
-// past it a copy may go unhinted, or a reply be taken for a copy.
+// past it a copy may go unhinted, never a reply hinted.
 const copyScanCap = 64
 
 // copyHint is the notice on a direct post whose subject its sender sent
@@ -63,6 +63,8 @@ func (w *wtx) sentElsewhere(msg *messageRow, key string) (bool, error) {
 	return found, err
 }
 
+// askedHere reports whether the other side of msg's thread posted key
+// there, or the thread is too long for the scan to tell.
 func (w *wtx) askedHere(msg *messageRow, key string) (bool, error) {
 	found, n := false, 0
 	err := w.s.t.messages.table.Scan(w.r, bolttable.Range{Prefix: be64(msg.Thread), Reverse: true}, func(_ []byte, m *messageRow) (bool, error) {
@@ -70,7 +72,7 @@ func (w *wtx) askedHere(msg *messageRow, key string) (bool, error) {
 		n++
 		return !found && n < copyScanCap, nil
 	})
-	return found, err
+	return found || n >= copyScanCap, err
 }
 
 // subjectKey is subject case-folded, trimmed, with one leading "Re:" cut,

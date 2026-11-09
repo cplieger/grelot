@@ -226,6 +226,23 @@ func TestPost_aPathThreadNobodyHearsKeepsItForLaterFollowers(t *testing.T) {
 			t.Errorf("a later follower's history = %q, want the post nobody got", out)
 		}
 	})
+	t.Run("a path holding a quote", func(t *testing.T) {
+		quoted := filepath.ToSlash(filepath.Join(t.TempDir(), "o'reilly"))
+		if err := os.Mkdir(quoted, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		out := a.must(append([]string{"post", quoted, "Status"}, keep...)...)
+		if !strings.Contains(out, "for anyone who follows later; ") || strings.Contains(out, "grelot history") {
+			t.Errorf("output = %q, want the hint with no history command, which cannot quote the path", out)
+		}
+		for _, cmd := range regexp.MustCompile(`\((grelot [^)]*)\)`).FindAllStringSubmatch(out, -1) {
+			for _, w := range shellWords(cmd[1]) {
+				if why := unsafeWord(w); why != "" {
+					t.Errorf("printed command %q: word %q is %s", cmd[1], w, why)
+				}
+			}
+		}
+	})
 	t.Run("a path another agent works in", func(t *testing.T) {
 		if out := a.must(append([]string{"post", bdir, "Status"}, keep...)...); strings.Contains(out, "nobody got") {
 			t.Errorf("output = %q, want no hint for a post someone got", out)

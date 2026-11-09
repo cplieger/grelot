@@ -49,3 +49,15 @@ func TestUnder(t *testing.T) {
 		}
 	}
 }
+
+func TestWord(t *testing.T) {
+	for p, want := range map[string]string{
+		"/workspace/bolttable":     "'/workspace/bolttable'",
+		"/workspace/my notes & co": "'/workspace/my notes & co'",
+		"/workspace/o'reilly":      "",
+	} {
+		if got, ok := Word(p); got != want || ok != (want != "") {
+			t.Errorf("Word(%q) = %q, %v, want %q", p, got, ok, want)
+		}
+	}
+}

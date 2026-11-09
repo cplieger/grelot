@@ -273,13 +273,30 @@ func TestPost_aFollowWiderThanItsThreadKeepsTheFollowsUnderItAndSaysSo(t *testin
 	if f := getIdentity(t, s, a.ID).Follows; !slices.Equal(f, []string{lib, repoSubflux + "/internal", "/workspace/marotte/web", wide}) {
 		t.Errorf("follows %v, want the chosen ones and the leaf kept, then %s", f, wide)
 	}
-	if len(got.Notices) != 1 || !strings.Contains(got.Notices[0], "unfollow "+wide) ||
+	if len(got.Notices) != 1 || !strings.Contains(got.Notices[0], "grelot unfollow '"+wide+"'") ||
 		!strings.Contains(got.Notices[0], lib+", "+repoSubflux+"/internal, /workspace/marotte/web") {
 		t.Errorf("notices %q, want one naming unfollow %s and the follows kept under it", got.Notices, wide)
 	}
 	mustUnfollow(t, s, "alpha", wide)
 	if f := getIdentity(t, s, a.ID).Follows; !slices.Equal(f, []string{lib, repoSubflux + "/internal", "/workspace/marotte/web"}) {
 		t.Errorf("follows after unfollowing %s: %v, want the earlier ones back", wide, f)
+	}
+}
+
+func TestPost_aWideFollowNoticePrintsAParseSafeUnfollow(t *testing.T) {
+	for _, tt := range []struct{ name, path, want string }{
+		{"a path with a space", "/workspace/my notes", "grelot unfollow '/workspace/my notes' to stop"},
+		{"a path with a quote", "/workspace/o'reilly", ": unfollow it to stop"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s, _, _ := openIdentityStore(t)
+			a := regAt(t, s, "alpha", repoGrelot)
+			editIdentity(t, s, a.ID, func(r *identityRow) { r.Follows = []string{tt.path + "/sub"} })
+			got := mustPost(t, s, posting(sess("alpha"), Target{Path: tt.path}))
+			if len(got.Notices) != 1 || !strings.Contains(got.Notices[0], tt.want) {
+				t.Errorf("notices %q, want one holding %q", got.Notices, tt.want)
+			}
+		})
 	}
 }
 

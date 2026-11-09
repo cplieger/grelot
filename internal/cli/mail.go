@@ -12,6 +12,7 @@ import (
 
 	"github.com/cplieger/grelot/internal/canon"
 	"github.com/cplieger/grelot/internal/client"
+	"github.com/cplieger/grelot/internal/protopath"
 )
 
 // maxBody is the largest message body the server takes.
@@ -122,10 +123,14 @@ func (r *run) posted(got *client.Posted, to, thread string, finding canon.Findin
 	fmt.Fprintf(r.Stdout, "grelot: message %d posted to %s (thread %d): delivered to %d: %d same environment, %d other\n",
 		got.Message, safe(to), got.Thread, n.Total, n.SameEnvironment, n.Other)
 	if thread != "" && n.Total == 0 {
+		history, naming := "", ""
+		if w, ok := protopath.Word(safe(thread)); ok {
+			history, naming = " (grelot history --path "+w+")", " and that command"
+		}
 		fmt.Fprintf(r.Stdout, "grelot: no other agent works in or follows %s yet, so nobody got this post now: "+
-			"it stays in the thread's history while the thread lives, for anyone who follows later (grelot history --path %s); "+
-			"if one agent must act on it, send that agent a direct message naming message %d and that command (grelot post '@<name>')\n",
-			safe(thread), pathWord(safe(thread)), got.Message)
+			"it stays in the thread's history while the thread lives, for anyone who follows later%s; "+
+			"if one agent must act on it, send that agent a direct message naming message %d%s (grelot post '@<name>')\n",
+			safe(thread), history, got.Message, naming)
 	}
 	if local && n.Other > 0 {
 		fix := "send its content or a pushed ref"
@@ -137,16 +142,6 @@ func (r *run) posted(got *client.Posted, to, thread string, finding canon.Findin
 	for _, line := range got.Notices {
 		fmt.Fprintln(r.Stdout, "grelot: "+safe(line))
 	}
-}
-
-// pathWord is p as one parse-safe command word: single-quoted, since a
-// path may hold a space or &, or the <path> placeholder when p holds a
-// quote, which no quoting form shared by every shell can carry.
-func pathWord(p string) string {
-	if strings.Contains(p, "'") {
-		return "<path>"
-	}
-	return "'" + p + "'"
 }
 
 func recipients(n int) string {

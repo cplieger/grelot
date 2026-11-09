@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/protopath"
 )
 
 const (
@@ -42,8 +43,8 @@ type Posting struct {
 
 // Posted is what a post answers.
 type Posted struct {
-	// Notices are lines for the sender: a dormant recipient, a follow the
-	// post could not add, a subject already sent another agent.
+	// Notices are lines for the sender, such as a dormant recipient or a
+	// follow the post added or could not add.
 	Notices  []string
 	Identity Identity
 	Message  uint64
@@ -294,7 +295,11 @@ func (w *wtx) wideFollow(me *identityRow, p string) (string, error) {
 			return "", err
 		}
 	}
-	n := fmt.Sprintf("this post follows %s so its replies reach you, and that follow also reaches every thread under it: unfollow %s to stop hearing them", p, p)
+	stop := "unfollow it"
+	if word, ok := protopath.Word(p); ok {
+		stop = "grelot unfollow " + word
+	}
+	n := fmt.Sprintf("this post follows %s so its replies reach you, and that follow also reaches every thread under it: %s to stop hearing them", p, stop)
 	if len(inside) > 0 {
 		n += "; your follows under it stay: " + strings.Join(inside, ", ")
 	}

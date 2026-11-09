@@ -29,6 +29,26 @@ func copyHintedAfter(t *testing.T, fillers int) bool {
 	return slices.Contains(post("delta", "the freeze").Notices, copyHint)
 }
 
+func TestPost_aReplyPastTheScanCapHintsNothing(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	for _, n := range []string{"alpha", "bravo", "charlie"} {
+		regAt(t, s, n, "/workspace/"+n)
+	}
+	post := func(from, to, subject string) Posted {
+		p := posting(sess(from), Target{Agent: to})
+		p.Subject = subject
+		return mustPost(t, s, p)
+	}
+	post("bravo", "alpha", "the schema")
+	for i := range copyScanCap {
+		post("bravo", "alpha", fmt.Sprintf("filler %d", i))
+	}
+	post("alpha", "charlie", "the schema")
+	if got := post("alpha", "bravo", "Re: the schema").Notices; slices.Contains(got, copyHint) {
+		t.Errorf("a reply whose question sits past the scan cap: notices %q, want no copy hint", got)
+	}
+}
+
 func TestPost_theCopyScanReadsAtMostItsCap(t *testing.T) {
 	// The scan reads the new post, then the fillers, then the first copy.
 	t.Run("copy at the cap", func(t *testing.T) {
