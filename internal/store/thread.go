@@ -5,7 +5,6 @@ package store
 import (
 	"context"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/cplieger/bolttable"
@@ -46,36 +45,6 @@ func (s *Store) ensureServerThreads(ctx context.Context) error {
 		}
 		return nil
 	})
-}
-
-// expireThread deletes a thread, its messages with it, and first takes a
-// path thread out of its followers' follows, so a thread recreated at the
-// path starts with none. A cascade deletes whole rows, so it cannot do
-// that rewrite.
-func expireThread(w *wtx, k uint64, v *threadRow) error {
-	if v.Kind == kindPath {
-		var followers []uint64
-		if err := scanExact(w.r, w.s.t.byFollow, v.Path, func(id uint64) (bool, error) {
-			followers = append(followers, id)
-			return true, nil
-		}); err != nil {
-			return err
-		}
-		for _, id := range followers {
-			row, found, err := w.s.t.identities.table.Get(w.r, id)
-			if err != nil {
-				return err
-			}
-			if !found {
-				continue
-			}
-			row.Follows = slices.DeleteFunc(row.Follows, func(f string) bool { return f == v.Path })
-			if err := w.s.t.identities.table.Put(w.tx, id, &row); err != nil {
-				return err
-			}
-		}
-	}
-	return deleteRow(w, w.s.t.threads, k)
 }
 
 // thread reads the live thread under key for a write, running its due

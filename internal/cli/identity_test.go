@@ -68,8 +68,8 @@ func TestRegister_printsTheStatusLineTheCardThenThePointerToTheManual(t *testing
 		"  lease: 2h0m0s, until 2026-11-05 11:00 UTC\n"
 	// Every path to a first register sends the agent to grelot help first,
 	// so the answer points back to it instead of printing it again.
-	if !strings.HasSuffix(out, card+manualPointer) {
-		t.Errorf("output does not end with the card, then the pointer to the manual:\n%s", out)
+	if !strings.HasSuffix(out, card+manualPointer+lineFollowAThread+"\n") {
+		t.Errorf("output does not end with the card, the pointer to the manual, then the ask to follow a thread:\n%s", out)
 	}
 	if strings.Contains(out, "# grelot help\n") {
 		t.Errorf("output holds the manual:\n%s", out)
@@ -229,8 +229,8 @@ func TestRegister_aDelegate(t *testing.T) {
 	}
 	// Nothing sends a subagent to grelot help before its link, so a
 	// delegate's registration teaches it.
-	if !strings.Contains(out, "# grelot help\n") {
-		t.Errorf("output = %q, want the manual after the card", out)
+	if !strings.Contains(out, "# grelot help\n") || strings.Contains(out, lineFollowAThread) {
+		t.Errorf("output = %q, want the manual after the card and no ask to follow a thread", out)
 	}
 	var body map[string]any
 	if err := json.Unmarshal([]byte(ts.last(t, http.MethodPost, "/v1/register").Body), &body); err != nil {
@@ -460,6 +460,53 @@ func TestRenew(t *testing.T) {
 		code, _, errOut := a.run("renew", "abc", "--ttl", "1h")
 		if code != 2 || !strings.Contains(errOut, "grelot reservations") {
 			t.Errorf("exit %d, stderr %q; want 2 naming grelot reservations", code, errOut)
+		}
+	})
+}
+
+// A top-level register or revive asks the agent to follow or start a
+// thread until its identity has followed one or posted in a path thread,
+// and an unfollow afterwards does not bring the ask back.
+func TestRegister_asksToFollowOrStartAThreadUntilOneHappens(t *testing.T) {
+	ts := newServer(t)
+	asks := func(out string) bool { return strings.HasSuffix(out, manualPointer+lineFollowAThread+"\n") }
+	t.Run("a follow ends it for good", func(t *testing.T) {
+		a, clone := registerAgent(t, ts, "s-1")
+		register := func() string {
+			return a.must("register", "toolbelt-dev", "--paths", clone, "--desc", "testing the client", "--ttl", "2h")
+		}
+		if out := register(); !asks(out) {
+			t.Errorf("before any follow: output %q, want the ask", out)
+		}
+		a.must("follow", "/workspace/arrapi")
+		if out := register(); asks(out) || strings.Contains(out, lineFollowAThread) {
+			t.Errorf("while following: output %q, want no ask", out)
+		}
+		a.must("unfollow", "/workspace/arrapi")
+		if out := register(); strings.Contains(out, lineFollowAThread) {
+			t.Errorf("after the unfollow: output %q, want no ask", out)
+		}
+	})
+	t.Run("a path post ends it, and a revive asks before one", func(t *testing.T) {
+		b, _ := registerAt(t, ts, "s-2", "bee-dev")
+		ts.clock.advance(3 * time.Hour)
+		if out := b.must("revive", "--ttl", "1h"); !asks(out) {
+			t.Errorf("revive before any follow: output %q, want the ask", out)
+		}
+		b.mustPost("working on the client", "/workspace/bee", "Start: the client", "--name", "no change", "--paths", "no change", "--desc", "no change")
+		b.must("unfollow", "/workspace/bee")
+		ts.clock.advance(2 * time.Hour)
+		if out := b.must("revive", "--ttl", "1h"); strings.Contains(out, lineFollowAThread) {
+			t.Errorf("revive after a path post: output %q, want no ask", out)
+		}
+	})
+	t.Run("a one-shot run is never asked", func(t *testing.T) {
+		file := strings.Replace(hookTurnFile, "hooks:\n", "one_shot: {env: {ALPHA_MODE: [print]}}\nhooks:\n", 1)
+		c := hooked(t, newAgent(t, ts, "s-3", ""), "alpha", file)
+		c.vars["ALPHA_MODE"] = "print"
+		out := c.must("register", "cee-dev", "--paths", "/workspace/cee", "--desc", "x", "--ttl", "1h")
+		if !strings.HasSuffix(out, manualPointer) || strings.Contains(out, lineFollowAThread) {
+			t.Errorf("output %q, want the pointer to the manual last and no ask", out)
 		}
 	})
 }

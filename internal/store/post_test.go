@@ -212,7 +212,7 @@ func TestPost_pathReachesWorkPathsAtOrAboveItOnce(t *testing.T) {
 	}
 }
 
-func TestPost_followCoversOneThreadNotItsSubtree(t *testing.T) {
+func TestPost_followCoversItsPathAndTheThreadsUnderIt(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	const p = "/workspace/marotte/web"
 	regAt(t, s, "alpha", repoGrelot)
@@ -220,20 +220,21 @@ func TestPost_followCoversOneThreadNotItsSubtree(t *testing.T) {
 	c := regAt(t, s, "charlie", repoGrelot)
 	d := regAt(t, s, "delta", repoGrelot)
 	e := regAt(t, s, "echo", repoGrelot)
-	for id, follows := range map[uint64][]string{b.ID: {p}, c.ID: {p + "/sub"}, d.ID: {"/workspace/marotte"}, e.ID: {p}} {
+	f := regAt(t, s, "foxtrot", repoGrelot)
+	for id, follows := range map[uint64][]string{b.ID: {p}, c.ID: {p + "/sub"}, d.ID: {"/workspace/marotte"}, e.ID: {p}, f.ID: {"/workspace/marot"}} {
 		editIdentity(t, s, id, func(r *identityRow) { r.Follows = follows })
 	}
 	got := mustPost(t, s, posting(sess("alpha"), Target{Path: p}))
-	if got.Delivered != 2 {
-		t.Errorf("delivered %d, want 2", got.Delivered)
+	if got.Delivered != 3 {
+		t.Errorf("delivered %d, want 3", got.Delivered)
 	}
-	for _, id := range []uint64{b.ID, e.ID} {
+	for id, via := range map[uint64]string{b.ID: p, e.ID: p, d.ID: "/workspace/marotte"} {
 		ds := deliveriesTo(t, s, id)
-		if len(ds) != 1 || ds[0].Path != p {
-			t.Errorf("identity %d: %+v, want one delivery labelled with the followed %s", id, ds, p)
+		if len(ds) != 1 || ds[0].Path != via {
+			t.Errorf("identity %d: %+v, want one delivery labelled with the followed %s", id, ds, via)
 		}
 	}
-	for name, id := range map[string]uint64{"a subpath's follower": c.ID, "a parent thread's follower": d.ID} {
+	for name, id := range map[string]uint64{"a subpath's follower": c.ID, "a name-prefix sibling's follower": f.ID} {
 		if ds := deliveriesTo(t, s, id); len(ds) != 0 {
 			t.Errorf("%s got %d deliveries", name, len(ds))
 		}
@@ -254,6 +255,66 @@ func TestPost_inAPathThreadFollowsIt(t *testing.T) {
 	ds := deliveriesTo(t, s, a.ID)
 	if len(ds) != 1 || ds[0].Message != reply.Message || ds[0].Path != p {
 		t.Errorf("the poster's deliveries %+v, want the reply %d via %s", ds, reply.Message, p)
+	}
+}
+
+func TestPost_aFollowWiderThanItsThreadKeepsTheFollowsUnderItAndSaysSo(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	const lib, wide = "/workspace/bolttable", "/workspace"
+	a := regAt(t, s, "alpha", repoGrelot)
+	regAt(t, s, "bravo", "/workspace/marotte")
+	chosen := []string{lib, repoSubflux + "/internal"}
+	editIdentity(t, s, a.ID, func(r *identityRow) { r.Follows = chosen })
+	leaf := mustPost(t, s, posting(sess("alpha"), Target{Path: "/workspace/marotte/web"}))
+	if len(leaf.Notices) != 0 {
+		t.Errorf("a post at a path with no thread or follow under it: notices %q, want none", leaf.Notices)
+	}
+	got := mustPost(t, s, posting(sess("alpha"), Target{Path: wide}))
+	if f := getIdentity(t, s, a.ID).Follows; !slices.Equal(f, []string{lib, repoSubflux + "/internal", "/workspace/marotte/web", wide}) {
+		t.Errorf("follows %v, want the chosen ones and the leaf kept, then %s", f, wide)
+	}
+	if len(got.Notices) != 1 || !strings.Contains(got.Notices[0], "grelot unfollow '"+wide+"'") ||
+		!strings.Contains(got.Notices[0], lib+", "+repoSubflux+"/internal, /workspace/marotte/web") {
+		t.Errorf("notices %q, want one naming unfollow %s and the follows kept under it", got.Notices, wide)
+	}
+	mustUnfollow(t, s, "alpha", wide)
+	if f := getIdentity(t, s, a.ID).Follows; !slices.Equal(f, []string{lib, repoSubflux + "/internal", "/workspace/marotte/web"}) {
+		t.Errorf("follows after unfollowing %s: %v, want the earlier ones back", wide, f)
+	}
+}
+
+func TestPost_aWideFollowNoticePrintsAParseSafeUnfollow(t *testing.T) {
+	for _, tt := range []struct{ name, path, want string }{
+		{"a path with a space", "/workspace/my notes", "grelot unfollow '/workspace/my notes' to stop"},
+		{"a path with a quote", "/workspace/o'reilly", ": unfollow it to stop"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s, _, _ := openIdentityStore(t)
+			a := regAt(t, s, "alpha", repoGrelot)
+			editIdentity(t, s, a.ID, func(r *identityRow) { r.Follows = []string{tt.path + "/sub"} })
+			got := mustPost(t, s, posting(sess("alpha"), Target{Path: tt.path}))
+			if len(got.Notices) != 1 || !strings.Contains(got.Notices[0], tt.want) {
+				t.Errorf("notices %q, want one holding %q", got.Notices, tt.want)
+			}
+		})
+	}
+}
+
+func TestPost_aFollowOverALiveThreadSaysSo(t *testing.T) {
+	s, clk := openShortThreadStore(t)
+	const lib = "/workspace/bolttable"
+	regAt(t, s, "alpha", repoGrelot)
+	regAt(t, s, "bravo", repoSubflux)
+	regAt(t, s, "charlie", "/workspace/marotte")
+	mustPost(t, s, posting(sess("bravo"), Target{Path: lib + "/index.go"}))
+	clk.advance(shortThreadTTL + time.Minute)
+	if over := mustPost(t, s, posting(sess("charlie"), Target{Path: lib})); len(over.Notices) != 0 {
+		t.Errorf("a post over an expired thread: notices %q, want none", over.Notices)
+	}
+	mustPost(t, s, posting(sess("bravo"), Target{Path: lib + "/index.go"}))
+	got := mustPost(t, s, posting(sess("alpha"), Target{Path: lib}))
+	if len(got.Notices) != 1 || !strings.Contains(got.Notices[0], "every thread under it") || strings.Contains(got.Notices[0], "stay") {
+		t.Errorf("notices %q, want one saying the follow reaches the thread under %s, naming no kept follow", got.Notices, lib)
 	}
 }
 
@@ -282,7 +343,9 @@ func TestPost_directThreadIsOneForBothDirections(t *testing.T) {
 	c := regAt(t, s, "charlie")
 	ab := mustPost(t, s, posting(sess("alpha"), Target{Agent: "bravo"}))
 	ba := mustPost(t, s, posting(sess("bravo"), Target{Agent: "alpha"}))
-	ac := mustPost(t, s, posting(sess("alpha"), Target{Agent: "charlie"}))
+	toC := posting(sess("alpha"), Target{Agent: "charlie"})
+	toC.Subject = "another subject"
+	ac := mustPost(t, s, toC)
 	if ab.Thread != ba.Thread {
 		t.Errorf("A to B in thread %d, B to A in %d, want one thread", ab.Thread, ba.Thread)
 	}

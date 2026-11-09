@@ -82,12 +82,29 @@ func TestScanLocal_none(t *testing.T) {
 		"an ellipsis character":              "see " + h.temp + "/…",
 		"a named placeholder":                "read " + h.temp + "/<name>.log",
 		"the recipient's own home":           "add the rule to ~/.codex/rules/grelot.rules",
+		"a device in a shell command":        "run `go test ./... > /dev/null 2>&1` then `cat /dev/stdin`",
+		"the standard streams":               "it writes to /dev/stdout, never /dev/stderr",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if got, ok := h.r.ScanLocal(t.Context(), body); ok {
 				t.Errorf("got %+v, want none", got)
 			}
 		})
+	}
+}
+
+func TestScanLocal_flagsAFileInDevShm(t *testing.T) {
+	f, err := os.CreateTemp("/dev/shm", "grelot-scan-*.log")
+	if err != nil {
+		t.Skipf("no writable /dev/shm on this host: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(f.Name()) })
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	h := newScanHost(t)
+	if got, ok := h.r.ScanLocal(t.Context(), "the log is at "+f.Name()); !ok || got != (Finding{Token: f.Name()}) {
+		t.Errorf("got %+v, %v; want %q flagged", got, ok, f.Name())
 	}
 }
 
@@ -127,5 +144,11 @@ func TestScanLocal_windows(t *testing.T) {
 	}
 	if got, ok := r.ScanLocal(t.Context(), `D:\elsewhere\f.txt`); ok {
 		t.Errorf("a missing path outside home and temp: got %+v, want none", got)
+	}
+	nul := windowsResolver("/workspace", g, []string{"C:/", "C:/src", "C:/src/subflux"}, []string{"C:/nul", "C:/src/subflux/NUL"})
+	for _, body := range []string{`dir > C:\nul`, `copy x C:/src/subflux/NUL`} {
+		if got, ok := nul.ScanLocal(t.Context(), body); ok {
+			t.Errorf("%s: got %+v, want none: NUL is the null device in every directory", body, got)
+		}
 	}
 }

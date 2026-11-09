@@ -536,7 +536,7 @@ func TestPost_reachesAHolderOnAPathItDidNotList(t *testing.T) {
 	}
 }
 
-func TestUnfollow_refusedUnderAHeldReservation(t *testing.T) {
+func TestUnfollow_underAHeldReservation(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	regAt(t, s, "holder", repoSubflux)
 	regAt(t, s, "poster", repoGrelot)
@@ -544,13 +544,19 @@ func TestUnfollow_refusedUnderAHeldReservation(t *testing.T) {
 	mustFollow(t, s, sess("holder"), pathWeb)
 	res := mustReserve(t, s, reserving("holder", pathMarotte, time.Hour))
 
-	_, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("holder")}, pathWeb)
 	id := strconv.FormatUint(res.Reservation.ID, 10)
+	got, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("holder")}, pathWeb)
+	if err != nil || slices.Contains(got.Identity.Follows, pathWeb) {
+		t.Errorf("unfollow under the reservation: follows %v, err %v; want it gone", got.Identity.Follows, err)
+	}
+	if len(got.Notices) != 1 || !strings.Contains(got.Notices[0], "release "+id+" first") || !strings.Contains(got.Notices[0], pathMarotte) {
+		t.Errorf("notices %q, want one naming reservation %s on %s", got.Notices, id, pathMarotte)
+	}
+	_, err = s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("holder")}, pathWeb)
 	wantRefusal(t, err, KindConflict, "", "release "+id+" first", pathMarotte)
 	mustRelease(t, s, "holder", res.Reservation.ID)
-	got, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("holder")}, pathWeb)
-	if err != nil || slices.Contains(got.Follows, pathWeb) {
-		t.Errorf("unfollow after the release: follows %v, err %v; want it gone", got.Follows, err)
+	if _, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("holder")}, pathWeb); err != nil {
+		t.Errorf("unfollow after the release: %v, want nothing to do", err)
 	}
 }
 

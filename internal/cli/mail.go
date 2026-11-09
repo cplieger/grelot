@@ -12,6 +12,7 @@ import (
 
 	"github.com/cplieger/grelot/internal/canon"
 	"github.com/cplieger/grelot/internal/client"
+	"github.com/cplieger/grelot/internal/protopath"
 )
 
 // maxBody is the largest message body the server takes.
@@ -122,8 +123,14 @@ func (r *run) posted(got *client.Posted, to, thread string, finding canon.Findin
 	fmt.Fprintf(r.Stdout, "grelot: message %d posted to %s (thread %d): delivered to %d: %d same environment, %d other\n",
 		got.Message, safe(to), got.Thread, n.Total, n.SameEnvironment, n.Other)
 	if thread != "" && n.Total == 0 {
-		fmt.Fprintf(r.Stdout, "grelot: no other agent works in or follows %s, so nobody got this post: "+
-			"reach one agent with grelot post '@<name>' (grelot who lists them), or everyone with grelot post announce\n", safe(thread))
+		history, naming := "", ""
+		if w, ok := protopath.Word(safe(thread)); ok {
+			history, naming = " (grelot history --path "+w+")", " and that command"
+		}
+		fmt.Fprintf(r.Stdout, "grelot: no other agent works in or follows %s yet, so nobody got this post now: "+
+			"it stays in the thread's history while the thread lives, for anyone who follows later%s; "+
+			"if one agent must act on it, send that agent a direct message naming message %d%s (grelot post '@<name>')\n",
+			safe(thread), history, got.Message, naming)
 	}
 	if local && n.Other > 0 {
 		fix := "send its content or a pushed ref"
@@ -504,5 +511,8 @@ func (r *run) following(ctx context.Context, args []string, method, done string)
 		follows = joined(got.Identity.Follows)
 	}
 	fmt.Fprintf(r.Stdout, "grelot: %s %s; @%s follows %s\n", done, canonical[0], safe(got.Identity.Name), follows)
+	for _, line := range got.Notices {
+		fmt.Fprintln(r.Stdout, "grelot: "+safe(line))
+	}
 	return nil
 }

@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/protopath"
 )
 
 const (
@@ -42,8 +43,8 @@ type Posting struct {
 
 // Posted is what a post answers.
 type Posted struct {
-	// Notices are lines for the sender: a dormant recipient, a follow the
-	// post could not add.
+	// Notices are lines for the sender, such as a dormant recipient or a
+	// follow the post added or could not add.
 	Notices  []string
 	Identity Identity
 	Message  uint64
@@ -58,9 +59,9 @@ type Posted struct {
 // Post stores a message from p.Caller's live identity, applies its
 // identity fields, and delivers it to each recipient, dormant ones too,
 // with a quiet copy to each delegate's parent that would not otherwise see
-// it; a non-delegate's path post follows the thread. Refusals: KindInvalid
-// for a bad target, message, field or where; KindGone with no live
-// identity; KindForbidden outside a delegate's scope, either way;
+// it; a path post follows its thread as pathRoute says. Refusals:
+// KindInvalid for a bad target, message, field or where; KindGone with no
+// live identity; KindForbidden outside a delegate's scope, either way;
 // KindNotFound for an unknown @name; KindConflict for a rename to a held
 // name; KindFull past 90 % of Options.MaxBytes; ErrClosed after Close.
 func (s *Store) Post(ctx context.Context, k Keyed, p *Posting) (Posted, bool, error) {
@@ -152,6 +153,9 @@ func (w *wtx) post(p *Posting) (Posted, error) {
 	if err := w.putWatch(wt, &out); err != nil {
 		return Posted{}, err
 	}
+	if err := w.hintCopy(&msg, &out); err != nil {
+		return Posted{}, err
+	}
 	return out, nil
 }
 
@@ -240,13 +244,14 @@ func (w *wtx) announceRoute() (route, error) {
 	return rt, err
 }
 
-// pathRoute reaches the identities with a work path or a held reservation
-// at p or above it, the delegates whose scope allows p, and p's followers.
+// pathRoute reaches the identities with a work path, a held reservation
+// or a follow at p or above it, and the delegates whose scope allows p.
 // Posts go down the tree only, so a work path under p does not match.
 // Walking p's ancestors shortest first leaves each recipient labelled with
-// its most specific match; a follow is of p itself, the most specific of
-// all. The sender follows p unless it is at the cap or a delegate, whose
-// scope already delivers p.
+// its most specific match. The sender follows p unless its work path or
+// a follow already reaches p, it is at the cap, or it is a delegate,
+// whose scope already delivers p. Unlike grelot follow, this follow keeps
+// the sender's follows under p, so a post never removes one it chose.
 func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 	th, _, err := w.thread(p)
 	if err != nil {
@@ -259,32 +264,71 @@ func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 			return route{}, err
 		}
 	}
-	if err := scanExact(w.r, w.s.t.byFollow, p, func(id uint64) (bool, error) {
-		rt.recipients[id] = p
-		return true, nil
-	}); err != nil {
-		return route{}, err
+	if me.Parent == 0 {
+		me.Threaded = true
 	}
-	switch {
-	case me.Parent != 0, slices.Contains(me.Follows, p):
-	case len(me.Follows) >= maxFollows:
+	if me.Parent != 0 || reachedBy(me, p) != "" {
+		return rt, nil
+	}
+	if len(me.Follows) >= maxFollows {
 		rt.notices = append(rt.notices, fmt.Sprintf(
 			"you follow %d threads, the most allowed, so this post did not follow %s: grelot unfollow one to follow it", maxFollows, p,
 		))
-	default:
-		me.Follows = append(me.Follows, p)
+		return rt, nil
 	}
-	return rt, nil
+	me.Follows = append(me.Follows, p)
+	n, werr := w.wideFollow(me, p)
+	if n != "" {
+		rt.notices = append(rt.notices, n)
+	}
+	return rt, werr
+}
+
+// wideFollow is the notice for a post's new follow of p when it reaches
+// more than p's own thread, a live path thread or a follow of me's under
+// p; "" otherwise.
+func (w *wtx) wideFollow(me *identityRow, p string) (string, error) {
+	inside := slices.DeleteFunc(slices.Clone(me.Follows), func(f string) bool { return f == p || !under(f, p) })
+	if len(inside) == 0 {
+		live, err := w.liveThreadUnder(p)
+		if err != nil || !live {
+			return "", err
+		}
+	}
+	stop := "unfollow it"
+	if word, ok := protopath.Word(p); ok {
+		stop = "grelot unfollow " + word
+	}
+	n := fmt.Sprintf("this post follows %s so its replies reach you, and that follow also reaches every thread under it: %s to stop hearing them", p, stop)
+	if len(inside) > 0 {
+		n += "; your follows under it stay: " + strings.Join(inside, ", ")
+	}
+	return n, nil
+}
+
+// liveThreadUnder reports whether a live path thread lives strictly under p.
+func (w *wtx) liveThreadUnder(p string) (bool, error) {
+	found := false
+	err := w.s.t.threadKey.Scan(w.r, bolttable.Range{Prefix: []byte(strings.TrimSuffix(p, "/") + "/")}, func(_ []byte, id uint64, _ []byte) (bool, error) {
+		th, ok, err := w.s.t.threads.table.Get(w.r, id)
+		found = err == nil && ok && th.Kind == kindPath && !th.Lease.due(w.now)
+		return err == nil && !found, err
+	})
+	return found, err
 }
 
 // matchAt labels with a the recipients of a post at p that a matches: a
-// work path, a held reservation, or a delegate's allowed thread whose
-// scope does not deny p.
+// work path, a follow, a held reservation, or a delegate's allowed thread
+// whose scope does not deny p.
 func (w *wtx) matchAt(rt *route, a, p string) error {
-	if err := scanExact(w.r, w.s.t.byPath, a, func(id uint64) (bool, error) {
+	label := func(id uint64) (bool, error) {
 		rt.recipients[id] = a
 		return true, nil
-	}); err != nil {
+	}
+	if err := scanExact(w.r, w.s.t.byPath, a, label); err != nil {
+		return err
+	}
+	if err := scanExact(w.r, w.s.t.byFollow, a, label); err != nil {
 		return err
 	}
 	if err := scanExact(w.r, w.s.t.resvPath, a, func(id uint64) (bool, error) {
@@ -303,6 +347,18 @@ func (w *wtx) matchAt(rt *route, a, p string) error {
 		}
 		return err == nil, err
 	})
+}
+
+// reachedBy names me's work path or follow at or above p, which already
+// delivers p's threads, or is "" when none does.
+func reachedBy(me *identityRow, p string) string {
+	if i := slices.IndexFunc(me.Paths, func(q string) bool { return under(p, q) }); i >= 0 {
+		return "your work path " + me.Paths[i]
+	}
+	if i := slices.IndexFunc(me.Follows, func(f string) bool { return under(p, f) }); i >= 0 {
+		return "your follow of " + me.Follows[i]
+	}
+	return ""
 }
 
 // ancestors lists p and every path above it, shortest first.

@@ -14,7 +14,8 @@ func (s *Store) wireLeases() {
 	t := s.t
 	t.identities.onWarn = warnIdentity
 	t.identities.onExpire = expireIdentity
-	t.threads.onExpire = expireThread
+	// A follow is of the path, not the thread, so it outlives the thread.
+	t.threads.onExpire = func(w *wtx, k uint64, _ *threadRow) error { return deleteRow(w, t.threads, k) }
 	t.messages.onExpire = func(w *wtx, k []byte, _ *messageRow) error { return deleteRow(w, t.messages, k) }
 	t.deliveries.onExpire = expireDelivery
 	t.resv.onWarn = warnReservation

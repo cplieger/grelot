@@ -28,3 +28,13 @@ func Under(p, root string) bool {
 	}
 	return p == root || root == "/" || strings.HasPrefix(p, root+"/")
 }
+
+// Word is p as one parse-safe command word, single-quoted since a path may
+// hold a space, comma or &. ok is false when p holds a single quote, which
+// a single-quoted word cannot carry: the caller prints no command for p.
+func Word(p string) (word string, ok bool) {
+	if strings.Contains(p, "'") {
+		return "", false
+	}
+	return "'" + p + "'", true
+}

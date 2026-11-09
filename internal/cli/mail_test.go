@@ -190,18 +190,57 @@ func TestPost_countsRecipientsByRelation(t *testing.T) {
 	}
 }
 
-func TestPost_aPathThreadNobodyHearsNamesTheOtherTargets(t *testing.T) {
+func TestPost_aPathThreadNobodyHearsKeepsItForLaterFollowers(t *testing.T) {
 	ts := newServer(t)
 	a, _ := registerAt(t, ts, "s-1", "ant-dev")
-	_, bdir := registerAt(t, ts, "s-2", "bee-dev")
-	lone := filepath.ToSlash(t.TempDir())
-	hint := "grelot: no other agent works in or follows " + lone + ", so nobody got this post: " +
-		"reach one agent with grelot post '@<name>' (grelot who lists them), or everyone with grelot post announce\n"
+	b, bdir := registerAt(t, ts, "s-2", "bee-dev")
+	lone := filepath.ToSlash(filepath.Join(t.TempDir(), "my notes & logs"))
+	if err := os.Mkdir(lone, 0o700); err != nil {
+		t.Fatal(err)
+	}
 
 	t.Run("a path nobody covers", func(t *testing.T) {
 		out := a.must(append([]string{"post", lone, "Status"}, keep...)...)
-		if !strings.Contains(out, "delivered to 0: ") || !strings.HasSuffix(out, hint) {
-			t.Errorf("output = %q, want delivered to 0 and then the hint", out)
+		m := regexp.MustCompile(`message (\d+) posted to .* delivered to 0: `).FindStringSubmatch(out)
+		if m == nil {
+			t.Fatalf("output = %q, want a post delivered to 0", out)
+		}
+		hint := "grelot: no other agent works in or follows " + lone + " yet, so nobody got this post now: " +
+			"it stays in the thread's history while the thread lives, for anyone who follows later (grelot history --path '" + lone + "'); " +
+			"if one agent must act on it, send that agent a direct message naming message " + m[1] + " and that command (grelot post '@<name>')\n"
+		if !strings.HasSuffix(out, hint) {
+			t.Errorf("output = %q, want it to end with %q", out, hint)
+		}
+		for _, cmd := range regexp.MustCompile(`\((grelot [^)]*)\)`).FindAllStringSubmatch(hint, -1) {
+			for _, w := range shellWords(cmd[1]) {
+				if why := unsafeWord(w); why != "" {
+					t.Errorf("printed command %q: word %q is %s", cmd[1], w, why)
+				}
+			}
+		}
+		if strings.Contains(out, "grelot post announce") {
+			t.Errorf("output = %q, want no push to announce", out)
+		}
+		b.must("follow", lone)
+		if out := b.must("history", "--path", lone); !strings.Contains(out, "Status") {
+			t.Errorf("a later follower's history = %q, want the post nobody got", out)
+		}
+	})
+	t.Run("a path holding a quote", func(t *testing.T) {
+		quoted := filepath.ToSlash(filepath.Join(t.TempDir(), "o'reilly"))
+		if err := os.Mkdir(quoted, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		out := a.must(append([]string{"post", quoted, "Status"}, keep...)...)
+		if !strings.Contains(out, "for anyone who follows later; ") || strings.Contains(out, "grelot history") {
+			t.Errorf("output = %q, want the hint with no history command, which cannot quote the path", out)
+		}
+		for _, cmd := range regexp.MustCompile(`\((grelot [^)]*)\)`).FindAllStringSubmatch(out, -1) {
+			for _, w := range shellWords(cmd[1]) {
+				if why := unsafeWord(w); why != "" {
+					t.Errorf("printed command %q: word %q is %s", cmd[1], w, why)
+				}
+			}
 		}
 	})
 	t.Run("a path another agent works in", func(t *testing.T) {
@@ -603,8 +642,15 @@ func TestThreadsFollowAndUnfollow(t *testing.T) {
 	if u := ts.last(t, http.MethodPut, "/v1/follows").URL; u != "/v1/follows?path="+url.QueryEscape(sub) {
 		t.Errorf("follow sent %s, want the path in the query", u)
 	}
+	if strings.Contains(out, "no thread lives") {
+		t.Errorf("follow of a live thread printed %q, want no no-thread line", out)
+	}
 	out = c.must("unfollow", sub)
 	if want := "grelot: no longer following " + sub + "; @cat-dev follows nothing\n"; !strings.Contains(out, want) {
 		t.Errorf("unfollow printed %q, want %q", out, want)
+	}
+	out = c.must("follow", adir)
+	if want := "grelot: no thread lives at " + adir + " now: its next post reaches you (grelot threads lists the live ones)\n"; !strings.Contains(out, want) {
+		t.Errorf("follow of a path with no thread printed %q, want %q", out, want)
 	}
 }

@@ -3274,7 +3274,7 @@
         "spec": {
           "id": 51,
           "title": "Threads by activity",
-          "description": "Each path thread's posts over the selected range, how many agents posted there and how many copies reached an inbox, with the announcements and all direct messages as one row each. A path thread with many posts and one agent posting is one agent talking to itself, a sign the others do not cover that path.",
+          "description": "Each path thread's posts over the selected range, how many agents posted there and how many copies reached an inbox, with the announcements and all direct messages as one row each. A path thread where one agent posts and few copies reach an inbox has no other readers yet. One agent posting with many copies is a thread others follow for its news.",
           "links": [],
           "data": {
             "kind": "QueryGroup",

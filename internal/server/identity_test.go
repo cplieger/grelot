@@ -218,6 +218,11 @@ func TestMe_liveIdentityStatus(t *testing.T) {
 			t.Errorf("identity %v, want machine_kind dmi and environment_known", id)
 		}
 	})
+	t.Run("threaded, false before any follow or path post", func(t *testing.T) {
+		if got, ok := identityOf(r)["threaded"]; !ok || got != false {
+			t.Errorf("threaded %v (sent %v), want false sent", got, ok)
+		}
+	})
 	t.Run("offline, push none, the path root", func(t *testing.T) {
 		if r.body["online"] != false || r.str("push") != "none" || r.str("path_root") != protopath.DefaultRoot {
 			t.Errorf("online %v push %v path_root %v", r.body["online"], r.body["push"], r.body["path_root"])

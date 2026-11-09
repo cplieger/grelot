@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/cplieger/grelot/internal/client"
+	"github.com/cplieger/grelot/internal/hook"
 	"github.com/cplieger/grelot/internal/proctree"
 	"github.com/cplieger/grelot/internal/provider"
 	"github.com/cplieger/grelot/internal/where"
@@ -123,8 +124,9 @@ func (r *run) freshRoot(ctx context.Context) {
 
 // registered prints a register's or revive's answer: the lines the server
 // owes, the identity card, then the manual for a delegate and a pointer to
-// it for anyone else. Every path to a top-level register or revive sends
-// the agent to grelot help first; nothing does for a subagent's link.
+// it for anyone else, with the ask to follow or start a thread outside a
+// one-shot run. Every path to a top-level register or revive sends the
+// agent to grelot help first; nothing does for a subagent's link.
 func (r *run) registered(got *client.Registered, delegate bool) {
 	if got.NoEnvironment != "" {
 		file := where.EnvironmentFile(r.ConfigDir)
@@ -145,6 +147,23 @@ func (r *run) registered(got *client.Registered, delegate bool) {
 		return
 	}
 	fmt.Fprintln(r.Stdout, "grelot: grelot help is the manual, if you have not read it")
+	if followsNoThread(&got.Identity) && !hook.OneShot(r.prov, r.Lookup, r.tree) {
+		fmt.Fprintln(r.Stdout, lineFollowAThread)
+		if s, err := r.session(); err == nil {
+			hook.NewMarks(r.ConfigDir, r.now).Set(markThreadAsked, s)
+		}
+	}
+}
+
+// lineFollowAThread ends a top-level register or revive while
+// followsNoThread holds.
+const lineFollowAThread = "grelot: you follow no thread yet: run `grelot follow <path>` for one your work depends on, such as a library you use; if none fits, start your work path's thread with a post saying what you work on there"
+
+// followsNoThread reports an identity that has never followed a path nor
+// posted in a path thread. Follows decide alone against a server that
+// sends no Threaded.
+func followsNoThread(id *client.Identity) bool {
+	return !id.Threaded && len(id.Follows) == 0
 }
 
 func (r *run) revive(ctx context.Context, args []string) error {

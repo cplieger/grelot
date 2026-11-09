@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -28,11 +29,7 @@ func openShortThreadStore(t *testing.T) (*Store, *clock) {
 
 func mustFollow(t *testing.T, s *Store, session, path string) Identity {
 	t.Helper()
-	got, err := s.Follow(t.Context(), Keyed{}, Caller{Session: session}, path)
-	if err != nil {
-		t.Fatalf("Follow(%s, %s): %v", session, path, err)
-	}
-	return got
+	return mustFollowed(t, s, session, path).Identity
 }
 
 func TestFollow_aLiveThreadAddsItOnce(t *testing.T) {
@@ -56,28 +53,166 @@ func TestFollow_aLiveThreadAddsItOnce(t *testing.T) {
 	}
 }
 
-func TestFollow_needsALiveThread(t *testing.T) {
+func TestFollow_withNoThreadYetReceivesTheFirstPost(t *testing.T) {
 	s, clk := openShortThreadStore(t)
 	const p = "/workspace/marotte/web"
 	regAt(t, s, "alpha", repoGrelot)
 	b := regAt(t, s, "bravo", repoSubflux)
-	_, err := s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
-	wantRefusal(t, err, KindNotFound, "", "no thread at "+p+"; post there to start one")
-	// A direct thread's key is no path, and the announcements are no path
-	// thread either.
-	mustPost(t, s, posting(sess("alpha"), Target{Agent: "bravo"}))
-	_, err = s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, "/workspace")
-	wantRefusal(t, err, KindNotFound, "", "no thread at /workspace")
-	mustPost(t, s, posting(sess("alpha"), Target{Path: p}))
+	got, err := s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
+	if err != nil {
+		t.Fatalf("follow with no thread: %v, want it followed", err)
+	}
+	if len(got.Notices) != 1 || !strings.Contains(got.Notices[0], "no thread lives at "+p) || !strings.Contains(got.Notices[0], "grelot threads") {
+		t.Errorf("notices %q, want one saying no thread lives at %s and naming grelot threads", got.Notices, p)
+	}
+	if !slices.Equal(got.Identity.Follows, []string{p}) {
+		t.Errorf("follows %v, want [%s]", got.Identity.Follows, p)
+	}
+	first := mustPost(t, s, posting(sess("alpha"), Target{Path: p}))
+	if ds := deliveriesTo(t, s, b.ID); len(ds) != 1 || ds[0].Message != first.Message {
+		t.Errorf("the follower's deliveries %+v, want the thread's first post %d", ds, first.Message)
+	}
+	if again := mustFollowed(t, s, sess("bravo"), p); len(again.Notices) != 0 {
+		t.Errorf("following a live thread: notices %q, want none", again.Notices)
+	}
 	// The thread is past its expiry, unswept.
 	clk.advance(shortThreadTTL)
-	_, err = s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
-	wantRefusal(t, err, KindNotFound, "", "no thread at "+p)
-	if f := getIdentity(t, s, b.ID).Follows; len(f) != 0 {
-		t.Errorf("follows %v after refusals, want none", f)
+	if after := mustFollowed(t, s, sess("bravo"), p); len(after.Notices) != 1 {
+		t.Errorf("following an expired thread: notices %q, want the no-thread line", after.Notices)
 	}
 	_, err = s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, "workspace/x")
 	wantRefusal(t, err, KindInvalid, "", "canonical")
+}
+
+func TestThreaded_setForGoodByAFollowOrAPathPost(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	const p = "/workspace/marotte"
+	follower := regAt(t, s, "alpha", repoGrelot)
+	poster := regAt(t, s, "bravo", repoGrelot)
+	other := regAt(t, s, "charlie", repoGrelot)
+	own := regAt(t, s, "delta", repoGrelot)
+	d := scopedDelegate(t, s, "charlie", "review", func(g *Grant) { g.AllowThreads = []string{p} })
+	if got := mustFollow(t, s, sess("alpha"), p); !got.Threaded {
+		t.Errorf("the follow's identity %+v, want it threaded", got)
+	}
+	mustFollow(t, s, sess("delta"), repoGrelot)
+	if _, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("alpha")}, p); err != nil {
+		t.Fatal(err)
+	}
+	mustPost(t, s, posting(sess("bravo"), Target{Path: p}))
+	mustPost(t, s, selfPost("charlie", Target{Announce: true}))
+	mustPost(t, s, selfPost("charlie", Target{Agent: "alpha"}))
+	mustPost(t, s, asPost("charlie", d.Name, Target{Path: p}))
+	for name, tc := range map[string]struct {
+		id   uint64
+		want bool
+	}{
+		"a follower after its unfollow": {follower.ID, true},
+		"a path poster":                 {poster.ID, true},
+		"an announce and direct poster": {other.ID, false},
+		"a delegate's path post":        {d.ID, false},
+		"a follow of its own work path": {own.ID, false},
+	} {
+		if got := getIdentity(t, s, tc.id).Threaded; got != tc.want {
+			t.Errorf("%s: threaded %v, want %v", name, got, tc.want)
+		}
+	}
+}
+
+func mustFollowed(t *testing.T, s *Store, session, path string) Followed {
+	t.Helper()
+	got, err := s.Follow(t.Context(), Keyed{}, Caller{Session: session}, path)
+	if err != nil {
+		t.Fatalf("Follow(%s, %s): %v", session, path, err)
+	}
+	return got
+}
+
+func TestFollow_aPathItsFollowsCoverIsNotAdded(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	const lib = "/workspace/bolttable"
+	b := regAt(t, s, "bravo", repoSubflux)
+	mustFollow(t, s, sess("bravo"), lib)
+	got := mustFollowed(t, s, sess("bravo"), lib+"/table.go")
+	if !slices.Equal(got.Identity.Follows, []string{lib}) {
+		t.Errorf("follows %v, want [%s] alone", got.Identity.Follows, lib)
+	}
+	if !slices.ContainsFunc(got.Notices, func(n string) bool { return strings.Contains(n, "your follow of "+lib) }) {
+		t.Errorf("notices %q, want one naming the follow of %s that covers it", got.Notices, lib)
+	}
+	mustPost(t, s, posting(sess("bravo"), Target{Path: lib + "/index.go"}))
+	if f := getIdentity(t, s, b.ID).Follows; !slices.Equal(f, []string{lib}) {
+		t.Errorf("follows after a post under %s: %v, want [%s] alone", lib, f, lib)
+	}
+}
+
+func TestFollow_aPathItsWorkPathReachesIsNotAdded(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	b := regAt(t, s, "bravo", repoGrelot)
+	got := mustFollowed(t, s, sess("bravo"), repoGrelot+"/internal")
+	if len(got.Identity.Follows) != 0 {
+		t.Errorf("follows %v, want none", got.Identity.Follows)
+	}
+	if !slices.ContainsFunc(got.Notices, func(n string) bool { return strings.Contains(n, "your work path "+repoGrelot) }) {
+		t.Errorf("notices %q, want one naming the work path %s that reaches it", got.Notices, repoGrelot)
+	}
+	for i := range maxFollows + 1 {
+		mustPost(t, s, posting(sess("bravo"), Target{Path: fmt.Sprintf("%s/pkg%d", repoGrelot, i)}))
+	}
+	if row := getIdentity(t, s, b.ID); len(row.Follows) != 0 || !row.Threaded {
+		t.Errorf("after posts under its own work path: follows %v, threaded %v; want none and threaded", row.Follows, row.Threaded)
+	}
+	if _, err := s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, "/workspace/bolttable"); err != nil {
+		t.Errorf("follow of a library after those posts: %v, want it added", err)
+	}
+}
+
+func TestFollow_replacesTheFollowsUnderIt(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	const lib = "/workspace/bolttable"
+	b := regAt(t, s, "bravo", repoSubflux)
+	full := []string{lib + "/table.go", lib + "/index"}
+	for i := len(full); i < maxFollows; i++ {
+		full = append(full, fmt.Sprintf("/workspace/thread-%02d", i))
+	}
+	editIdentity(t, s, b.ID, func(r *identityRow) { r.Follows = full })
+	got := mustFollowed(t, s, sess("bravo"), lib)
+	if want := append(slices.Clone(full[2:]), lib); !slices.Equal(got.Identity.Follows, want) {
+		t.Errorf("follows %v, want %v", got.Identity.Follows, want)
+	}
+	if !slices.ContainsFunc(got.Notices, func(n string) bool {
+		return strings.Contains(n, "replaces") && strings.Contains(n, full[0]+", "+full[1])
+	}) {
+		t.Errorf("notices %q, want one naming the replaced %s and %s", got.Notices, full[0], full[1])
+	}
+}
+
+func TestUnfollow_removesAFollowAnotherFollowCovers(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	const lib = "/workspace/bolttable"
+	b := regAt(t, s, "bravo", repoSubflux)
+	editIdentity(t, s, b.ID, func(r *identityRow) { r.Follows = []string{lib, lib + "/table.go"} })
+	got := mustUnfollow(t, s, "bravo", lib+"/table.go")
+	if !slices.Equal(got.Identity.Follows, []string{lib}) {
+		t.Errorf("follows %v, want [%s]", got.Identity.Follows, lib)
+	}
+	if len(got.Notices) != 1 || !strings.Contains(got.Notices[0], "your follow of "+lib) {
+		t.Errorf("notices %q, want one naming the follow of %s that still delivers it", got.Notices, lib)
+	}
+	_, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, lib+"/never-followed")
+	wantRefusal(t, err, KindConflict, "", lib+"/never-followed", "your follow of "+lib)
+	if got := mustUnfollow(t, s, "bravo", lib); len(got.Identity.Follows) != 0 || len(got.Notices) != 0 {
+		t.Errorf("unfollowing the last follow: follows %v, notices %q; want neither", got.Identity.Follows, got.Notices)
+	}
+}
+
+func mustUnfollow(t *testing.T, s *Store, name, path string) Followed {
+	t.Helper()
+	got, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess(name)}, path)
+	if err != nil {
+		t.Fatalf("Unfollow(%s, %s): %v", name, path, err)
+	}
+	return got
 }
 
 func TestFollow_refusedAtTheCap(t *testing.T) {
@@ -122,12 +257,8 @@ func TestUnfollow_stopsTheThread(t *testing.T) {
 	mustPost(t, s, posting(sess("alpha"), Target{Path: repoGrelot}))
 	mustFollow(t, s, sess("bravo"), p)
 	mustFollow(t, s, sess("bravo"), repoGrelot)
-	got, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(got.Follows, []string{repoGrelot}) {
-		t.Errorf("follows %v, want only %s left", got.Follows, repoGrelot)
+	if got := mustUnfollow(t, s, "bravo", p).Identity.Follows; !slices.Equal(got, []string{repoGrelot}) {
+		t.Errorf("follows %v, want only %s left", got, repoGrelot)
 	}
 	mustPost(t, s, posting(sess("alpha"), Target{Path: p}))
 	if ds := deliveriesTo(t, s, b.ID); len(ds) != 0 {
@@ -141,32 +272,35 @@ func TestUnfollow_stopsTheThread(t *testing.T) {
 	}
 }
 
-func TestUnfollow_refusedUnderAWorkPath(t *testing.T) {
+func TestUnfollow_underAWorkPath(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	const work = "/workspace/marotte"
 	b := regAt(t, s, "bravo", work)
-	follows := []string{work, work + "/web", "/workspace/marotte-old"}
-	editIdentity(t, s, b.ID, func(r *identityRow) { r.Follows = follows })
-	for _, p := range []string{work, work + "/web", work + "/never-followed"} {
-		_, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
-		wantRefusal(t, err, KindConflict, "", p, work, "narrow your paths")
+	editIdentity(t, s, b.ID, func(r *identityRow) { r.Follows = []string{work, work + "/web", "/workspace/marotte-old"} })
+	for _, p := range []string{work, work + "/web"} {
+		got := mustUnfollow(t, s, "bravo", p)
+		if slices.Contains(got.Identity.Follows, p) {
+			t.Errorf("unfollow %s: follows %v, want it removed", p, got.Identity.Follows)
+		}
+		if len(got.Notices) != 1 || !strings.Contains(got.Notices[0], "your work path "+work) || !strings.Contains(got.Notices[0], "narrow your paths") {
+			t.Errorf("unfollow %s: notices %q, want one naming the work path that still delivers it", p, got.Notices)
+		}
 	}
-	if f := getIdentity(t, s, b.ID).Follows; !slices.Equal(f, follows) {
-		t.Errorf("follows %v after refusals, want %v", f, follows)
+	_, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, work+"/never-followed")
+	wantRefusal(t, err, KindConflict, "", work+"/never-followed", work, "narrow your paths")
+	got := mustUnfollow(t, s, "bravo", "/workspace/marotte-old")
+	if len(got.Identity.Follows) != 0 || len(got.Notices) != 0 {
+		t.Errorf("a name-prefix sibling: follows %v, notices %q; want it removed with no notice", got.Identity.Follows, got.Notices)
 	}
-	got, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, "/workspace/marotte-old")
-	if err != nil {
-		t.Fatalf("a name-prefix sibling is not under the work path: %v", err)
-	}
-	if !slices.Equal(got.Follows, follows[:2]) {
-		t.Errorf("follows %v, want %v", got.Follows, follows[:2])
+	if f := getIdentity(t, s, b.ID).Follows; len(f) != 0 {
+		t.Errorf("stored follows %v, want none", f)
 	}
 }
 
 // followThreadsFixture posts a thread at /workspace/shared/x that expires
 // first, a subpath thread and a later unrelated thread that outlive it,
 // and has bravo follow x, charlie the subpath and delta the later thread.
-// alpha posted at x, so it follows x too.
+// alpha's posts follow x and y; its follow of x covers the subpath.
 func followThreadsFixture(t *testing.T) (s *Store, ids map[string]uint64) {
 	t.Helper()
 	s, clk := openShortThreadStore(t)
@@ -189,12 +323,14 @@ func followThreadsFixture(t *testing.T) (s *Store, ids map[string]uint64) {
 
 const sharedX = "/workspace/shared/x"
 
-func TestThreadExpiry_dropsExactlyItsFollows(t *testing.T) {
-	s, ids := followThreadsFixture(t)
-	mustSweep(t, s)
+// wantFollowsKept checks that every fixture identity still follows what
+// it followed before x expired, and that the next post at x reaches x's
+// followers, alpha and bravo.
+func wantFollowsKept(t *testing.T, s *Store, ids map[string]uint64) {
+	t.Helper()
 	want := map[string][]string{
-		"alpha":   {sharedX + "/sub", "/workspace/shared/y"},
-		"bravo":   nil,
+		"alpha":   {sharedX, "/workspace/shared/y"},
+		"bravo":   {sharedX},
 		"charlie": {sharedX + "/sub"},
 		"delta":   {"/workspace/shared/y"},
 	}
@@ -207,26 +343,28 @@ func TestThreadExpiry_dropsExactlyItsFollows(t *testing.T) {
 			t.Errorf("%s is %s, want the follower identity kept live", n, row.State)
 		}
 	}
-	// A thread recreated at the same path starts with no followers.
-	mustPost(t, s, posting(sess("charlie"), Target{Path: sharedX}))
+	got := mustPost(t, s, posting(sess("charlie"), Target{Path: sharedX}))
+	if got.Delivered != 2 {
+		t.Errorf("the recreated thread's first post delivered to %d, want alpha and bravo", got.Delivered)
+	}
 	for _, n := range []string{"alpha", "bravo"} {
-		if ds := deliveriesTo(t, s, ids[n]); len(ds) != 0 {
-			t.Errorf("%s, a follower of the expired thread, got %d deliveries of the new one", n, len(ds))
+		if ds := deliveriesTo(t, s, ids[n]); len(ds) == 0 || ds[len(ds)-1].Message != got.Message {
+			t.Errorf("%s, a follower of x, got %+v, want the new post %d last", n, ds, got.Message)
 		}
 	}
 }
 
-func TestThreadExpiry_dropsItsFollowsEagerly(t *testing.T) {
+func TestThreadExpiry_keepsItsFollows(t *testing.T) {
 	s, ids := followThreadsFixture(t)
-	// charlie's post meets the expired thread before any sweep.
-	got := mustPost(t, s, posting(sess("charlie"), Target{Path: sharedX}))
-	if got.Delivered != 0 {
-		t.Errorf("delivered %d, want 0: the old thread's followers are gone", got.Delivered)
+	mustSweep(t, s)
+	if ths, err := s.Threads(t.Context(), Caller{Session: sess("alpha")}, sharedX); err != nil || len(ths) != 1 || ths[0].Path != sharedX+"/sub" {
+		t.Fatalf("threads under x after the sweep %+v, %v: want only the subpath's, x expired", ths, err)
 	}
-	if f := getIdentity(t, s, ids["bravo"]).Follows; len(f) != 0 {
-		t.Errorf("bravo follows %v, want none", f)
-	}
-	if f := getIdentity(t, s, ids["charlie"]).Follows; !slices.Equal(f, []string{sharedX + "/sub", sharedX}) {
-		t.Errorf("charlie follows %v, want its subpath and the new thread it posted in", f)
-	}
+	wantFollowsKept(t, s, ids)
+}
+
+func TestThreadExpiry_unsweptKeepsItsFollows(t *testing.T) {
+	s, ids := followThreadsFixture(t)
+	// charlie's post in wantFollowsKept meets the expired thread before any sweep.
+	wantFollowsKept(t, s, ids)
 }
