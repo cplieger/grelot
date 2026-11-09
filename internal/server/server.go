@@ -49,7 +49,6 @@ type Server struct {
 	now      func() time.Time
 	presence *presence
 	posts    *postLimit
-	fanOut   *fanOut
 	hub      *Hub
 	push     Pusher
 	metrics  *obs.Metrics
@@ -81,7 +80,7 @@ func New(o *Options) *Server {
 	doors := loadDoors(o, o.Logger, m)
 	s := &Server{
 		store: o.Store, log: o.Logger, now: now, version: o.Version, cfg: o.Config,
-		presence: newPresence(), posts: newPostLimit(), fanOut: &fanOut{}, hub: hub, push: o.Push, metrics: m,
+		presence: newPresence(), posts: newPostLimit(), hub: hub, push: o.Push, metrics: m,
 		needles:  append([]string{o.Config.Token}, doors.Secrets()...),
 		bearer:   httpserver.NewStaticTokenVerifier(o.Config.Token),
 		stopping: make(chan struct{}),
@@ -113,7 +112,6 @@ func (s *Server) Release() {
 func (s *Server) Beat(ctx context.Context) {
 	s.beat.Store(s.now().UnixNano())
 	s.posts.prune(s.now())
-	s.fanOut.prune(s.now())
 	s.push.beat(ctx)
 	ids := s.presence.ids()
 	live, err := s.store.Live(ctx, ids)

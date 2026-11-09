@@ -5,7 +5,6 @@ package store
 import (
 	"cmp"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"slices"
 	"strings"
@@ -238,7 +237,6 @@ func (w *walk) read(r *bolttable.ReadTx) ([]Entry, error) {
 	return out, nil
 }
 
-// newest is es in time order cut to its newest limit entries.
 func (w *walk) newest(es []Entry) []Entry {
 	slices.SortFunc(es, func(a, b Entry) int {
 		return cmp.Or(a.Written.Compare(b.Written), cmp.Compare(a.Message, b.Message), cmp.Compare(a.Seq, b.Seq))
@@ -316,12 +314,9 @@ func (w *walk) threadPath(r *bolttable.ReadTx, id uint64) (string, error) {
 func (w *walk) walkPosts(r *bolttable.ReadTx) ([]Entry, error) {
 	var out []Entry
 	err := w.s.t.bySender.Scan(r, bolttable.Range{Prefix: be64(w.me.ID), Reverse: true}, func(ikey, k, _ []byte) (bool, error) {
-		if len(ikey) != 16 {
-			return false, fmt.Errorf("store: sender index key %x is not 16 bytes", ikey)
-		}
-		at := time.Unix(0, int64(binary.BigEndian.Uint64(ikey[8:]))) //nolint:gosec // the key holds a UnixNano written from an int64
-		if at.Before(w.since) {
-			return false, nil
+		at, err := senderPostedAt(ikey)
+		if err != nil || at.Before(w.since) {
+			return false, err
 		}
 		if !w.until.IsZero() && at.After(w.until) {
 			return true, nil

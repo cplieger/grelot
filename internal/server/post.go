@@ -111,17 +111,8 @@ func (s *Server) post(r *http.Request, c store.Caller, k store.Keyed) (status in
 		s.log.Info("message posted", "thread_kind", kind, "path", s.redact(to.Path), "to", to.Agent, "sender", got.Identity.Name,
 			"message", got.Message, "recipients", got.Delivered, "same_environment", got.SameEnvironment,
 			"other", got.Other, "subject", s.redact(req.Subject), "body", s.redact(req.Body))
-		s.hintFanOut(&got, to.Agent != "", req.Subject)
 	}
 	return http.StatusCreated, postOut(&got), nil
-}
-
-// hintFanOut adds fanOutHint to a direct post's answer when fanOut.record
-// finds its subject sent to another agent.
-func (s *Server) hintFanOut(got *store.Posted, direct bool, subject string) {
-	if direct && s.fanOut.record(got.Identity.ID, got.Thread, subject, s.now()) {
-		got.Notices = append(got.Notices, fanOutHint)
-	}
 }
 
 func postOut(got *store.Posted) postResponse {

@@ -4,6 +4,7 @@ package store
 
 import (
 	"encoding/binary"
+	"fmt"
 	"maps"
 	"slices"
 	"time"
@@ -382,6 +383,14 @@ func senderEntries(_ []byte, v *messageRow) []bolttable.Entry {
 		return nil
 	}
 	return []bolttable.Entry{{Key: pairKey(v.Sender, uint64(v.PostedAt.UnixNano()))}}
+}
+
+// senderPostedAt is the post time a senderEntries key carries.
+func senderPostedAt(ikey []byte) (time.Time, error) {
+	if len(ikey) != 16 {
+		return time.Time{}, fmt.Errorf("store: sender index key %x is not 16 bytes", ikey)
+	}
+	return time.Unix(0, int64(binary.BigEndian.Uint64(ikey[8:]))), nil //nolint:gosec // the key holds a UnixNano written from an int64
 }
 
 // isPost reports whether a message or delivery kind is an agent's post.

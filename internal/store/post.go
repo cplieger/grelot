@@ -43,7 +43,7 @@ type Posting struct {
 // Posted is what a post answers.
 type Posted struct {
 	// Notices are lines for the sender: a dormant recipient, a follow the
-	// post could not add.
+	// post could not add, a subject already sent another agent.
 	Notices  []string
 	Identity Identity
 	Message  uint64
@@ -150,6 +150,9 @@ func (w *wtx) post(p *Posting) (Posted, error) {
 		return Posted{}, err
 	}
 	if err := w.putWatch(wt, &out); err != nil {
+		return Posted{}, err
+	}
+	if err := w.hintCopy(&msg, &out); err != nil {
 		return Posted{}, err
 	}
 	return out, nil

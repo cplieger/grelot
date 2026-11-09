@@ -282,7 +282,9 @@ func TestPost_directThreadIsOneForBothDirections(t *testing.T) {
 	c := regAt(t, s, "charlie")
 	ab := mustPost(t, s, posting(sess("alpha"), Target{Agent: "bravo"}))
 	ba := mustPost(t, s, posting(sess("bravo"), Target{Agent: "alpha"}))
-	ac := mustPost(t, s, posting(sess("alpha"), Target{Agent: "charlie"}))
+	toC := posting(sess("alpha"), Target{Agent: "charlie"})
+	toC.Subject = "another subject"
+	ac := mustPost(t, s, toC)
 	if ab.Thread != ba.Thread {
 		t.Errorf("A to B in thread %d, B to A in %d, want one thread", ab.Thread, ba.Thread)
 	}
