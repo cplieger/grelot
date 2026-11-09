@@ -20,6 +20,8 @@ import (
 const NoChange = "no change"
 
 const (
+	// maxPaths bounds one write's join-card fan-out, since each added work
+	// path owes a card to every overlapping identity.
 	maxPaths       = 16
 	maxPathBytes   = 1024
 	maxPathDepth   = 64
@@ -117,7 +119,8 @@ type Change struct {
 
 // Register creates session's identity, takes a live one over, or returns
 // the session's live identity unchanged. Refusals: KindInvalid for a bad
-// field, ttl or where; KindConflict for a held name or a refused take-over.
+// field, ttl or where; KindConflict for a held name or a refused take-over;
+// KindFull for a new identity or delegate past 90 % of Options.MaxBytes.
 func (s *Store) Register(ctx context.Context, k Keyed, r *Registration) (Registered, bool, error) {
 	provider, err := checkSession(r.Session)
 	if err != nil {
@@ -218,6 +221,9 @@ func (w *wtx) registerRow(r *Registration, provider string) (row identityRow, ad
 			return identityRow{}, nil, false, err
 		}
 	default:
+		if gerr := w.grow(); gerr != nil {
+			return identityRow{}, nil, false, gerr
+		}
 		id, err := w.s.t.identities.table.NextID(w.tx)
 		if err != nil {
 			return identityRow{}, nil, false, err
@@ -239,7 +245,8 @@ func (w *wtx) registerRow(r *Registration, provider string) (row identityRow, ad
 
 // Set applies ch to c's live identity and returns it. Refusals: KindGone
 // for a session with no live identity, KindInvalid for a bad change,
-// KindConflict for a name another identity holds.
+// KindConflict for a name another identity holds, KindFull for an added
+// work path past 90 % of Options.MaxBytes.
 func (s *Store) Set(ctx context.Context, k Keyed, c Caller, ch Change) (Identity, error) {
 	return keyedResult(ctx, s, k, func(w *wtx) (Identity, error) {
 		row, err := w.liveAs(c)
@@ -308,6 +315,9 @@ func (w *wtx) applyFields(row *identityRow, f Fields, sent *Where, mode fieldMod
 	}
 	if err == nil && (fc.pathsChanged || renew || sent != nil) {
 		err = checkWhere(sent, fc.paths)
+	}
+	if err == nil && len(fc.added) > 0 {
+		err = w.grow()
 	}
 	if err != nil {
 		return err

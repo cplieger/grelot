@@ -23,8 +23,15 @@ func (s *Store) measure() (Space, error) {
 	return Space{FileBytes: sp.FileBytes, FreeBytes: sp.FreeBytes, InUseBytes: sp.InUseBytes}, nil
 }
 
-// nearlyFull reports the bytes in use past 90 % of the ceiling.
-func (s *Store) nearlyFull() (bool, error) {
-	sp, err := s.measure()
-	return sp.InUseBytes*10 > s.maxBytes*9, err
+// grow refuses with KindFull, past 90 % of the ceiling, a write that adds
+// rows by the caller's choice. A write that only removes, renews or
+// recovers never calls it, so it goes through on a full store. It
+// measures under the write lock: read before it, concurrent writes all
+// see the space no other one has filled yet and pass the ceiling together.
+func (w *wtx) grow() error {
+	sp, err := w.s.measure()
+	if err == nil && sp.InUseBytes*10 > w.s.maxBytes*9 {
+		err = refuse(KindFull, "store nearly full: new posts, identities, follows, work paths, reservations and delegate links resume as older mail expires")
+	}
+	return err
 }

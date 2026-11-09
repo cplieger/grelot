@@ -59,7 +59,8 @@ type Granted struct {
 // or a deny of the caller itself; KindForbidden for a delegate caller;
 // KindNotFound for an agent name no live identity holds; KindConflict for
 // a handle an identity or an unused link holds, or a cap reached; KindGone
-// for a session with no live identity.
+// for a session with no live identity; KindFull past 90 % of
+// Options.MaxBytes.
 func (s *Store) Delegate(ctx context.Context, k Keyed, g *Grant) (Granted, bool, error) {
 	if err := checkLabel(g.Label); err != nil {
 		return Granted{}, false, err
@@ -85,6 +86,9 @@ func (w *wtx) delegate(g *Grant) (Granted, error) {
 	handle := me.Name + "/" + g.Label
 	if ferr := w.handleFree(&me, handle, g.Label); ferr != nil {
 		return Granted{}, ferr
+	}
+	if gerr := w.grow(); gerr != nil {
+		return Granted{}, gerr
 	}
 	raw := make([]byte, linkBytes)
 	_, _ = rand.Read(raw) // crypto/rand.Read never returns an error.
@@ -232,6 +236,9 @@ func (w *wtx) registerDelegate(r *Registration) (Registered, error) {
 	ls, err := identityPolicy.grant(w.now, link.TTL, parent.Lease.Expires)
 	if err != nil {
 		return Registered{}, err
+	}
+	if gerr := w.grow(); gerr != nil {
+		return Registered{}, gerr
 	}
 	id, err := w.s.t.identities.table.NextID(w.tx)
 	if err != nil {

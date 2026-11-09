@@ -18,7 +18,6 @@ import (
 const (
 	maxSubject = 120
 	maxBody    = 64 << 10
-	maxFollows = 32
 )
 
 // Target is where a post goes: exactly one of the announcements, a path
@@ -44,7 +43,7 @@ type Posting struct {
 // Posted is what a post answers.
 type Posted struct {
 	// Notices are lines for the sender, such as a dormant recipient or a
-	// follow the post added or could not add.
+	// follow the post added that reaches more than its thread.
 	Notices  []string
 	Identity Identity
 	Message  uint64
@@ -69,15 +68,8 @@ func (s *Store) Post(ctx context.Context, k Keyed, p *Posting) (Posted, bool, er
 		return Posted{}, false, err
 	}
 	return keyed(ctx, s, k, func(w *wtx) (Posted, error) {
-		// Measured under the write lock: read before it, concurrent posts
-		// all see the space no other one has filled yet and pass the
-		// ceiling together.
-		full, ferr := s.nearlyFull()
-		if ferr != nil {
-			return Posted{}, ferr
-		}
-		if full {
-			return Posted{}, refuse(KindFull, "store nearly full: posts resume as older mail expires")
+		if err := w.grow(); err != nil {
+			return Posted{}, err
 		}
 		return w.post(p)
 	})
@@ -249,8 +241,8 @@ func (w *wtx) announceRoute() (route, error) {
 // Posts go down the tree only, so a work path under p does not match.
 // Walking p's ancestors shortest first leaves each recipient labelled with
 // its most specific match. The sender follows p unless its work path or
-// a follow already reaches p, it is at the cap, or it is a delegate,
-// whose scope already delivers p. Unlike grelot follow, this follow keeps
+// a follow already reaches p, or it is a delegate, whose scope already
+// delivers p. Unlike grelot follow, this follow keeps
 // the sender's follows under p, so a post never removes one it chose.
 func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 	th, _, err := w.thread(p)
@@ -268,12 +260,6 @@ func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 		me.Threaded = true
 	}
 	if me.Parent != 0 || reachedBy(me, p) != "" {
-		return rt, nil
-	}
-	if len(me.Follows) >= maxFollows {
-		rt.notices = append(rt.notices, fmt.Sprintf(
-			"you follow %d threads, the most allowed, so this post did not follow %s: grelot unfollow one to follow it", maxFollows, p,
-		))
 		return rt, nil
 	}
 	me.Follows = append(me.Follows, p)

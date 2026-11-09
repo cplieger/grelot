@@ -156,14 +156,11 @@ func TestFollow_aPathItsWorkPathReachesIsNotAdded(t *testing.T) {
 	if !slices.ContainsFunc(got.Notices, func(n string) bool { return strings.Contains(n, "your work path "+repoGrelot) }) {
 		t.Errorf("notices %q, want one naming the work path %s that reaches it", got.Notices, repoGrelot)
 	}
-	for i := range maxFollows + 1 {
+	for i := range 3 {
 		mustPost(t, s, posting(sess("bravo"), Target{Path: fmt.Sprintf("%s/pkg%d", repoGrelot, i)}))
 	}
 	if row := getIdentity(t, s, b.ID); len(row.Follows) != 0 || !row.Threaded {
 		t.Errorf("after posts under its own work path: follows %v, threaded %v; want none and threaded", row.Follows, row.Threaded)
-	}
-	if _, err := s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, "/workspace/bolttable"); err != nil {
-		t.Errorf("follow of a library after those posts: %v, want it added", err)
 	}
 }
 
@@ -171,19 +168,16 @@ func TestFollow_replacesTheFollowsUnderIt(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	const lib = "/workspace/bolttable"
 	b := regAt(t, s, "bravo", repoSubflux)
-	full := []string{lib + "/table.go", lib + "/index"}
-	for i := len(full); i < maxFollows; i++ {
-		full = append(full, fmt.Sprintf("/workspace/thread-%02d", i))
-	}
-	editIdentity(t, s, b.ID, func(r *identityRow) { r.Follows = full })
+	const other = "/workspace/marotte"
+	editIdentity(t, s, b.ID, func(r *identityRow) { r.Follows = []string{lib + "/table.go", other, lib + "/index"} })
 	got := mustFollowed(t, s, sess("bravo"), lib)
-	if want := append(slices.Clone(full[2:]), lib); !slices.Equal(got.Identity.Follows, want) {
+	if want := []string{other, lib}; !slices.Equal(got.Identity.Follows, want) {
 		t.Errorf("follows %v, want %v", got.Identity.Follows, want)
 	}
 	if !slices.ContainsFunc(got.Notices, func(n string) bool {
-		return strings.Contains(n, "replaces") && strings.Contains(n, full[0]+", "+full[1])
+		return strings.Contains(n, "replaces") && strings.Contains(n, lib+"/table.go, "+lib+"/index")
 	}) {
-		t.Errorf("notices %q, want one naming the replaced %s and %s", got.Notices, full[0], full[1])
+		t.Errorf("notices %q, want one naming the replaced %s/table.go and %s/index", got.Notices, lib, lib)
 	}
 }
 
@@ -215,21 +209,17 @@ func mustUnfollow(t *testing.T, s *Store, name, path string) Followed {
 	return got
 }
 
-func TestFollow_refusedAtTheCap(t *testing.T) {
+func TestFollow_hasNoCountCap(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
-	const p = "/workspace/one-more"
-	regAt(t, s, "alpha", repoGrelot)
 	b := regAt(t, s, "bravo", repoSubflux)
-	mustPost(t, s, posting(sess("alpha"), Target{Path: p}))
-	full := make([]string, 32)
-	for i := range full {
-		full[i] = fmt.Sprintf("/workspace/thread-%02d", i)
+	var want []string
+	for i := range 33 {
+		p := fmt.Sprintf("/workspace/thread-%02d", i)
+		want = append(want, p)
+		mustFollowed(t, s, sess("bravo"), p)
 	}
-	editIdentity(t, s, b.ID, func(r *identityRow) { r.Follows = full })
-	_, err := s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
-	wantRefusal(t, err, KindConflict, "", "32", "grelot unfollow")
-	if f := getIdentity(t, s, b.ID).Follows; !slices.Equal(f, full) {
-		t.Errorf("follows changed to %d entries, want the 32 kept", len(f))
+	if f := getIdentity(t, s, b.ID).Follows; !slices.Equal(f, want) {
+		t.Errorf("follows %v, want all 33", f)
 	}
 }
 

@@ -19,8 +19,8 @@ type Census struct {
 	Oldest  time.Time
 	Space   Space
 	Threads ThreadCounts
-	// MaxBytes is the ceiling on Space.InUseBytes that posts are refused
-	// near.
+	// MaxBytes is the ceiling on Space.InUseBytes that writes adding rows
+	// are refused near.
 	MaxBytes int64
 	Live     int
 	Dormant  int
