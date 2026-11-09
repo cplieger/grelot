@@ -1,0 +1,32 @@
+# The Kiro IDE, which runs the Kiro CLI's agent server with its own client.
+# It takes kiro-cli's hooks and workflow door. It is never detected: its
+# shells carry the same KIRO_SESSION_ID as kiro-cli's, so a client config
+# picks it with provider: kiro-ide, and its own hook file names kiro-ide in
+# every command. The IDE and the CLI read one ~/.kiro/hooks folder, so a
+# machine installs this hook file or kiro-cli's, never both. Its own hook
+# payloads are not recorded yet, so its tests run on kiro-cli's.
+name: kiro-ide
+extends: kiro-cli
+evidence: unverified
+session:
+  # kiro-cli's session with no process: the IDE's one agent server hosts
+  # every chat of the window, so no start may name the identity another
+  # chat held.
+  env: KIRO_SESSION_ID
+  stdin: session_id
+  record:
+    dir_env: KIRO_HOME
+    dir_default: ~/.kiro
+    glob: "sessions/*/{{.HookSession}}/session.json"
+    parent: parentSessionId
+    reason: createdReason
+    same_agent: [rewind]
+    same_agent_note: >-
+      this chat is a rewind of an earlier session; a grelot-watch run started
+      before the rewind still wakes the old session, which this chat never sees.
+      Ask the user to stop it from the Workflows area above the chat, then
+      start a new one with the start line below.
+# The IDE runs no one-shot chats, and kiro-cli's one_shot reads arguments of
+# a session.process this session does not name.
+one_shot: {}
+notes: docs/hosts/kiro-ide.md

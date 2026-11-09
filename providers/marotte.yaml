@@ -1,0 +1,38 @@
+# marotte, a web UI serving kiro-cli chats over the Kiro agent server. A
+# marotte chat is a kiro-cli session: its client detects kiro-cli and
+# registers as that provider, so this file holds only the door the server
+# pushes through, matched to those identities, and no session. A client
+# told provider: marotte refuses every identity command.
+#
+# The server reads this file from its own providers folder, not from the
+# client's set. The door needs marotte's notify route turned on with
+# MAROTTE_NOTIFY_TOKEN, and the same value in the server's
+# SECRET_MAROTTE_TOKEN. Without it, run kiro-cli's grelot-watch workflow in
+# each chat.
+name: marotte
+evidence: measured
+doors:
+  # POST /api/sessions/<session>/notify steers a busy chat or prompts an
+  # idle one. marotte answers 200 for a delivery and for a key it saw in
+  # the last 10 minutes, 404 for a session it does not have, and 503 with
+  # Retry-After when busy. The session is the chat's KIRO_SESSION_ID. The
+  # text may not start with [notification/ or hold a #[[kind:query]]
+  # reference, which grelot's signal line never does.
+  - name: notify
+    layer: 1
+    transport: http
+    # Replace the host with the host label every marotte container's client
+    # config sets, so a kiro-cli session elsewhere is never pushed here.
+    match: {provider: kiro-cli, host: your-host/marotte}
+    # marotte's service name on a compose network both containers join.
+    url: http://marotte:9847/api/sessions/{{path .Session}}/notify
+    headers:
+      # Read from SECRET_MAROTTE_TOKEN, or the file SECRET_MAROTTE_TOKEN_FILE
+      # names.
+      Authorization: Bearer {{secret "marotte_token"}}
+      Content-Type: application/json
+    body: '{"text":{{json .Line}},"source":"grelot","dedupe_key":{{json .DedupeKey}}}'
+    # marotte drops a repeated key for the same fixed window.
+    dedupe_window: 10m
+    gone: [404]
+notes: docs/hosts/marotte.md

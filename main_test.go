@@ -2,160 +2,164 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
-	"time"
 )
 
-// syncBuffer is a bytes.Buffer safe for serve's goroutine to write while the
-// test reads.
-type syncBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (b *syncBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.Write(p)
-}
-
-func (b *syncBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.String()
-}
-
-func TestHealthz(t *testing.T) {
-	t.Parallel()
-	srv := httptest.NewServer(newMux())
-	t.Cleanup(srv.Close)
-
-	t.Run("GET answers 200 with a JSON status", func(t *testing.T) {
-		t.Parallel()
-		resp, err := http.Get(srv.URL + "/healthz")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer resp.Body.Close()
-		body, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode != http.StatusOK || string(body) != `{"status":"ok"}` {
-			t.Errorf("got %d %q, want 200 {\"status\":\"ok\"}", resp.StatusCode, body)
-		}
-		if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
-			t.Errorf("Content-Type %q, want application/json", ct)
-		}
-	})
-
-	t.Run("POST is refused", func(t *testing.T) {
-		t.Parallel()
-		resp, err := http.Post(srv.URL+"/healthz", "text/plain", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusMethodNotAllowed {
-			t.Errorf("got %d, want 405", resp.StatusCode)
-		}
-	})
-
-	t.Run("an unknown path is 404", func(t *testing.T) {
-		t.Parallel()
-		resp, err := http.Get(srv.URL + "/nope")
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusNotFound {
-			t.Errorf("got %d, want 404", resp.StatusCode)
-		}
-	})
-}
-
-func TestProbe(t *testing.T) {
-	t.Parallel()
-
-	t.Run("a healthy server passes", func(t *testing.T) {
-		t.Parallel()
-		srv := httptest.NewServer(newMux())
-		t.Cleanup(srv.Close)
-		if err := probe(srv.URL+"/healthz", time.Second); err != nil {
-			t.Errorf("probe: %v", err)
-		}
-	})
-
-	t.Run("a non-200 answer fails", func(t *testing.T) {
-		t.Parallel()
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusServiceUnavailable)
-		}))
-		t.Cleanup(srv.Close)
-		err := probe(srv.URL+"/healthz", time.Second)
-		if err == nil || !strings.Contains(err.Error(), "503") {
-			t.Errorf("probe error %v, want one naming status 503", err)
-		}
-	})
-
-	t.Run("an unreachable server fails", func(t *testing.T) {
-		t.Parallel()
-		srv := httptest.NewServer(newMux())
-		url := srv.URL + "/healthz"
-		srv.Close()
-		if err := probe(url, time.Second); err == nil {
-			t.Error("probe of a closed server returned nil")
-		}
-	})
-}
-
-func TestServe(t *testing.T) {
-	t.Parallel()
-	var logs syncBuffer
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- serve(ctx, "127.0.0.1:0", slog.New(slog.NewJSONHandler(&logs, nil))) }()
-
-	deadline := time.Now().Add(5 * time.Second)
-	for !strings.Contains(logs.String(), `"msg":"listening"`) {
-		if time.Now().After(deadline) {
-			t.Fatalf("no listening line within 5 s; logs: %s", logs.String())
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	cancel()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("serve returned %v after cancel, want nil", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("serve did not return within 5 s of cancel")
-	}
-	if !strings.Contains(logs.String(), `"msg":"stopped"`) {
-		t.Errorf("no stopped line; logs: %s", logs.String())
-	}
-}
-
-func TestServe_listen_error(t *testing.T) {
-	t.Parallel()
-	err := serve(context.Background(), "256.0.0.1:0", slog.New(slog.DiscardHandler))
-	if err == nil {
-		t.Fatal("serve on an invalid address returned nil")
-	}
-}
-
-func TestRun_unknown_command(t *testing.T) {
+func TestRun_unknownCommand(t *testing.T) {
 	t.Parallel()
 	var stderr bytes.Buffer
-	if code := run([]string{"bogus"}, &stderr); code != 2 {
+	if code := run([]string{"bogus"}, io.Discard, &stderr); code != 2 {
 		t.Errorf("exit %d, want 2", code)
 	}
 	if !strings.Contains(stderr.String(), `unknown command "bogus"`) {
 		t.Errorf("stderr %q does not name the command", stderr.String())
+	}
+}
+
+// isolateConfig points os.UserConfigDir at a temporary folder on every
+// system: HOME covers macOS, XDG_CONFIG_HOME Linux and AppData Windows.
+func isolateConfig(t *testing.T) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AppData", filepath.Join(home, "AppData", "Roaming"))
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(dir, home) {
+		t.Fatalf("os.UserConfigDir() = %s, outside the temporary home %s", dir, home)
+	}
+}
+
+func TestRun_clientLoadsTheShippedProvidersUnderTheUsersOwn(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("KIRO_SESSION_ID", "")
+	t.Setenv("GRELOT_TOKEN_FILE", "")
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(configDir, "grelot")
+	if err := os.MkdirAll(filepath.Join(dir, "providers"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("server: http://127.0.0.1:1\ntoken: test-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	inbox := func(t *testing.T) string {
+		t.Helper()
+		var stderr bytes.Buffer
+		if code := run([]string{"--provider", "kiro-cli", "inbox"}, io.Discard, &stderr); code != 1 {
+			t.Errorf("exit %d, want 1; stderr %q", code, stderr.String())
+		}
+		return stderr.String()
+	}
+	t.Run("a shipped file with no file on disk", func(t *testing.T) {
+		if got := inbox(t); !strings.Contains(got, "KIRO_SESSION_ID") {
+			t.Errorf("stderr %q, want the shipped kiro-cli file's session variable", got)
+		}
+	})
+	t.Run("a user file replaces the shipped one", func(t *testing.T) {
+		file := filepath.Join(dir, "providers", "kiro-cli.yaml")
+		if err := os.WriteFile(file, []byte("name: kiro-cli\nsession: {env: USER_FILE_SESSION}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := inbox(t); !strings.Contains(got, "USER_FILE_SESSION") || strings.Contains(got, "KIRO_SESSION_ID") {
+			t.Errorf("stderr %q, want the user file's session variable only", got)
+		}
+	})
+}
+
+// stamp sets main.version as -ldflags -X would, for one test that runs
+// before the parallel ones.
+func stamp(t *testing.T, v string) {
+	t.Helper()
+	old := version
+	version = v
+	t.Cleanup(func() { version = old })
+}
+
+// A build stamped with a version the server would refuse prints it, and
+// sends the server the development version instead.
+func TestRun_versionSendsTheWireVersion(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("GRELOT_TOKEN_FILE", "")
+	const pseudo = "v1.2.4-0.20261105101010-0123456789ab"
+	stamp(t, pseudo)
+	sent := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case sent <- r.Header.Get("Grelot-Version"):
+		default:
+		}
+		w.Header().Set("Grelot-Version", "v1.2.3")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"version":"v1.2.3"}`)
+	}))
+	t.Cleanup(srv.Close)
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(configDir, "grelot")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("server: "+srv.URL+"\ntoken: test-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"version"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit %d, stderr %q", code, stderr.String())
+	}
+	if want := "grelot client " + pseudo + "\ngrelot server v1.2.3\n"; stdout.String() != want {
+		t.Errorf("stdout %q, want %q", stdout.String(), want)
+	}
+	select {
+	case got := <-sent:
+		if got != "dev" {
+			t.Errorf("Grelot-Version sent %q, want dev", got)
+		}
+	default:
+		t.Error("the server got no request")
+	}
+}
+
+func TestRun_clientVerbs(t *testing.T) {
+	isolateConfig(t)
+	cases := []struct {
+		name     string
+		args     []string
+		wantCode int
+		stdout   string
+		stderr   string
+	}{
+		{name: "help prints the manual", args: []string{"help"}, stdout: "### grelot register"},
+		{name: "a verb's help prints its section", args: []string{"register", "--help"}, stdout: "### grelot register"},
+		{name: "self before the verb", args: []string{"--self", "help"}, stdout: "## Commands"},
+		{name: "provider before the verb", args: []string{"--provider", "any", "help"}, stdout: "## Commands"},
+		{name: "provider with no name", args: []string{"--provider"}, wantCode: 2, stderr: "--provider needs a provider name"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if code := run(c.args, &stdout, &stderr); code != c.wantCode {
+				t.Errorf("exit %d, want %d; stderr %q", code, c.wantCode, stderr.String())
+			}
+			if !strings.Contains(stdout.String(), c.stdout) {
+				t.Errorf("stdout does not hold %q:\n%s", c.stdout, stdout.String())
+			}
+			if !strings.Contains(stderr.String(), c.stderr) {
+				t.Errorf("stderr %q does not hold %q", stderr.String(), c.stderr)
+			}
+		})
 	}
 }

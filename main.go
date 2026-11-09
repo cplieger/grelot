@@ -1,114 +1,82 @@
-// Command grelot will coordinate coding agents. This release runs the server's
-// health endpoint only; the API and the agent client arrive in later releases.
+// Command grelot is the grelot server, which coordinates coding agents
+// through one HTTP API, its healthcheck, and the client every agent runs.
 package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
-	"log/slog"
-	"net"
-	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"runtime/debug"
 	"syscall"
-	"time"
+
+	"github.com/cplieger/grelot/internal/cli"
+	"github.com/cplieger/grelot/internal/client"
+	"github.com/cplieger/grelot/internal/proctree"
+	"github.com/cplieger/grelot/internal/provider"
+	buildver "github.com/cplieger/grelot/internal/version"
+	"github.com/cplieger/grelot/internal/where"
+	"github.com/cplieger/grelot/providers"
 )
 
+// version is set at build time with -ldflags "-X main.version=<tag>".
+var version = "dev"
+
+// buildVersion is the version this binary reports; buildver.Build says
+// which.
+func buildVersion() string { return buildver.Build(version, debug.ReadBuildInfo) }
+
+// The server's two commands; serve is also what grelot runs with no
+// arguments.
 const (
-	listenAddr   = ":8080"
-	healthURL    = "http://127.0.0.1:8080/healthz"
-	probeTimeout = 3 * time.Second
-	stopTimeout  = 10 * time.Second
+	cmdServe  = "serve"
+	cmdHealth = "health"
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stderr))
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
 // run dispatches one subcommand and returns the process exit code: 0 on
 // success, 1 on a runtime failure, 2 on a usage error.
-func run(args []string, stderr io.Writer) int {
-	cmd := "serve"
+func run(args []string, stdout, stderr io.Writer) int {
+	cmd := cmdServe
 	if len(args) > 0 {
 		cmd = args[0]
 	}
 	switch cmd {
-	case "serve":
-		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-		defer stop()
-		logger := slog.New(slog.NewJSONHandler(stderr, nil))
-		if err := serve(ctx, listenAddr, logger); err != nil {
-			logger.Error("server stopped", "error", err)
-			return 1
-		}
-		return 0
-	case "health":
-		if err := probe(healthURL, probeTimeout); err != nil {
-			fmt.Fprintf(stderr, "grelot health: %v\n", err)
-			return 1
-		}
-		return 0
+	case cmdServe, cmdHealth:
+		return serverCommand(cmd, stderr)
+	case "provider":
+		return providerCommand(args[1:], stderr)
 	default:
-		fmt.Fprintf(stderr, "grelot: unknown command %q; want serve or health\n", cmd)
-		return 2
+		return clientCommand(args, stdout, stderr)
 	}
 }
 
-// newMux serves GET /healthz, which answers 200 while the process serves.
-func newMux() *http.ServeMux {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"status":"ok"}`)
-	})
-	return mux
-}
-
-// serve listens on addr until ctx ends, then drains for at most stopTimeout.
-func serve(ctx context.Context, addr string, logger *slog.Logger) error {
-	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
+// clientCommand runs one of the client's verbs in this process's
+// environment.
+func clientCommand(args []string, stdout, stderr io.Writer) int {
+	configDir, err := os.UserConfigDir()
 	if err != nil {
-		return err
+		fmt.Fprintf(stderr, "grelot cannot find the user config dir: %v; set HOME, or XDG_CONFIG_HOME on Linux\n", err)
+		return 1
 	}
-	srv := &http.Server{Handler: newMux(), ReadHeaderTimeout: 10 * time.Second}
-	errc := make(chan error, 1)
-	go func() { errc <- srv.Serve(ln) }()
-	logger.Info("listening", "addr", ln.Addr().String())
-	select {
-	case err := <-errc:
-		return err
-	case <-ctx.Done():
-	}
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), stopTimeout)
-	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return err
-	}
-	if err := <-errc; !errors.Is(err, http.ErrServerClosed) {
-		return err
-	}
-	logger.Info("stopped")
-	return nil
-}
-
-// probe returns nil when url answers 200 within timeout.
-func probe(url string, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
+	set, err := provider.LoadSet(providers.FS, os.DirFS(filepath.Join(client.Dir(configDir), "providers")))
 	if err != nil {
-		return err
+		fmt.Fprintf(stderr, "grelot: %v\n", err)
+		return 1
 	}
-	resp, err := (&http.Client{Timeout: timeout + time.Second}).Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<10))
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("status %d", resp.StatusCode)
-	}
-	return nil
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	reported := buildVersion()
+	return cli.Run(ctx, &cli.Env{
+		Stdin: os.Stdin, Stdout: stdout, Stderr: stderr,
+		Lookup: os.LookupEnv, Hostname: os.Hostname, Getwd: os.Getwd, Home: os.UserHomeDir,
+		Machine: where.Machine, InContainer: where.InContainer,
+		Providers: set, Processes: proctree.System(),
+		ConfigDir: configDir, Version: buildver.Wire(reported), Build: reported, PID: os.Getpid(),
+	}, args)
 }

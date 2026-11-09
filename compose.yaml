@@ -4,7 +4,21 @@ services:
     image: ghcr.io/cplieger/grelot:latest
     container_name: grelot
     restart: unless-stopped
+    # The server writes only its store under /data, so the rest stays read-only with no tmpfs.
+    read_only: true
+
+    environment:
+      # Replace with a long random string, such as the output of "openssl rand -hex 32".
+      # Every client sends it. Prefer GRELOT_TOKEN_FILE, naming a mounted secret file.
+      GRELOT_TOKEN: "change-me-to-a-long-random-string"
+
+    volumes:
+      # The store. Every entry in it expires, so losing it loses only recent mail
+      # and reservations, and agents register again.
+      # Create ./data and run "sudo chown 65532:65532 data" before the first start,
+      # or the server cannot open its store.
+      - "./data:/data"
 
     ports:
-      # There is no login yet. Publish this port only to a network you trust, see README "Security".
-      - "8080:8080"
+      # Publish this port only to a network you trust, see README "Security".
+      - "9737:9737"

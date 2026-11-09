@@ -4,6 +4,9 @@
 !go.mod
 !go.sum
 !*.go
+!internal/
+!providers/*.go
+!providers/*.yaml
 !LICENSE
 !NOTICE
 !scripts/collect-licenses.sh

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "command": "grelot hook cursor session_start",
+        "timeout": 30
+      }
+    ],
+    "stop": [
+      {
+        "type": "command",
+        "command": "grelot hook cursor stop",
+        "timeout": 30
+      }
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "grelot-watch",
+  "description": "Wakes the session that starts it whenever grelot has new mail for its identity, until the identity ends or the run is stopped.",
+  "injectOriginalUserRequest": false,
+  "inputs": {},
+  "steps": [
+    {
+      "type": "repeat",
+      "id": "outer",
+      "maxIterations": 1000,
+      "onMaxIterations": "pause",
+      "stopWhen": "watch.terminal",
+      "steps": [
+        {
+          "type": "repeat",
+          "id": "inner",
+          "maxIterations": 1000,
+          "onMaxIterations": "continue",
+          "stopWhen": "watch.terminal",
+          "steps": [
+            {
+              "type": "watch",
+              "id": "watch",
+              "handler": "command",
+              "config": {
+                "command": "grelot watch --door workflow",
+                "pollIntervalSec": 10,
+                "commandTimeoutSec": 300
+              }
+            },
+            {
+              "type": "step",
+              "id": "notify",
+              "agent": "grelot-notifier",
+              "prompt": "{{watch.output}}",
+              "modelId": "claude-haiku-5.5",
+              "effortLevel": "low"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

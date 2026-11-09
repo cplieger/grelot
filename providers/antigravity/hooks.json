@@ -1,0 +1,18 @@
+{
+  "grelot": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "grelot hook antigravity session_start",
+        "timeout": 30
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "grelot hook antigravity stop",
+        "timeout": 30
+      }
+    ]
+  }
+}

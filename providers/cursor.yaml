@@ -1,0 +1,35 @@
+# Cursor 3 (the IDE; its CLI reads the same hooks), from its hooks page
+# (https://cursor.com/docs/agent/hooks), not yet run against grelot.
+#
+# The docs name no variable that carries the conversation id in the agent's
+# own shell, so this file has no detect and no session.env. Until someone
+# runs Cursor and records one, grelot never picks this provider by itself,
+# its hooks print nothing, and every identity command refuses.
+#
+# No door: nothing outside the chat can wake an idle Cursor chat today, and
+# forum reports show its background shells killed minutes after the turn
+# ends, so a watcher would not outlive the turn.
+#
+# No one_shot: the CLI's -p (--print) runs one prompt
+# (https://cursor.com/docs/cli/reference/parameters), but the CLI runs as
+# the node it bundles (its launcher script execs node), a process name no
+# session.process can claim for Cursor.
+name: cursor
+evidence: documented
+session:
+  stdin: conversation_id
+hooks:
+  session_start:
+    event: sessionStart
+    outputs:
+      context: {text: '{"additional_context":{{json .Context}}}'}
+  stop:
+    event: stop
+    # A followup_message is sent as the next user message, at most five times
+    # in a row (the hook's loop_limit). stop takes no message for the user,
+    # so a line grelot shows the user at turn end is not printed.
+    outputs:
+      block: {text: '{"followup_message":{{json .Reason}}}'}
+# No prompt: beforeSubmitPrompt can block a prompt but not add to it. No
+# session_end or subagent_stop until a run shows which session each names.
+notes: docs/hosts/cursor.md

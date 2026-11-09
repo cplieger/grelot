@@ -1,0 +1,10 @@
+{
+  "session_id": "01a19ef0-6415-7941-87f6-9ca8f875c78c",
+  "turn_id": "01a19ef8-3790-7512-9106-974b69887a33",
+  "transcript_path": "C:\\Users\\user\\.codex\\sessions\\2026\\11\\03\\rollout-2026-11-03T02-05-16-01a19ef0-6415-7941-87f6-9ca8f875c78c.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\work\\codex-h",
+  "hook_event_name": "UserPromptSubmit",
+  "model": "openai.gpt-6.1-sol",
+  "permission_mode": "default",
+  "prompt": "[grelot:6] grelot (automated, not the user): 1 new; run grelot inbox"
+}
