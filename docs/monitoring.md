@@ -37,7 +37,7 @@ The image's healthcheck runs `grelot health` every 30 seconds. That command requ
 | `grelot_reservations{state}` | gauge | Reservations `held`, and agents `queued` behind one |
 | `grelot_unread_backlog` | gauge | Unread mail that wakes live identities. The cards sent when an agent joins or leaves, and the copies a delegate's parent gets, are not counted |
 | `grelot_unread_oldest_seconds` | gauge | Age of the oldest unread mail that wakes a live identity, `0` with none |
-| `grelot_store_in_use_bytes` | gauge | Store bytes that hold data. Above 90 % of the ceiling, every write that adds data is refused (see [Store full](#store-full)) |
+| `grelot_store_in_use_bytes` | gauge | Store bytes that hold data. Above 90 % of the ceiling, the writes listed in [Store full](#store-full) are refused |
 | `grelot_store_max_bytes` | gauge | The ceiling, `STORE_MAX_BYTES` |
 | `grelot_store_file_bytes` | gauge | The store file's size, which stays near its largest |
 | `grelot_store_free_bytes` | gauge | Bytes in the file's free pages |
@@ -59,9 +59,9 @@ A `door` label is `<provider>/<door>`, the provider file's name and the door's n
 
 ## Store full
 
-Once the bytes in use pass 90 % of `STORE_MAX_BYTES`, the server answers 507 `store_full` to every write that adds data: a post, a follow that adds one, a register that creates an identity, a delegate's register, a delegate grant, a reservation or queue entry, and a set that adds work paths. Each refusal reads `store nearly full: new posts, identities, follows, work paths, reservations and delegate links resume as older mail expires`.
+Once the bytes in use pass 90 % of `STORE_MAX_BYTES`, the server answers 507 `store_full` to these writes: a post, a follow that adds one, a register that creates an identity, a delegate's register, a delegate grant, a reservation or queue entry, and a set or take-over that adds work paths. Each refusal reads `store nearly full: new posts, identities, follows, work paths, reservations and delegate links resume as older mail expires`.
 
-Every other write still goes through, so agents keep working and space comes back: reading and acking mail, unfollowing, releasing, renewing an identity or a reservation, a set that only renames, describes or narrows paths, registering again as the live identity, reviving, taking over, revoking, `bye`, and the end of a session or subagent. The sweep goes on expiring rows. This one ceiling is what bounds the store: follows have no count limit of their own. Raise `STORE_MAX_BYTES` and restart, or shorten `THREAD_TTL` so old threads expire sooner.
+Every other write still goes through, so agents keep working and space comes back: reading and acking mail, unfollowing, releasing, renewing an identity or a reservation, a set that only renames, describes or narrows paths, registering again as the live identity, reviving, taking over with no new work path, revoking, `bye`, and the end of a session or subagent. The sweep goes on expiring rows. This one ceiling is what bounds the store: follows have no count limit of their own. Raise `STORE_MAX_BYTES` and restart, or shorten `THREAD_TTL` so old threads expire sooner.
 
 ## Dashboard
 
@@ -87,7 +87,7 @@ Load the rules in [`alerts/promql.yaml`](../alerts/promql.yaml) into Prometheus,
 | `GrelotSweepStalled` | no store sweep committed for over two minutes, so reservations, identities and hand-offs stop expiring | warning |
 | `GrelotStoreStartedEmpty` | the server found its store file corrupt, moved it aside and started empty | info |
 | `GrelotStoreNearlyFull` | the store is over 80 % of `STORE_MAX_BYTES` for 10 minutes | warning |
-| `GrelotStoreFull` | the store is over 90 % of `STORE_MAX_BYTES`, so every write that adds data is refused | critical |
+| `GrelotStoreFull` | the store is over 90 % of `STORE_MAX_BYTES`, so new posts, identities, follows, work paths, reservations and delegate links are refused | critical |
 | `GrelotServerErrors` | the server answered a 5xx other than 503 or 507 in the last 15 minutes | warning |
 | `GrelotPushFailing` | every push through a door failed for 15 minutes, so its agents wake later | warning |
 | `GrelotPushDoorOff` | a receiver refused a door's credential, so the door is off until restart | warning |

@@ -185,11 +185,40 @@ func TestStoreFull_refusesEveryWriteThatAddsRows(t *testing.T) {
 			_, err := s.Set(ctx, Keyed{}, alpha, Change{Fields: Fields{Paths: []string{repoGrelot, "/workspace/marotte"}}, Where: &w})
 			return err
 		}},
+		{name: "a take-over adding a work path", write: func() error {
+			r := registration(sess("alpha-next"), "alpha", envA(), repoGrelot, "/workspace/marotte")
+			r.TakeOver = true
+			_, _, err := s.Register(ctx, Keyed{}, &r)
+			return err
+		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			wantRefusal(t, c.write(), KindFull, "", "store nearly full")
 		})
 	}
+}
+
+func TestStoreFull_takesARecoveryThatAddsNoPath(t *testing.T) {
+	t.Run("a revive", func(t *testing.T) {
+		s, clk, _ := openIdentityStore(t)
+		old := expireToDormant(t, s, clk, "subflux-dev")
+		s.space = inUse(DefaultMaxBytes)
+		got, _, err := s.Revive(t.Context(), Keyed{}, new(revival(sessA, "", envA())))
+		if err != nil || got.Identity.ID != old.ID || got.Identity.State != stateLive {
+			t.Errorf("revive on a nearly full store: id %d state %q, %v; want %d live", got.Identity.ID, got.Identity.State, err, old.ID)
+		}
+	})
+	t.Run("a take-over with its own paths", func(t *testing.T) {
+		s, _, _ := openIdentityStore(t)
+		mustRegister(t, s, registration(sessA, "subflux-dev", envA(), repoSubflux, repoGrelot))
+		s.space = inUse(DefaultMaxBytes)
+		r := registration(sessB, "subflux-dev", envA(), repoGrelot)
+		r.TakeOver = true
+		got, _, err := s.Register(t.Context(), Keyed{}, &r)
+		if err != nil || !got.Moved {
+			t.Errorf("take-over on a nearly full store: moved %v, %v; want moved", got.Moved, err)
+		}
+	})
 }
 
 func TestStoreFull_takesEveryWriteThatAddsNothing(t *testing.T) {

@@ -97,7 +97,7 @@ When the turn's grelot line reads `wake: down, start: start the grelot-watch wor
 - Each poll waits up to 45 seconds for new mail, and the run polls again 10 seconds later.
 - A new-mail line wakes an idle chat, and reaches a busy one at its next tool call.
 - The run ends by itself when the identity goes dormant, retires or its session ends.
-- A second grelot-watch run started in the same chat ends the first, which delivers its end line, `(replaced)`, once. From then on only the second run delivers lines.
+- Two grelot-watch runs in one chat do not both stay. The one that polls last keeps running, and the other ends with its end line, `(replaced)`, delivered once. A run started while the first waits between polls can be the one that ends.
 
 To stop a run, press ctrl+g, select the run and press ctrl+x twice.
 

@@ -120,7 +120,8 @@ type Change struct {
 // Register creates session's identity, takes a live one over, or returns
 // the session's live identity unchanged. Refusals: KindInvalid for a bad
 // field, ttl or where; KindConflict for a held name or a refused take-over;
-// KindFull for a new identity or delegate past 90 % of Options.MaxBytes.
+// KindFull for a new identity or delegate, or a take-over adding work
+// paths, past 90 % of Options.MaxBytes.
 func (s *Store) Register(ctx context.Context, k Keyed, r *Registration) (Registered, bool, error) {
 	provider, err := checkSession(r.Session)
 	if err != nil {
@@ -207,30 +208,16 @@ func (w *wtx) registerRow(r *Registration, provider string) (row identityRow, ad
 	if err != nil {
 		return identityRow{}, nil, false, err
 	}
-	row, held, err := w.identityBy(w.s.t.byName, fc.name)
+	row, held, err := w.registerTarget(r, fc.name, provider)
 	if err != nil {
 		return identityRow{}, nil, false, err
 	}
-	switch {
-	case held && row.State == stateDormant:
-		return identityRow{}, nil, false, dormantNameRefusal(&row, *r.Where)
-	case held && !r.TakeOver:
-		return identityRow{}, nil, false, w.s.liveNameRefusal(&row, *r.Where)
-	case held:
-		if err := w.s.moveRefusal(verbTakeOver, &row, *r.Where, provider); err != nil {
-			return identityRow{}, nil, false, err
-		}
-	default:
+	added = slices.DeleteFunc(slices.Clone(fc.paths), func(p string) bool { return slices.Contains(row.Paths, p) })
+	if held && len(added) > 0 {
 		if gerr := w.grow(); gerr != nil {
 			return identityRow{}, nil, false, gerr
 		}
-		id, err := w.s.t.identities.table.NextID(w.tx)
-		if err != nil {
-			return identityRow{}, nil, false, err
-		}
-		row = identityRow{ID: id, RegisteredAt: w.now, State: stateLive}
 	}
-	added = slices.DeleteFunc(slices.Clone(fc.paths), func(p string) bool { return slices.Contains(row.Paths, p) })
 	row.Name, row.Paths, row.Description = fc.name, fc.paths, fc.description
 	row.Host, row.OS, row.Arch, row.Proc = r.Host, r.OS, r.Arch, r.Proc
 	row.Session, row.Provider = r.Session, provider
@@ -241,6 +228,33 @@ func (w *wtx) registerRow(r *Registration, provider string) (row identityRow, ad
 		return identityRow{}, nil, false, err
 	}
 	return row, added, held, nil
+}
+
+// registerTarget returns the row a register of name writes: the live
+// identity a take-over may move, reported held, or a new row.
+func (w *wtx) registerTarget(r *Registration, name, provider string) (identityRow, bool, error) {
+	row, held, err := w.identityBy(w.s.t.byName, name)
+	switch {
+	case err != nil:
+		return identityRow{}, false, err
+	case held && row.State == stateDormant:
+		return identityRow{}, false, dormantNameRefusal(&row, *r.Where)
+	case held && !r.TakeOver:
+		return identityRow{}, false, w.s.liveNameRefusal(&row, *r.Where)
+	case held:
+		if merr := w.s.moveRefusal(verbTakeOver, &row, *r.Where, provider); merr != nil {
+			return identityRow{}, false, merr
+		}
+		return row, true, nil
+	}
+	if gerr := w.grow(); gerr != nil {
+		return identityRow{}, false, gerr
+	}
+	id, err := w.s.t.identities.table.NextID(w.tx)
+	if err != nil {
+		return identityRow{}, false, err
+	}
+	return identityRow{ID: id, RegisteredAt: w.now, State: stateLive}, false, nil
 }
 
 // Set applies ch to c's live identity and returns it. Refusals: KindGone
@@ -316,7 +330,8 @@ func (w *wtx) applyFields(row *identityRow, f Fields, sent *Where, mode fieldMod
 	if err == nil && (fc.pathsChanged || renew || sent != nil) {
 		err = checkWhere(sent, fc.paths)
 	}
-	if err == nil && len(fc.added) > 0 {
+	// A post measured the store before its write began.
+	if err == nil && mode != fieldsEvery && len(fc.added) > 0 {
 		err = w.grow()
 	}
 	if err != nil {

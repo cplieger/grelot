@@ -36,7 +36,7 @@ var errSessionEnded = &apiError{
 // opened, so that each nudge wakes the session once.
 var errReplaced = &apiError{
 	status: http.StatusGone, code: transport.EndReplaced,
-	msg: "replaced: a newer watcher of this session took over, so this one stops",
+	msg: "replaced: another watcher of this session took over, so this one stops",
 }
 
 // standingWait is POST /v1/events/wait: it holds until a nudge for the

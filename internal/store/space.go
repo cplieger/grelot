@@ -25,9 +25,9 @@ func (s *Store) measure() (Space, error) {
 
 // grow refuses with KindFull, past 90 % of the ceiling, a write that adds
 // rows by the caller's choice. A write that only removes, renews or
-// recovers never calls it, so it goes through on a full store. It
-// measures under the write lock: read before it, concurrent writes all
-// see the space no other one has filled yet and pass the ceiling together.
+// recovers never calls it, so it goes through on a full store. It runs
+// inside the write transaction because a measure taken before it would let
+// concurrent writes pass on the same free space.
 func (w *wtx) grow() error {
 	sp, err := w.s.measure()
 	if err == nil && sp.InUseBytes*10 > w.s.maxBytes*9 {

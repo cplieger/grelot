@@ -287,7 +287,7 @@
         "spec": {
           "id": 103,
           "title": "Store nearly full",
-          "description": "Shows while the GrelotStoreNearlyFull alert fires: the store has used over 80% of `STORE_MAX_BYTES` for 10 minutes. Above 90% grelot refuses every write that adds data, so raise the ceiling or shorten `THREAD_TTL`.",
+          "description": "Shows while the GrelotStoreNearlyFull alert fires: the store has used over 80% of `STORE_MAX_BYTES` for 10 minutes. Above 90% grelot refuses new posts, identities, follows, work paths, reservations and delegate links, so raise the ceiling or shorten `THREAD_TTL`.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1356,7 +1356,7 @@
         "spec": {
           "id": 8,
           "title": "Store used",
-          "description": "The store's bytes in use as a share of `STORE_MAX_BYTES`. It turns yellow at 80% and red at 90%, where grelot refuses every write that adds data until old rows expire.",
+          "description": "The store's bytes in use as a share of `STORE_MAX_BYTES`. It turns yellow at 80% and red at 90%, where grelot refuses new posts, identities, follows, work paths, reservations and delegate links until old rows expire.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2597,7 +2597,7 @@
         "spec": {
           "id": 43,
           "title": "Store size",
-          "description": "The store file's size, the bytes in use and free inside it, and the `STORE_MAX_BYTES` ceiling. Writes that add data are refused once the bytes in use pass 90% of the ceiling, and free pages are reused before the file grows.",
+          "description": "The store file's size, the bytes in use and free inside it, and the `STORE_MAX_BYTES` ceiling. New posts, identities, follows, work paths, reservations and delegate links are refused once the bytes in use pass 90% of the ceiling, and free pages are reused before the file grows.",
           "links": [],
           "data": {
             "kind": "QueryGroup",

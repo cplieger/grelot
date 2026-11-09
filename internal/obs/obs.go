@@ -126,7 +126,7 @@ func (m *Metrics) ServeState(read func(context.Context) (State, bool), now func(
 	inUse := measure.NewGaugeDesc("store_in_use_bytes", "Store bytes holding data: the pages written, less the free ones.", nil)
 	file := measure.NewGaugeDesc("store_file_bytes", "Store file size, which stays near its high-water mark.", nil)
 	free := measure.NewGaugeDesc("store_free_bytes", "Store bytes in free and pending pages.", nil)
-	maxBytes := measure.NewGaugeDesc("store_max_bytes", "STORE_MAX_BYTES, the ceiling on bytes in use; writes that add data are refused past 90 % of it.", nil)
+	maxBytes := measure.NewGaugeDesc("store_max_bytes", "STORE_MAX_BYTES, the ceiling on bytes in use; new posts, identities, follows, work paths, reservations and delegate links are refused past 90 % of it.", nil)
 	m.reg.MustRegister(measure.NewCollector(func(ctx context.Context, e *measure.Emitter) {
 		st, ok := read(ctx)
 		if !ok {

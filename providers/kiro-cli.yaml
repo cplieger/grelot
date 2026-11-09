@@ -52,8 +52,8 @@ doors:
     end_exit: 0
     notes: >-
       The grelot-watch workflow polls every 10 seconds and runs until the
-      identity ends, another grelot-watch run starts in the same chat, or
-      the user cancels the run. Install it in
+      identity ends, another grelot-watch run in the same chat takes over,
+      or the user cancels the run. Install it in
       ~/.kiro/workflows/ and the grelot-notifier agent in ~/.kiro/agents/.
 hooks:
   session_start:
