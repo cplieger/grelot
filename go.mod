@@ -3,7 +3,7 @@ module github.com/cplieger/grelot
 go 1.27.3
 
 require (
-	github.com/cplieger/bolttable v1.1.0-dev.2
+	github.com/cplieger/bolttable v1.1.0
 	github.com/cplieger/go/envx v1.0.0
 	github.com/cplieger/go/filesafe v1.0.0
 	github.com/cplieger/go/health v1.0.0
