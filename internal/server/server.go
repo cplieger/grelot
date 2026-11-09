@@ -160,8 +160,9 @@ const readTimeout = waitRouteDeadline + 10*time.Second
 // HTTPServer is the http.Server for Handler. It sets no write timeout, so
 // a held wait can answer at maxWait.
 func (s *Server) HTTPServer() *http.Server {
-	return httpserver.New(s.Handler(), httpserver.WithReadTimeout(readTimeout),
-		httpserver.WithSlogErrorLog(slog.LevelWarn))
+	srv := httpserver.New(s.Handler(), httpserver.WithSlogErrorLog(slog.LevelWarn))
+	srv.ReadTimeout = readTimeout
+	return srv
 }
 
 // Handler is the whole API: /healthz and /metrics with no headers, and
@@ -172,7 +173,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /metrics", s.metrics.Handler())
 	s.routes(mux)
 	return httpserver.Chain(mux,
-		httpserver.Logging(httpserver.WithLogger(s.log), httpserver.ProbeLogLevel("/healthz", "/metrics"),
+		httpserver.Logging(httpserver.WithLogger(s.log), httpserver.WithProbeLogLevel("/healthz", "/metrics"),
 			httpserver.WithRecordRouteMetric(s.metrics.RecordHTTP)),
 		httpserver.Recoverer(httpserver.WithRecoverLogger(s.log)))
 }
