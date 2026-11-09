@@ -194,7 +194,10 @@ func TestPost_aPathThreadNobodyHearsKeepsItForLaterFollowers(t *testing.T) {
 	ts := newServer(t)
 	a, _ := registerAt(t, ts, "s-1", "ant-dev")
 	b, bdir := registerAt(t, ts, "s-2", "bee-dev")
-	lone := filepath.ToSlash(t.TempDir())
+	lone := filepath.ToSlash(filepath.Join(t.TempDir(), "my notes & logs"))
+	if err := os.Mkdir(lone, 0o700); err != nil {
+		t.Fatal(err)
+	}
 
 	t.Run("a path nobody covers", func(t *testing.T) {
 		out := a.must(append([]string{"post", lone, "Status"}, keep...)...)
@@ -203,10 +206,17 @@ func TestPost_aPathThreadNobodyHearsKeepsItForLaterFollowers(t *testing.T) {
 			t.Fatalf("output = %q, want a post delivered to 0", out)
 		}
 		hint := "grelot: no other agent works in or follows " + lone + " yet, so nobody got this post now: " +
-			"it stays in the thread's history while the thread lives, for anyone who follows later (grelot history --path " + lone + "); " +
-			"if one agent must act on it, send that agent a direct message naming message " + m[1] + " (grelot post '@<name>')\n"
+			"it stays in the thread's history while the thread lives, for anyone who follows later (grelot history --path '" + lone + "'); " +
+			"if one agent must act on it, send that agent a direct message naming message " + m[1] + " and that command (grelot post '@<name>')\n"
 		if !strings.HasSuffix(out, hint) {
 			t.Errorf("output = %q, want it to end with %q", out, hint)
+		}
+		for _, cmd := range regexp.MustCompile(`\((grelot [^)]*)\)`).FindAllStringSubmatch(hint, -1) {
+			for _, w := range shellWords(cmd[1]) {
+				if why := unsafeWord(w); why != "" {
+					t.Errorf("printed command %q: word %q is %s", cmd[1], w, why)
+				}
+			}
 		}
 		if strings.Contains(out, "grelot post announce") {
 			t.Errorf("output = %q, want no push to announce", out)

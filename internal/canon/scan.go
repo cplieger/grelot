@@ -21,9 +21,9 @@ type Finding struct {
 // whose local root is its canonical root <root>/<repo> is exempt, since
 // every host names it the same way; so are the path root itself, a device
 // such as /dev/null or NUL, a path with a placeholder component (..., …,
-// <name>) and a ~/ path, which each reader takes as its own home. A path that neither exists nor lies under
-// home or temp, such as an API route or another host's canonical path, is
-// left alone.
+// <name>) and a ~/ path, which each reader takes as its own home. A path
+// that neither exists nor lies under home or temp, such as an API route or
+// another host's canonical path, is left alone.
 func (r *Resolver) ScanLocal(ctx context.Context, body string) (Finding, bool) {
 	trees := map[string]tree{}
 	checked := 0
@@ -109,13 +109,14 @@ func (r *Resolver) candidate(tok string) (string, bool) {
 }
 
 // device reports whether p names a device rather than a file a sender could
-// share: anything under /dev (/dev/null, /dev/stdout) or a drive path ending
-// in NUL, which Windows reserves in every directory.
+// share: anything under /dev (/dev/null, /dev/stdout) but /dev/shm, a tmpfs
+// that holds ordinary files, or a drive path ending in NUL, which Windows
+// reserves in every directory.
 func (r *Resolver) device(p string) bool {
 	if hasDrive(p) {
 		return strings.EqualFold(path.Base(p), "nul")
 	}
-	return r.under(p, "/dev")
+	return r.under(p, "/dev") && !r.under(p, "/dev/shm")
 }
 
 // placeholder reports whether a component of tok stands for a path rather

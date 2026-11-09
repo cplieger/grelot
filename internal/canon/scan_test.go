@@ -93,6 +93,21 @@ func TestScanLocal_none(t *testing.T) {
 	}
 }
 
+func TestScanLocal_flagsAFileInDevShm(t *testing.T) {
+	f, err := os.CreateTemp("/dev/shm", "grelot-scan-*.log")
+	if err != nil {
+		t.Skipf("no writable /dev/shm on this host: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(f.Name()) })
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	h := newScanHost(t)
+	if got, ok := h.r.ScanLocal(t.Context(), "the log is at "+f.Name()); !ok || got != (Finding{Token: f.Name()}) {
+		t.Errorf("got %+v, %v; want %q flagged", got, ok, f.Name())
+	}
+}
+
 func TestScanLocal_checksAtMost32Candidates(t *testing.T) {
 	h := newScanHost(t)
 	local := h.temp + "/a.log"

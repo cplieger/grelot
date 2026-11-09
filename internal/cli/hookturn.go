@@ -37,15 +37,18 @@ const (
 	markAsked = "asked"
 	// markThread is the prompt line's one ask to follow or start a thread.
 	markThread = "thread"
+	// markThreadAsked is when a register or revive answer last asked the
+	// session's identity to follow or start a thread.
+	markThreadAsked = "thread-asked"
 )
 
 const (
 	// reminderAge is how old a description is before the prompt line asks
 	// whether it still holds, and how often it asks again.
 	reminderAge = time.Hour
-	// threadAge is how long an identity lives before the prompt line asks
-	// it to follow or start a thread: the turn that registered it has had
-	// the register answer's ask and time to act on it.
+	// threadAge is how long after its registration, or the last register
+	// or revive answer's ask, the prompt line asks an identity to follow or
+	// start a thread: the agent has had that ask and time to act on it.
 	threadAge = 30 * time.Minute
 	// turnLapse is the server's bound on a turn no hook reports the end of;
 	// with no prompt role to mark turn starts, a stop held within it counts
@@ -276,7 +279,11 @@ func (h *hookCall) reminderDue() bool {
 // followsNoThread, outside a one-shot run.
 func (h *hookCall) threadDue(id *client.Identity) bool {
 	key := h.identityKey()
-	if !followsNoThread(id) || h.now().Sub(id.RegisteredAt) < threadAge || h.marks.Has(markThread, key) || h.oneShot() {
+	since := id.RegisteredAt
+	if t, ok := h.marks.When(markThreadAsked, key); ok && t.After(since) {
+		since = t
+	}
+	if !followsNoThread(id) || h.now().Sub(since) < threadAge || h.marks.Has(markThread, key) || h.oneShot() {
 		return false
 	}
 	h.onPrint(markThread, key)

@@ -204,6 +204,39 @@ func TestHistory_pathFilterReadsPostsTheReaderNeverReceived(t *testing.T) {
 	wantSubjects(t, "a delegate outside its scope", subjects(got.Entries))
 }
 
+func TestHistory_pathFilterReadsTheWholeLiveThreadByDefault(t *testing.T) {
+	s, clk := openClockStore(t)
+	const lib = "/workspace/lib"
+	alpha := regAt(t, s, "alpha", "/workspace/alpha")
+	bravo := regAt(t, s, "bravo", "/workspace/bravo")
+	keepAlive(t, s, alpha.ID, bravo.ID)
+	say(t, s, "alpha", Target{Path: lib}, "v1 released")
+	clk.advance(30 * time.Hour)
+	mustFollow(t, s, sess("bravo"), lib)
+
+	wantSubjects(t, "a follower past the default 24 h", historySubjects(t, s, sess("bravo"), HistoryQuery{Path: lib}), "v1 released")
+	wantSubjects(t, "an explicit since still bounds it", historySubjects(t, s, sess("bravo"), HistoryQuery{Path: lib, Since: clk.now().Add(-time.Hour)}))
+}
+
+func TestHistory_pathFilterOverManyThreadsKeepsTheNewestLimit(t *testing.T) {
+	s, clk := openClockStore(t)
+	regAt(t, s, "alpha", "/workspace/alpha")
+	regAt(t, s, "bravo", "/workspace/bravo")
+	// The threads' keys sort apart from their post order, so a cut per
+	// thread in key order would keep the wrong posts.
+	for _, p := range []string{"/workspace/lib/d", "/workspace/lib/a", "/workspace/lib/c", "/workspace/lib/b"} {
+		say(t, s, "alpha", Target{Path: p}, "first "+p)
+		clk.advance(time.Minute)
+	}
+	for _, p := range []string{"/workspace/lib/b", "/workspace/lib/d"} {
+		say(t, s, "alpha", Target{Path: p}, "second "+p)
+		clk.advance(time.Minute)
+	}
+
+	wantSubjects(t, "limit 3", historySubjects(t, s, sess("bravo"), HistoryQuery{Path: "/workspace/lib", Limit: 3}),
+		"first /workspace/lib/b", "second /workspace/lib/b", "second /workspace/lib/d")
+}
+
 func TestHistory_withFilterReadsTheDirectThreadWithThatAgent(t *testing.T) {
 	s, clk := openClockStore(t)
 	for _, n := range []string{"alpha", "bravo", "charlie", "dave"} {

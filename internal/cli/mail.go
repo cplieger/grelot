@@ -124,8 +124,8 @@ func (r *run) posted(got *client.Posted, to, thread string, finding canon.Findin
 	if thread != "" && n.Total == 0 {
 		fmt.Fprintf(r.Stdout, "grelot: no other agent works in or follows %s yet, so nobody got this post now: "+
 			"it stays in the thread's history while the thread lives, for anyone who follows later (grelot history --path %s); "+
-			"if one agent must act on it, send that agent a direct message naming message %d (grelot post '@<name>')\n",
-			safe(thread), safe(thread), got.Message)
+			"if one agent must act on it, send that agent a direct message naming message %d and that command (grelot post '@<name>')\n",
+			safe(thread), pathWord(safe(thread)), got.Message)
 	}
 	if local && n.Other > 0 {
 		fix := "send its content or a pushed ref"
@@ -137,6 +137,16 @@ func (r *run) posted(got *client.Posted, to, thread string, finding canon.Findin
 	for _, line := range got.Notices {
 		fmt.Fprintln(r.Stdout, "grelot: "+safe(line))
 	}
+}
+
+// pathWord is p as one parse-safe command word: single-quoted, since a
+// path may hold a space or &, or the <path> placeholder when p holds a
+// quote, which no quoting form shared by every shell can carry.
+func pathWord(p string) string {
+	if strings.Contains(p, "'") {
+		return "<path>"
+	}
+	return "'" + p + "'"
 }
 
 func recipients(n int) string {

@@ -15,7 +15,7 @@ import (
 )
 
 // History page sizes and window: a limit of 0 takes the default, and a
-// zero Since the last defaultHistoryWindow, except with LastRead.
+// zero Since the last defaultHistoryWindow, except with LastRead or Path.
 const (
 	defaultHistoryLimit  = 20
 	maxHistoryLimit      = 100
@@ -160,10 +160,11 @@ func (s *Store) historyWalk(r *bolttable.ReadTx, me *identityRow, q *HistoryQuer
 }
 
 // historySince is q's lower bound: Since, or the default window before
-// now unless q reads the last page. An Until before that default window
-// is refused, as an explicit inverted window is.
+// now unless q reads the last page or a path, whose threads a follower
+// reads whole. An Until before that default window is refused, as an
+// explicit inverted window is.
 func historySince(q *HistoryQuery, now time.Time) (time.Time, error) {
-	if !q.Since.IsZero() || q.LastRead {
+	if !q.Since.IsZero() || q.LastRead || q.Path != "" {
 		return q.Since, nil
 	}
 	since := now.Add(-defaultHistoryWindow)
@@ -228,16 +229,21 @@ func (w *walk) read(r *bolttable.ReadTx) ([]Entry, error) {
 		}
 		out = append(out, ps...)
 	}
-	slices.SortFunc(out, func(a, b Entry) int {
-		return cmp.Or(a.Written.Compare(b.Written), cmp.Compare(a.Message, b.Message), cmp.Compare(a.Seq, b.Seq))
-	})
-	out = out[max(0, len(out)-w.limit):]
+	out = w.newest(out)
 	if !w.full {
 		for i := range out {
 			firstLine(&out[i])
 		}
 	}
 	return out, nil
+}
+
+// newest is es in time order cut to its newest limit entries.
+func (w *walk) newest(es []Entry) []Entry {
+	slices.SortFunc(es, func(a, b Entry) int {
+		return cmp.Or(a.Written.Compare(b.Written), cmp.Compare(a.Message, b.Message), cmp.Compare(a.Seq, b.Seq))
+	})
+	return es[max(0, len(es)-w.limit):]
 }
 
 // walkDeliveries relies on seq order being write order, so the walk can
@@ -337,9 +343,10 @@ func (w *walk) walkPosts(r *bolttable.ReadTx) ([]Entry, error) {
 	return out, err
 }
 
-// walkThreads reads the posts of the live path threads at or under w.path
-// that readsThread lets me read, delivered to me or not, but the messages
-// in seen.
+// walkThreads reads the newest limit posts of the live path threads at or
+// under w.path that readsThread lets me read, delivered to me or not, but
+// the messages in seen. It cuts to limit after each thread, so a wide path
+// holds two pages at most, not one per thread.
 func (w *walk) walkThreads(r *bolttable.ReadTx, seen map[uint64]bool) ([]Entry, error) {
 	var out []Entry
 	err := w.s.t.threadKey.Scan(r, bolttable.Range{Prefix: []byte(w.path)}, func(_ []byte, id uint64, _ []byte) (bool, error) {
@@ -348,7 +355,7 @@ func (w *walk) walkThreads(r *bolttable.ReadTx, seen map[uint64]bool) ([]Entry, 
 			return err == nil, err
 		}
 		ps, err := w.threadPosts(r, th.ID, seen)
-		out = append(out, ps...)
+		out = w.newest(append(out, ps...))
 		return err == nil, err
 	})
 	return out, err
@@ -361,8 +368,9 @@ func (w *walk) readsThread(th *threadRow) bool {
 		(w.me.Parent == 0 || w.me.Scope.allowsPath(th.Path))
 }
 
-// threadPosts reads thread's matching posts newest first, up to limit. A
-// message id grows with its post, so the walk stops at since.
+// threadPosts reads thread's matching posts newest first, up to limit. It
+// relies on id order being post-time order, so the walk can stop at the
+// first post before since, as walkDeliveries relies on seq order.
 func (w *walk) threadPosts(r *bolttable.ReadTx, thread uint64, seen map[uint64]bool) ([]Entry, error) {
 	author := w.sender
 	if w.fromMe {

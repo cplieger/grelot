@@ -149,6 +149,9 @@ func (r *run) registered(got *client.Registered, delegate bool) {
 	fmt.Fprintln(r.Stdout, "grelot: grelot help is the manual, if you have not read it")
 	if followsNoThread(&got.Identity) && !hook.OneShot(r.prov, r.Lookup, r.tree) {
 		fmt.Fprintln(r.Stdout, lineFollowAThread)
+		if s, err := r.session(); err == nil {
+			hook.NewMarks(r.ConfigDir, r.now).Set(markThreadAsked, s)
+		}
 	}
 }
 

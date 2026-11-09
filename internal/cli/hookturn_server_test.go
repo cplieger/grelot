@@ -198,6 +198,7 @@ func TestHookPrompt_asksOnceToFollowOrStartAThread(t *testing.T) {
 	oneShot.vars["ALPHA_MODE"] = "print"
 	interactive := at("s-5", "eee-dev", oneShotFile)
 	late := at("s-6", "fff-dev", hookTurnFile)
+	revived := at("s-7", "ggg-dev", hookTurnFile)
 
 	ts.clock.advance(29 * time.Minute)
 	if _, out := a.prompt("x"); strings.Contains(out, segThread) {
@@ -232,6 +233,21 @@ func TestHookPrompt_asksOnceToFollowOrStartAThread(t *testing.T) {
 		}
 		if out := prompt(late, "s-6"); !strings.Contains(out, segThread) {
 			t.Errorf("the next turn: stdout %q, want the ask", out)
+		}
+	})
+	t.Run("a revive's ask waits threadAge again", func(t *testing.T) {
+		ts.clock.advance(3 * time.Hour)
+		if out := revived.must("revive", "--ttl", "1h"); !strings.Contains(out, lineFollowAThread) {
+			t.Fatalf("revive: output %q, want the ask", out)
+		}
+		for _, turn := range []string{"first", "second"} {
+			if out := prompt(revived, "s-7"); out == "" || strings.Contains(out, segThread) {
+				t.Errorf("%s turn after the revive: stdout %q, want the line without the ask", turn, out)
+			}
+		}
+		ts.clock.advance(threadAge + time.Minute)
+		if out := prompt(revived, "s-7"); !strings.Contains(out, segThread) {
+			t.Errorf("threadAge after the revive: stdout %q, want the ask", out)
 		}
 	})
 }

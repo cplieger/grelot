@@ -74,6 +74,24 @@ func TestPost_theSameSubjectToASecondAgentHintsAtAThread(t *testing.T) {
 	})
 }
 
+func TestPost_aReplyToAQuestionOverAnHourOldHintsNothing(t *testing.T) {
+	h := newHarness(t)
+	h.mustRegister(sessA, "answerer")
+	h.mustRegister(sessB, "early")
+	h.mustRegister(sessC, "late")
+	h.postNotices(sessB, agent("answerer"), "the schema")
+	h.clk.advance(50 * time.Minute)
+	h.postNotices(sessC, agent("answerer"), "the schema")
+	h.clk.advance(5 * time.Minute)
+	if n := h.postNotices(sessA, agent("late"), "Re: the schema"); slices.Contains(n, fanOutHint) {
+		t.Errorf("answer to the late asker: notices = %q, want no hint for a reply", n)
+	}
+	h.clk.advance(15 * time.Minute)
+	if n := h.postNotices(sessA, agent("early"), "Re: the schema"); slices.Contains(n, fanOutHint) {
+		t.Errorf("answer to the early asker, 70 min on: notices = %q, want no hint for a reply", n)
+	}
+}
+
 func TestPost_onlyDeliveredDirectPostsCountTowardTheHint(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegister(sessA, "sender")
@@ -88,7 +106,7 @@ func TestPost_onlyDeliveredDirectPostsCountTowardTheHint(t *testing.T) {
 	}
 }
 
-func TestFanOut_holdsAtMostItsCapAndOnlyTheHour(t *testing.T) {
+func TestFanOut_holdsAtMostItsCapAndOnlyTheReplyWindow(t *testing.T) {
 	var f fanOut
 	start := time.Unix(1_000_000, 0)
 	f.record(1, 10, "the oldest", start)
@@ -102,8 +120,8 @@ func TestFanOut_holdsAtMostItsCapAndOnlyTheHour(t *testing.T) {
 		t.Errorf("window holds %d posts, want the cap, %d", len(f.sent), fanOutCap)
 	}
 	f.record(3, 30, "late", start.Add(time.Minute))
-	f.prune(start.Add(fanOutWindow))
+	f.prune(start.Add(replyWindow))
 	if len(f.sent) != 1 || f.sent[0].subject != "late" {
-		t.Errorf("after the hour the window holds %d posts, want only the one under an hour old", len(f.sent))
+		t.Errorf("after the reply window it holds %d posts, want only the one inside it", len(f.sent))
 	}
 }
