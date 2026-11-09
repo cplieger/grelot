@@ -250,5 +250,5 @@ func (s *Server) unfollow(r *http.Request, c store.Caller, k store.Keyed) (statu
 	if err != nil {
 		return 0, nil, err
 	}
-	return http.StatusOK, identityResponse{Identity: identityOut(&got)}, nil
+	return http.StatusOK, followResponse{Notices: nonNil(got.Notices), Identity: identityOut(&got.Identity)}, nil
 }

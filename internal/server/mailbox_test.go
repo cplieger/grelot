@@ -247,7 +247,18 @@ func TestFollows_followAndUnfollowALiveThread(t *testing.T) {
 	if r := h.as(sessA, http.MethodPut, "/v1/follows?path=/workspace/other", nil); r.status != http.StatusOK || fmt.Sprint(r.body["notices"]) != "[]" {
 		t.Errorf("follow of a live thread: %d %s, want 200 with no notice", r.status, r.raw)
 	}
-	h.as(sessA, http.MethodPut, "/v1/follows?path="+repoGrelot, nil)
+	if got := fmt.Sprint(unfollowed.body["notices"]); got != "[]" {
+		t.Errorf("unfollow of a plain follow: notices %s, want []", got)
+	}
+	if r := h.as(sessA, http.MethodPost, "/v1/reservations", map[string]any{"path": "/workspace/other", "reason": "editing", "ttl": "1h"}); r.status != http.StatusCreated {
+		t.Fatalf("reserve: %d %s", r.status, r.raw)
+	}
+	if r := h.as(sessA, http.MethodDelete, "/v1/follows?path=/workspace/other", nil); r.status != http.StatusOK || !strings.Contains(fmt.Sprint(r.body["notices"]), "your reservation") {
+		t.Errorf("unfollow under a held reservation: %d %s, want 200 naming the reservation that still delivers it", r.status, r.raw)
+	}
+	if r := h.as(sessA, http.MethodPut, "/v1/follows?path="+repoGrelot, nil); r.status != http.StatusOK || !strings.Contains(fmt.Sprint(r.body["notices"]), "your work path "+repoGrelot) {
+		t.Errorf("follow of the work path: %d %s, want 200 saying the work path already reaches it", r.status, r.raw)
+	}
 	if r := h.as(sessA, http.MethodDelete, "/v1/follows?path="+repoGrelot, nil); r.status != http.StatusConflict {
 		t.Errorf("unfollow under a work path: %d %s, want 409", r.status, r.raw)
 	}

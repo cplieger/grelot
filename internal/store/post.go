@@ -58,9 +58,9 @@ type Posted struct {
 // Post stores a message from p.Caller's live identity, applies its
 // identity fields, and delivers it to each recipient, dormant ones too,
 // with a quiet copy to each delegate's parent that would not otherwise see
-// it; a non-delegate's path post follows the thread. Refusals: KindInvalid
-// for a bad target, message, field or where; KindGone with no live
-// identity; KindForbidden outside a delegate's scope, either way;
+// it; a path post follows its thread as pathRoute says. Refusals:
+// KindInvalid for a bad target, message, field or where; KindGone with no
+// live identity; KindForbidden outside a delegate's scope, either way;
 // KindNotFound for an unknown @name; KindConflict for a rename to a held
 // name; KindFull past 90 % of Options.MaxBytes; ErrClosed after Close.
 func (s *Store) Post(ctx context.Context, k Keyed, p *Posting) (Posted, bool, error) {
@@ -247,9 +247,9 @@ func (w *wtx) announceRoute() (route, error) {
 // or a follow at p or above it, and the delegates whose scope allows p.
 // Posts go down the tree only, so a work path under p does not match.
 // Walking p's ancestors shortest first leaves each recipient labelled with
-// its most specific match. The sender follows p unless a follow already
-// covers it, it is at the cap, or it is a delegate, whose scope already
-// delivers p.
+// its most specific match. The sender follows p unless its work path or
+// a follow already reaches p, it is at the cap, or it is a delegate,
+// whose scope already delivers p.
 func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 	th, _, err := w.thread(p)
 	if err != nil {
@@ -265,14 +265,13 @@ func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 	if me.Parent == 0 {
 		me.Threaded = true
 	}
-	switch {
-	case me.Parent != 0, followCovering(me, p) != "":
-	case len(me.Follows) >= maxFollows:
+	if me.Parent != 0 || reachedBy(me, p) != "" {
+		return rt, nil
+	}
+	if _, ok := addFollow(me, p); !ok {
 		rt.notices = append(rt.notices, fmt.Sprintf(
 			"you follow %d threads, the most allowed, so this post did not follow %s: grelot unfollow one to follow it", maxFollows, p,
 		))
-	default:
-		me.Follows = append(me.Follows, p)
 	}
 	return rt, nil
 }
@@ -309,11 +308,14 @@ func (w *wtx) matchAt(rt *route, a, p string) error {
 	})
 }
 
-// followCovering is the follow of me's that delivers p, p itself or a
-// path above it, or "" when none does.
-func followCovering(me *identityRow, p string) string {
+// reachedBy names me's work path or follow at or above p, which already
+// delivers p's threads, or is "" when none does.
+func reachedBy(me *identityRow, p string) string {
+	if i := slices.IndexFunc(me.Paths, func(q string) bool { return under(p, q) }); i >= 0 {
+		return "your work path " + me.Paths[i]
+	}
 	if i := slices.IndexFunc(me.Follows, func(f string) bool { return under(p, f) }); i >= 0 {
-		return me.Follows[i]
+		return "your follow of " + me.Follows[i]
 	}
 	return ""
 }

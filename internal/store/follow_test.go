@@ -143,23 +143,79 @@ func TestFollow_aPathItsFollowsCoverIsNotAdded(t *testing.T) {
 	}
 }
 
-func TestUnfollow_refusedUnderAnotherFollow(t *testing.T) {
+func TestFollow_aPathItsWorkPathReachesIsNotAdded(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	b := regAt(t, s, "bravo", repoGrelot)
+	got := mustFollowed(t, s, sess("bravo"), repoGrelot+"/internal")
+	if len(got.Identity.Follows) != 0 {
+		t.Errorf("follows %v, want none", got.Identity.Follows)
+	}
+	if !slices.ContainsFunc(got.Notices, func(n string) bool { return strings.Contains(n, "your work path "+repoGrelot) }) {
+		t.Errorf("notices %q, want one naming the work path %s that reaches it", got.Notices, repoGrelot)
+	}
+	for i := range maxFollows + 1 {
+		mustPost(t, s, posting(sess("bravo"), Target{Path: fmt.Sprintf("%s/pkg%d", repoGrelot, i)}))
+	}
+	if row := getIdentity(t, s, b.ID); len(row.Follows) != 0 || !row.Threaded {
+		t.Errorf("after posts under its own work path: follows %v, threaded %v; want none and threaded", row.Follows, row.Threaded)
+	}
+	if _, err := s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, "/workspace/bolttable"); err != nil {
+		t.Errorf("follow of a library after those posts: %v, want it added", err)
+	}
+}
+
+func TestFollow_replacesTheFollowsUnderIt(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	const lib = "/workspace/bolttable"
 	b := regAt(t, s, "bravo", repoSubflux)
-	follows := []string{lib, lib + "/table.go"}
-	editIdentity(t, s, b.ID, func(r *identityRow) { r.Follows = follows })
-	for _, p := range []string{lib + "/table.go", lib + "/never-followed"} {
-		_, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
-		wantRefusal(t, err, KindConflict, "", p, "your follow of "+lib)
+	full := []string{lib + "/table.go", lib + "/index"}
+	for i := len(full); i < maxFollows; i++ {
+		full = append(full, fmt.Sprintf("/workspace/thread-%02d", i))
 	}
-	got, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, lib)
+	editIdentity(t, s, b.ID, func(r *identityRow) { r.Follows = full })
+	got := mustFollowed(t, s, sess("bravo"), lib)
+	if want := append(slices.Clone(full[2:]), lib); !slices.Equal(got.Identity.Follows, want) {
+		t.Errorf("follows %v, want %v", got.Identity.Follows, want)
+	}
+	if !slices.ContainsFunc(got.Notices, func(n string) bool {
+		return strings.Contains(n, "replaces") && strings.Contains(n, full[0]+", "+full[1])
+	}) {
+		t.Errorf("notices %q, want one naming the replaced %s and %s", got.Notices, full[0], full[1])
+	}
+	editIdentity(t, s, b.ID, func(r *identityRow) { r.Follows = []string{"/workspace/other"} })
+	mustPost(t, s, posting(sess("bravo"), Target{Path: lib + "/table.go"}))
+	mustPost(t, s, posting(sess("bravo"), Target{Path: lib}))
+	if f := getIdentity(t, s, b.ID).Follows; !slices.Equal(f, []string{"/workspace/other", lib}) {
+		t.Errorf("follows after posts at %s/table.go then %s: %v, want the post at %s to replace the subpath's", lib, lib, f, lib)
+	}
+}
+
+func TestUnfollow_removesAFollowAnotherFollowCovers(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	const lib = "/workspace/bolttable"
+	b := regAt(t, s, "bravo", repoSubflux)
+	editIdentity(t, s, b.ID, func(r *identityRow) { r.Follows = []string{lib, lib + "/table.go"} })
+	got := mustUnfollow(t, s, "bravo", lib+"/table.go")
+	if !slices.Equal(got.Identity.Follows, []string{lib}) {
+		t.Errorf("follows %v, want [%s]", got.Identity.Follows, lib)
+	}
+	if len(got.Notices) != 1 || !strings.Contains(got.Notices[0], "your follow of "+lib) {
+		t.Errorf("notices %q, want one naming the follow of %s that still delivers it", got.Notices, lib)
+	}
+	_, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, lib+"/never-followed")
+	wantRefusal(t, err, KindConflict, "", lib+"/never-followed", "your follow of "+lib)
+	if got := mustUnfollow(t, s, "bravo", lib); len(got.Identity.Follows) != 0 || len(got.Notices) != 0 {
+		t.Errorf("unfollowing the last follow: follows %v, notices %q; want neither", got.Identity.Follows, got.Notices)
+	}
+}
+
+func mustUnfollow(t *testing.T, s *Store, name, path string) Followed {
+	t.Helper()
+	got, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess(name)}, path)
 	if err != nil {
-		t.Fatalf("unfollowing the covering follow: %v", err)
+		t.Fatalf("Unfollow(%s, %s): %v", name, path, err)
 	}
-	if !slices.Equal(got.Follows, follows[1:]) {
-		t.Errorf("follows %v, want %v", got.Follows, follows[1:])
-	}
+	return got
 }
 
 func TestFollow_refusedAtTheCap(t *testing.T) {
@@ -204,12 +260,8 @@ func TestUnfollow_stopsTheThread(t *testing.T) {
 	mustPost(t, s, posting(sess("alpha"), Target{Path: repoGrelot}))
 	mustFollow(t, s, sess("bravo"), p)
 	mustFollow(t, s, sess("bravo"), repoGrelot)
-	got, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(got.Follows, []string{repoGrelot}) {
-		t.Errorf("follows %v, want only %s left", got.Follows, repoGrelot)
+	if got := mustUnfollow(t, s, "bravo", p).Identity.Follows; !slices.Equal(got, []string{repoGrelot}) {
+		t.Errorf("follows %v, want only %s left", got, repoGrelot)
 	}
 	mustPost(t, s, posting(sess("alpha"), Target{Path: p}))
 	if ds := deliveriesTo(t, s, b.ID); len(ds) != 0 {
@@ -223,25 +275,28 @@ func TestUnfollow_stopsTheThread(t *testing.T) {
 	}
 }
 
-func TestUnfollow_refusedUnderAWorkPath(t *testing.T) {
+func TestUnfollow_underAWorkPath(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	const work = "/workspace/marotte"
 	b := regAt(t, s, "bravo", work)
-	follows := []string{work, work + "/web", "/workspace/marotte-old"}
-	editIdentity(t, s, b.ID, func(r *identityRow) { r.Follows = follows })
-	for _, p := range []string{work, work + "/web", work + "/never-followed"} {
-		_, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, p)
-		wantRefusal(t, err, KindConflict, "", p, work, "narrow your paths")
+	editIdentity(t, s, b.ID, func(r *identityRow) { r.Follows = []string{work, work + "/web", "/workspace/marotte-old"} })
+	for _, p := range []string{work, work + "/web"} {
+		got := mustUnfollow(t, s, "bravo", p)
+		if slices.Contains(got.Identity.Follows, p) {
+			t.Errorf("unfollow %s: follows %v, want it removed", p, got.Identity.Follows)
+		}
+		if len(got.Notices) != 1 || !strings.Contains(got.Notices[0], "your work path "+work) || !strings.Contains(got.Notices[0], "narrow your paths") {
+			t.Errorf("unfollow %s: notices %q, want one naming the work path that still delivers it", p, got.Notices)
+		}
 	}
-	if f := getIdentity(t, s, b.ID).Follows; !slices.Equal(f, follows) {
-		t.Errorf("follows %v after refusals, want %v", f, follows)
+	_, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, work+"/never-followed")
+	wantRefusal(t, err, KindConflict, "", work+"/never-followed", work, "narrow your paths")
+	got := mustUnfollow(t, s, "bravo", "/workspace/marotte-old")
+	if len(got.Identity.Follows) != 0 || len(got.Notices) != 0 {
+		t.Errorf("a name-prefix sibling: follows %v, notices %q; want it removed with no notice", got.Identity.Follows, got.Notices)
 	}
-	got, err := s.Unfollow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, "/workspace/marotte-old")
-	if err != nil {
-		t.Fatalf("a name-prefix sibling is not under the work path: %v", err)
-	}
-	if !slices.Equal(got.Follows, follows[:2]) {
-		t.Errorf("follows %v, want %v", got.Follows, follows[:2])
+	if f := getIdentity(t, s, b.ID).Follows; len(f) != 0 {
+		t.Errorf("stored follows %v, want none", f)
 	}
 }
 
