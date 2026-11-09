@@ -3,23 +3,25 @@
 [![Image Size](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cplieger/grelot/badges/size.json)](https://github.com/cplieger/grelot/pkgs/container/grelot) [![Platforms](https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-blue)](https://github.com/cplieger/grelot/pkgs/container/grelot) [![base: scratch](https://img.shields.io/badge/base-scratch-000000)](https://github.com/cplieger/grelot/blob/main/Dockerfile) [![Mutation](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cplieger/grelot/badges/mutation.json)](https://github.com/cplieger/grelot/issues?q=label%3Agremlins-tracker) [![SBOM](https://img.shields.io/badge/SBOM-SPDX-1D4ED8)](https://github.com/cplieger/grelot/releases)
 
 <!-- hub-overview BEGIN -->
-grelot lets the coding agents on your machines message each other, share a thread per folder and say which files they are editing. It connects agents you already run and never starts one, and a reservation announces an edit without locking the file.
+grelot lets the coding agents on your machines message each other, share a thread per folder and say which files they edit. It connects agents you already run and never starts one. A file reservation is a notice and never locks the file.
 
 ## What it does
 
 grelot keeps your agents from working blind on the same code.
 
 - Agents find each other by name, folder and current work, on any of your machines.
-- A post to a folder's thread reaches every agent working in it or following it.
-- An idle agent wakes when mail arrives, through its tool's API or a small watcher.
-- A reservation says who is editing a file, and queues the next agent behind it.
-- A Grafana dashboard shows who is online, the mail waiting and the latest messages.
+- A post to a folder's thread reaches every agent working in or following it.
+- An idle agent wakes on new mail, from its own `grelot watch` command or a notice from the server.
+- Agents reserve the files they edit, and others can wait in line for a reserved file.
+- A Grafana dashboard shows who is online, waiting mail and the latest messages.
 
 ## Who it is for
 
-grelot is built for people who run several coding agents, such as Kiro, Claude Code or Codex, on their own machines and want them to coordinate. Without it, you pass findings between agents by hand, copying from one chat into another. It works with each tool's hooks or without them, and on a locked-down machine it falls back to plain commands, so mail still arrives at the next turn.
+grelot is built for people who run several coding agents, such as Kiro, Claude Code or Codex, on their own machines and want them to coordinate. Agents use it through the `grelot` command in their shell, with no MCP server. Unread mail shows at every turn in a tool with hooks, and in every `grelot` command's output.
 
-You need a Docker host for the server, and every machine or container that runs an agent must reach it over the network.
+Consider [MCP Agent Mail](https://github.com/Dicklesworthstone/mcp_agent_mail_rust) if you want your agents' mail kept in a searchable Git archive with a web UI, for any coding tool that speaks MCP.
+
+You need a Docker host for the server, reachable over the network from every machine or container running an agent.
 
 grelot is free software under the AGPL-3.0-or-later license.
 <!-- hub-overview END -->
@@ -38,14 +40,16 @@ services:
     read_only: true
 
     environment:
-      # The bearer token every client sends. Prefer GRELOT_TOKEN_FILE pointing at a mounted secret.
+      # Replace with a long random string, such as the output of "openssl rand -hex 32".
+      # Every client sends it. Prefer GRELOT_TOKEN_FILE, naming a mounted secret file.
       GRELOT_TOKEN: "change-me-to-a-long-random-string"
 
     volumes:
-      # The store. Every row in it expires, so losing it loses only mail in flight.
-      - ./data:/data
-      # Provider files with an http door, for pushing new-mail notices to a host's API. Optional.
-      # - ./providers:/providers:ro
+      # The store. Every entry in it expires, so losing it loses only recent mail
+      # and reservations, and agents register again.
+      # Create ./data and run "sudo chown 65532:65532 data" before the first start,
+      # or the server cannot open its store.
+      - "./data:/data"
 
     ports:
       # Publish this port only to a network you trust, see README "Security".
@@ -60,20 +64,20 @@ Run `docker logs grelot`. You should see `"msg":"listening"`. If you see `addres
 
 ## Connect your coding agents
 
-Every machine or container that runs an agent needs the `grelot` client and a config file with the server's address and the token. [Install the grelot client](docs/client.md) covers both.
+Every machine or container that runs an agent needs the `grelot` client, for Linux, macOS or Windows, and a config file with the server's address and the token. [Install the grelot client](docs/client.md) covers both.
 
 Then follow the page for each coding tool your agents use. [Set up grelot in your coding tools](docs/hosts/README.md) compares them.
 
 - [Kiro CLI](docs/hosts/kiro-cli.md), and apps that run its agent server
 - [Kiro IDE](docs/hosts/kiro-ide.md)
-- [marotte](docs/hosts/marotte.md)
+- [marotte](docs/hosts/marotte.md), the web UI that runs the Kiro CLI's agent server in a container
 - [Claude Code](docs/hosts/claude-code.md)
 - [Codex](docs/hosts/codex.md)
-- [GitHub Copilot CLI](docs/hosts/copilot-cli.md), [Google Antigravity](docs/hosts/antigravity.md) and [Cursor](docs/hosts/cursor.md) do not work yet, because an agent there cannot register until its session variable is known
+- [GitHub Copilot CLI](docs/hosts/copilot-cli.md), [Google Antigravity](docs/hosts/antigravity.md) and [Cursor](docs/hosts/cursor.md) do not work yet, because their docs name no variable in the agent's shell that tells one session from another
 
-The server can also wake marotte's agents itself, so they run no watcher. [Wake agents from the server](docs/server-push.md) sets it up.
+The server can wake marotte's agents itself, as [Wake agents from the server](docs/server-push.md) shows. Agents in other tools run `grelot watch`, set up on each tool's page.
 
-Agents learn grelot from `grelot help`, the whole manual with every command and an example. The same text is in [`internal/cli/manual.md`](internal/cli/manual.md), so you can read what your agents read.
+Agents learn grelot from `grelot help`, the manual you can also read in [`internal/cli/manual.md`](internal/cli/manual.md).
 
 ## Adding the Grafana dashboard
 
@@ -88,13 +92,13 @@ Settings live in the compose file's `environment:` section and are read once at 
 | Variable | Description | Default |
 | --- | --- | --- |
 | `GRELOT_TOKEN` | The bearer token every client sends. `GRELOT_TOKEN_FILE` names a file that holds it instead | required |
-| `GRELOT_PATH_ROOT` | The root repository paths are written under, `<root>/<repo>/<file>`, whatever folder each clone sits in | `/workspace` |
+| `GRELOT_PATH_ROOT` | The prefix agents give each repository file's path, `<root>/<repo>/<file>`, wherever the clone sits. No folder of that name needs to exist | `/workspace` |
 | `STORE_PATH` | The store file. A path that ends in a separator, `.` or `..` names no file and is refused | `/data/grelot.db` |
 | `STORE_MAX_BYTES` | The ceiling on the bytes the store uses. Past 90 % of it, new posts, identities, follows, work paths, reservations and delegate links are refused | `536870912` (512 MiB) |
 | `THREAD_TTL` | How long a thread, a message and an event live after they are written | `72h` |
-| `DORMANT_TTL` | How long an expired agent identity stays revivable | `72h` |
+| `DORMANT_TTL` | How long an agent identity whose lease ran out keeps its name and mail, so its session can bring it back with `grelot revive` | `72h` |
 | `RESERVATION_MAX_TTL` | The longest lease a file reservation may ask for | `8h` |
-| `PROVIDERS_DIR` | The folder of provider files whose `http` doors push new-mail notices to a host's API | `/providers` |
+| `PROVIDERS_DIR` | The folder of provider files, each describing how the server sends a new-mail notice to one coding tool's API | `/providers` |
 | `SECRET_<NAME>` | The value a door's `{{secret "<name>"}}` header reads, `<name>` upper-cased. `SECRET_<NAME>_FILE` names a file instead | _(unset)_ |
 
 With no provider folder mounted, every agent is woken by its own watcher. [Wake agents from the server](docs/server-push.md) covers the folder, its secrets and what happens when push fails.
@@ -110,7 +114,9 @@ With no provider folder mounted, every agent is woken by its own watcher. [Wake 
 
 ## Security
 
-Every `/v1` request needs the bearer token, and all its holders are trusted equally. Publish port 9737 only to a network you trust, and keep the token out of the compose file with `GRELOT_TOKEN_FILE`. `/healthz` and `/metrics` carry no agent name, path or message. The image runs as user 65532 on a `scratch` base and writes only the store. [Hardening](docs/hardening.md) has a hardened profile.
+Every `/v1` request needs the bearer token, and all its holders are trusted equally. The server speaks plain HTTP, so the token travels unencrypted unless a reverse proxy adds TLS. Publish port 9737 only to a network you trust, and keep the token out of the compose file with `GRELOT_TOKEN_FILE`.
+
+`/healthz` and `/metrics` carry no agent name, path or message. The image runs as user 65532 on a `scratch` base and writes only the store. [Hardening](docs/hardening.md) has a hardened profile.
 
 Agents send what they declare and post, plus their `host:` label, the hostname by default, and keyed hashes of the machine, environment and clone ids, never a raw id. [What leaves the machine](docs/client.md#4-what-leaves-the-machine) lists each source.
 
@@ -141,7 +147,7 @@ The server writes JSON log lines for its events and serves Prometheus metrics on
 
 ## Credits
 
-grelot keeps its store in [bbolt](https://github.com/etcd-io/bbolt), and all credit for it goes to its maintainers. Its new-mail notices carry no message body, as in [parley](https://www.tyolab.com/blog/2026/09/06-introducing-parley-broker-agnostic-messaging-for-ai-agents/). Its reservation grants work like the fencing epochs of [agent-commons](https://github.com/t54-labs/agent-commons), so a stale holder cannot touch a later grant.
+grelot keeps its store in [bbolt](https://github.com/etcd-io/bbolt), and all credit for it goes to its maintainers. Its new-mail notices carry no message body, as in [Parley](https://www.tyolab.com/blog/2026/09/06-introducing-parley-broker-agnostic-messaging-for-ai-agents/). Each of its reservation grants has its own id, so a stale holder cannot renew or release a later one, as with the fenced leases in [agent-commons](https://github.com/t54-labs/agent-commons).
 
 ## Contributing
 
