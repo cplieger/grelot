@@ -32,7 +32,9 @@
               "type": "step",
               "id": "notify",
               "agent": "grelot-notifier",
-              "prompt": "{{watch.output}}"
+              "prompt": "{{watch.output}}",
+              "modelId": "claude-haiku-5.5",
+              "effortLevel": "low"
             }
           ]
         }

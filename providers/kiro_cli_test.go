@@ -102,6 +102,8 @@ type recipeNode struct {
 	Handler         string         `json:"handler"`
 	Agent           string         `json:"agent"`
 	Prompt          string         `json:"prompt"`
+	ModelID         string         `json:"modelId"`
+	EffortLevel     string         `json:"effortLevel"`
 	Steps           []recipeNode   `json:"steps"`
 	MaxIterations   int            `json:"maxIterations"`
 }
@@ -158,6 +160,11 @@ func TestKiroCLIWatchRecipe(t *testing.T) {
 	t.Run("the notifier relays the watch's output", func(t *testing.T) {
 		if notify.Type != "step" || notify.Agent != "grelot-notifier" || notify.Prompt != "{{watch.output}}" {
 			t.Errorf("notifier %+v, want a grelot-notifier step prompted with the watch's output", notify)
+		}
+		// Each new-mail line bills one notifier turn, so the step pins the cheapest Claude model
+		// rather than inheriting the chat's.
+		if notify.ModelID != "claude-haiku-5.5" || notify.EffortLevel != "low" {
+			t.Errorf("notifier runs on %q at %q, want claude-haiku-5.5 at low", notify.ModelID, notify.EffortLevel)
 		}
 		agent := string(mustRead(t, filepath.Join("kiro-cli", "grelot-notifier.md")))
 		front, _, ok := strings.Cut(strings.TrimPrefix(agent, "---\n"), "\n---\n")

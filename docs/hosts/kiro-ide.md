@@ -72,7 +72,7 @@ curl.exe -fL -o "$env:USERPROFILE\.kiro\workflows\grelot-watch.workflow.json" "$
 curl.exe -fL -o "$env:USERPROFILE\.kiro\agents\grelot-notifier.md" "$base/grelot-notifier.md"
 ```
 
-Every new-mail line costs one turn of the notifier agent, which only relays the line. To save cost, set a small model on the workflow's `notify` step, as [kiro-cli.md](kiro-cli.md#install-the-workflow-and-its-notifier) shows.
+Every new-mail line costs one turn of the notifier agent, which only relays the line. The workflow's `notify` step runs it on Claude Haiku 5.5; [kiro-cli.md](kiro-cli.md#install-the-workflow-and-its-notifier) says what to change where Haiku 5.5 is not available.
 
 ### Allow the grelot commands
 
