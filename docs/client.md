@@ -19,7 +19,7 @@ A release that carries the client lists six binaries among its assets, each with
 | Windows, x86-64 | `grelot-windows-amd64.exe` |
 | Windows, ARM64 | `grelot-windows-arm64.exe` |
 
-Pick an exact version from the [releases page](https://github.com/cplieger/grelot/releases), never a moving link, so the checksum and the binary belong together. Until a release lists these assets, install with `go install` below.
+Pick an exact version from the [releases page](https://github.com/cplieger/grelot/releases), never a moving link, so the checksum and the binary belong together.
 
 On Linux, in a folder on your `PATH` such as `~/.local/bin`:
 
