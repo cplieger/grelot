@@ -189,13 +189,17 @@ func TestRetryAfter_roundsUpWithAOneSecondFloor(t *testing.T) {
 	}
 }
 
-func TestPost_storeNearlyFullIs507(t *testing.T) {
-	h := newHarnessWith(t, store.Options{MaxBytes: 1})
+func TestStoreNearlyFull_aPostAndAFollowAre507(t *testing.T) {
+	h := newHarness(t)
 	h.mustRegister(sessA, "sender")
 	h.mustRegister(sessB, "reader")
+	h.fill()
 	r := h.as(sessA, http.MethodPost, "/v1/posts", postBody(map[string]any{"agent": "reader"}, "hello", "a body"))
 	if r.status != http.StatusInsufficientStorage || r.str("code") != "store_full" {
 		t.Errorf("post: %d %s, want 507 store_full", r.status, r.raw)
+	}
+	if f := h.as(sessB, http.MethodPut, "/v1/follows?path=/workspace/other", nil); f.status != http.StatusInsufficientStorage || f.str("code") != "store_full" {
+		t.Errorf("follow: %d %s, want 507 store_full", f.status, f.raw)
 	}
 }
 

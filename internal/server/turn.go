@@ -145,7 +145,7 @@ func (s *Server) inTurnWait(ctx context.Context, c store.Caller, limit int, wait
 			release()
 			return page, err
 		}
-		err = s.hold(ctx, wake, deadline)
+		err = s.hold(ctx, wake, nil, deadline)
 		release()
 		switch {
 		case errors.Is(err, errShuttingDown):

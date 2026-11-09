@@ -29,12 +29,31 @@ const (
 // notice. A restart forgets it all, so every identity then reads offline,
 // its first turn is not deferred and a down episode can be told once more.
 type presence struct {
-	m  map[uint64]mark
-	mu sync.Mutex
+	m map[uint64]mark
+	// sessions holds an entry only while one of its standing waits is open.
+	sessions map[string]sessionWaits
+	mu       sync.Mutex
 }
 
-// sendCount counts the nudges an identity's standing waits sent.
-type sendCount uint64
+// sessionWaits is one session's open standing waits. Only the newest
+// serves the session: one nudge wakes it once, and the older waits end.
+type sessionWaits struct {
+	// newest is the newest wait's replaced channel.
+	newest chan struct{}
+	// handed is a nudge a replaced wait sent, which the newest returns.
+	handed *nudgeJSON
+	// id is the identity the newest wait holds for.
+	id   uint64
+	open int
+}
+
+// waitTicket is one standing wait's place among its session's waits.
+type waitTicket struct {
+	// replaced closes when a newer standing wait of the session opens.
+	replaced chan struct{}
+	session  string
+	id       uint64
+}
 
 type mark struct {
 	// closed is when the last standing wait closed.
@@ -45,10 +64,6 @@ type mark struct {
 	// served, which its ack is still to mark read.
 	servedAt time.Time
 	served   uint64
-	// sent is the last nudge a standing wait sent, and sends counts them,
-	// so every wait open at that send returns it.
-	sent  nudgeJSON
-	sends sendCount
 	// open and inTurn count the standing and in-turn waits held now.
 	open   int
 	inTurn int
@@ -60,7 +75,9 @@ type mark struct {
 	downTold bool
 }
 
-func newPresence() *presence { return &presence{m: map[uint64]mark{}} }
+func newPresence() *presence {
+	return &presence{m: map[uint64]mark{}, sessions: map[string]sessionWaits{}}
+}
 
 // update runs fn on id's mark under the lock.
 func (p *presence) update(id uint64, fn func(*mark)) {
@@ -78,39 +95,79 @@ func (p *presence) get(id uint64) mark {
 }
 
 // registered starts id's session marks afresh, for a registration, a
-// take-over or a revival; the waits already open stay counted, with the
-// sends they compare against.
+// take-over or a revival; the waits already open stay counted.
 func (p *presence) registered(id uint64) {
 	p.update(id, func(m *mark) {
-		*m = mark{closed: m.closed, open: m.open, inTurn: m.inTurn, sent: m.sent, sends: m.sends}
+		*m = mark{closed: m.closed, open: m.open, inTurn: m.inTurn}
 	})
 }
 
-// opened records a standing wait of id starting, which ends the down
-// episode, and returns the sends so far for sentSince; the caller calls
-// closed when it ends.
-func (p *presence) opened(id uint64) (sends sendCount) {
-	p.update(id, func(m *mark) {
-		m.open, m.held, m.downTold = m.open+1, true, false
-		sends = m.sends
-	})
-	return sends
+// opened records a standing wait of id starting in session, which ends
+// the down episode and replaces the session's other open standing waits;
+// the caller calls closed with the ticket when it ends.
+func (p *presence) opened(id uint64, session string) waitTicket {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	m := p.m[id]
+	m.open, m.held, m.downTold = m.open+1, true, false
+	p.m[id] = m
+	t := waitTicket{replaced: make(chan struct{}), session: session, id: id}
+	sw := p.sessions[session]
+	if sw.newest != nil {
+		close(sw.newest)
+	}
+	if sw.id != id {
+		sw.handed = nil
+	}
+	sw.newest, sw.id, sw.open = t.replaced, id, sw.open+1
+	p.sessions[session] = sw
+	return t
 }
 
-// watcherSent records n, a nudge a standing wait of id sent.
-func (p *presence) watcherSent(id uint64, n nudgeJSON) {
-	p.update(id, func(m *mark) { m.sent, m.sends = n, m.sends+1 })
+// next reports whether a newer standing wait of t's session replaced t
+// and, when none has, takes the nudge a replaced wait handed it.
+func (p *presence) next(t waitTicket) (handed *nudgeJSON, replaced bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	sw := p.sessions[t.session]
+	if sw.newest != t.replaced {
+		return nil, true
+	}
+	handed, sw.handed = sw.handed, nil
+	p.sessions[t.session] = sw
+	return handed, false
 }
 
-// sentSince returns the last nudge a standing wait of id sent, when one
-// went out after the sends count since.
-func (p *presence) sentSince(id uint64, since sendCount) (nudgeJSON, bool) {
-	m := p.get(id)
-	return m.sent, m.sends > since
+// handOff reports whether t was replaced when it sent n and, when the
+// session's newest wait holds for t's identity too, hands n to it.
+func (p *presence) handOff(t waitTicket, n nudgeJSON) (handed, replaced bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	sw := p.sessions[t.session]
+	if sw.newest == t.replaced {
+		return false, false
+	}
+	if sw.id != t.id {
+		return false, true
+	}
+	sw.handed = &n
+	p.sessions[t.session] = sw
+	return true, true
 }
 
-func (p *presence) closed(id uint64, now time.Time) {
-	p.update(id, func(m *mark) { m.open, m.closed = m.open-1, now })
+func (p *presence) closed(t waitTicket, now time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	m := p.m[t.id]
+	m.open, m.closed = m.open-1, now
+	p.m[t.id] = m
+	sw := p.sessions[t.session]
+	sw.open--
+	if sw.open == 0 {
+		delete(p.sessions, t.session)
+		return
+	}
+	p.sessions[t.session] = sw
 }
 
 // online reports whether id holds a standing wait, or closed one under

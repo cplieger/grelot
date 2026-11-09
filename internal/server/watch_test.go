@@ -86,66 +86,107 @@ func TestWait_sendsTheDueNudgeAndReturnsIt(t *testing.T) {
 	}
 }
 
-func TestWait_twoRacingWaitsSendOneNudgeAndBothReturnIt(t *testing.T) {
+func TestWait_aNewerWaitOfTheSessionEndsTheOlderWithReplaced(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h := newBubbleHarness(t)
 		h.mustRegisterAlone(sessA, "reader")
 		h.mustRegisterAlone(sessB, "writer")
-		first := h.watchAsync(sessA, 55*time.Second)
-		second := h.watchAsync(sessA, 55*time.Second)
+		older := h.watchAsync(sessA, 55*time.Second)
 		synctest.Wait()
 		start := time.Now()
-		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
-		seq := h.newestWake(sessA)
-
-		wantNudge(t, first.answer(), seq, 1, 1)
-		wantNudge(t, second.answer(), seq, 1, 1)
-		if d := time.Since(start); d != 0 {
-			t.Errorf("the waits returned %v after the post, want at once", d)
+		newer := h.watchAsync(sessA, 55*time.Second)
+		if r := older.answer(); r.status != http.StatusGone || r.str("code") != "replaced" || time.Since(start) != 0 {
+			t.Errorf("the older wait = %d %s after %v, want 410 replaced at once", r.status, r.raw, time.Since(start))
 		}
+		synctest.Wait()
+		if !h.srv.presence.online(h.idOf(sessA), time.Now()) {
+			t.Error("offline while the newer wait holds")
+		}
+		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
+		wantNudge(t, newer.answer(), h.newestWake(sessA), 1, 1)
 		if n := h.sentByWatcher(); n != 1 {
 			t.Errorf("%d nudge sent lines via watcher, want 1", n)
-		}
-		before := time.Now()
-		if r := h.watch(sessA, 55*time.Second); r.status != http.StatusNoContent {
-			t.Errorf("a wait opened after the send = %d %s, want 204", r.status, r.raw)
-		}
-		if d := time.Since(before); d != 55*time.Second {
-			t.Errorf("a wait opened after the send held %v, want the whole 55s", d)
 		}
 	})
 }
 
-func TestWait_aWaitThatLostTheRaceReturnsTheWinnersNudge(t *testing.T) {
+func TestWait_anotherSessionsWaitIsNotReplaced(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h := newBubbleHarness(t)
+		h.mustRegisterAlone(sessA, "reader")
+		h.mustRegisterAlone(sessB, "writer")
+		h.mustRegisterAlone(sessC, "other")
+		first := h.watchAsync(sessA, 55*time.Second)
+		synctest.Wait()
+		second := h.watchAsync(sessC, 55*time.Second)
+		synctest.Wait()
+		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
+		wantNudge(t, first.answer(), h.newestWake(sessA), 1, 1)
+		h.mustPost(sessB, map[string]any{"agent": "other"}, "hello")
+		wantNudge(t, second.answer(), h.newestWake(sessC), 1, 1)
+	})
+}
+
+// sendAsWait records id's due nudge as a standing wait's send would, and
+// returns it.
+func (h *harness) sendAsWait(id uint64) nudgeJSON {
+	h.t.Helper()
+	st, _, err := h.store.Nudging(h.t.Context(), id)
+	if err != nil || st.Due == nil {
+		h.t.Fatalf("Nudging = %+v, %v; want a due nudge", st, err)
+	}
+	got, ok, err := h.store.RecordNudge(h.t.Context(), st.Due, store.NudgeByWatcher)
+	if err != nil || !ok {
+		h.t.Fatalf("RecordNudge: %v, %v", ok, err)
+	}
+	return nudgeJSON{Seq: got.Seq, Count: got.Count, Attempt: got.Attempt}
+}
+
+func TestWait_aNudgeTheReplacedWaitSentReachesTheNewest(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h := newBubbleHarness(t)
 		h.mustRegisterAlone(sessA, "reader")
 		h.mustRegisterAlone(sessB, "writer")
 		id := h.idOf(sessA)
+		// The test is the older wait, whose look reached the send as the
+		// newer one opened.
+		older := h.srv.presence.opened(id, sessA)
 		h.srv.presence.inTurnOpened(id)
-		wait := h.watchAsync(sessA, 55*time.Second)
+		newer := h.watchAsync(sessA, 55*time.Second)
 		synctest.Wait()
 		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
 		seq := h.newestWake(sessA)
 		h.srv.presence.inTurnClosed(id, 0, time.Now())
-
-		// The test sends as the winning wait: its commit wakes the open
-		// wait, which looks before the winner has told the server.
-		st, _, err := h.store.Nudging(t.Context(), id)
-		if err != nil || st.Due == nil {
-			t.Fatalf("Nudging = %+v, %v; want a due nudge", st, err)
-		}
-		got, ok, err := h.store.RecordNudge(t.Context(), st.Due, store.NudgeByWatcher)
-		if err != nil || !ok {
-			t.Fatalf("RecordNudge: %v, %v", ok, err)
-		}
+		n := h.sendAsWait(id)
 		synctest.Wait()
 		start := time.Now()
-		h.srv.watcherSent(id, nudgeJSON{Seq: got.Seq, Count: got.Count, Attempt: got.Attempt})
-		wantNudge(t, wait.answer(), seq, 1, 1)
-		if d := time.Since(start); d != 0 {
-			t.Errorf("the losing wait returned %v after the winner told the server, want at once", d)
+		if !h.srv.handOff(older, n) {
+			t.Error("handOff answered the replaced wait as the newest")
 		}
+		wantNudge(t, newer.answer(), seq, 1, 1)
+		if d := time.Since(start); d != 0 {
+			t.Errorf("the newer wait returned %v after the hand-off, want at once", d)
+		}
+		h.srv.presence.closed(older, time.Now())
+	})
+}
+
+func TestWait_aNudgeSentBeforeTheNewerWaitOpenedIsTheOlderWaitsAlone(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h := newBubbleHarness(t)
+		h.mustRegisterAlone(sessA, "reader")
+		h.mustRegisterAlone(sessB, "writer")
+		id := h.idOf(sessA)
+		older := h.srv.presence.opened(id, sessA)
+		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
+		if h.srv.handOff(older, h.sendAsWait(id)) {
+			t.Error("handOff answered the older wait as replaced before a newer one opened")
+		}
+		before := time.Now()
+		if r := h.watch(sessA, 55*time.Second); r.status != http.StatusNoContent || time.Since(before) != 55*time.Second {
+			t.Errorf("the newer wait = %d %s after %v, want 204 after the whole 55s: the older wait returns that nudge", r.status, r.raw, time.Since(before))
+		}
+		h.srv.presence.closed(older, time.Now())
 	})
 }
 

@@ -11,7 +11,7 @@ import (
 )
 
 // editIdentity rewrites identity row id in place, for state no verb sets
-// yet (acks, nudges) or that takes many requests to reach (32 follows).
+// directly, such as acks, nudges, a lease end or nested follows.
 func editIdentity(t *testing.T, s *Store, id uint64, edit func(*identityRow)) {
 	t.Helper()
 	putRows(t, s, func(w *wtx) error {

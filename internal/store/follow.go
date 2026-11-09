@@ -22,7 +22,8 @@ type Followed struct {
 // added, and the follow replaces those under it. It lasts until an
 // unfollow or the identity's end, across the threads' expiries.
 // Refusals: KindInvalid for a bad path; KindGone for a session with no
-// live identity; KindForbidden for a delegate; KindConflict at the cap.
+// live identity; KindForbidden for a delegate; KindFull for a follow it
+// would add past 90 % of Options.MaxBytes.
 func (s *Store) Follow(ctx context.Context, k Keyed, c Caller, path string) (Followed, error) {
 	if _, err := checkPaths([]string{path}); err != nil {
 		return Followed{}, err
@@ -39,7 +40,7 @@ func (s *Store) Follow(ctx context.Context, k Keyed, c Caller, path string) (Fol
 		if me.Parent != 0 {
 			return Followed{}, refuse(KindForbidden, "a delegate follows nothing: its scope decides what it receives")
 		}
-		notices, err := followPath(&me, path)
+		notices, err := w.followPath(&me, path)
 		if err != nil {
 			return Followed{}, err
 		}
@@ -113,17 +114,17 @@ func deliveredBy(me *identityRow, held []reservationRow, path string) string {
 
 // followPath is Follow's change to me, and the notice saying why nothing
 // was added or which follows the new one replaced.
-func followPath(me *identityRow, path string) ([]string, error) {
+func (w *wtx) followPath(me *identityRow, path string) ([]string, error) {
 	if slices.Contains(me.Follows, path) {
 		return nil, nil
 	}
 	if by := reachedBy(me, path); by != "" {
 		return []string{fmt.Sprintf("%s already reaches %s, so nothing was added", by, path)}, nil
 	}
-	replaced, ok := addFollow(me, path)
-	if !ok {
-		return nil, refuse(KindConflict, fmt.Sprintf("you follow %d threads, the most allowed: grelot unfollow one first", maxFollows))
+	if err := w.grow(); err != nil {
+		return nil, err
 	}
+	replaced := addFollow(me, path)
 	if len(replaced) == 0 {
 		return nil, nil
 	}
@@ -131,8 +132,8 @@ func followPath(me *identityRow, path string) ([]string, error) {
 }
 
 // addFollow makes me follow p in place of the follows under p, and
-// returns those; at the follow cap it changes nothing and returns false.
-func addFollow(me *identityRow, p string) (replaced []string, ok bool) {
+// returns those.
+func addFollow(me *identityRow, p string) (replaced []string) {
 	var kept []string
 	for _, f := range me.Follows {
 		if under(f, p) {
@@ -141,10 +142,7 @@ func addFollow(me *identityRow, p string) (replaced []string, ok bool) {
 			kept = append(kept, f)
 		}
 	}
-	if len(kept) >= maxFollows {
-		return nil, false
-	}
 	kept = append(kept, p)
 	me.Follows = kept
-	return replaced, true
+	return replaced
 }

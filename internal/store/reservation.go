@@ -62,8 +62,9 @@ type ReservationQuery struct {
 // overlapping grant (its own never conflict), or with any overlapping
 // queued request, its own included, so a newcomer never takes a subpath
 // while an older request waits for the parent. Refusals: KindInvalid for
-// a bad path, reason or ttl; KindGone with no live identity;
-// KindForbidden for a delegate; KindConflict naming the holder or queue head.
+// a bad path, reason or ttl; KindGone with no live identity; KindForbidden
+// for a delegate; KindConflict naming the holder or queue head; KindFull
+// past 90 % of Options.MaxBytes.
 func (s *Store) Reserve(ctx context.Context, k Keyed, r *Reserving) (Reserved, bool, error) {
 	if err := checkReserving(r); err != nil {
 		return Reserved{}, false, err
@@ -113,28 +114,41 @@ func (w *wtx) reserve(r *Reserving) (Reserved, error) {
 		}
 		return Reserved{}, cerr
 	}
-	id, err := w.s.t.resv.table.NextID(w.tx)
+	row, err := w.addReservation(&me, r, blocker == nil)
 	if err != nil {
 		return Reserved{}, err
 	}
-	row := reservationRow{ID: id, Holder: me.ID, Path: r.Path, Reason: r.Reason, TTL: r.TTL, Since: w.now, State: reservationQueued}
-	verb := "reservation queued"
-	if blocker == nil {
-		row.State, verb = reservationHeld, "reservation granted"
-		if row.Lease, err = w.s.resvPolicy.grant(w.now, r.TTL, time.Time{}); err != nil {
-			return Reserved{}, err
-		}
-	}
-	if err := w.s.t.resv.table.Put(w.tx, id, &row); err != nil {
-		return Reserved{}, err
-	}
-	w.logInfo(verb, "id", id, "name", me.Name, "path", r.Path)
 	out := Reserved{Reservation: w.s.reservationView(w.r, &me, &row)}
 	if blocker != nil {
 		b := w.s.reservationView(w.r, &me, blocker)
 		out.Behind = &b
 	}
 	return out, nil
+}
+
+// addReservation stores r as me's grant when held, else as its queued
+// request.
+func (w *wtx) addReservation(me *identityRow, r *Reserving, held bool) (reservationRow, error) {
+	if err := w.grow(); err != nil {
+		return reservationRow{}, err
+	}
+	id, err := w.s.t.resv.table.NextID(w.tx)
+	if err != nil {
+		return reservationRow{}, err
+	}
+	row := reservationRow{ID: id, Holder: me.ID, Path: r.Path, Reason: r.Reason, TTL: r.TTL, Since: w.now, State: reservationQueued}
+	verb := "reservation queued"
+	if held {
+		row.State, verb = reservationHeld, "reservation granted"
+		if row.Lease, err = w.s.resvPolicy.grant(w.now, r.TTL, time.Time{}); err != nil {
+			return reservationRow{}, err
+		}
+	}
+	if err := w.s.t.resv.table.Put(w.tx, id, &row); err != nil {
+		return reservationRow{}, err
+	}
+	w.logInfo(verb, "id", id, "name", me.Name, "path", r.Path)
+	return row, nil
 }
 
 // blocker is the row that holds q back, or nil: another identity's grant

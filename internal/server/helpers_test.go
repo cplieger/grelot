@@ -122,10 +122,12 @@ type harness struct {
 	push  *fakePush
 	// metrics is the page the store and server record into.
 	metrics *obs.Metrics
-	// open opens the store at dbPath and builds the server over it.
-	open   func()
-	logs   logSink
-	dbPath string
+	// open opens the store at dbPath with storeOpts and builds the server
+	// over it.
+	open      func()
+	logs      logSink
+	dbPath    string
+	storeOpts store.Options
 }
 
 func newHarness(t *testing.T) *harness {
@@ -156,14 +158,14 @@ func newBubbleHarness(t *testing.T, edits ...func(*Options)) *harness {
 // buildHarness applies edits to the server's Options before New.
 func buildHarness(t *testing.T, o store.Options, now func() time.Time, edits ...func(*Options)) *harness {
 	t.Helper()
-	h := &harness{t: t, logs: newLogSink(), dbPath: filepath.Join(t.TempDir(), "grelot.db")}
+	h := &harness{t: t, logs: newLogSink(), dbPath: filepath.Join(t.TempDir(), "grelot.db"), storeOpts: o}
 	h.open = func() {
-		so := o
+		so := h.storeOpts
 		logger := slog.New(h.logs)
 		hub := NewHub()
 		m := obs.New()
 		so.Logger, so.Now, so.PathRoot, so.Woke, so.Metrics = logger, now, protopath.DefaultRoot, hub.Woke, m
-		if before := o.Woke; before != nil {
+		if before := h.storeOpts.Woke; before != nil {
 			so.Woke = func(ids []uint64) {
 				before(ids)
 				hub.Woke(ids)
@@ -211,6 +213,24 @@ func (h *harness) restartAfter(down time.Duration) {
 	}
 	time.Sleep(down)
 	h.open()
+}
+
+// fill reopens the store over the same file with a ceiling it is already
+// past, and serves a new server over it, so every write that adds rows
+// answers 507 from then on.
+func (h *harness) fill() {
+	h.t.Helper()
+	h.srv.Release()
+	if err := h.store.Close(); err != nil {
+		h.t.Fatalf("store.Close: %v", err)
+	}
+	h.storeOpts.MaxBytes = 1
+	h.open()
+	if h.http != nil {
+		h.http.Close()
+		h.http = httptest.NewServer(h.srv.Handler())
+		h.t.Cleanup(h.http.Close)
+	}
 }
 
 // fakePush serves the identities a test gives a push state.

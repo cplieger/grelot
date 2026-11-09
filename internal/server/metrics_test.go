@@ -203,9 +203,10 @@ func TestMetrics_postsAreCountedByThreadKindAndRefusalsByReason(t *testing.T) {
 		})
 	})
 	t.Run("a post past 90 % of the ceiling", func(t *testing.T) {
-		h := newHarnessWith(t, store.Options{MaxBytes: 1})
+		h := newHarness(t)
 		h.mustRegister(sessA, "sender")
 		h.mustRegister(sessB, "reader")
+		h.fill()
 		if r := h.as(sessA, http.MethodPost, "/v1/posts", postBody(map[string]any{"agent": "reader"}, "hello", "a body")); r.status != http.StatusInsufficientStorage {
 			t.Fatalf("post: %d %s, want 507", r.status, r.raw)
 		}

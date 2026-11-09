@@ -14,16 +14,16 @@ func TestPresence_onlineWhileAWaitIsOpenAndFor90sAfter(t *testing.T) {
 	if p.online(id, testNow) {
 		t.Error("online before any wait")
 	}
-	p.opened(id)
+	older := p.opened(id, sessA)
 	if !p.online(id, testNow.Add(10*time.Minute)) {
 		t.Error("offline while a wait is open")
 	}
-	p.opened(id)
-	p.closed(id, testNow)
+	newer := p.opened(id, sessA)
+	p.closed(older, testNow)
 	if !p.online(id, testNow.Add(time.Hour)) {
-		t.Error("offline while a second wait is still open")
+		t.Error("offline while the newer wait still holds after the replaced one closed")
 	}
-	p.closed(id, testNow)
+	p.closed(newer, testNow)
 	if !p.online(id, testNow.Add(89*time.Second)) {
 		t.Error("offline 89 s after the last wait closed")
 	}
@@ -84,16 +84,14 @@ func TestPresence_theDownNoticeIsOncePerEpisodeAfterAStandingWait(t *testing.T) 
 	if p.tellDown(id) {
 		t.Error("owed to an identity that never held a standing wait")
 	}
-	p.opened(id)
-	p.closed(id, testNow)
+	p.closed(p.opened(id, sessA), testNow)
 	if !p.tellDown(id) {
 		t.Fatal("not owed once its standing wait is gone")
 	}
 	if p.tellDown(id) {
 		t.Error("owed twice in one down episode")
 	}
-	p.opened(id)
-	p.closed(id, testNow)
+	p.closed(p.opened(id, sessA), testNow)
 	if !p.tellDown(id) {
 		t.Error("not owed in the episode after the next standing wait")
 	}
@@ -109,8 +107,65 @@ func TestPresence_theDownNoticeIsOncePerEpisodeAfterAStandingWait(t *testing.T) 
 // markStopAndWait gives id a seen stop hook and a held standing wait.
 func markStopAndWait(p *presence, id uint64) {
 	p.sawStop(id)
-	p.opened(id)
-	p.closed(id, testNow)
+	p.closed(p.opened(id, "test:session"), testNow)
+}
+
+func TestPresence_aNewerStandingWaitReplacesItsSessionsOlderOnes(t *testing.T) {
+	p := newPresence()
+	const id = 7
+	replaced := func(w waitTicket) bool {
+		select {
+		case <-w.replaced:
+			return true
+		default:
+			return false
+		}
+	}
+	first, other := p.opened(id, sessA), p.opened(id+1, sessB)
+	second := p.opened(id, sessA)
+	third := p.opened(id, sessA)
+	if !replaced(first) || !replaced(second) || replaced(third) || replaced(other) {
+		t.Errorf("replaced first %v, second %v, third %v, another session's %v; want only the first two",
+			replaced(first), replaced(second), replaced(third), replaced(other))
+	}
+	if _, gone := p.next(first); !gone {
+		t.Error("next answers the replaced first wait as the newest")
+	}
+	if _, gone := p.next(third); gone {
+		t.Error("next answers the newest wait as replaced")
+	}
+	n := nudgeJSON{Seq: 9, Count: 1, Attempt: 1}
+	if handed, gone := p.handOff(third, n); handed || gone {
+		t.Errorf("handOff from the newest = handed %v, replaced %v; want neither", handed, gone)
+	}
+	if handed, gone := p.handOff(first, n); !handed || !gone {
+		t.Errorf("handOff from a replaced wait = handed %v, replaced %v; want both", handed, gone)
+	}
+	if got, _ := p.next(third); got == nil || *got != n {
+		t.Errorf("the newest wait took %v, want the nudge the replaced wait handed it", got)
+	}
+	if got, _ := p.next(third); got != nil {
+		t.Errorf("the newest wait took the handed nudge twice: %v", got)
+	}
+	for _, w := range []waitTicket{first, second, third, other} {
+		p.closed(w, testNow)
+	}
+	if len(p.sessions) != 0 {
+		t.Errorf("%d session entries after every wait closed, want none", len(p.sessions))
+	}
+}
+
+func TestPresence_aWaitForAnotherIdentityTakesNoHandedNudge(t *testing.T) {
+	p := newPresence()
+	const id = 7
+	old := p.opened(id, sessA)
+	moved := p.opened(id+1, sessA)
+	if handed, gone := p.handOff(old, nudgeJSON{Seq: 9, Count: 1, Attempt: 1}); handed || !gone {
+		t.Errorf("handOff = handed %v, replaced %v; want replaced and nothing handed", handed, gone)
+	}
+	if got, gone := p.next(moved); got != nil || gone {
+		t.Errorf("next = %v, replaced %v; want no nudge of the identity the session left", got, gone)
+	}
 }
 
 func TestRegistration_startsTheSessionMarksAfresh(t *testing.T) {

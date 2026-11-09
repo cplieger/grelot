@@ -104,7 +104,7 @@ func TestStatus_wakeState(t *testing.T) {
 			t.Errorf("wake %q, want down", got)
 		}
 	})
-	h.srv.presence.opened(id)
+	h.srv.presence.opened(id, sessA)
 	t.Run("watcher while a standing wait is open", func(t *testing.T) {
 		if got := wake(); got != "watcher" {
 			t.Errorf("wake %q, want watcher", got)

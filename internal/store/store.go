@@ -64,8 +64,8 @@ type Options struct {
 	ThreadTTL time.Duration
 	// DormantTTL is how long an expired identity stays revivable.
 	DormantTTL time.Duration
-	// MaxBytes is the ceiling on the bytes in use; posts are refused past
-	// 90 % of it.
+	// MaxBytes is the ceiling on the bytes in use; past 90 % of it every
+	// write that adds rows by the caller's choice is refused (KindFull).
 	MaxBytes int64
 	// ReservationMaxTTL is the longest TTL a reservation may declare.
 	ReservationMaxTTL time.Duration

@@ -101,7 +101,7 @@ func TestBeat_forgetsTheMemoryOfAnIdentityNoLongerLive(t *testing.T) {
 	for _, id := range []uint64{alpha, bravo, charlie, delta} {
 		h.srv.presence.sawStop(id)
 	}
-	h.srv.presence.opened(charlie)
+	h.srv.presence.opened(charlie, sessC)
 	h.srv.presence.inTurnOpened(delta)
 	for _, s := range []string{sessB, sessC, sessD} {
 		if r := h.as(s, http.MethodDelete, "/v1/me", nil); r.status != http.StatusOK && r.status != http.StatusNoContent {

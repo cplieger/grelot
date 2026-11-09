@@ -192,12 +192,13 @@ func TestMetrics_eachReplayIsCountedAndAFreshWriteIsNot(t *testing.T) {
 
 func TestMetrics_aPostTheStoreRefusesCountsNothing(t *testing.T) {
 	m := obs.New()
-	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{Logger: slog.New(newLogSink()), Now: func() time.Time { return testNow }, Metrics: m, MaxBytes: 1})
+	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{Logger: slog.New(newLogSink()), Now: func() time.Time { return testNow }, Metrics: m})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	regAt(t, s, "alpha")
+	s.space = inUse(DefaultMaxBytes)
 	if _, _, err := s.Post(t.Context(), Keyed{}, new(posting(sess("alpha"), Target{Announce: true}))); !isKind(err, KindFull) {
 		t.Fatalf("post past the ceiling: %v, want KindFull", err)
 	}

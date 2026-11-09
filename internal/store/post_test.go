@@ -318,7 +318,7 @@ func TestPost_aFollowOverALiveThreadSaysSo(t *testing.T) {
 	}
 }
 
-func TestPost_atTheFollowCapPostsWithoutFollowing(t *testing.T) {
+func TestPost_pastThirtyTwoFollowsStillFollowsItsPath(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	a := regAt(t, s, "alpha", repoGrelot)
 	full := make([]string, 32)
@@ -328,11 +328,11 @@ func TestPost_atTheFollowCapPostsWithoutFollowing(t *testing.T) {
 	editIdentity(t, s, a.ID, func(r *identityRow) { r.Follows = full })
 	const p = "/workspace/one-more"
 	got := mustPost(t, s, posting(sess("alpha"), Target{Path: p}))
-	if f := getIdentity(t, s, a.ID).Follows; !slices.Equal(f, full) {
-		t.Errorf("follows changed to %d entries, want the 32 kept", len(f))
+	if f := getIdentity(t, s, a.ID).Follows; !slices.Equal(f, append(slices.Clone(full), p)) {
+		t.Errorf("follows %v, want the 32 and %s", f, p)
 	}
-	if len(got.Notices) != 1 || !strings.Contains(got.Notices[0], "32") || !strings.Contains(got.Notices[0], p) || !strings.Contains(got.Notices[0], "unfollow") {
-		t.Errorf("notices %q, want one naming the 32 cap, %s and unfollow", got.Notices, p)
+	if len(got.Notices) != 0 {
+		t.Errorf("notices %q, want none", got.Notices)
 	}
 }
 

@@ -19,7 +19,8 @@ const (
 	// KindGone is an identity, delegate or link that has gone, or a
 	// dormant identity (410).
 	KindGone
-	// KindFull is a post refused because the store is nearly full (507).
+	// KindFull is a write that adds rows, refused because the store is
+	// nearly full (507).
 	KindFull
 	// KindForbidden is a request outside what the caller may do (403).
 	KindForbidden

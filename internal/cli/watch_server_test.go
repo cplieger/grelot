@@ -179,6 +179,28 @@ func TestWatch_endLineThenEndExit(t *testing.T) {
 	})
 }
 
+func TestWatch_aSecondWatcherOfTheSessionEndsTheFirst(t *testing.T) {
+	_, reader, writer := watchPair(t)
+	first := reader.start("watch")
+	deadline := time.Now().Add(10 * time.Second)
+	for !strings.Contains(reader.must("me"), "wake: watcher") {
+		if time.Now().After(deadline) {
+			t.Fatal("the first watcher's wait never held")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	second := reader.start("watch")
+	first.waitFor(t, "tray s-reader [grelot:end] grelot (automated, not the user): this watcher stopped (replaced); run grelot me\n")
+	if code := first.exit(t); code != 1 {
+		t.Errorf("the first watcher exited %d after its end line, want 1, a stdout door's end_exit default", code)
+	}
+	writer.postTo("@reader-dev", "hello")
+	second.waitFor(t, "tray s-reader "+signal(1, 1)+"\n")
+	if strings.Contains(first.stdout.String(), signal(1, 1)) {
+		t.Errorf("the replaced watcher printed the nudge too: %q", first.stdout.String())
+	}
+}
+
 func TestWatch_byHand(t *testing.T) {
 	t.Run("exit", func(t *testing.T) {
 		_, reader, writer := watchPair(t)

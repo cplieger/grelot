@@ -11,7 +11,7 @@ func TestSignalLine(t *testing.T) {
 }
 
 func TestEndLine(t *testing.T) {
-	for _, reason := range []string{EndDormant, EndNone, EndEnded} {
+	for _, reason := range []string{EndDormant, EndNone, EndEnded, EndReplaced} {
 		t.Run(reason, func(t *testing.T) {
 			want := "[grelot:end] grelot (automated, not the user): this watcher stopped (" + reason + "); run grelot me"
 			if got := EndLine(reason); got != want {
@@ -19,8 +19,8 @@ func TestEndLine(t *testing.T) {
 			}
 		})
 	}
-	if EndDormant != "dormant" || EndNone != "none" || EndEnded != "ended" {
-		t.Errorf("reasons = %q, %q, %q; want dormant, none, ended", EndDormant, EndNone, EndEnded)
+	if EndDormant != "dormant" || EndNone != "none" || EndEnded != "ended" || EndReplaced != "replaced" {
+		t.Errorf("reasons = %q, %q, %q, %q; want dormant, none, ended, replaced", EndDormant, EndNone, EndEnded, EndReplaced)
 	}
 }
 

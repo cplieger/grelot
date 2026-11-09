@@ -131,6 +131,141 @@ func TestPost_concurrentPostsStopAtTheFirstPastTheCeiling(t *testing.T) {
 	}
 }
 
+func TestFollow_onANearlyFullStoreIsRefusedWithThePostsText(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	regAt(t, s, "alpha", repoGrelot)
+	b := regAt(t, s, "bravo", repoSubflux)
+	s.space = inUse(DefaultMaxBytes)
+	_, _, perr := s.Post(t.Context(), Keyed{}, new(posting(sess("alpha"), Target{Agent: "bravo"})))
+	_, ferr := s.Follow(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, "/workspace/marotte")
+	wantRefusal(t, ferr, KindFull, "", "store nearly full")
+	if perr == nil || ferr.Error() != perr.Error() {
+		t.Errorf("follow refused with %q, want the post's %v", ferr, perr)
+	}
+	if f := getIdentity(t, s, b.ID).Follows; len(f) != 0 {
+		t.Errorf("follows %v after a refused follow, want none", f)
+	}
+	if got := mustFollowed(t, s, sess("bravo"), repoSubflux+"/internal"); len(got.Identity.Follows) != 0 {
+		t.Errorf("a follow its work path reaches: follows %v, want none added", got.Identity.Follows)
+	}
+}
+
+func TestStoreFull_refusesEveryWriteThatAddsRows(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	regAt(t, s, "alpha", repoGrelot)
+	regAt(t, s, "bravo", repoSubflux)
+	link := mustGrant(t, s, grantFrom("alpha", "rev"))
+	mustReserve(t, s, reserving("bravo", pathAPI, time.Hour))
+	s.space = inUse(DefaultMaxBytes)
+	ctx, alpha, w := t.Context(), Caller{Session: sess("alpha"), Self: true}, envA()
+	grant := reserving("alpha", repoGrelot+"/a.go", time.Hour)
+	queue := reserving("alpha", pathAPI, time.Hour)
+	grant.Caller, queue.Caller, queue.Queue = alpha, alpha, true
+	for _, c := range []struct {
+		write func() error
+		name  string
+	}{
+		{name: "a post", write: func() error {
+			_, _, err := s.Post(ctx, Keyed{}, new(posting(sess("alpha"), Target{Agent: "bravo"})))
+			return err
+		}},
+		{name: "a follow", write: func() error { _, err := s.Follow(ctx, Keyed{}, alpha, "/workspace/marotte"); return err }},
+		{name: "a register of a new name", write: func() error {
+			_, _, err := s.Register(ctx, Keyed{}, new(registration(sess("charlie"), "charlie", envA(), "/workspace/marotte")))
+			return err
+		}},
+		{name: "a delegate's register", write: func() error {
+			_, _, err := s.Register(ctx, Keyed{}, new(delegateReg(sess("rev"), link.Link)))
+			return err
+		}},
+		{name: "a delegate grant", write: func() error { _, _, err := s.Delegate(ctx, Keyed{}, new(grantFrom("alpha", "second"))); return err }},
+		{name: "a reservation", write: func() error { _, _, err := s.Reserve(ctx, Keyed{}, &grant); return err }},
+		{name: "a queued request", write: func() error { _, _, err := s.Reserve(ctx, Keyed{}, &queue); return err }},
+		{name: "a set adding a work path", write: func() error {
+			_, err := s.Set(ctx, Keyed{}, alpha, Change{Fields: Fields{Paths: []string{repoGrelot, "/workspace/marotte"}}, Where: &w})
+			return err
+		}},
+		{name: "a take-over adding a work path", write: func() error {
+			r := registration(sess("alpha-next"), "alpha", envA(), repoGrelot, "/workspace/marotte")
+			r.TakeOver = true
+			_, _, err := s.Register(ctx, Keyed{}, &r)
+			return err
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			wantRefusal(t, c.write(), KindFull, "", "store nearly full")
+		})
+	}
+}
+
+func TestStoreFull_takesARecoveryThatAddsNoPath(t *testing.T) {
+	t.Run("a revive", func(t *testing.T) {
+		s, clk, _ := openIdentityStore(t)
+		old := expireToDormant(t, s, clk, "subflux-dev")
+		s.space = inUse(DefaultMaxBytes)
+		got, _, err := s.Revive(t.Context(), Keyed{}, new(revival(sessA, "", envA())))
+		if err != nil || got.Identity.ID != old.ID || got.Identity.State != stateLive {
+			t.Errorf("revive on a nearly full store: id %d state %q, %v; want %d live", got.Identity.ID, got.Identity.State, err, old.ID)
+		}
+	})
+	t.Run("a take-over with its own paths", func(t *testing.T) {
+		s, _, _ := openIdentityStore(t)
+		mustRegister(t, s, registration(sessA, "subflux-dev", envA(), repoSubflux, repoGrelot))
+		s.space = inUse(DefaultMaxBytes)
+		r := registration(sessB, "subflux-dev", envA(), repoGrelot)
+		r.TakeOver = true
+		got, _, err := s.Register(t.Context(), Keyed{}, &r)
+		if err != nil || !got.Moved {
+			t.Errorf("take-over on a nearly full store: moved %v, %v; want moved", got.Moved, err)
+		}
+	})
+}
+
+func TestStoreFull_takesEveryWriteThatAddsNothing(t *testing.T) {
+	s, clk, _ := openIdentityStore(t)
+	regAt(t, s, "alpha", repoGrelot, "/workspace/marotte")
+	regAt(t, s, "bravo", repoSubflux)
+	mustPost(t, s, posting(sess("alpha"), Target{Agent: "bravo"}))
+	mustFollow(t, s, sess("bravo"), "/workspace/bolttable")
+	held := mustReserve(t, s, reserving("alpha", repoGrelot+"/a.go", time.Hour))
+	mustGrant(t, s, grantFrom("alpha", "rev"))
+	seq := mustInbox(t, s, sess("bravo"), 0).Entries[0].Seq
+	s.space = inUse(DefaultMaxBytes)
+	ctx, alpha, bravo, w := t.Context(), Caller{Session: sess("alpha"), Self: true}, Caller{Session: sess("bravo")}, envA()
+	for _, c := range []struct {
+		write func() error
+		name  string
+	}{
+		{name: "an ack", write: func() error { _, _, err := s.Ack(ctx, Keyed{}, bravo, seq); return err }},
+		{name: "an unfollow", write: func() error { _, err := s.Unfollow(ctx, Keyed{}, bravo, "/workspace/bolttable"); return err }},
+		{name: "a follow already reached", write: func() error { _, err := s.Follow(ctx, Keyed{}, bravo, repoSubflux+"/internal"); return err }},
+		{name: "a repeated register", write: func() error {
+			r := registration(sess("alpha"), "alpha", envA(), repoGrelot)
+			r.Self = true
+			_, _, err := s.Register(ctx, Keyed{}, &r)
+			return err
+		}},
+		{name: "a lease renewal", write: func() error { _, err := s.Set(ctx, Keyed{}, alpha, Change{TTL: 2 * time.Hour, Where: &w}); return err }},
+		{name: "a set narrowing the work paths", write: func() error {
+			_, err := s.Set(ctx, Keyed{}, alpha, Change{Fields: Fields{Paths: []string{repoGrelot}}, Where: &w})
+			return err
+		}},
+		{name: "a reservation renewal", write: func() error {
+			_, err := s.RenewReservation(ctx, Keyed{}, alpha, held.Reservation.ID, 2*time.Hour)
+			return err
+		}},
+		{name: "a release", write: func() error { _, err := s.Release(ctx, Keyed{}, alpha, held.Reservation.ID); return err }},
+		{name: "a revoke", write: func() error { _, err := s.Revoke(ctx, Keyed{}, alpha, "rev"); return err }},
+		{name: "a session end", write: func() error { return s.EndSession(ctx, sess("alpha")) }},
+		{name: "a bye", write: func() error { _, _, err := s.Retire(ctx, Keyed{}, bravo); return err }},
+		{name: "a sweep", write: func() error { clk.advance(7 * time.Hour); _, err := s.sweep(ctx); return err }},
+	} {
+		if err := c.write(); err != nil {
+			t.Errorf("%s on a nearly full store: %v", c.name, err)
+		}
+	}
+}
+
 // inUse is a space reading of n bytes in use.
 func inUse(n int64) func() (bolttable.Space, error) {
 	return func() (bolttable.Space, error) { return bolttable.Space{FileBytes: n, InUseBytes: n}, nil }
