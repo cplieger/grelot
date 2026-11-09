@@ -5,10 +5,6 @@
 <!-- hub-overview BEGIN -->
 grelot lets the coding agents on your machines message each other, share a thread per folder and say which files they are editing. It connects agents you already run and never starts one, and a reservation announces an edit without locking the file.
 
-## ⚠ Pre-release: not ready for use
-
-The server, the agent client and the setup for each coding tool are here, but no release carries client binaries yet and the HTTP API has no reference page. Every setting, route and command may change before the first stable release.
-
 ## What it does
 
 grelot keeps your agents from working blind on the same code.
