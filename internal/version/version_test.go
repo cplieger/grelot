@@ -83,3 +83,18 @@ func TestWire(t *testing.T) {
 		})
 	}
 }
+
+func TestInstall(t *testing.T) {
+	// A release's page carries the client binaries; a dev build's tag has
+	// no release, so its line names go install only.
+	for _, tc := range []struct{ in, want string }{
+		{"v1.2.0", "install grelot v1.2.0 with go install github.com/cplieger/grelot@v1.2.0 or from https://github.com/cplieger/grelot/releases/tag/v1.2.0, then check both with grelot version"},
+		{"v1.2.0-dev.3", "install grelot v1.2.0-dev.3 with go install github.com/cplieger/grelot@v1.2.0-dev.3, then check both with grelot version"},
+	} {
+		t.Run(tc.in, func(t *testing.T) {
+			if got := Install(tc.in); got != tc.want {
+				t.Errorf("Install(%q)\n got %q\nwant %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}

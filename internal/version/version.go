@@ -50,6 +50,17 @@ func Parse(s string) (V, bool) {
 	return out, true
 }
 
+// Install is the instruction that gets the client of version v: go install
+// at its tag, and for a release also its release page, which carries the
+// client binaries. A dev build's tag has no release, so the page is left out.
+func Install(v string) string {
+	line := "install grelot " + v + " with go install github.com/cplieger/grelot@" + v
+	if p, ok := Parse(v); ok && p.Dev < 0 {
+		line += " or from https://github.com/cplieger/grelot/releases/tag/" + v
+	}
+	return line + ", then check both with grelot version"
+}
+
 func isNumber(s string) bool {
 	if s == "" || len(s) > 9 || (len(s) > 1 && s[0] == '0') {
 		return false

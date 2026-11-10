@@ -37,12 +37,12 @@ func TestStatus_Line(t *testing.T) {
 		{
 			"another release base names the server's own tag",
 			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "v1.1.0", ServerVersion: "v1.2.0-dev.3"},
-			"grelot: @a · 0 unread · wake: watcher · this client is v1.1.0 and the server v1.2.0-dev.3: install grelot v1.2.0-dev.3 with go install github.com/cplieger/grelot@v1.2.0-dev.3 or from https://github.com/cplieger/grelot/releases/tag/v1.2.0-dev.3, then check both with grelot version",
+			"grelot: @a · 0 unread · wake: watcher · this client is v1.1.0 and the server v1.2.0-dev.3: install grelot v1.2.0-dev.3 with go install github.com/cplieger/grelot@v1.2.0-dev.3, then check both with grelot version",
 		},
 		{
 			"an earlier dev build of the server's release",
 			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "v1.1.0-dev.24", ServerVersion: "v1.1.0-dev.25"},
-			"grelot: @a · 0 unread · wake: watcher · this client is v1.1.0-dev.24 and the server v1.1.0-dev.25: install grelot v1.1.0-dev.25 with go install github.com/cplieger/grelot@v1.1.0-dev.25 or from https://github.com/cplieger/grelot/releases/tag/v1.1.0-dev.25, then check both with grelot version",
+			"grelot: @a · 0 unread · wake: watcher · this client is v1.1.0-dev.24 and the server v1.1.0-dev.25: install grelot v1.1.0-dev.25 with go install github.com/cplieger/grelot@v1.1.0-dev.25, then check both with grelot version",
 		},
 		{
 			"a later dev build than the server says nothing",
