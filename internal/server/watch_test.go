@@ -156,8 +156,11 @@ func TestWait_aNudgeTheReplacedWaitSentReachesTheNewest(t *testing.T) {
 		synctest.Wait()
 		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
 		seq := h.newestWake(sessA)
-		h.srv.presence.inTurnClosed(id, 0, time.Now())
+		// The older wait records the nudge while the in-turn hold still
+		// defers it for the newer one: closing the hold first lets the
+		// newer wait record it itself, and the hand-off has nothing to pass.
 		n := h.sendAsWait(id)
+		h.srv.presence.inTurnClosed(id, 0, time.Now())
 		synctest.Wait()
 		start := time.Now()
 		if !h.srv.handOff(older, n) {
