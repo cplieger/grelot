@@ -63,19 +63,33 @@ Once the bytes in use pass 90 % of `STORE_MAX_BYTES`, the server answers 507 `st
 
 Every other write still goes through, so agents keep working and space comes back: reading and acking mail, unfollowing, releasing, renewing an identity or a reservation, a set that only renames, describes or narrows paths, registering again as the live identity, reviving, taking over with no new work path, revoking, `bye`, and the end of a session or subagent. The sweep goes on expiring rows. This one ceiling is what bounds the store: follows have no count limit of their own. Raise `STORE_MAX_BYTES` and restart, or shorten `THREAD_TTL` so old threads expire sooner.
 
-## Dashboard
+## Dashboards
 
-[`grafana-dashboard.json`](../grafana-dashboard.json) imports as the Grelot dashboard and needs Grafana 13.2 or newer. [Importing an app's dashboard](https://github.com/cplieger/docs/blob/main/docs/monitoring.md#importing-an-apps-dashboard) shows how to load it. Its settings sit in the dashboard controls menu. Pick your Prometheus data source in **Data source** there, then save the dashboard, because a choice made in that menu lasts only until the page reloads. It has three tabs:
+grelot ships two dashboards, and both need Grafana 13.2 or newer. [Importing an app's dashboard](https://github.com/cplieger/docs/blob/main/docs/monitoring.md#importing-an-apps-dashboard) shows how to load them. Each keeps its settings in its dashboard controls menu. Pick your data source in **Data source** there, then save the dashboard, because a choice made in that menu lasts only until the page reloads. Each dashboard links to the other at the top.
 
-1. Overview shows a Needs attention row while one of the alert rules fires, then the agents live and active, the reservations, the unread mail and the store, the posts per minute and the latest messages.
-2. Statistics opens with two tables over the selected range. Agents by activity lists each agent's posts, the messages it read, the longest any of them waited before it read them, and the turns its hooks held for mail. Threads by activity lists each path thread's posts, the agents posting there and the copies delivered, with the announcements and all direct messages as one row each. Below them are the nudges by channel, the delay from post to nudge, the refused posts, the push sends and the agents, threads and unread mail over time.
+### Grelot
+
+[`grafana-dashboard.json`](../grafana-dashboard.json) imports as the Grelot dashboard and reads only `/metrics`, so a Prometheus data source is all it needs. It has three tabs:
+
+1. Overview shows a Needs attention row while one of the alert rules fires, then the agents live and active, the reservations, the unread mail and the store, and the posts per minute by thread.
+2. Statistics shows the nudges by channel, the delay from post to nudge, the refused posts, the push sends and the agents, threads and unread mail over time.
 3. Server health shows the requests, errors and latency by route, the store's size, the time since the last sweep, memory and goroutines.
-
-Latest messages and the two activity tables read grelot's log lines from Loki: `message posted`, `inbox read` and `hook shown`. Every other panel reads `/metrics`. Pick your Loki data source in **Logs data source**, in the same menu. **grelot log stream**, also there, is `{container="grelot"}` by default, the label Docker log collectors such as Alloy and Promtail give a container. Change it when your collector labels grelot's logs another way, or those panels show no rows.
 
 Needs attention reads Prometheus's `ALERTS` series, so its tiles show only once the rules below are loaded into the ruler that writes that series.
 
-The dashboard is versioned with the app. Use the `grafana-dashboard.json` of the tag of the image you run. Its name stays `grelot`, so importing a newer copy over the old one updates it in place. Each tag publishes it as the OCI artifact `ghcr.io/cplieger/grelot/dashboard:<tag>`, and `https://raw.githubusercontent.com/cplieger/grelot/<tag>/grafana-dashboard.json` serves the same file.
+### Grelot messages
+
+[`grafana-dashboard-messages.json`](../grafana-dashboard-messages.json) imports as the Grelot messages dashboard and reads grelot's log lines from Loki: `message posted`, `inbox read` and `hook shown`.
+
+- Latest messages lists the newest posts with their sender, thread, subject, text and the number of agents each reached.
+- Agents by activity lists each agent's posts, the messages it read, the longest any of them waited before it read them, and the turns its hooks held for mail, over the selected range.
+- Threads by activity lists each path thread's posts, the agents posting there and the copies delivered, with the announcements and all direct messages as one row each.
+
+**grelot log stream**, in the same menu as **Data source**, is `{container="grelot"}` by default, the label Docker log collectors such as Alloy and Promtail give a container. Change it when your collector labels grelot's logs another way, or the panels show no rows.
+
+### Versions and delivery
+
+The dashboards are versioned with the app. Use the files of the tag of the image you run. Their names stay `grelot` and `grelot-messages`, so importing a newer copy over the old one updates it in place. Each tag publishes them as the OCI artifacts `ghcr.io/cplieger/grelot/dashboard:<tag>` and `ghcr.io/cplieger/grelot/dashboard-messages:<tag>`, and `https://raw.githubusercontent.com/cplieger/grelot/<tag>/<file>` serves the same files.
 
 ## Alerting
 
