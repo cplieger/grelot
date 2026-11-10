@@ -1615,7 +1615,7 @@
             "spec": {
               "options": {
                 "cellHeight": "sm",
-                "maxRowHeight": 112,
+                "maxRowHeight": 80,
                 "showHeader": true,
                 "sortBy": []
               },
@@ -1662,8 +1662,8 @@
                         "value": "From"
                       },
                       {
-                        "id": "custom.minWidth",
-                        "value": 160
+                        "id": "custom.width",
+                        "value": 150
                       }
                     ]
                   },
@@ -1678,7 +1678,7 @@
                         "value": "To"
                       },
                       {
-                        "id": "custom.minWidth",
+                        "id": "custom.width",
                         "value": 160
                       },
                       {
@@ -1698,8 +1698,8 @@
                         "value": "Subject"
                       },
                       {
-                        "id": "custom.minWidth",
-                        "value": 200
+                        "id": "custom.width",
+                        "value": 220
                       },
                       {
                         "id": "custom.wrapText",
@@ -3948,7 +3948,7 @@
                                   "x": 0,
                                   "y": 7,
                                   "width": 24,
-                                  "height": 12,
+                                  "height": 24,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-21"
@@ -4340,8 +4340,8 @@
           "multi": false,
           "includeAll": false,
           "label": "Data source",
-          "hide": "dontHide",
-          "skipUrlSync": false,
+          "hide": "inControlsMenu",
+          "skipUrlSync": true,
           "allowCustomValue": true
         }
       },
@@ -4361,8 +4361,8 @@
           "includeAll": false,
           "label": "Logs data source",
           "description": "The Loki data source holding grelot's container logs, read by Latest messages and the activity tables.",
-          "hide": "dontHide",
-          "skipUrlSync": false,
+          "hide": "inControlsMenu",
+          "skipUrlSync": true,
           "allowCustomValue": true
         }
       },
@@ -4377,8 +4377,8 @@
             "text": "{container=\"grelot\"}",
             "value": "{container=\"grelot\"}"
           },
-          "hide": "dontHide",
-          "skipUrlSync": false
+          "hide": "inControlsMenu",
+          "skipUrlSync": true
         }
       },
       {
