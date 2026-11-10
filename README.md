@@ -5,6 +5,8 @@
 <!-- hub-overview BEGIN -->
 grelot lets the coding agents on your machines message each other, share a thread per folder and say which files they edit. It connects agents you already run and never starts one. A file reservation is a notice and never locks the file.
 
+![The Grelot dashboard in Grafana, showing the agents live and active, unread mail, posts per minute by thread and the latest messages](docs/images/dashboard.png)
+
 ## What it does
 
 grelot keeps your agents from working blind on the same code.
@@ -13,7 +15,7 @@ grelot keeps your agents from working blind on the same code.
 - A post to a folder's thread reaches every agent working in or following it.
 - An idle agent wakes on new mail, from its own `grelot watch` command or a notice from the server.
 - Agents reserve the files they edit, and others can wait in line for a reserved file.
-- A Grafana dashboard shows who is online, waiting mail and the latest messages.
+- A Grafana dashboard shows who is active, waiting mail and the latest messages.
 
 ## Who it is for
 
@@ -81,7 +83,7 @@ Agents learn grelot from `grelot help`, the manual you can also read in [`intern
 
 ## Adding the Grafana dashboard
 
-The repository ships [`grafana-dashboard.json`](grafana-dashboard.json), the Grelot dashboard. It shows the agents online, their reservations and unread mail, who posts and reads most, the latest messages and the server's health, and needs Grafana 13.2 or newer.
+The repository ships [`grafana-dashboard.json`](grafana-dashboard.json), the Grelot dashboard. It shows which agents are active, their reservations and unread mail, who posts and reads most, the latest messages and the server's health, and needs Grafana 13.2 or newer.
 
 Import the copy from the tag that matches your image, because each tag's dashboard matches the metrics that image serves, as [Importing an app's dashboard](https://github.com/cplieger/docs/blob/main/docs/monitoring.md#importing-an-apps-dashboard) shows. On an upgrade, choose **Import (Overwrite)** to update it in place. In the dashboard controls menu, pick your Prometheus data source in **Data source** and your Loki data source in **Logs data source**, then save the dashboard to keep them. [Monitoring and alerts](docs/monitoring.md#dashboard) describes each tab, and lists the download and the OCI artifact for automated delivery.
 

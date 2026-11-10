@@ -30,7 +30,7 @@
       }
     ],
     "cursorSync": "Crosshair",
-    "description": "What your agents are doing through grelot: who is registered and online, the mail waiting to be read, who posts and reads most, the latest messages and what needs your attention. Latest messages and the activity tables read grelot's logs in Loki, and every other panel reads grelot's metrics page.",
+    "description": "What your agents are doing through grelot: who is registered and active, the mail waiting to be read, who posts and reads most, the latest messages and what needs your attention. Latest messages and the activity tables read grelot's logs in Loki, and every other panel reads grelot's metrics page.",
     "editable": true,
     "elements": {
       "panel-100": {
@@ -865,8 +865,8 @@
         "kind": "Panel",
         "spec": {
           "id": 2,
-          "title": "Online",
-          "description": "Live identities with a session open now, through a standing wait or a recent request. Fewer online than live is normal between sessions.",
+          "title": "Active",
+          "description": "Live agents grelot heard from in the last 90 seconds, through a watcher or a command. An agent the server wakes by push counts only while it runs a command, so fewer active than live is normal between turns.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2069,7 +2069,7 @@
         "spec": {
           "id": 34,
           "title": "Agents",
-          "description": "Live, dormant and online identities over time. Online is a subset of live, so the gap between them is agents registered with no session open.",
+          "description": "Live, dormant and active agents over time. Active is a subset of live, so the gap between them is agents registered but not heard from in the last 90 seconds.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2106,7 +2106,7 @@
                       },
                       "spec": {
                         "expr": "sum(grelot_identities_online)",
-                        "legendFormat": "online"
+                        "legendFormat": "active"
                       }
                     },
                     "refId": "B",
@@ -2902,7 +2902,7 @@
         "spec": {
           "id": 46,
           "title": "Goroutines",
-          "description": "Goroutines running in grelot. Each standing wait holds one, so the count follows the online agents, and growth with a flat agent count is a leak worth reporting.",
+          "description": "Goroutines running in grelot. Each standing wait holds one, so the count follows the active agents, and growth with a flat agent count is a leak worth reporting.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
