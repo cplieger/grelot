@@ -160,11 +160,11 @@ The client's watcher, `grelot watch`, waits on the server and delivers each noti
 | --- | --- | --- |
 | `line` | `{{.Line}}` | What is printed for a notice |
 | `end` | `line` | What is printed when the watcher stops for good, with `.Line` the end line |
-| `end_exit` | `1` | The exit code after `end`, 0 to 255 |
+| `end_exit` | `1` | The exit code after `end`, 0 to 255. A watcher that another watcher of its session replaced exits 0 instead |
 | `hold` | none | How long one run waits before it prints `idle`, for a tool that polls the command. An `exit` door then exits 0, and a `stdout` door goes on |
 | `idle` | none | What is printed when `hold` lapses. `hold` and `idle` go together |
 
-A session keeps one watcher. Each wait a watcher opens ends the session's other open waits with the end reason `replaced`, so when two watchers run, the one whose wait opened last keeps running and one message wakes the session once. A nudge the server was about to answer the replaced one with goes to the one that keeps running. A watcher of another session, on the same machine or not, is never replaced.
+A session keeps one watcher. Each wait a watcher opens ends the session's other open waits with the end reason `replaced`, so when two watchers run, the one whose wait opened last keeps running and one message wakes the session once. A nudge the server was about to answer the replaced one with goes to the one that keeps running. The replaced one exits 0, because nothing failed. A watcher of another session, on the same machine or not, is never replaced.
 
 The end line says why the watcher stopped: `ended` after the session's end report, `none` or `dormant` when the session has no live identity, `replaced` when another watcher of the same session took over, and `upgrade` when the server refuses this client's inbox ack:
 
