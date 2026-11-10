@@ -15,7 +15,7 @@ grelot keeps your agents from working blind on the same code.
 - A post to a folder's thread reaches every agent working in or following it.
 - An idle agent wakes on new mail, from its own `grelot watch` command or a notice from the server.
 - Agents reserve the files they edit, and others can wait in line for a reserved file.
-- A Grafana dashboard shows who is active, waiting mail and the latest messages.
+- Two Grafana dashboards show who is active, waiting mail and the latest messages.
 
 ## Who it is for
 
@@ -81,11 +81,14 @@ The server can wake marotte's agents itself, as [Wake agents from the server](do
 
 Agents learn grelot from `grelot help`, the manual you can also read in [`internal/cli/manual.md`](internal/cli/manual.md).
 
-## Adding the Grafana dashboard
+## Adding the Grafana dashboards
 
-The repository ships [`grafana-dashboard.json`](grafana-dashboard.json), the Grelot dashboard. It shows which agents are active, their reservations and unread mail, who posts and reads most, the latest messages and the server's health, and needs Grafana 13.2 or newer.
+The repository ships two dashboards, and both need Grafana 13.2 or newer:
 
-Import the copy from the tag that matches your image, because each tag's dashboard matches the metrics that image serves, as [Importing an app's dashboard](https://github.com/cplieger/docs/blob/main/docs/monitoring.md#importing-an-apps-dashboard) shows. On an upgrade, choose **Import (Overwrite)** to update it in place. In the dashboard controls menu, pick your Prometheus data source in **Data source** and your Loki data source in **Logs data source**, then save the dashboard to keep them. [Monitoring and alerts](docs/monitoring.md#dashboard) describes each tab, and lists the download and the OCI artifact for automated delivery.
+- [`grafana-dashboard.json`](grafana-dashboard.json), the Grelot dashboard, shows which agents are active, their reservations and unread mail, how mail is delivered and the server's health. It reads only grelot's metrics, so Prometheus is enough.
+- [`grafana-dashboard-messages.json`](grafana-dashboard-messages.json), the Grelot messages dashboard, shows the latest messages and who posts and reads most. It reads grelot's logs, so it needs Loki.
+
+Import the copies from the tag that matches your image, because each tag's dashboards match what that image serves, as [Importing an app's dashboard](https://github.com/cplieger/docs/blob/main/docs/monitoring.md#importing-an-apps-dashboard) shows. On an upgrade, choose **Import (Overwrite)** to update each in place. In each dashboard's controls menu, pick your Prometheus or Loki data source in **Data source**, then save the dashboard to keep it. [Monitoring and alerts](docs/monitoring.md#dashboards) describes each one, and lists the downloads and the OCI artifacts for automated delivery.
 
 ## Configuration reference
 
@@ -136,7 +139,7 @@ The healthcheck runs `grelot health`, which requests `GET /healthz` inside the c
 
 ## Monitoring
 
-The server writes JSON log lines for its events and serves Prometheus metrics on `/metrics`. Nine alert rules ship in [`alerts/promql.yaml`](alerts/promql.yaml), and the dashboard is in [Adding the Grafana dashboard](#adding-the-grafana-dashboard). [Monitoring and alerts](docs/monitoring.md) lists every metric and rule and shows how to load them.
+The server writes JSON log lines for its events and serves Prometheus metrics on `/metrics`. Nine alert rules ship in [`alerts/promql.yaml`](alerts/promql.yaml), and the dashboards are in [Adding the Grafana dashboards](#adding-the-grafana-dashboards). [Monitoring and alerts](docs/monitoring.md) lists every metric and rule and shows how to load them.
 
 ## Documentation
 
@@ -144,7 +147,7 @@ The server writes JSON log lines for its events and serves Prometheus metrics on
 - [Set up grelot in your coding tools](docs/hosts/README.md) has one page per coding tool.
 - [Wake agents from the server](docs/server-push.md) wakes agents through their tool's own API.
 - [Provider files](docs/providers.md) is for replacing a shipped provider file or writing one for another tool.
-- [Monitoring and alerts](docs/monitoring.md) lists the logs, metrics, dashboard and alert rules.
+- [Monitoring and alerts](docs/monitoring.md) lists the logs, metrics, dashboards and alert rules.
 - [Hardening and resource limits](docs/hardening.md) gives memory limits and a hardened profile.
 
 ## Credits

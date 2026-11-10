@@ -20,8 +20,14 @@ import (
 	"github.com/cplieger/grelot/internal/obs"
 )
 
-// dashQuery is one query of grafana-dashboard.json: a panel's or a
-// variable's.
+// The two shipped dashboards: the metrics one a Prometheus-only user can
+// import, and the messages one, which reads only grelot's logs in Loki.
+const (
+	metricsDashboard  = "grafana-dashboard.json"
+	messagesDashboard = "grafana-dashboard-messages.json"
+)
+
+// dashQuery is one query of a shipped dashboard: a panel's or a variable's.
 type dashQuery struct {
 	where, group, expr string
 }
@@ -29,13 +35,14 @@ type dashQuery struct {
 type dashboard struct {
 	panels    map[string]map[string]any
 	queries   []dashQuery
+	sources   []string
 	attention []any
 	preload   bool
 }
 
-func readDashboard(t *testing.T) dashboard {
+func readDashboard(t *testing.T, file string) dashboard {
 	t.Helper()
-	raw, err := os.ReadFile("grafana-dashboard.json")
+	raw, err := os.ReadFile(file)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,6 +75,9 @@ func readDashboard(t *testing.T) dashboard {
 		}
 	}
 	for _, v := range doc.Spec.Variables {
+		if v.Kind == "DatasourceVariable" {
+			d.sources = append(d.sources, str(v.Spec["pluginId"]))
+		}
 		if v.Kind == "QueryVariable" {
 			d.queries = append(d.queries, dashQuery{
 				where: "variable " + str(v.Spec["name"]),
@@ -88,7 +98,7 @@ func readDashboard(t *testing.T) dashboard {
 
 func TestDashboard_everyMetricsQueryReadsASeriesTheServerExports(t *testing.T) {
 	exported := servedSeries(t)
-	d := readDashboard(t)
+	d := readDashboard(t, metricsDashboard)
 	var prom int
 	for _, q := range d.queries {
 		if q.group != "prometheus" {
@@ -135,7 +145,7 @@ func firingAlerts(t *testing.T, where, expr string) []string {
 func TestDashboard_attentionTilesMirrorEveryShippedAlert(t *testing.T) {
 	rules := readRules(t)
 	want := slices.Sorted(maps.Keys(rules))
-	d := readDashboard(t)
+	d := readDashboard(t, metricsDashboard)
 
 	var tiles []string
 	for _, item := range d.attention {
@@ -174,7 +184,7 @@ func TestDashboard_attentionTilesMirrorEveryShippedAlert(t *testing.T) {
 // group shows its item, so each tile also needs an always-false rule, a
 // pinned maxDataPoints and the dashboard's preload (grafana/grafana#134713).
 func TestDashboard_attentionTilesStartHidden(t *testing.T) {
-	d := readDashboard(t)
+	d := readDashboard(t, metricsDashboard)
 	if !d.preload {
 		t.Error("preload is off, so a tile below the fold never queries and never hides")
 	}
@@ -202,6 +212,27 @@ func TestDashboard_attentionTilesStartHidden(t *testing.T) {
 	}
 }
 
+// Each dashboard reads one kind of data source, so a user with Prometheus and
+// no Loki imports the metrics one and gets no broken panel.
+func TestDashboard_eachReadsOneKindOfDataSource(t *testing.T) {
+	for file, want := range map[string]string{metricsDashboard: "prometheus", messagesDashboard: "loki"} {
+		t.Run(file, func(t *testing.T) {
+			d := readDashboard(t, file)
+			if !slices.Equal(d.sources, []string{want}) {
+				t.Errorf("data source variables %v, want one %s variable", d.sources, want)
+			}
+			if len(d.queries) == 0 {
+				t.Fatal("no queries")
+			}
+			for _, q := range d.queries {
+				if q.group != want {
+					t.Errorf("%s queries %s, want only %s", q.where, q.group, want)
+				}
+			}
+		})
+	}
+}
+
 var (
 	lokiMsg      = regexp.MustCompile(`\| msg="([^"]+)"`)
 	lokiJSONArgs = regexp.MustCompile(`\| json ((?:\w+="\w+"(?:, )?)+)`)
@@ -219,7 +250,7 @@ var (
 func TestDashboard_everyLokiQueryReadsFieldsItsLineCarries(t *testing.T) {
 	lines := serverLines(t)
 	var n int
-	for _, q := range readDashboard(t).queries {
+	for _, q := range readDashboard(t, messagesDashboard).queries {
 		if q.group != "loki" {
 			continue
 		}
@@ -271,7 +302,7 @@ func TestDashboard_everyLokiQueryReadsFieldsItsLineCarries(t *testing.T) {
 		})
 	}
 	if n == 0 {
-		t.Fatal("the dashboard has no Loki query")
+		t.Fatal("the messages dashboard has no Loki query")
 	}
 }
 
