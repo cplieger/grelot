@@ -38,8 +38,7 @@ func upgradeLine(client, server string) string {
 	if _, ok := version.Parse(server); !ok {
 		return fmt.Sprintf("this grelot server (%s) does not speak client %s; install the client built from the same source as the server", server, client)
 	}
-	return fmt.Sprintf("this grelot server (%s) does not speak client %s; install grelot %s with go install github.com/cplieger/grelot@%s or from https://github.com/cplieger/grelot/releases/tag/%s, then check both with grelot version",
-		server, client, server, server, server)
+	return fmt.Sprintf("this grelot server (%s) does not speak client %s; %s", server, client, version.Install(server))
 }
 
 // versionResponse is GET /v1/version.

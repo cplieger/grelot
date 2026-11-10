@@ -138,8 +138,8 @@ func TestAuthorize_version(t *testing.T) {
 				t.Errorf("answer names server version %q, want %q", got, testVersion)
 			}
 			if tc.want == http.StatusUpgradeRequired && !strings.Contains(r.str("error"),
-				"install grelot v1.1.0-dev.4 with go install github.com/cplieger/grelot@v1.1.0-dev.4 or from https://github.com/cplieger/grelot/releases/tag/v1.1.0-dev.4") {
-				t.Errorf("426 %q does not name the server's release download", r.str("error"))
+				"install grelot v1.1.0-dev.4 with go install github.com/cplieger/grelot@v1.1.0-dev.4") {
+				t.Errorf("426 %q does not name the server's go install", r.str("error"))
 			}
 		})
 	}
@@ -156,7 +156,7 @@ func TestVersionRoute(t *testing.T) {
 	t.Run("a client it does not speak gets the 426 naming grelot version", func(t *testing.T) {
 		r := h.request(http.MethodGet, "/v1/version", nil, map[string]string{headerVersion: "v1.0.0"})
 		if r.status != http.StatusUpgradeRequired || r.header.Get(headerVersion) != testVersion ||
-			!strings.HasSuffix(r.str("error"), "/releases/tag/"+testVersion+", then check both with grelot version") {
+			!strings.HasSuffix(r.str("error"), "go install github.com/cplieger/grelot@"+testVersion+", then check both with grelot version") {
 			t.Errorf("status %d, error %q, Grelot-Version %q; want the 426 naming grelot version and the server's version", r.status, r.str("error"), r.header.Get(headerVersion))
 		}
 	})

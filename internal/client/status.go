@@ -16,9 +16,6 @@ const (
 	wakeDown  = wakeShown + "down"
 )
 
-// releases is where the status line sends a client of another release.
-const releases = "https://github.com/cplieger/grelot/releases/tag/"
-
 // Status is the line every command prints first: the server's
 // Grelot-Status and what only the client knows.
 type Status struct {
@@ -73,9 +70,7 @@ func upgradeLine(client, server string) string {
 	if !ok || !sok || (c.Release == s.Release && (c.Dev < 0 || s.Dev <= c.Dev)) {
 		return ""
 	}
-	return "this client is " + client + " and the server " + server + ": install grelot " + server +
-		" with go install github.com/cplieger/grelot@" + server + " or from " + releases + server +
-		", then check both with grelot version"
+	return "this client is " + client + " and the server " + server + ": " + version.Install(server)
 }
 
 // older reports whether client is an earlier build than server: an earlier

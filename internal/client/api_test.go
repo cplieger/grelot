@@ -372,7 +372,7 @@ func TestDo_noRedirectFollowed(t *testing.T) {
 // missing-key 400, names the client to install; a refusal from a server
 // of the client's own build, or one an old client still reads, does not.
 func TestDo_aNewerServersRefusalNamesTheUpgrade(t *testing.T) {
-	const upgrade = "this client is v1.1.0-dev.24 and the server v1.1.0-dev.25: install grelot v1.1.0-dev.25 with go install github.com/cplieger/grelot@v1.1.0-dev.25 or from https://github.com/cplieger/grelot/releases/tag/v1.1.0-dev.25, then check both with grelot version"
+	const upgrade = "this client is v1.1.0-dev.24 and the server v1.1.0-dev.25: install grelot v1.1.0-dev.25 with go install github.com/cplieger/grelot@v1.1.0-dev.25, then check both with grelot version"
 	for _, tc := range []struct {
 		name, server string
 		status       int
