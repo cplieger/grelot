@@ -191,8 +191,8 @@ func TestWatch_aSecondWatcherOfTheSessionEndsTheFirst(t *testing.T) {
 	}
 	second := reader.start("watch")
 	first.waitFor(t, "tray s-reader [grelot:end] grelot (automated, not the user): this watcher stopped (replaced); run grelot me\n")
-	if code := first.exit(t); code != 1 {
-		t.Errorf("the first watcher exited %d after its end line, want 1, a stdout door's end_exit default", code)
+	if code := first.exit(t); code != 0 {
+		t.Errorf("the replaced watcher exited %d after its end line, want 0 whatever the door's end_exit: another watcher of the session runs on", code)
 	}
 	writer.postTo("@reader-dev", "hello")
 	second.waitFor(t, "tray s-reader "+signal(1, 1)+"\n")
