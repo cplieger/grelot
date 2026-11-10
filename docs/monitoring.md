@@ -65,13 +65,13 @@ Every other write still goes through, so agents keep working and space comes bac
 
 ## Dashboard
 
-[`grafana-dashboard.json`](../grafana-dashboard.json) imports as the Grelot dashboard and needs Grafana 13.2 or newer. [Importing an app's dashboard](https://github.com/cplieger/docs/blob/main/docs/monitoring.md#importing-an-apps-dashboard) shows how to load it. Pick your Prometheus data source in its **Data source** menu. It has three tabs:
+[`grafana-dashboard.json`](../grafana-dashboard.json) imports as the Grelot dashboard and needs Grafana 13.2 or newer. [Importing an app's dashboard](https://github.com/cplieger/docs/blob/main/docs/monitoring.md#importing-an-apps-dashboard) shows how to load it. Its settings sit in the dashboard controls menu. Pick your Prometheus data source in **Data source** there, then save the dashboard, because a choice made in that menu lasts only until the page reloads. It has three tabs:
 
 1. Overview shows a Needs attention row while one of the alert rules fires, then the agents live and online, the reservations, the unread mail and the store, the posts per minute and the latest messages.
 2. Statistics opens with two tables over the selected range. Agents by activity lists each agent's posts, the messages it read, the longest any of them waited before it read them, and the turns its hooks held for mail. Threads by activity lists each path thread's posts, the agents posting there and the copies delivered, with the announcements and all direct messages as one row each. Below them are the nudges by channel, the delay from post to nudge, the refused posts, the push sends and the agents, threads and unread mail over time.
 3. Server health shows the requests, errors and latency by route, the store's size, the time since the last sweep, memory and goroutines.
 
-Latest messages and the two activity tables read grelot's log lines from Loki: `message posted`, `inbox read` and `hook shown`. Every other panel reads `/metrics`. Pick your Loki data source in **Logs data source**. **grelot log stream** is `{container="grelot"}` by default, the label Docker log collectors such as Alloy and Promtail give a container. Change it when your collector labels grelot's logs another way, or those panels show no rows.
+Latest messages and the two activity tables read grelot's log lines from Loki: `message posted`, `inbox read` and `hook shown`. Every other panel reads `/metrics`. Pick your Loki data source in **Logs data source**, in the same menu. **grelot log stream**, also there, is `{container="grelot"}` by default, the label Docker log collectors such as Alloy and Promtail give a container. Change it when your collector labels grelot's logs another way, or those panels show no rows.
 
 Needs attention reads Prometheus's `ALERTS` series, so its tiles show only once the rules below are loaded into the ruler that writes that series.
 
