@@ -32,7 +32,7 @@ COPY --from=builder /out/usr/share/licenses /usr/share/licenses
 USER 65532:65532
 VOLUME /data
 EXPOSE 9737
-# `grelot health` GETs /healthz on loopback and gives up at 5 s with its
+# `grelot health` GETs /healthz at LISTEN_ADDR and gives up at 5 s with its
 # reason, so the timeout sits above that budget and Docker never cuts it first.
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=15s \
     CMD ["/grelot", "health"]

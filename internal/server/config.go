@@ -3,12 +3,15 @@
 package server
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/cplieger/go/envx"
 	"github.com/cplieger/go/pathinside"
@@ -42,7 +45,22 @@ const (
 	keyDormantTTL        envx.Key = "DORMANT_TTL"
 	keyReservationMaxTTL envx.Key = "RESERVATION_MAX_TTL"
 	keyProvidersDir      envx.Key = "PROVIDERS_DIR"
+	keyListenAddr        envx.Key = "LISTEN_ADDR"
 )
+
+// defaultListenAddr is the port the image exposes.
+const defaultListenAddr = ":9737"
+
+// ListenAddr is the address serve listens on and health probes: LISTEN_ADDR
+// with its edge spaces and invisible runes cut, or :9737 when nothing is
+// left. It reads no other setting, so health needs no token.
+func ListenAddr() string {
+	return cmp.Or(strings.TrimFunc(envx.String(keyListenAddr), invisible), defaultListenAddr)
+}
+
+// invisible reports a rune a pasted value can carry that net.Listen cannot
+// resolve, where strings.TrimSpace keeps zero-width runes.
+func invisible(r rune) bool { return r == ' ' || !unicode.IsPrint(r) }
 
 // The defaults of the optional keys.
 const (

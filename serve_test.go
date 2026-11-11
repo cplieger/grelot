@@ -55,23 +55,25 @@ func testConfig(t *testing.T) *server.Config {
 }
 
 func TestServe(t *testing.T) {
-	t.Parallel()
 	addr, logs, cancel, done := startServe(t)
 
-	t.Run("healthz answers ok once the sweeper has passed", func(t *testing.T) {
-		var status string
-		for deadline := time.Now().Add(5 * time.Second); status != "ok"; time.Sleep(10 * time.Millisecond) {
-			resp, err := http.Get("http://" + addr + "/healthz")
-			if err != nil {
-				t.Fatal(err)
-			}
-			var body struct{ Status string }
-			_ = json.NewDecoder(resp.Body).Decode(&body)
-			resp.Body.Close()
-			status = body.Status
-			if time.Now().After(deadline) {
-				t.Fatalf("healthz status %q after 5 s, want ok", status)
-			}
+	t.Run("healthz answers ok once the sweeper has passed", func(t *testing.T) { waitHealthy(t, addr) })
+	t.Run("metrics name the running version", func(t *testing.T) {
+		resp, err := http.Get("http://" + addr + "/metrics")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		page, _ := io.ReadAll(resp.Body)
+		if want := `grelot_build_info{version="` + buildVersion() + `"} 1`; !strings.Contains(string(page), want) {
+			t.Errorf("/metrics has no %s", want)
+		}
+	})
+	t.Run("grelot health probes LISTEN_ADDR", func(t *testing.T) {
+		t.Setenv("LISTEN_ADDR", addr)
+		var stderr bytes.Buffer
+		if code := run([]string{"health"}, io.Discard, &stderr); code != 0 {
+			t.Errorf("exit %d, want 0; stderr %q", code, stderr.String())
 		}
 	})
 
@@ -93,6 +95,10 @@ func TestServe(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), `"msg":"stopped"`) {
 		t.Errorf("no stopped line; logs: %s", logs.String())
+	}
+	if got := healthChanges(t, logs); len(got) != 2 || got[0]["level"] != "INFO" || got[0]["healthy"] != true ||
+		got[1]["level"] != "WARN" || got[1]["healthy"] != false || got[1]["draining"] != true {
+		t.Errorf("health state changed lines %v, want one INFO healthy=true then one WARN healthy=false draining=true", got)
 	}
 	var stderr bytes.Buffer
 	if code := probeHealth(&stderr, addr, time.Second); code != 1 || !strings.Contains(stderr.String(), "unhealthy") {
@@ -127,30 +133,33 @@ func TestServe_namesTheWireVersion(t *testing.T) {
 
 func TestProbeHealth(t *testing.T) {
 	t.Parallel()
-	t.Run("a stale sweep with a live listener fails", func(t *testing.T) {
+	t.Run("a live listener answering 503 fails", func(t *testing.T) {
 		t.Parallel()
-		var at atomic.Int64
-		at.Store(time.Now().UnixNano())
-		now := func() time.Time { return time.Unix(0, at.Load()) }
-		st, err := store.Open(filepath.Join(t.TempDir(), "grelot.db"), &store.Options{Now: now})
+		st, err := store.Open(filepath.Join(t.TempDir(), "grelot.db"), &store.Options{})
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = st.Close() })
-		srv := server.New(&server.Options{
-			Store: st, Logger: slog.New(slog.DiscardHandler), Now: now, Config: *testConfig(t),
-		})
+		srv := server.New(&server.Options{Store: st, Logger: slog.New(slog.DiscardHandler), Config: *testConfig(t)})
 		ts := httptest.NewServer(srv.Handler())
 		t.Cleanup(ts.Close)
-		addr := ts.Listener.Addr().String()
-		srv.Beat(t.Context())
 		var stderr bytes.Buffer
-		if code := probeHealth(&stderr, addr, time.Second); code != 0 {
-			t.Fatalf("fresh sweep: exit %d, want 0; stderr %q", code, stderr.String())
+		if code := probeHealth(&stderr, ts.Listener.Addr().String(), time.Second); code != 1 || !strings.Contains(stderr.String(), "503") {
+			t.Errorf("before any sweep: exit %d, stderr %q, want 1 naming the 503", code, stderr.String())
 		}
-		at.Add(int64(4*store.SweepEvery + time.Second))
-		if code := probeHealth(&stderr, addr, time.Second); code != 1 || !strings.Contains(stderr.String(), "503") {
-			t.Errorf("stale sweep: exit %d, stderr %q, want 1 naming the 503", code, stderr.String())
+	})
+	t.Run("a wildcard listen address probes loopback", func(t *testing.T) {
+		t.Parallel()
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/healthz" {
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		t.Cleanup(ts.Close)
+		_, port, _ := net.SplitHostPort(ts.Listener.Addr().String())
+		var stderr bytes.Buffer
+		if code := probeHealth(&stderr, ":"+port, time.Second); code != 0 {
+			t.Errorf("exit %d, want 0; stderr %q", code, stderr.String())
 		}
 	})
 	t.Run("a listener that accepts but never answers fails within the budget", func(t *testing.T) {
@@ -172,16 +181,13 @@ func TestProbeHealth(t *testing.T) {
 	t.Run("an address with no port fails", func(t *testing.T) {
 		t.Parallel()
 		var stderr bytes.Buffer
-		if code := probeHealth(&stderr, "9737", time.Second); code != 1 || !strings.Contains(stderr.String(), "9737") {
-			t.Errorf("exit %d, stderr %q, want 1 naming the address", code, stderr.String())
+		if code := probeHealth(&stderr, "9737", time.Second); code != 1 || !strings.Contains(stderr.String(), `LISTEN_ADDR "9737"`) {
+			t.Errorf("exit %d, stderr %q, want 1 naming LISTEN_ADDR and its value", code, stderr.String())
 		}
 	})
 }
 
 func TestListenAddr_theImageAndComposeExampleNameItsPort(t *testing.T) {
-	if listenAddr != ":9737" {
-		t.Errorf("listenAddr %q, want :9737", listenAddr)
-	}
 	for file, want := range map[string]string{"Dockerfile": "\nEXPOSE 9737\n", "compose.yaml": `- "9737:9737"`} {
 		raw, err := os.ReadFile(file)
 		if err != nil {
@@ -197,13 +203,20 @@ func TestListenAddr_theImageAndComposeExampleNameItsPort(t *testing.T) {
 // test's end, and returns its address, its logs and serve's result.
 func startServe(t *testing.T) (addr string, logs *syncBuffer, cancel context.CancelFunc, done <-chan error) {
 	t.Helper()
+	return startServeWith(t, func(h slog.Handler) slog.Handler { return h })
+}
+
+// startServeWith is startServe logging through wrap's handler around the
+// JSON one.
+func startServeWith(t *testing.T, wrap func(slog.Handler) slog.Handler) (addr string, logs *syncBuffer, cancel context.CancelFunc, done <-chan error) {
+	t.Helper()
 	logs = &syncBuffer{}
 	cfg := testConfig(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	out := make(chan error, 1)
 	stopped := make(chan struct{})
 	go func() {
-		out <- serve(ctx, cfg, "127.0.0.1:0", slog.New(slog.NewJSONHandler(logs, nil)))
+		out <- serve(ctx, cfg, "127.0.0.1:0", slog.New(wrap(slog.NewJSONHandler(logs, nil))))
 		close(stopped)
 	}()
 	// Registered after the TempDir calls, so serve has returned and closed
@@ -217,6 +230,41 @@ func startServe(t *testing.T) (addr string, logs *syncBuffer, cancel context.Can
 		}
 	}
 	return addr, logs, cancel, out
+}
+
+// waitHealthy polls addr's /healthz until it answers ok, failing after 5 s.
+func waitHealthy(t *testing.T, addr string) {
+	t.Helper()
+	var status string
+	for deadline := time.Now().Add(5 * time.Second); status != "ok"; time.Sleep(10 * time.Millisecond) {
+		resp, err := http.Get("http://" + addr + "/healthz")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body struct{ Status string }
+		_ = json.NewDecoder(resp.Body).Decode(&body)
+		resp.Body.Close()
+		status = body.Status
+		if time.Now().After(deadline) {
+			t.Fatalf("healthz status %q after 5 s, want ok", status)
+		}
+	}
+}
+
+// healthChanges returns serve's health state changed lines, in order.
+func healthChanges(t *testing.T, logs *syncBuffer) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	for line := range strings.Lines(logs.String()) {
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("log line %q: %v", line, err)
+		}
+		if rec["msg"] == "health state changed" {
+			out = append(out, rec)
+		}
+	}
+	return out
 }
 
 // call sends one /v1 request from session, with key as its
@@ -254,9 +302,31 @@ func callErr(ctx context.Context, addr, method, path, session, key, body string)
 	return resp.StatusCode, out.Code, nil
 }
 
+// onDrainLine runs onDrain when the health drain line is logged, before
+// passing it on.
+type onDrainLine struct {
+	slog.Handler
+	onDrain func()
+}
+
+func (h onDrainLine) Handle(ctx context.Context, r slog.Record) error {
+	if r.Message == "health state changed" && r.Level == slog.LevelWarn {
+		h.onDrain()
+	}
+	return h.Handler.Handle(ctx, r)
+}
+
 func TestServe_aStopAnswersAnOpenWaitAndDrains(t *testing.T) {
 	t.Parallel()
-	addr, logs, cancel, done := startServe(t)
+	// The sleep holds the drain line, so a wait released before BeginDrain
+	// is answered while drained is still false.
+	var drained atomic.Bool
+	addr, logs, cancel, done := startServeWith(t, func(h slog.Handler) slog.Handler {
+		return onDrainLine{Handler: h, onDrain: func() {
+			time.Sleep(300 * time.Millisecond)
+			drained.Store(true)
+		}}
+	})
 	const session = "test:session-a"
 	register := `{"name":"reader","paths":["/workspace/grelot"],"description":"reading","host":"host-a/app",` +
 		`"os":"linux","arch":"amd64","ttl":"1h","where":{"machine":"dmi:` + strings.Repeat("1", 32) +
@@ -264,6 +334,7 @@ func TestServe_aStopAnswersAnOpenWaitAndDrains(t *testing.T) {
 	if status, code := call(t, addr, http.MethodPost, "/v1/register", session, `"register-key-0001"`, register); status != http.StatusCreated {
 		t.Fatalf("register: %d %s", status, code)
 	}
+	waitHealthy(t, addr)
 	type answer struct {
 		err    error
 		code   string
@@ -284,6 +355,9 @@ func TestServe_aStopAnswersAnOpenWaitAndDrains(t *testing.T) {
 		}
 		if a.status != http.StatusServiceUnavailable || a.code != "shutting_down" {
 			t.Errorf("the open wait = %d %s, want 503 shutting_down", a.status, a.code)
+		}
+		if !drained.Load() {
+			t.Error("the open wait was answered before /healthz turned unhealthy")
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the open wait got no answer within 5 s of the stop")

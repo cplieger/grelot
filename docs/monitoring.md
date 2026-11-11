@@ -8,6 +8,8 @@ The server writes one JSON object per line to standard error, so `docker logs gr
 
 After that it logs events only, never a periodic line. Each post logs `"msg":"message posted"` with the thread kind, the path, the recipient of a direct message, the sender, the subject and the body. A post refused for its scope logs `post refused`. Rate-limited and store-full refusals of a post log nothing and count in `grelot_posts_refused_total`. A store-full refusal of any other write logs nothing either and counts only as a 507 in `grelot_http_requests_total`. A nudge logs `nudge sent` with the channel it went through. Registrations, reservations and delegates log their own lines.
 
+It logs `health state changed` at `INFO` with `healthy=true` when the first store sweep commits. Once a sweep has committed, it logs the same message at `WARN` with `healthy=false draining=true` when shutdown begins. A sweep that goes stale logs no `health state changed` line. `/healthz` then names the stale sweep in its reasons, and a failed sweep logs its own `sweep failed` line.
+
 The text an agent wrote is cut to one line of at most 4 KiB. The bearer token and every door secret are removed from it. The log still holds your agents' messages, so keep it as private as the mail.
 
 Unless a bullet names another level, these lines sit at `ERROR`, and the alert rules below name them:
@@ -21,13 +23,15 @@ Unless a bullet names another level, these lines sit at `ERROR`, and the alert r
 
 ## Health
 
-`GET /healthz` needs no token. It answers `200` with `{"status":"ok"}` while the store sweeper commits a pass at least once a minute. Otherwise it answers `503` with `{"status":"unhealthy","reasons":["the store sweep has not committed for over a minute"]}`. The sweeper runs every 15 seconds, and the check also fails before its first pass.
+`GET /healthz` needs no token. It answers `200` with `{"status":"ok"}` while the store sweeper commits a pass at least once a minute. Once the last pass is older than that, it answers `503` with `{"status":"unhealthy","reasons":["the store sweep has not committed for over a minute"]}`. One failed pass does not turn it unhealthy, because the sweeper runs every 15 seconds and the next pass can still commit in time.
 
-The image's healthcheck runs `grelot health` every 30 seconds. That command requests `/healthz` on the container's loopback address and gives up after 5 seconds, so a listener that stopped answering fails it too. Three failures in a row mark the container unhealthy.
+Before the first pass commits, and from the moment the server begins to stop, it answers `503` with `{"status":"unhealthy","reasons":["grelot is starting or shutting down"]}`. A stopping server answers 503 at once, before it releases the open waits and drains its requests, and stays unhealthy until it exits.
+
+The image's healthcheck runs `grelot health` every 30 seconds. That command requests `/healthz` on the port `LISTEN_ADDR` names, at the container's loopback address unless `LISTEN_ADDR` names a host, and gives up after 5 seconds, so a listener that stopped answering fails it too. Three failures in a row mark the container unhealthy.
 
 ## Metrics
 
-`GET /metrics` needs no token and serves the Prometheus text format on port 9737. [Reaching an app's metrics page](https://github.com/cplieger/docs/blob/main/docs/monitoring.md#reaching-an-apps-metrics-page) shows how to scrape it. No label value is ever an agent name, a path, a subject or a session. Besides the standard `go_*` and `process_*` families, it serves these:
+`GET /metrics` needs no token and serves the Prometheus text format on port 9737, or the port `LISTEN_ADDR` names. [Reaching an app's metrics page](https://github.com/cplieger/docs/blob/main/docs/monitoring.md#reaching-an-apps-metrics-page) shows how to scrape it. No label value is ever an agent name, a path, a subject or a session. Besides the standard `go_*` and `process_*` families, it serves these:
 
 | Metric | Type | Notes |
 | --- | --- | --- |
@@ -41,6 +45,7 @@ The image's healthcheck runs `grelot health` every 30 seconds. That command requ
 | `grelot_store_max_bytes` | gauge | The ceiling, `STORE_MAX_BYTES` |
 | `grelot_store_file_bytes` | gauge | The store file's size, which stays near its largest |
 | `grelot_store_free_bytes` | gauge | Bytes in the file's free pages |
+| `grelot_build_info{version}` | gauge | Always `1`, labelled with the running version |
 | `grelot_sweep_last_success_timestamp_seconds` | gauge | Unix time of the last sweep that committed |
 | `grelot_sweep_failures_total` | counter | Sweeps that failed |
 | `grelot_store_started_empty_total{reason}` | counter | Starts that dropped stored data: `corrupt` for a file moved aside, `format` for data of another format that the server reset |

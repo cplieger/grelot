@@ -185,3 +185,18 @@ func TestRecordHTTP_labelsByRouteAndCode(t *testing.T) {
 		}
 	}
 }
+
+func TestServeBuildInfo_isOneLabelledWithTheVersion(t *testing.T) {
+	m := New()
+	m.ServeBuildInfo("v1.2.3")
+	f, ok := gather(t, m)["grelot_build_info"]
+	if !ok {
+		t.Fatal("no grelot_build_info family")
+	}
+	if f.Type != measure.TypeGauge || len(f.Samples) != 1 {
+		t.Fatalf("type %v with %d samples, want one gauge sample", f.Type, len(f.Samples))
+	}
+	if got := value(t, f, "v1.2.3"); got != 1 {
+		t.Errorf("grelot_build_info{version=\"v1.2.3\"} = %v, want 1", got)
+	}
+}

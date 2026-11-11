@@ -119,3 +119,20 @@ func TestStoreMaxBytes_aSmallCeilingTakesPostsOnAFreshStore(t *testing.T) {
 		t.Errorf("first post on a fresh store under a 16 MiB ceiling: %d %s, want 201", r.status, r.raw)
 	}
 }
+
+func TestListenAddr(t *testing.T) {
+	for _, tc := range []struct{ name, env, want string }{
+		{"unset gives the image's port", "", ":9737"},
+		{"a value is kept", "127.0.0.1:9999", "127.0.0.1:9999"},
+		{"edge spaces are cut", "  0.0.0.0:9999 \t", "0.0.0.0:9999"},
+		{"invisible padding is cut", "\u200b:9999\u00ad", ":9999"},
+		{"only blanks gives the image's port", " \ufeff ", ":9737"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("LISTEN_ADDR", tc.env)
+			if got := ListenAddr(); got != tc.want {
+				t.Errorf("ListenAddr() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

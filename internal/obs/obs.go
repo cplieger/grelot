@@ -93,6 +93,14 @@ func New() *Metrics {
 	return m
 }
 
+// ServeBuildInfo registers grelot_build_info, 1 with the running version as
+// its label. Call it once.
+func (m *Metrics) ServeBuildInfo(version string) {
+	info := measure.NewLabeledGauge("build_info", "Always 1, labelled with the running version.", []string{"version"})
+	m.reg.MustRegister(info)
+	info.Set(1, version)
+}
+
 // Handler serves the page, with the Go runtime and process families.
 func (m *Metrics) Handler() http.Handler { return m.reg.Handler() }
 
