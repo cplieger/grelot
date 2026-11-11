@@ -13,10 +13,9 @@ import (
 	"net/http"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"time"
 
-	"github.com/cplieger/go/health"
+	"github.com/cplieger/go/health/v2"
 	"github.com/cplieger/go/httpserver"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
@@ -52,12 +51,12 @@ type Server struct {
 	hub      *Hub
 	push     Pusher
 	metrics  *obs.Metrics
+	health   *health.Status
 	stopping chan struct{}
 	// needles are the bearer and every door secret, cut from logged text.
 	needles  []string
 	version  string
 	cfg      Config
-	beat     atomic.Int64
 	bearer   httpserver.StaticTokenVerifier
 	stopOnce sync.Once
 }
@@ -81,6 +80,7 @@ func New(o *Options) *Server {
 	s := &Server{
 		store: o.Store, log: o.Logger, now: now, version: o.Version, cfg: o.Config,
 		presence: newPresence(), posts: newPostLimit(), hub: hub, push: o.Push, metrics: m,
+		health:   health.NewStatus(health.WithLogger(o.Logger)),
 		needles:  append([]string{o.Config.Token}, doors.Secrets()...),
 		bearer:   httpserver.NewStaticTokenVerifier(o.Config.Token),
 		stopping: make(chan struct{}),
@@ -96,21 +96,25 @@ func New(o *Options) *Server {
 	return s
 }
 
-// Release answers every held standing and in-turn wait at once, and every
-// one opened after it, so a graceful stop's drain need not outlast their
-// deadlines. It does not wait for them: http.Server.Shutdown does. It
-// stops host push and waits for it, cancelling a send in flight.
+// Release turns /healthz unhealthy for good, then answers every held
+// standing and in-turn wait at once, and every one opened after it, so a
+// graceful stop's drain need not outlast their deadlines. It does not wait
+// for them: http.Server.Shutdown does. It stops host push and waits for
+// it, cancelling a send in flight.
 func (s *Server) Release() {
 	s.stopOnce.Do(func() {
+		// BeginDrain first, so no /healthz answers 200 once a held wait is
+		// told the server is stopping.
+		s.health.BeginDrain()
 		close(s.stopping)
 		s.push.stop()
 	})
 }
 
-// Beat records a sweeper pass that committed, which Healthy reads, and
+// Beat records a sweeper pass that committed, which /healthz reads, and
 // forgets the in-memory state of every identity no longer live.
 func (s *Server) Beat(ctx context.Context) {
-	s.beat.Store(s.now().UnixNano())
+	s.health.Set(true)
 	s.posts.prune(s.now())
 	s.push.beat(ctx)
 	ids := s.presence.ids()
@@ -124,17 +128,12 @@ func (s *Server) Beat(ctx context.Context) {
 
 const msgPruneFailed = "memory prune failed"
 
-// Healthy is the /healthz check: false before the first committed sweeper
-// pass and once the last is older than healthyFor.
-func (s *Server) Healthy() bool {
-	return s.now().Sub(time.Unix(0, s.beat.Load())) <= healthyFor
-}
-
 // healthyFor is four sweep periods, so one slow pass does not mark the
 // server down. reasonStale states it in words: change both together.
 const (
-	healthyFor  = 4 * store.SweepEvery
-	reasonStale = "the store sweep has not committed for over a minute"
+	healthyFor     = 4 * store.SweepEvery
+	reasonStale    = "the store sweep has not committed for over a minute"
+	reasonStopping = "grelot is starting or shutting down"
 )
 
 // Route deadlines, which end a request's store calls before they commit,
@@ -169,7 +168,10 @@ func (s *Server) HTTPServer() *http.Server {
 // every /v1 route behind the bearer and the version check.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("GET /healthz", health.CheckHandler(health.Check{Signal: s, Reason: reasonStale}))
+	mux.Handle("GET /healthz", health.CheckHandler(
+		health.Check{Signal: s.health, Reason: reasonStopping},
+		health.Check{Signal: s.health.Fresh(healthyFor), Reason: reasonStale},
+	))
 	mux.Handle("GET /metrics", s.metrics.Handler())
 	s.routes(mux)
 	return httpserver.Chain(mux,

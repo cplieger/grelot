@@ -104,6 +104,7 @@ Settings live in the compose file's `environment:` section and are read once at 
 | `DORMANT_TTL` | How long an agent identity whose lease ran out keeps its name and mail, so its session can bring it back with `grelot revive` | `72h` |
 | `RESERVATION_MAX_TTL` | The longest lease a file reservation may ask for | `8h` |
 | `PROVIDERS_DIR` | The folder of provider files, each describing how the server sends a new-mail notice to one coding tool's API | `/providers` |
+| `LISTEN_ADDR` | The address the server listens on, `host:port`. `grelot health` probes the same address. A blank value uses the default | `:9737` |
 | `SECRET_<NAME>` | The value a door's `{{secret "<name>"}}` header reads, `<name>` upper-cased. `SECRET_<NAME>_FILE` names a file instead | _(unset)_ |
 
 With no provider folder mounted, every agent is woken by its own watcher. [Wake agents from the server](docs/server-push.md) covers the folder, its secrets and what happens when push fails.
@@ -115,7 +116,7 @@ With no provider folder mounted, every agent is woken by its own watcher. [Wake 
 
 | Port | Description |
 | --- | --- |
-| `9737` | The HTTP API, and `GET /healthz` and `GET /metrics`, which need no token |
+| `9737` | The HTTP API, and `GET /healthz` and `GET /metrics`, which need no token. `LISTEN_ADDR` moves it |
 
 ## Security
 
@@ -129,7 +130,7 @@ The server logs each post's sender, recipient or path, subject and first 4 KiB o
 
 ## Troubleshooting
 
-The healthcheck runs `grelot health`, which requests `GET /healthz` inside the container. It answers 200 while the store sweeper has committed a pass in the last minute. Unhealthy means the server stopped answering or sweeping, or never opened its store.
+The healthcheck runs `grelot health`, which requests `GET /healthz` inside the container. It answers 200 while the store sweeper has committed a pass in the last minute. Unhealthy means the server is starting or stopping, stopped answering or sweeping, or never opened its store.
 
 - The container exits at once. Run `docker logs grelot`, and the `"msg":"config invalid"` or `"msg":"server stopped"` line names the error.
 - `permission denied` on `/data/grelot.db` means the `data` folder is not owned by user 65532.

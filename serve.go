@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cplieger/go/health/probe"
+	"github.com/cplieger/go/health/v2/probe"
 	"github.com/cplieger/go/httpserver"
 	"github.com/cplieger/go/slogx"
 	"github.com/cplieger/grelot/internal/obs"
@@ -20,8 +20,6 @@ import (
 	"github.com/cplieger/grelot/internal/store"
 	buildver "github.com/cplieger/grelot/internal/version"
 )
-
-const listenAddr = ":9737"
 
 // serverCommand runs serve or health, the image's two server commands.
 func serverCommand(cmd string, stderr io.Writer) int {
@@ -37,32 +35,34 @@ func serverCommand(cmd string, stderr io.Writer) int {
 			logger.Error("config invalid", "error", err)
 			return 1
 		}
-		if err := serve(ctx, &cfg, listenAddr, logger); err != nil {
+		if err := serve(ctx, &cfg, server.ListenAddr(), logger); err != nil {
 			logger.Error("server stopped", "error", err)
 			return 1
 		}
 		return 0
 	case cmdHealth:
-		return probeHealth(stderr, listenAddr, probe.DefaultTimeout)
+		return probeHealth(stderr, server.ListenAddr(), probe.DefaultTimeout)
 	}
 	return 0
 }
 
-// probeHealth is the image's healthcheck: a GET of /healthz on the
-// loopback port of addr, the listen address, so a wedged listener fails it
-// as well as a stalled sweeper. It returns 0 for a 2xx within timeout.
+// probeHealth is the image's healthcheck: a GET of /healthz at the local URL
+// of addr, the listen address, so a wedged listener fails it as well as a
+// stalled sweeper. It returns 0 for a 2xx within timeout.
 func probeHealth(stderr io.Writer, addr string, timeout time.Duration) int {
-	_, port, err := net.SplitHostPort(addr)
+	u, err := probe.LocalURL(addr, "/healthz")
 	if err != nil {
-		fmt.Fprintf(stderr, "unhealthy: listen address %q: %v\n", addr, err)
+		fmt.Fprintf(stderr, "unhealthy: LISTEN_ADDR %q: %v\n", addr, err)
 		return 1
 	}
-	return probe.Check(stderr, timeout, "http://"+net.JoinHostPort("127.0.0.1", port)+"/healthz")
+	return probe.Check(stderr, timeout, u)
 }
 
 // build opens the store and builds the server on it, both recording into
-// metrics. The caller closes the store and releases the server.
+// metrics, which gains grelot_build_info. The caller closes the store and
+// releases the server.
 func build(cfg *server.Config, logger *slog.Logger, metrics *obs.Metrics) (*store.Store, *server.Server, error) {
+	metrics.ServeBuildInfo(buildVersion())
 	hub := server.NewHub()
 	st, err := store.Open(cfg.StorePath, &store.Options{
 		Logger: logger, Metrics: metrics, MaxBytes: cfg.MaxBytes, ThreadTTL: cfg.ThreadTTL,
@@ -72,7 +72,9 @@ func build(cfg *server.Config, logger *slog.Logger, metrics *obs.Metrics) (*stor
 	if err != nil {
 		return nil, nil, err
 	}
-	return st, server.New(&server.Options{Store: st, Logger: logger, Hub: hub, Metrics: metrics, Version: buildver.Wire(buildVersion()), Config: *cfg}), nil
+	return st, server.New(&server.Options{
+		Store: st, Logger: logger, Hub: hub, Metrics: metrics, Version: buildver.Wire(buildVersion()), Config: *cfg,
+	}), nil
 }
 
 // serve opens the store, sweeps it and serves the API on addr until ctx

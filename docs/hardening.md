@@ -6,7 +6,7 @@ This page covers what the grelot server shows without the token, what the image 
 
 Every `/v1` route needs the bearer token. Two routes do not, so probes and scrapes keep working:
 
-- `GET /healthz` answers whether the store sweeper is running, and nothing else.
+- `GET /healthz` answers whether the server is starting, stopping or sweeping its store, and nothing else.
 - `GET /metrics` gives counts of agents, threads, reservations, unread mail, posts, refusals, nudges, push sends and requests by route. No label holds an agent name, a path, a subject or a session. The `door` label holds the names of the provider files and doors in the server's folder.
 
 Anyone who can reach port 9737 can read both. Publish the port only to a network you trust, or put an authenticating proxy in front of `/metrics`.

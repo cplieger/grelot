@@ -4,7 +4,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -17,76 +16,64 @@ import (
 	"github.com/cplieger/grelot/internal/store"
 )
 
-func TestHealthz_takesNoHeadersAndFollowsTheSweeperBeat(t *testing.T) {
-	h := newHarness(t)
-	type answer struct {
-		Status  string   `json:"status"`
-		Reasons []string `json:"reasons"`
-	}
-	get := func(t *testing.T, method string) (int, http.Header, answer) {
-		t.Helper()
-		req, err := http.NewRequestWithContext(t.Context(), method, h.http.URL+"/healthz", http.NoBody)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp, err := h.http.Client().Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer resp.Body.Close()
-		var body answer
-		if method == http.MethodGet {
-			if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-				t.Fatal(err)
-			}
-		}
-		return resp.StatusCode, resp.Header, body
-	}
-	wantUp := func(t *testing.T) {
-		t.Helper()
-		code, _, body := get(t, http.MethodGet)
-		if code != http.StatusOK || body.Status != "ok" || body.Reasons != nil {
-			t.Errorf("got %d %+v, want 200 ok with no reasons", code, body)
-		}
-	}
-	wantDown := func(t *testing.T) {
-		t.Helper()
-		code, _, body := get(t, http.MethodGet)
-		want := []string{"the store sweep has not committed for over a minute"}
-		if code != http.StatusServiceUnavailable || body.Status != "unhealthy" || !slices.Equal(body.Reasons, want) {
-			t.Errorf("got %d %+v, want 503 unhealthy %q", code, body, want)
-		}
-	}
+const (
+	wantStopping = "grelot is starting or shutting down"
+	wantStale    = "the store sweep has not committed for over a minute"
+)
 
-	t.Run("down before the first sweeper pass", wantDown)
-	h.srv.Beat(t.Context())
-	t.Run("up after a pass, with no bearer and no version", wantUp)
-	t.Run("the shared response headers", func(t *testing.T) {
-		_, header, _ := get(t, http.MethodGet)
-		for k, v := range map[string]string{
-			"Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
-		} {
-			if got := header.Get(k); got != v {
-				t.Errorf("%s = %q, want %q", k, got, v)
+// healthz sends a bare /healthz, with no bearer and no version, and returns
+// its status and reasons.
+func (h *harness) healthz(method string) (int, []string) {
+	h.t.Helper()
+	r := h.request(method, "/healthz", nil, map[string]string{"Authorization": "", headerVersion: ""})
+	var reasons []string
+	if list, ok := r.body["reasons"].([]any); ok {
+		for _, v := range list {
+			reasons = append(reasons, v.(string))
+		}
+	}
+	return r.status, reasons
+}
+
+func TestHealthz_takesNoHeadersAndFollowsTheSweeperBeat(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h := newBubbleHarness(t)
+		// t.Run panics inside a bubble, so each phase names itself.
+		want := func(phase string, code int, reasons ...string) {
+			t.Helper()
+			if got, gotReasons := h.healthz(http.MethodGet); got != code || !slices.Equal(gotReasons, reasons) {
+				t.Errorf("%s: GET = %d %q, want %d %q", phase, got, gotReasons, code, reasons)
+			}
+			if got, _ := h.healthz(http.MethodHead); got != code {
+				t.Errorf("%s: HEAD = %d, want %d", phase, got, code)
 			}
 		}
+
+		want("before the first sweeper pass", http.StatusServiceUnavailable, wantStopping)
+		h.srv.Beat(t.Context())
+		want("after a pass", http.StatusOK)
+		time.Sleep(4 * store.SweepEvery)
+		want("at four sweep periods", http.StatusOK)
+		time.Sleep(time.Nanosecond)
+		want("past four sweep periods", http.StatusServiceUnavailable, wantStale)
+		h.srv.Beat(t.Context())
+		want("after the next pass", http.StatusOK)
 	})
-	t.Run("HEAD answers the same status", func(t *testing.T) {
-		if code, _, _ := get(t, http.MethodHead); code != http.StatusOK {
-			t.Errorf("HEAD = %d, want 200", code)
+}
+
+func TestHealthz_aReleaseAnswers503AtOnceAndForGood(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h := newBubbleHarness(t)
+		h.srv.Beat(t.Context())
+		h.srv.Release()
+		if code, reasons := h.healthz(http.MethodGet); code != http.StatusServiceUnavailable || !slices.Equal(reasons, []string{wantStopping}) {
+			t.Errorf("after Release: %d %q, want 503 %q", code, reasons, wantStopping)
+		}
+		h.srv.Beat(t.Context())
+		if code, reasons := h.healthz(http.MethodGet); code != http.StatusServiceUnavailable || !slices.Equal(reasons, []string{wantStopping}) {
+			t.Errorf("a pass after Release: %d %q, want 503 %q", code, reasons, wantStopping)
 		}
 	})
-	h.clk.advance(4 * store.SweepEvery)
-	t.Run("still up at four sweep periods", wantUp)
-	h.clk.advance(time.Second)
-	t.Run("down once the last pass is older than four sweep periods", wantDown)
-	t.Run("HEAD answers down too", func(t *testing.T) {
-		if code, _, _ := get(t, http.MethodHead); code != http.StatusServiceUnavailable {
-			t.Errorf("HEAD = %d, want 503", code)
-		}
-	})
-	h.srv.Beat(t.Context())
-	t.Run("up again after the next pass", wantUp)
 }
 
 func TestAuthorize_bearer(t *testing.T) {
@@ -188,6 +175,9 @@ func TestSweeper_aServerAtRestLogsNoPeriodicLine(t *testing.T) {
 		if r := h.as(sessA, http.MethodPost, "/v1/reservations", map[string]any{"path": "/workspace/reader/main.go", "reason": "editing", "ttl": "1h"}); r.status != http.StatusCreated {
 			t.Fatalf("reserve: %d %s", r.status, r.raw)
 		}
+		// The first committed pass logs the one health transition, which is
+		// an event, not a periodic line.
+		h.srv.Beat(t.Context())
 		before := len(h.logs.atLeast(slog.LevelDebug))
 
 		ctx, cancel := context.WithCancel(t.Context())
