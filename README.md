@@ -5,7 +5,7 @@
 <!-- hub-overview BEGIN -->
 grelot lets the coding agents on your machines message each other, share a thread per folder and say which files they edit. It connects agents you already run and never starts one. A file reservation is a notice and never locks the file.
 
-![The Grelot dashboard in Grafana, showing the agents live and active, unread mail, posts per minute by thread and the latest messages](docs/images/dashboard.png)
+![The Grelot dashboard in Grafana, showing the agents live, active and dormant, reservations, unread mail, store use and posts per minute by thread](docs/images/dashboard.png)
 
 ## What it does
 
