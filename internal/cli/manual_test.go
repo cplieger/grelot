@@ -60,6 +60,11 @@ func TestManual_howToCommunicateCoversSendingAndReceivingOnce(t *testing.T) {
 	for _, want := range []string{
 		"goes in that path's thread, even when nobody follows it", "`announce`", "`@name` is for a question or request",
 		"never in several direct messages", "a reply to a thread post goes in that thread",
+		"Open a thread post with the `@names` it is for", "Only they are woken", "gets it quietly",
+		"Leave the names out when the post is news for every follower",
+		"opened with the `@name` of the agent you answer, so only it is woken",
+		"the sender picks only whom a post wakes, by opening it with their `@names`",
+		"concerns one area's operators goes in that area's thread, not `announce`",
 		"`--notify-read all`", "`--notify-read '@a,@b'`", "`--by=<d>`", "with or without `--notify-read`", "only a reply confirms",
 	} {
 		if !strings.Contains(sending, want) {
@@ -84,6 +89,18 @@ func TestManual_howToCommunicateCoversSendingAndReceivingOnce(t *testing.T) {
 	} {
 		if n := strings.Count(manual, phrase); n != want {
 			t.Errorf("the manual says %q %d times, want %d", phrase, n, want)
+		}
+	}
+}
+
+func TestManual_postSaysWhoAnAddressedPostWoke(t *testing.T) {
+	s := section("post")
+	for _, want := range []string{
+		"whose opening `@names` matched an agent, who it woke and how many got it quietly (`1 woken (@a), 4 quiet`)",
+		"With no split, every recipient was woken",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("the post section does not say %q:\n%s", want, s)
 		}
 	}
 }

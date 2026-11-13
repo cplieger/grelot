@@ -5,6 +5,7 @@ package server
 import (
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -85,6 +86,47 @@ func TestPost_logLineIsOneRedactedCappedLine(t *testing.T) {
 	}
 	if attrs["thread_kind"] != "direct" || attrs["sender"] != "sender" || attrs["recipients"] != "1" {
 		t.Errorf("line = %v, want a direct post from sender to 1 recipient", attrs)
+	}
+}
+
+func TestPost_anAddressedPathPostAnswersWhoItWoke(t *testing.T) {
+	h := newHarness(t)
+	h.mustRegister(sessA, "sender")
+	h.mustRegister(sessB, "named")
+	h.mustRegister(sessC, "follower")
+	body := postBody(map[string]any{"path": repoGrelot}, "Review the routes", "@named: the routes are ready")
+	r := h.request(http.MethodPost, "/v1/posts", body, keyHeader(sessA, "addressed-post-key-1"))
+	if r.status != http.StatusCreated {
+		t.Fatalf("post: %d %s", r.status, r.raw)
+	}
+	got, _ := r.body["recipients"].(map[string]any)
+	if woken, _ := got["woken"].([]any); got["total"] != 2.0 || len(woken) != 1 || woken[0] != "named" || got["quiet"] != 1.0 {
+		t.Errorf("recipients = %v, want 2 in all: named woken, 1 quiet", got)
+	}
+	again, _ := h.request(http.MethodPost, "/v1/posts", body, keyHeader(sessA, "addressed-post-key-1")).body["recipients"].(map[string]any)
+	if woken, _ := again["woken"].([]any); len(woken) != 1 || woken[0] != "named" || again["quiet"] != 1.0 {
+		t.Errorf("the re-sent post's recipients = %v, want the first answer's split: named woken, 1 quiet", again)
+	}
+
+	plain := h.as(sessA, http.MethodPost, "/v1/posts", postBody(map[string]any{"path": repoGrelot}, "Status", "the routes are ready"))
+	all, _ := plain.body["recipients"].(map[string]any)
+	_, hasWoken := all["woken"]
+	_, hasQuiet := all["quiet"]
+	if all["total"] != 2.0 || hasWoken || hasQuiet {
+		t.Errorf("an unaddressed post's recipients = %v, want 2 and no woken or quiet field", all)
+	}
+
+	var woken []string
+	for _, line := range h.logs.lines(slog.LevelInfo, "message posted") {
+		line.Attrs(func(a slog.Attr) bool {
+			if a.Key == "woken" {
+				woken = append(woken, a.Value.String())
+			}
+			return true
+		})
+	}
+	if !slices.Equal(woken, []string{"1", "2"}) {
+		t.Errorf("message posted woken = %v, want 1 for the addressed post and 2 for the other", woken)
 	}
 }
 

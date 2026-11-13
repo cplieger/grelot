@@ -49,10 +49,11 @@ type Entry struct {
 	Truncated bool
 }
 
-// Counts are deliveries by kind. Cards and a delegate's copies are quiet;
-// every other kind wakes.
+// Counts are deliveries by kind. Cards, a delegate's copies and QuietPath,
+// the path posts addressed to other identities, are quiet; every other
+// kind wakes.
 type Counts struct {
-	Direct, Path, Announce, Identity, Reservation, Receipts, Cards, Copies int
+	Direct, Path, Announce, Identity, Reservation, Receipts, Cards, Copies, QuietPath int
 }
 
 func (c *Counts) add(d *deliveryRow) { c.bump(d, 1) }
@@ -67,7 +68,11 @@ func (c *Counts) bump(d *deliveryRow, n int) {
 	case kindDirect:
 		c.Direct += n
 	case kindPath:
-		c.Path += n
+		if d.Quiet {
+			c.QuietPath += n
+		} else {
+			c.Path += n
+		}
 	case kindAnnounce:
 		c.Announce += n
 	case kindIdentityExpiring:
@@ -87,7 +92,7 @@ func (c Counts) Wake() int {
 }
 
 // Total counts every delivery, quiet ones included.
-func (c Counts) Total() int { return c.Wake() + c.Cards + c.Copies }
+func (c Counts) Total() int { return c.Wake() + c.Cards + c.Copies + c.QuietPath }
 
 // wakes reports whether d falls in a count Wake includes, so a kind no
 // count names neither wakes nor counts.

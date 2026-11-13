@@ -269,6 +269,30 @@ func TestPush_matchServesItsProviderOnItsHostLabelOnly(t *testing.T) {
 	})
 }
 
+func TestPush_aQuietDeliveryIsNotPushed(t *testing.T) {
+	t.Setenv(doorTokenEnv, doorSecret)
+	rcv := newPushReceiver(t)
+	synctest.Test(t, func(t *testing.T) {
+		h := newPushHarness(t, rcv.kiroDoor()...)
+		h.mustRegister(sessA, "follower")
+		h.mustRegister(sessD, "named")
+		h.mustRegisterAlone(sessB, "writer")
+		if r := h.as(sessB, http.MethodPost, "/v1/posts",
+			postBody(map[string]any{"path": repoGrelot}, "Review", "@named: the routes are ready")); r.status != http.StatusCreated {
+			t.Fatalf("post: %d %s", r.status, r.raw)
+		}
+		synctest.Wait()
+
+		if reqs := rcv.requests(); len(reqs) != 1 || reqs[0].path != "/notify/session-d" {
+			t.Errorf("pushes = %+v, want one, to the named session-d", reqs)
+		}
+		st, _, err := h.store.Nudging(t.Context(), h.idOf(sessA))
+		if err != nil || st.Due != nil || !st.Next.IsZero() {
+			t.Errorf("the follower's Nudging = %+v, %v; want no nudge due or outstanding", st, err)
+		}
+	})
+}
+
 func TestPush_aServedIdentitysStandingWaitOnlyHolds(t *testing.T) {
 	t.Setenv(doorTokenEnv, doorSecret)
 	rcv := newPushReceiver(t)

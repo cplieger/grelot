@@ -44,7 +44,10 @@ type Posting struct {
 type Posted struct {
 	// Notices are lines for the sender, such as a dormant recipient or a
 	// follow the post added that reaches more than its thread.
-	Notices  []string
+	Notices []string
+	// Woken names, for a path post that opens with @names, the recipients
+	// it woke; Quiet counts those that got it without a wake.
+	Woken    []string
 	Identity Identity
 	Message  uint64
 	Thread   uint64
@@ -53,16 +56,17 @@ type Posted struct {
 	Delivered       int
 	SameEnvironment int
 	Other           int
+	Quiet           int
 }
 
-// Post stores a message from p.Caller's live identity, applies its
-// identity fields, and delivers it to each recipient, dormant ones too,
-// with a quiet copy to each delegate's parent that would not otherwise see
-// it; a path post follows its thread as pathRoute says. Refusals:
-// KindInvalid for a bad target, message, field or where; KindGone with no
-// live identity; KindForbidden outside a delegate's scope, either way;
-// KindNotFound for an unknown @name; KindConflict for a rename to a held
-// name; KindFull past 90 % of Options.MaxBytes; ErrClosed after Close.
+// Post stores a message from p.Caller's live identity, applies its identity
+// fields, and delivers it to each recipient, dormant ones too, with a quiet
+// copy to each delegate's parent that would not otherwise see it; a path post
+// reaches and wakes as pathRoute and address say. Refusals: KindInvalid for a
+// bad target, message, field or where; KindGone with no live identity;
+// KindForbidden outside a delegate's scope, either way; KindNotFound for a
+// direct post's unknown @name; KindConflict for a rename to a held name;
+// KindFull past 90 % of Options.MaxBytes; ErrClosed after Close.
 func (s *Store) Post(ctx context.Context, k Keyed, p *Posting) (Posted, bool, error) {
 	if err := checkMessage(p); err != nil {
 		return Posted{}, false, err
@@ -118,6 +122,9 @@ func (w *wtx) post(p *Posting) (Posted, error) {
 	if err != nil {
 		return Posted{}, err
 	}
+	if aerr := w.address(&me, &rt, p.Body); aerr != nil {
+		return Posted{}, aerr
+	}
 	if perr := w.s.t.identities.table.Put(w.tx, me.ID, &me); perr != nil {
 		return Posted{}, perr
 	}
@@ -171,12 +178,13 @@ func (w *wtx) fanOut(me *identityRow, rt *route, msg *messageRow, out *Posted, w
 			continue
 		}
 		if err := w.deliver(&r, &deliveryRow{
-			Kind: rt.thread.Kind, Path: rt.recipients[id], Name: r.Name, Parent: r.Parent, Watch: wt.add(&r),
+			Kind: rt.thread.Kind, Path: rt.recipients[id], Name: r.Name, Parent: r.Parent, Watch: wt.add(&r), Quiet: rt.quiet(id),
 			Message: msg.ID, Thread: rt.thread.ID, Sender: me.ID, Lease: lease{Expires: msg.Lease.Expires},
 		}); err != nil {
 			return err
 		}
 		out.Delivered++
+		rt.tally(out, &r)
 		cp.owe(&r, me.ID)
 		where, werr := w.s.whereOf(w.r, &r)
 		if werr != nil {
@@ -193,8 +201,11 @@ func (w *wtx) fanOut(me *identityRow, rt *route, msg *messageRow, out *Posted, w
 
 // route is where a post goes: its thread, each recipient with the path
 // that matched it ("" outside path threads), and lines for the sender.
+// woken, set only for an addressed path post, holds the recipients it
+// wakes; the others get it quietly.
 type route struct {
 	recipients map[uint64]string
+	woken      map[uint64]bool
 	notices    []string
 	thread     threadRow
 }
@@ -369,9 +380,9 @@ func (w *wtx) directRoute(me *identityRow, name string) (route, error) {
 		return route{}, unknownIdentity(name)
 	case peer.ID == me.ID:
 		return route{}, refuse(KindInvalid, "a direct post goes to another identity, not yourself")
-	case me.Parent != 0 && !allowsAgent(me, &peer):
+	case !reaches(me, &peer):
 		return route{}, w.s.scopeRefusal(w.r, me)
-	case peer.Parent != 0 && !allowsAgent(&peer, me):
+	case !reaches(&peer, me):
 		return route{}, w.s.scopeRefusal(w.r, &peer)
 	}
 	th, _, err := w.thread(directKey(me.ID, peer.ID))
@@ -381,10 +392,16 @@ func (w *wtx) directRoute(me *identityRow, name string) (route, error) {
 	th.Kind = kindDirect
 	rt := route{thread: th, recipients: map[uint64]string{peer.ID: ""}}
 	if peer.State == stateDormant {
-		rt.notices = append(rt.notices, fmt.Sprintf("@%s is dormant since %s; it gets this if it revives before %s",
-			peer.Name, fmtTime(peer.DormantSince), fmtTime(peer.Lease.Expires)))
+		rt.notices = append(rt.notices, dormantNotice(&peer))
 	}
 	return rt, nil
+}
+
+// dormantNotice tells the sender that dormant peer gets a post only if
+// it revives in time.
+func dormantNotice(peer *identityRow) string {
+	return fmt.Sprintf("@%s is dormant since %s; it gets this if it revives before %s",
+		peer.Name, fmtTime(peer.DormantSince), fmtTime(peer.Lease.Expires))
 }
 
 // storeMessage stores the post with the sender's labels and where as they
