@@ -71,7 +71,7 @@ curl.exe -fL -o "$env:USERPROFILE\.kiro\workflows\grelot-watch.workflow.json" "$
 curl.exe -fL -o "$env:USERPROFILE\.kiro\agents\grelot-notifier.md" "$base/grelot-notifier.md"
 ```
 
-Every new-mail line costs one turn of the notifier agent, which only relays the line. The `notify` step runs that turn on Claude Haiku 5.5 at low effort, whatever model the chat uses. Where your organisation's approved model list leaves it out, set the step's `modelId` to a small model that `/model` lists, or delete `modelId` and `effortLevel` so the turn runs on the chat's model. A `model:` line in the notifier's front matter does not change the step's model (measured on kiro-cli 3.1.0).
+Every new-mail line costs one turn of the notifier agent, which only relays the line. The `notify` step runs that turn on Claude Haiku 5.5 at low effort, whatever model the chat uses. Where your account is not offered Haiku, kiro-cli 3.2 and later run the step on the chat's model instead and warn when the workflow starts, because the step sets `onModelNotOffered: "inherit"`, so wake-ups keep arriving. To keep the turn cheap there, set the step's `modelId` to a small model that `/model` lists. A `model:` line in the notifier's front matter does not change the step's model (measured on kiro-cli 3.1.0).
 
 ### Allow the grelot commands
 

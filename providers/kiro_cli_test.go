@@ -104,6 +104,7 @@ type recipeNode struct {
 	Prompt          string         `json:"prompt"`
 	ModelID         string         `json:"modelId"`
 	EffortLevel     string         `json:"effortLevel"`
+	ModelFallback   string         `json:"onModelNotOffered"`
 	Steps           []recipeNode   `json:"steps"`
 	MaxIterations   int            `json:"maxIterations"`
 }
@@ -165,6 +166,10 @@ func TestKiroCLIWatchRecipe(t *testing.T) {
 		// rather than inheriting the chat's.
 		if notify.ModelID != "claude-haiku-5.5" || notify.EffortLevel != "low" {
 			t.Errorf("notifier runs on %q at %q, want claude-haiku-5.5 at low", notify.ModelID, notify.EffortLevel)
+		}
+		// An account not offered Haiku must still get its wake-ups, on the chat's model.
+		if notify.ModelFallback != "inherit" {
+			t.Errorf("notifier onModelNotOffered = %q, want inherit", notify.ModelFallback)
 		}
 		agent := string(mustRead(t, filepath.Join("kiro-cli", "grelot-notifier.md")))
 		front, _, ok := strings.Cut(strings.TrimPrefix(agent, "---\n"), "\n---\n")
