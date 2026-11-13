@@ -34,6 +34,7 @@
               "agent": "grelot-notifier",
               "prompt": "{{watch.output}}",
               "modelId": "claude-haiku-5.5",
+              "onModelNotOffered": "inherit",
               "effortLevel": "low"
             }
           ]
