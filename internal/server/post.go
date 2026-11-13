@@ -40,10 +40,14 @@ type postRequest struct {
 	By         duration        `json:"by"`
 }
 
+// recipientsJSON counts a post's recipients; Woken and Quiet are set
+// only for a path post whose opening @names matched an identity.
 type recipientsJSON struct {
-	Total           int `json:"total"`
-	SameEnvironment int `json:"same_environment"`
-	Other           int `json:"other"`
+	Woken           []string `json:"woken,omitempty"`
+	Total           int      `json:"total"`
+	SameEnvironment int      `json:"same_environment"`
+	Other           int      `json:"other"`
+	Quiet           int      `json:"quiet,omitempty"`
 }
 
 type postResponse struct {
@@ -109,7 +113,7 @@ func (s *Server) post(r *http.Request, c store.Caller, k store.Keyed) (status in
 		return 0, nil, err
 	case !replayed:
 		s.log.Info("message posted", "thread_kind", kind, "path", s.redact(to.Path), "to", to.Agent, "sender", got.Identity.Name,
-			"message", got.Message, "recipients", got.Delivered, "same_environment", got.SameEnvironment,
+			"message", got.Message, "recipients", got.Delivered, "woken", got.Delivered-got.Quiet, "same_environment", got.SameEnvironment,
 			"other", got.Other, "subject", s.redact(req.Subject), "body", s.redact(req.Body))
 	}
 	return http.StatusCreated, postOut(&got), nil
@@ -118,7 +122,9 @@ func (s *Server) post(r *http.Request, c store.Caller, k store.Keyed) (status in
 func postOut(got *store.Posted) postResponse {
 	return postResponse{
 		Notices: nonNil(got.Notices), Identity: identityOut(&got.Identity), Message: got.Message, Thread: got.Thread,
-		Recipients: recipientsJSON{Total: got.Delivered, SameEnvironment: got.SameEnvironment, Other: got.Other},
+		Recipients: recipientsJSON{
+			Woken: got.Woken, Total: got.Delivered, SameEnvironment: got.SameEnvironment, Other: got.Other, Quiet: got.Quiet,
+		},
 	}
 }
 

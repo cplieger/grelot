@@ -109,6 +109,7 @@ func countsLine(c *client.Counts) string {
 		{"receipts", c.Receipts},
 		{"cards", c.Cards},
 		{"copies", c.Copies},
+		{"quiet path thread", c.QuietPath},
 	} {
 		if k.n > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", k.n, k.name))

@@ -76,6 +76,7 @@ type Counts struct {
 	Receipts    int `json:"receipts"`
 	Cards       int `json:"cards"`
 	Copies      int `json:"copies"`
+	QuietPath   int `json:"quiet_path"`
 	Wake        int `json:"wake"`
 	Total       int `json:"total"`
 }
@@ -244,11 +245,15 @@ type Posted struct {
 }
 
 // Recipients counts a post's recipients: SameEnvironment share the
-// sender's environment, Other do not.
+// sender's environment, Other do not. Woken names the recipients a path
+// post woke when its opening @names matched an identity, and Quiet counts
+// the others; otherwise both are empty and every recipient was woken.
 type Recipients struct {
-	Total           int `json:"total"`
-	SameEnvironment int `json:"same_environment"`
-	Other           int `json:"other"`
+	Woken           []string `json:"woken"`
+	Total           int      `json:"total"`
+	SameEnvironment int      `json:"same_environment"`
+	Other           int      `json:"other"`
+	Quiet           int      `json:"quiet"`
 }
 
 // The receipt states of a recipient.

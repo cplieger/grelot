@@ -193,6 +193,29 @@ func TestWait_aNudgeSentBeforeTheNewerWaitOpenedIsTheOlderWaitsAlone(t *testing.
 	})
 }
 
+func TestWait_aQuietDeliveryNudgesNoWatcher(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h := newBubbleHarness(t)
+		h.mustRegister(sessA, "follower")
+		h.mustRegister(sessC, "named")
+		h.mustRegisterAlone(sessB, "writer")
+		wait := h.watchAsync(sessA, 55*time.Second)
+		synctest.Wait()
+		addressed := h.as(sessB, http.MethodPost, "/v1/posts",
+			postBody(map[string]any{"path": repoGrelot}, "Review", "@named: the routes are ready"))
+		if addressed.status != http.StatusCreated {
+			t.Fatalf("post: %d %s", addressed.status, addressed.raw)
+		}
+		wantNudge(t, h.watch(sessC, 55*time.Second), h.newestWake(sessC), 1, 1)
+		if r := wait.answer(); r.status != http.StatusNoContent {
+			t.Errorf("the follower's wait = %d %s, want 204 at its end", r.status, r.raw)
+		}
+		if n := h.sentByWatcher(); n != 1 {
+			t.Errorf("%d nudge sent lines via watcher, want 1, the named identity's", n)
+		}
+	})
+}
+
 func TestWait_holdsUntilTheReNudgeIsDue(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h := newBubbleHarness(t)

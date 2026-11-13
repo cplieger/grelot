@@ -190,6 +190,8 @@ type deliveryRow struct {
 	// quiet and is not a recipient of its message.
 	Via   string `json:"via,omitempty"`
 	Agent uint64 `json:"agent"`
+	// Quiet is a path post's delivery to a recipient it did not address.
+	Quiet bool `json:"quiet,omitempty"`
 	// Watch is the receipt watch waiting for this recipient's read, if any.
 	Watch uint64 `json:"watch,omitempty"`
 	// Parent is a delegate recipient's parent at fan-out, which receipts

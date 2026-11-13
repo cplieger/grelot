@@ -15,12 +15,12 @@ import (
 )
 
 // TestUnreadSummary_matchesAScanAfterEveryStep applies seeded random
-// posts, read-notified posts, delegates, acks, clock moves, sweeps,
-// reservations, registrations and retirements, and after every step
-// compares each identity's stored summary, and what its readers see, with
-// a scan of its delivery rows. The seeds together must write every
-// delivery kind and a delegate's copy, checked only when -run selects
-// them all.
+// posts, some opening with an @name, read-notified posts, delegates, acks,
+// clock moves, sweeps, reservations, registrations and retirements, and
+// after every step compares each identity's stored summary, and what its
+// readers see, with a scan of its delivery rows. The seeds together must
+// write every delivery kind, a delegate's copy and a quiet path post,
+// checked only when -run selects them all.
 func TestUnreadSummary_matchesAScanAfterEveryStep(t *testing.T) {
 	const seeds = 40
 	seen := map[string]bool{}
@@ -37,7 +37,7 @@ func TestUnreadSummary_matchesAScanAfterEveryStep(t *testing.T) {
 	for _, kind := range []string{
 		kindDirect, kindPath, kindAnnounce, kindJoin, kindLeft, kindIdentityExpiring,
 		kindReservationGranted, kindReservationExpiring, kindReservationExpired,
-		kindReceiptsComplete, kindReceiptsDue, "copy",
+		kindReceiptsComplete, kindReceiptsDue, "copy", "quiet",
 	} {
 		if !seen[kind] {
 			t.Errorf("no sequence wrote a %s delivery", kind)
@@ -88,7 +88,11 @@ func summaryStep(t *testing.T, s *Store, clk *clock, r *rand.Rand) string {
 		_, _, err = s.Post(t.Context(), Keyed{}, new(posting(c.Session, Target{Agent: summaryNames[r.IntN(len(summaryNames))]})))
 	case k < 6:
 		op = "path post"
-		_, _, err = s.Post(t.Context(), Keyed{}, new(posting(c.Session, Target{Path: summaryRepos[r.IntN(len(summaryRepos))]})))
+		p := posting(c.Session, Target{Path: summaryRepos[r.IntN(len(summaryRepos))]})
+		if r.IntN(2) == 0 {
+			p.Body = "@" + summaryNames[r.IntN(len(summaryNames))] + ": body"
+		}
+		_, _, err = s.Post(t.Context(), Keyed{}, &p)
 	case k == 6:
 		op = "announce"
 		_, _, err = s.Post(t.Context(), Keyed{}, new(posting(c.Session, Target{Announce: true})))
@@ -173,6 +177,9 @@ func recordKinds(t *testing.T, s *Store, seen map[string]bool) {
 			if d.Via != "" {
 				seen["copy"] = true
 			}
+			if d.Quiet {
+				seen["quiet"] = true
+			}
 			return true, nil
 		})
 	})
@@ -183,7 +190,7 @@ func recordKinds(t *testing.T, s *Store, seen map[string]bool) {
 
 // scanned is an identity's delivery rows past read, folded by the test.
 // renudges is whether one of them is mail other than an identity warning
-// that wakes: not a copy, a card or identity_expiring.
+// that wakes: not a copy, a card, a quiet path post or identity_expiring.
 type scanned struct {
 	oldest, minExpiry time.Time
 	counts            Counts
@@ -202,13 +209,14 @@ func scanPast(t *testing.T, s *Store, r *bolttable.ReadTx, row *identityRow, kee
 			}
 			out.rows++
 			out.counts.add(d)
-			if d.Via == "" && d.Kind != kindJoin && d.Kind != kindLeft {
+			wakes := d.Via == "" && !d.Quiet && d.Kind != kindJoin && d.Kind != kindLeft
+			if wakes {
 				if out.newest == 0 {
 					out.oldest = d.Written
 				}
 				out.newest = d.Seq
 			}
-			if d.Via == "" && d.Kind != kindJoin && d.Kind != kindLeft && d.Kind != kindIdentityExpiring {
+			if wakes && d.Kind != kindIdentityExpiring {
 				out.renudges = true
 			}
 			if e := d.Lease.Expires; !e.IsZero() && (out.minExpiry.IsZero() || e.Before(out.minExpiry)) {

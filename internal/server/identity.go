@@ -392,6 +392,7 @@ type countsJSON struct {
 	Receipts    int `json:"receipts"`
 	Cards       int `json:"cards"`
 	Copies      int `json:"copies"`
+	QuietPath   int `json:"quiet_path"`
 	Wake        int `json:"wake"`
 	Total       int `json:"total"`
 }
@@ -400,6 +401,6 @@ func countsOut(c store.Counts) countsJSON {
 	return countsJSON{
 		Direct: c.Direct, Path: c.Path, Announce: c.Announce, Identity: c.Identity,
 		Reservation: c.Reservation, Receipts: c.Receipts, Cards: c.Cards, Copies: c.Copies,
-		Wake: c.Wake(), Total: c.Total(),
+		QuietPath: c.QuietPath, Wake: c.Wake(), Total: c.Total(),
 	}
 }

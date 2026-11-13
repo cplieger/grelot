@@ -190,6 +190,39 @@ func TestPost_countsRecipientsByRelation(t *testing.T) {
 	}
 }
 
+func TestPost_anAddressedPathPostSaysWhoItWoke(t *testing.T) {
+	ts := newServer(t)
+	a, dir := registerAt(t, ts, "s-1", "ant-dev")
+	b, _ := registerAt(t, ts, "s-2", "bee-dev")
+	c, _ := registerAt(t, ts, "s-3", "cat-dev")
+	b.must("follow", dir)
+	c.must("follow", dir)
+
+	_, out, _ := a.postIn("@bee-dev: the build is green", append([]string{dir, "Review"}, keep...)...)
+	if !regexp.MustCompile(`(?m): delivered to 2: 0 same environment, 2 other; 1 woken \(@bee-dev\), 1 quiet$`).MatchString(out) {
+		t.Errorf("output = %q, want the split: bee-dev woken, 1 quiet", out)
+	}
+	_, out, _ = a.postIn("the build is green", append([]string{dir, "Status"}, keep...)...)
+	if !regexp.MustCompile(`(?m): delivered to 2: 0 same environment, 2 other$`).MatchString(out) {
+		t.Errorf("output = %q, want no split for a post that wakes every recipient", out)
+	}
+}
+
+func TestMe_countsAQuietPathPostApartFromTheWake(t *testing.T) {
+	ts := newServer(t)
+	a, dir := registerAt(t, ts, "s-1", "ant-dev")
+	_, _ = registerAt(t, ts, "s-2", "bee-dev")
+	c, _ := registerAt(t, ts, "s-3", "cat-dev")
+	c.must("follow", dir)
+
+	if code, _, errOut := a.postIn("@bee-dev: the build is green", append([]string{dir, "Review"}, keep...)...); code != 0 {
+		t.Fatalf("post exited %d: %s", code, errOut)
+	}
+	if out := c.must("me"); !strings.Contains(out, "unread: 1 (1 quiet path thread; 0 wake)\n") {
+		t.Errorf("output = %q, want the quiet delivery counted and no wake", out)
+	}
+}
+
 func TestPost_aPathThreadNobodyHearsKeepsItForLaterFollowers(t *testing.T) {
 	ts := newServer(t)
 	a, _ := registerAt(t, ts, "s-1", "ant-dev")

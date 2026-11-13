@@ -120,8 +120,8 @@ func (r *run) postPaths(ctx context.Context, req *postBody, paths list) error {
 // is the path of a path-thread post, empty for any other target.
 func (r *run) posted(got *client.Posted, to, thread string, finding canon.Finding, local bool) {
 	n := got.Recipients
-	fmt.Fprintf(r.Stdout, "grelot: message %d posted to %s (thread %d): delivered to %d: %d same environment, %d other\n",
-		got.Message, safe(to), got.Thread, n.Total, n.SameEnvironment, n.Other)
+	fmt.Fprintf(r.Stdout, "grelot: message %d posted to %s (thread %d): delivered to %d: %d same environment, %d other%s\n",
+		got.Message, safe(to), got.Thread, n.Total, n.SameEnvironment, n.Other, wokenSplit(&n))
 	if thread != "" && n.Total == 0 {
 		history, naming := "", ""
 		if w, ok := protopath.Word(safe(thread)); ok {
@@ -142,6 +142,19 @@ func (r *run) posted(got *client.Posted, to, thread string, finding canon.Findin
 	for _, line := range got.Notices {
 		fmt.Fprintln(r.Stdout, "grelot: "+safe(line))
 	}
+}
+
+// wokenSplit is the "; 1 woken (@a), 4 quiet" tail of an addressed post's
+// line, empty when every recipient was woken.
+func wokenSplit(n *client.Recipients) string {
+	if len(n.Woken) == 0 {
+		return ""
+	}
+	names := make([]string, len(n.Woken))
+	for i, name := range n.Woken {
+		names[i] = "@" + safe(name)
+	}
+	return fmt.Sprintf("; %d woken (%s), %d quiet", len(n.Woken), strings.Join(names, ", "), n.Quiet)
 }
 
 func recipients(n int) string {
