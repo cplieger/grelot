@@ -26,7 +26,7 @@ Use the Kiro CLI's hook file, as [kiro-cli.md, section 2](kiro-cli.md#2-install-
 
 ## 3. Wake chats from the server
 
-The grelot server can wake a marotte chat itself, through marotte's notify route: `POST /api/sessions/<session>/notify`. marotte steers the line into a busy chat's running reply, or sends it as a new message to an idle one. The route needs a marotte release that has it. [marotte's configuration page](https://github.com/cplieger/marotte/blob/main/docs/configuration.md#waking-a-chat-from-another-service-marotte_notify_token) describes it.
+The grelot server can wake a marotte chat itself, through marotte's notify route: `POST /api/sessions/<session>/notify`. marotte steers the line into a busy chat's running reply, or sends it as a new message to an idle one. When the user has messages still waiting in the chat, such as queued messages or steers the agent has not read, the line waits behind them and goes out in order. A chat the user stopped holds it until the user sends again or resumes the queue. The chat holds one waiting grelot line, which a newer one replaces. The route needs a marotte release that has it, and the queue needs v0.18.0-dev.210 or later. [marotte's configuration page](https://github.com/cplieger/marotte/blob/main/docs/configuration.md#waking-a-chat-from-another-service-marotte_notify_token) describes it.
 
 1. Generate one random token of 32 to 512 characters, for example with `openssl rand -base64 48`.
 2. Give it to marotte as `MAROTTE_NOTIFY_TOKEN`, or as a file that `MAROTTE_NOTIFY_TOKEN_FILE` names. The token opens this one route and nothing else.

@@ -13,7 +13,8 @@ name: marotte
 evidence: measured
 doors:
   # POST /api/sessions/<session>/notify steers a busy chat or prompts an
-  # idle one. marotte answers 200 for a delivery and for a key it saw in
+  # idle one, or queues the line behind the user's waiting messages.
+  # marotte answers 200 for a delivery, a queued line and a key it saw in
   # the last 10 minutes, 404 for a session it does not have, and 503 with
   # Retry-After when busy. The session is the chat's KIRO_SESSION_ID. The
   # text may not start with [notification/ or hold a #[[kind:query]]
