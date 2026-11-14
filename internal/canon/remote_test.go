@@ -1,6 +1,7 @@
 package canon
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/cplieger/grelot/internal/where"
@@ -20,6 +21,9 @@ func TestNormalizeRemote(t *testing.T) {
 		{"nested owner path", "https://gitlab.example.com/team/sub/docs.git", "gitlab.example.com/team/sub/docs"},
 		{"owner case kept", "git@GitLab.example.com:Team/Docs.git", "gitlab.example.com/Team/Docs"},
 		{"scp form without user", "example.org:repos/x.git", "example.org/repos/x"},
+		{"repeated .git", "https://github.com/cplieger/toolbelt.git.git", "github.com/cplieger/toolbelt"},
+		{".git after a slash", "git@github.com:cplieger/toolbelt.git/.git", "github.com/cplieger/toolbelt"},
+		{"non-ASCII host", "git@bücher.example:team/docs.git", "bücher.example/team/docs"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -47,6 +51,40 @@ func TestNormalizeRemote_noHost(t *testing.T) {
 		if got, ok := NormalizeRemote(raw); ok {
 			t.Errorf("NormalizeRemote(%q) = %q, true; want no remote", raw, got)
 		}
+	}
+}
+
+func TestNormalizeRemote_unreadable(t *testing.T) {
+	tests := []struct{ name, raw string }{
+		{"non-UTF-8 scp host", "git@a\x86:o/r"},
+		{"non-UTF-8 https host", "https://a\x86/o/r"},
+		{"non-UTF-8 escaped https host", "https://a%86/o/r"},
+		{"non-UTF-8 scp path", "git@github.com:o/r\x86"},
+		{"non-UTF-8 escaped https path", "https://github.com/o/r%86"},
+		{"space segment", "git@github.com:o/ /r"},
+		{"space inside a segment", "git@github.com:o/my repo"},
+		{"escaped space in https path", "https://github.com/o/my%20repo"},
+		{"no-break space segment", "git@github.com:o/\u00a0/r"},
+		{"space path", "a1: /"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got, ok := NormalizeRemote(tt.raw); ok {
+				t.Errorf("NormalizeRemote(%q) = %q, true; want refused", tt.raw, got)
+			}
+		})
+	}
+}
+
+func TestNormalizeRemote_formsRefuseTheSameHosts(t *testing.T) {
+	for _, host := range []string{"a{b", "a}b", "a|b", "a^b", "a`b", "a b", "a\u00a0b", "a\x86", "a\u0085b"} {
+		t.Run(fmt.Sprintf("%q", host), func(t *testing.T) {
+			for _, raw := range []string{"git@" + host + ":o/r", "https://" + host + "/o/r"} {
+				if got, ok := NormalizeRemote(raw); ok {
+					t.Errorf("NormalizeRemote(%q) = %q, true; want refused", raw, got)
+				}
+			}
+		})
 	}
 }
 
@@ -84,6 +122,8 @@ func FuzzNormalizeRemote_idempotent(f *testing.F) {
 		"ssh://[::1]:22/x/y",
 		"host:~u/r",
 		"file:///x",
+		"a{b:o/r",
+		"h1:o/r.git.git",
 	} {
 		f.Add(s)
 	}
