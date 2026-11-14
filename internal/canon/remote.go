@@ -12,7 +12,8 @@ import (
 // scheme, user or port, the host lowercased, no trailing ".git" or "/", and
 // the scp form host:owner/name read as host/owner/name. It answers false for
 // a remote with no host, such as a local path, so a clone of one is local, and
-// for one whose normalized form would not read back as itself.
+// for one holding whitespace, an ASCII control or invalid UTF-8, so every form
+// it answers reads back as itself.
 func NormalizeRemote(raw string) (string, bool) {
 	host, p, ok := splitRemote(strings.TrimSpace(raw))
 	if !ok {
@@ -29,8 +30,6 @@ func NormalizeRemote(raw string) (string, bool) {
 	return host + "/" + p, true
 }
 
-// splitRemote reads the host and path of a URL remote or, without a scheme,
-// of git's scp form.
 func splitRemote(s string) (host, p string, ok bool) {
 	if !strings.Contains(s, "://") {
 		return scpForm(s)
@@ -46,8 +45,8 @@ func splitRemote(s string) (host, p string, ok bool) {
 	return host, u.Path, true
 }
 
-// trimRepoPath drops slashes and ".git" from both ends until none is left, so
-// a reread of the result trims nothing more.
+// trimRepoPath strips slashes from both ends and a trailing ".git" until
+// neither applies, so a reread of the result trims nothing more.
 func trimRepoPath(p string) string {
 	for {
 		q := strings.TrimSuffix(strings.Trim(p, "/"), ".git")
@@ -58,17 +57,11 @@ func trimRepoPath(p string) string {
 	}
 }
 
-// readable reports whether s is valid UTF-8 with no rune badRemoteRune refuses.
 func readable(s string) bool {
 	return utf8.ValidString(s) && !strings.ContainsFunc(s, badRemoteRune)
 }
 
-// cleanPath reports whether p has at least one segment and none is empty, "."
-// or "..".
 func cleanPath(p string) bool {
-	if p == "" {
-		return false
-	}
 	for seg := range strings.SplitSeq(p, "/") {
 		if seg == "" || seg == "." || seg == ".." {
 			return false
@@ -102,10 +95,11 @@ func urlHost(host string) bool {
 }
 
 // badRemoteRune refuses what would make the normalized form read back as
-// another remote: a query or fragment mark, an escape, a backslash, a control,
-// or whitespace, which a reread trims or a URL host refuses.
+// another remote: a query or fragment mark, an escape, a backslash, an ASCII
+// control. It also refuses all whitespace: a reread trims it at the ends, and
+// refusing it everywhere keeps one rule for the host and every path segment.
 func badRemoteRune(r rune) bool {
-	return unicode.IsSpace(r) || unicode.IsControl(r) || strings.ContainsRune(`?#%\`, r)
+	return unicode.IsSpace(r) || r < 0x20 || r == 0x7f || strings.ContainsRune(`?#%\`, r)
 }
 
 // repoName is the <repo> of a normalized remote: its alias in repos, or its
