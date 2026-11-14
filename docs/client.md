@@ -130,7 +130,7 @@ repos:
   gitlab.example.com/team/docs: team-docs
 ```
 
-A path outside any git clone, or in a clone whose remote has no host or holds whitespace, a control character or invalid UTF-8, is local to the agent that sent it, and other agents are told to ask for its content.
+A path outside any git clone is local to the agent that sent it, and other agents are told to ask for its content.
 
 ## 3. The environment file and containers
 

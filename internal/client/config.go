@@ -133,7 +133,7 @@ func (c *Config) normalizeRepos() error {
 			norm, ok = canon.NormalizeRemote("https://" + remote)
 		}
 		if !ok {
-			return fmt.Errorf("repos: %q is not a git remote with a host and no whitespace, control or invalid UTF-8", remote)
+			return fmt.Errorf("repos: %q is not a git remote with a host", remote)
 		}
 		if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
 			return fmt.Errorf("repos: %s: %q must be one path component, the repo name", remote, name)

@@ -24,6 +24,12 @@ func TestNormalizeRemote(t *testing.T) {
 		{"repeated .git", "https://github.com/cplieger/toolbelt.git.git", "github.com/cplieger/toolbelt"},
 		{".git after a slash", "git@github.com:cplieger/toolbelt.git/.git", "github.com/cplieger/toolbelt"},
 		{"non-ASCII host", "git@bücher.example:team/docs.git", "bücher.example/team/docs"},
+		{"space inside an scp name", "git@github.com:o/my repo", "github.com/o/my repo"},
+		{"escaped space inside an https name", "https://github.com/o/my%20repo", "github.com/o/my repo"},
+		{"Azure DevOps https names with spaces", "https://dev.azure.com/org/My%20Project/_git/My%20Repo", "dev.azure.com/org/My Project/_git/My Repo"},
+		{"Azure DevOps scp names with spaces", "git@ssh.dev.azure.com:v3/org/My Project/My Repo", "ssh.dev.azure.com/v3/org/My Project/My Repo"},
+		{"space segment", "git@github.com:o/ /r", "github.com/o/ /r"},
+		{"no-break space segment", "git@github.com:o/\u00a0/r", "github.com/o/\u00a0/r"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -61,10 +67,9 @@ func TestNormalizeRemote_unreadable(t *testing.T) {
 		{"non-UTF-8 escaped https host", "https://a%86/o/r"},
 		{"non-UTF-8 scp path", "git@github.com:o/r\x86"},
 		{"non-UTF-8 escaped https path", "https://github.com/o/r%86"},
-		{"space segment", "git@github.com:o/ /r"},
-		{"space inside a segment", "git@github.com:o/my repo"},
-		{"escaped space in https path", "https://github.com/o/my%20repo"},
-		{"no-break space segment", "git@github.com:o/\u00a0/r"},
+		{"space before .git", "git@github.com:o/r .git"},
+		{"escaped trailing space", "https://github.com/o/r%20"},
+		{"escaped trailing no-break space", "https://github.com/o/r%C2%A0/"},
 		{"space path", "a1: /"},
 	}
 	for _, tt := range tests {
@@ -124,6 +129,7 @@ func FuzzNormalizeRemote_idempotent(f *testing.F) {
 		"file:///x",
 		"a{b:o/r",
 		"h1:o/r.git.git",
+		"https://dev.azure.com/org/My%20Project/_git/My%20Repo",
 	} {
 		f.Add(s)
 	}
