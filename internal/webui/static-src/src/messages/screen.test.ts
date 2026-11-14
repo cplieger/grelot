@@ -225,8 +225,9 @@ describe("the Messages list", () => {
     );
     retry.click();
     retry.click();
-    await delay(50);
-    expect(h.asked.length).toBe(2);
+    await until(() => {
+      expect(h.asked.length).toBe(2);
+    });
     held.resolve(undefined);
     await rowsShown(["/workspace/r1"]);
     expect(h.asked.length).toBe(2);

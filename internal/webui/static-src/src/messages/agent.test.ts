@@ -120,7 +120,9 @@ const facts = (): Record<string, HTMLElement> =>
       dt.nextElementSibling as HTMLElement,
     ]),
   );
-const entries = (): HTMLElement[] => [...main().querySelectorAll<HTMLElement>("li.cp-feed-entry")];
+const entries = (): HTMLElement[] => [
+  ...main().querySelectorAll<HTMLElement>("li.cp-feed-entry:not([data-skeleton])"),
+];
 const subjects = (): string[] => entries().map((e) => e.querySelector("h3")?.textContent ?? "");
 const stateLine = (): HTMLElement => main().querySelector(".cp-heading-row p") as HTMLElement;
 
