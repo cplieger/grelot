@@ -10,8 +10,8 @@ import (
 
 const regenerate = "run go run ./cmd/wire-codegen from the repo root and commit the result"
 
-// The committed client and document are what the route table generates
-// now, file for file.
+// The committed client, document and edges file are what the route table
+// generates now, file for file.
 func TestGenerate_matchesTheCommittedFiles(t *testing.T) {
 	tmp := t.TempDir()
 	tsDir := filepath.Join("internal", "webui", "static-src", "src", "wire")
@@ -20,15 +20,27 @@ func TestGenerate_matchesTheCommittedFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := generate(t.Context(), tmp); err != nil {
+	repo := filepath.Join("..", "..")
+	// The edges' TypeScript side takes its package name from package.json,
+	// and generating merges into the edges file already there, so the temp
+	// tree holds both as the repo does.
+	for _, rel := range []string{filepath.Join("internal", "webui", "static-src", "package.json"), "deadset-edges.json"} {
+		b, err := os.ReadFile(filepath.Join(repo, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(tmp, rel), b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := generate(t.Context(), repo, tmp); err != nil {
 		t.Fatalf("generate: %v", err)
 	}
-	repo := filepath.Join("..", "..")
 	generated := genFiles(t, filepath.Join(tmp, tsDir))
 	if committed := genFiles(t, filepath.Join(repo, tsDir)); !slices.Equal(committed, generated) {
 		t.Errorf("committed %s holds %q, the generator writes %q: %s", tsDir, committed, generated, regenerate)
 	}
-	rels := []string{filepath.Join("docs", "openapi.json")}
+	rels := []string{filepath.Join("docs", "openapi.json"), "deadset-edges.json"}
 	for _, f := range generated {
 		rels = append(rels, filepath.Join(tsDir, f))
 	}
@@ -38,8 +50,11 @@ func TestGenerate_matchesTheCommittedFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 		got, err := os.ReadFile(filepath.Join(repo, rel))
-		if err != nil || !bytes.Equal(got, want) {
-			t.Errorf("%s differs from what the generator writes (%v): %s", rel, err, regenerate)
+		switch {
+		case err != nil:
+			t.Errorf("committed %s: %v: %s", rel, err, regenerate)
+		case !bytes.Equal(got, want):
+			t.Errorf("%s differs from what the generator writes: %s", rel, regenerate)
 		}
 	}
 }

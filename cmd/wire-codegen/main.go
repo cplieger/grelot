@@ -1,6 +1,7 @@
 // Command wire-codegen writes the web UI's typed client,
-// internal/webui/static-src/src/wire/*.gen.ts, and docs/openapi.json from
-// the web API's route table and types in internal/webui/wire.
+// internal/webui/static-src/src/wire/*.gen.ts, docs/openapi.json and the
+// deadset-edges.json that keeps its Go wire symbols live, from the web API's
+// route table and types in internal/webui/wire.
 //
 // Run: go run ./cmd/wire-codegen (from the repo root)
 package main
@@ -26,7 +27,7 @@ func run() int {
 	// Loading packages runs go as a subprocess; an interrupt cancels it.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := generate(ctx, "."); err != nil {
+	if err := generate(ctx, ".", "."); err != nil {
 		if errors.Is(err, context.Canceled) {
 			fmt.Fprintln(os.Stderr, "wire-codegen: interrupted")
 			return 130
@@ -34,19 +35,21 @@ func run() int {
 		fmt.Fprintf(os.Stderr, "wire-codegen: %v\n", err)
 		return 1
 	}
-	fmt.Println("wire-codegen: generated internal/webui/static-src/src/wire/*.gen.ts and docs/openapi.json")
+	fmt.Println("wire-codegen: generated internal/webui/static-src/src/wire/*.gen.ts, docs/openapi.json and deadset-edges.json")
 	return 0
 }
 
-// generate writes every generated file under root, at the paths the
-// committed tree holds them.
-func generate(ctx context.Context, root string) error {
+// generate writes every generated file under out, at the paths the committed
+// tree holds them; the edges' Go side is the code of the repo rooted at repo.
+func generate(ctx context.Context, repo, out string) error {
 	return registry().Generate(ctx,
-		wiregen.WithTSDir(filepath.Join(root, "internal", "webui", "static-src", "src", "wire")),
+		wiregen.WithTSDir(filepath.Join(out, "internal", "webui", "static-src", "src", "wire")),
 		wiregen.WithTransportImport("../transport.js"),
 		wiregen.WithHeaderComment(headerComment),
 		wiregen.WithRequireJSONTags(true),
-		wiregen.WithOpenAPIFiles(filepath.Join(root, "docs", "openapi.json")),
+		wiregen.WithOpenAPIFiles(filepath.Join(out, "docs", "openapi.json")),
+		wiregen.WithDeadsetEdges(repo),
+		wiregen.WithDeadsetEdgesFile(filepath.Join(out, "deadset-edges.json")),
 	)
 }
 
