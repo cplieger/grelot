@@ -31,8 +31,8 @@ const (
 	previewRunes              = 200
 )
 
-// ConversationsQuery filters Conversations. Show is showAll ("" too),
-// showThreads or showDirect; Before and BeforeThread are the Next and
+// ConversationsQuery filters Conversations. Show is "all" ("" too),
+// "threads" or "direct"; Before and BeforeThread are the Next and
 // NextThread of the page before, both 0 for the newest page.
 type ConversationsQuery struct {
 	Show         string
@@ -85,7 +85,7 @@ type ConversationPage struct {
 }
 
 // ConversationCounts counts the conversations each filter lists: Threads
-// under showThreads, Direct under showDirect; showAll lists their sum.
+// under "threads", Direct under "direct"; "all" lists their sum.
 type ConversationCounts struct {
 	Threads int
 	Direct  int

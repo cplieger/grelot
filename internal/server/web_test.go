@@ -365,6 +365,13 @@ func TestWeb_queryAndPathRefusals(t *testing.T) {
 	}
 }
 
+func TestWeb_anUnknownKindIsRefusedByItsParameterName(t *testing.T) {
+	r := newSignedIn(t).request(http.MethodGet, "/api/conversations?kind=mine", nil, nil)
+	if msg, _ := r.body["error"].(string); r.status != http.StatusBadRequest || !strings.HasPrefix(msg, "kind ") {
+		t.Errorf("%d %s, want 400 with an error naming kind", r.status, r.raw)
+	}
+}
+
 func TestWeb_statsCountsTheRangeInBuckets(t *testing.T) {
 	h := newSignedIn(t)
 	h.mustRegister(sessA, "alpha")

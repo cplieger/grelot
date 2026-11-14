@@ -139,6 +139,11 @@ func idParam(r *http.Request) (uint64, error) {
 
 func (s *Server) listConversations(r *http.Request, _ store.Keyed) (body any, err error) {
 	q := r.URL.Query()
+	switch wire.Show(q.Get("kind")) {
+	case "", wire.ShowAll, wire.ShowThreads, wire.ShowDirect:
+	default:
+		return nil, badRequest("kind must be all, threads or direct")
+	}
 	before, err := uintParam(q.Get("before"), "before")
 	if err != nil {
 		return nil, err

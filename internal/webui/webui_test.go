@@ -111,11 +111,11 @@ func TestHandler_aBundledFileIsCachedForAYear(t *testing.T) {
 }
 
 func TestHandler_aNoticeIsRevalidatedPlainText(t *testing.T) {
-	for _, target := range []string{"/licenses/ui/LICENSE", "/licenses/ui/NOTICE.md"} {
+	for target, notice := range map[string]string{"/licenses/ui/LICENSE": "Apache", "/licenses/ui/NOTICE.md": "# Notice"} {
 		t.Run(strings.ReplaceAll(target, "/", "_"), func(t *testing.T) {
 			a := get(t, webui.Handler(built()), http.MethodGet, target)
-			if a.status != http.StatusOK {
-				t.Fatalf("%d %q, want 200 and the notice", a.status, a.body)
+			if a.status != http.StatusOK || a.body != notice {
+				t.Fatalf("%d %q, want 200 and %q", a.status, a.body, notice)
 			}
 			if got := a.header.Get("Cache-Control"); got != "no-cache" {
 				t.Errorf("Cache-Control %q, want no-cache", got)
