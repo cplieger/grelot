@@ -440,7 +440,7 @@ func TestHookPrompt_once(t *testing.T) {
 // pointAt rewrites a's client config to send to url.
 func (a *agent) pointAt(url string) {
 	a.t.Helper()
-	writeClientConfig(a.t, a.env.ConfigDir, fmt.Sprintf("server: %s\ntoken: test-token\nhost: box\n", url))
+	writeClientConfig(a.t, a.env.ConfigDir, fmt.Sprintf("server: %s\ntoken: %s\nhost: box\n", url, a.key))
 }
 
 // A role under once is suppressed only after its first successful print,

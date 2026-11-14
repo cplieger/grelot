@@ -554,7 +554,7 @@ func TestInbox_theAckIsOneKeyedCall(t *testing.T) {
 			a.must("inbox")
 			id := b.mustPost("x", append([]string{"@ant-dev", "Hello"}, keep...)...)
 			front, acks, keys := flakyAcks(t, ts, c.fails)
-			writeClientConfig(t, a.env.ConfigDir, "server: "+front+"\ntoken: test-token\nhost: box\n")
+			writeClientConfig(t, a.env.ConfigDir, "server: "+front+"\ntoken: "+ts.Key+"\nhost: box\n")
 
 			out := a.must("inbox")
 			if got := acks.Load(); got != c.wantAcks {

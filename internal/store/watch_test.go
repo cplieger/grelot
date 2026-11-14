@@ -241,7 +241,7 @@ func TestNotifyRead_byIsCappedAtTheMessagesExpiry(t *testing.T) {
 	bravo := regAt(t, s, "bravo")
 	keepAlive(t, s, sender.ID, bravo.ID)
 	mustPost(t, s, watchedPost("alpha", Target{Agent: "bravo"}, NotifyRead{All: true, By: 30 * 24 * time.Hour}))
-	clk.advance(DefaultThreadTTL - time.Minute)
+	clk.advance(DefaultRetention - time.Minute)
 	mustSweep(t, s)
 	wantEvents(t, s, sender.ID, kindReceiptsDue)
 	clk.advance(time.Minute)
@@ -257,7 +257,7 @@ func TestNotifyRead_withoutByEndsSilentlyWithTheMessage(t *testing.T) {
 	bravo := regAt(t, s, "bravo")
 	keepAlive(t, s, sender.ID, bravo.ID)
 	mustPost(t, s, watchedPost("alpha", Target{Agent: "bravo"}, NotifyRead{All: true}))
-	clk.advance(DefaultThreadTTL)
+	clk.advance(DefaultRetention)
 	mustSweep(t, s)
 	if n := watchCount(t, s); n != 0 {
 		t.Errorf("%d watches after the message expired, want 0", n)
@@ -374,7 +374,7 @@ func TestNotifyRead_aDelegateRecipientsEndCountsRetired(t *testing.T) {
 func TestNotifyRead_aParentKeepsContiguousSeqsWhenItsDelegatesEndCompletesItsWatch(t *testing.T) {
 	for name, end := range map[string]func(t *testing.T, s *Store){
 		"session end": func(t *testing.T, s *Store) {
-			if err := s.EndSession(t.Context(), sess("subflux-dev")); err != nil {
+			if err := s.EndSession(t.Context(), sess("subflux-dev"), 0); err != nil {
 				t.Fatal(err)
 			}
 		},

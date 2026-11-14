@@ -129,6 +129,44 @@ func TestLoadConfig_refusals(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_plainHTTPOnlyToLoopback(t *testing.T) {
+	accepted := []struct{ name, server string }{
+		{"https to a LAN name", "https://grelot.lan"},
+		{"https to an address", "https://203.0.113.7:9737"},
+		{"http to 127.0.0.1", "http://127.0.0.1:9737"},
+		{"http to another 127 address", "http://127.8.9.10"},
+		{"http to ::1", "http://[::1]:9737"},
+		{"http to localhost", "http://localhost:9737"},
+		{"http to localhost in capitals", "http://LocalHost"},
+	}
+	for _, c := range accepted {
+		t.Run(c.name, func(t *testing.T) {
+			dir := writeConfig(t, "server: "+c.server+"\ntoken: t\n", 0o600)
+			if _, err := LoadConfig(dir, env(), noHostname); err != nil {
+				t.Errorf("LoadConfig: %v, want %s accepted", err, c.server)
+			}
+		})
+	}
+	refused := []struct{ name, server, host string }{
+		{"a LAN name", "http://grelot.lan", "grelot.lan"},
+		{"a LAN name with a port", "http://grelot.lan:9737", "grelot.lan"},
+		{"a private address", "http://192.168.1.20:9737", "192.168.1.20"},
+		{"a mapped private address", "http://[::ffff:192.168.1.20]", "::ffff:192.168.1.20"},
+		{"a name starting with localhost", "http://localhost.grelot.lan", "localhost.grelot.lan"},
+		{"the unspecified address", "http://0.0.0.0:9737", "0.0.0.0"},
+	}
+	for _, c := range refused {
+		t.Run(c.name, func(t *testing.T) {
+			dir := writeConfig(t, "server: "+c.server+"\ntoken: t\n", 0o600)
+			_, err := LoadConfig(dir, env(), noHostname)
+			want := "grelot refuses http:// to " + c.host + ": use https://, or a loopback address"
+			if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), ConfigFile(dir)) {
+				t.Errorf("err = %v, want one naming the file and %q", err, want)
+			}
+		})
+	}
+}
+
 func TestLoadConfig_twoSpellingsWithOneNameAccepted(t *testing.T) {
 	dir := writeConfig(t, "server: https://g.example\ntoken: t\nrepos: {github.com/o/docs: d, 'git@github.com:o/docs.git': d}\n", 0o600)
 	cfg, err := LoadConfig(dir, env(), noHostname)

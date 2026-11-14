@@ -53,7 +53,7 @@ func runSummarySequence(t *testing.T, seed uint64, steps int, seen map[string]bo
 	clk := &clock{t: testNow}
 	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{
 		Logger: slog.New(newLogSink()), Now: clk.now,
-		ThreadTTL: 25 * time.Minute, DormantTTL: 40 * time.Minute,
+		Retention: retainFor(25 * time.Minute), DormantTTL: 40 * time.Minute,
 	})
 	if err != nil {
 		t.Fatalf("Open: %v", err)

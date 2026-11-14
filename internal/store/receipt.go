@@ -163,7 +163,7 @@ func (s *Store) receipt(r *bolttable.ReadTx, me *identityRow, m *messageRow, d *
 	out.Host = v.Host
 	out.Relation = party{where: me.Where, id: me.ID}.relationTo(party{where: where, id: v.ID}, m.Path)
 	switch {
-	case v.Read >= d.Seq:
+	case readBy(&v, d):
 		out.State = receiptRead
 	case v.State == stateDormant:
 		out.State = receiptDormant
@@ -171,6 +171,20 @@ func (s *Store) receipt(r *bolttable.ReadTx, me *identityRow, m *messageRow, d *
 		out.State = receiptUnread
 	}
 	return out, nil
+}
+
+// readBy reports whether v, d's recipient, has read d: its read cursor is
+// at or past d, or ReadThread stamped d without the cursor reaching it.
+func readBy(v *identityRow, d *deliveryRow) bool { return v.Read >= d.Seq || !d.ReadAt.IsZero() }
+
+// deliveryRead reports whether d's recipient has read d, by its read_at
+// once the recipient's row is gone.
+func (s *Store) deliveryRead(r *bolttable.ReadTx, d *deliveryRow, now time.Time) (bool, error) {
+	v, found, err := s.recipientRow(r, d.Agent, now)
+	if err != nil || !found {
+		return !d.ReadAt.IsZero(), err
+	}
+	return readBy(&v, d), nil
 }
 
 // recipientRow is identity id as a read sees it before the sweep; a
@@ -200,7 +214,7 @@ func (s *Store) recipientRow(r *bolttable.ReadTx, id uint64, now time.Time) (ide
 func (s *Store) registeredSince(r *bolttable.ReadTx, t, now time.Time) (int, error) {
 	n := 0
 	err := s.t.identities.table.Scan(r, bolttable.Range{}, func(_ uint64, v *identityRow) (bool, error) {
-		if v.Parent == 0 && v.RegisteredAt.After(t) && settled(v, now, s.dormantTTL) != nil {
+		if v.Parent == 0 && !isUser(v) && v.RegisteredAt.After(t) && settled(v, now, s.dormantTTL) != nil {
 			n++
 		}
 		return true, nil

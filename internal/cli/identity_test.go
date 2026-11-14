@@ -198,6 +198,29 @@ func TestRegister_aHeldName(t *testing.T) {
 	})
 }
 
+func TestIdentity_theReservedNameUserIsRefusedWithTheServersWords(t *testing.T) {
+	const refusal = "the name user is reserved for the user, who posts as @user from the web UI"
+	ts := newServer(t)
+
+	t.Run("register", func(t *testing.T) {
+		a := newAgent(t, ts, "s-1", "")
+		code, _, errOut := a.run("register", "user", "--paths", "/workspace/tool", "--desc", "x", "--ttl=1h")
+		if code != 1 || !strings.Contains(errOut, refusal) {
+			t.Errorf("exit %d, stderr %q; want 1 and %q", code, errOut, refusal)
+		}
+	})
+	t.Run("set --name", func(t *testing.T) {
+		a, _ := registerAgent(t, ts, "s-2")
+		code, _, errOut := a.run("set", "--name", "user")
+		if code != 1 || !strings.Contains(errOut, refusal) {
+			t.Errorf("exit %d, stderr %q; want 1 and %q", code, errOut, refusal)
+		}
+		if out := a.must("me"); !strings.Contains(out, "@toolbelt-dev") {
+			t.Errorf("me = %q, want the identity still named toolbelt-dev", out)
+		}
+	})
+}
+
 func TestRegister_noEnvironmentNamesTheFile(t *testing.T) {
 	ts := newServer(t)
 	a := newAgent(t, ts, "s-1", "")

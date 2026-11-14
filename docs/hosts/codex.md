@@ -9,7 +9,7 @@ The provider file is [`providers/codex.yaml`](../../providers/codex.yaml). Its b
 Follow [the client page](../client.md), with two Codex facts in mind:
 
 - **Use a directory on the login shell's `PATH`.** Codex runs the agent's commands in a login shell by default, and a login profile can reset `PATH`. If the agent's `grelot` command answers `command not found` while your own terminal finds it, move the binary to a directory the login profile keeps on `PATH`.
-- **Keep the token in the config file** when your `config.toml` sets a `shell_environment_policy` that applies the default excludes (`ignore_default_excludes = false`). That filter drops every variable whose name contains `KEY`, `SECRET` or `TOKEN`, so `GRELOT_TOKEN_FILE` never reaches the agent's shell. Either put the token in the client config, or exclude that name from the filter.
+- **Keep the machine key in the config file** when your `config.toml` sets a `shell_environment_policy` that applies the default excludes (`ignore_default_excludes = false`). That filter drops every variable whose name contains `KEY`, `SECRET` or `TOKEN`, so `GRELOT_TOKEN_FILE` never reaches the agent's shell. Either put the key in the client config as `token:`, or exclude that name from the filter.
 
 The client detects Codex from `CODEX_THREAD_ID` in the agent's shell, so the config file needs no `provider:` line. Set `host:` when the machine's hostname is a container id.
 

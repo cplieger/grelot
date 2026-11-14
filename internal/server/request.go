@@ -4,17 +4,22 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/cplieger/access/gate"
 	"github.com/cplieger/go/httpserver"
 	"github.com/cplieger/go/keyenc"
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/webui/wire"
 )
 
 // The request headers every /v1 route reads.
@@ -28,28 +33,40 @@ const (
 // maxBody caps every request body.
 const maxBody = 128 << 10
 
-// authorize admits a request with the bearer token and a client version
-// this server speaks: 401 otherwise, then 426 naming the client to install.
-// Every answer past the bearer names the server's version, so a client
-// can tell a refusal it cannot read from a newer server.
-func (s *Server) authorize(next http.Handler) http.Handler {
+// machine runs a /v1 route for the key the gate admitted: past the key's
+// request rate it answers 429, then 426 naming the client to install for a
+// version this server does not speak. Every answer names the server's
+// version, so a client can tell a refusal it cannot read from a newer
+// server, and its access line names the key's label.
+func (s *Server) machine(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if !ok || !s.bearer.Verify(token) {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="grelot"`)
-			s.fail(w, r, &apiError{
-				status: http.StatusUnauthorized, code: "unauthorized",
-				msg: "a valid bearer token is required: set token in the grelot client config",
-			})
+		p, _ := gate.Principal(r.Context())
+		httpserver.AddLogAttrs(r.Context(), slog.String("key", p.KeyLabel))
+		w.Header().Set(headerVersion, s.version)
+		if retry, ok := s.rates.take(p.KeyID, s.now()); !ok {
+			s.fail(w, r, s.rateLimited(retry))
 			return
 		}
-		w.Header().Set(headerVersion, s.version)
 		if v := r.Header.Get(headerVersion); !speaks(v) {
 			s.fail(w, r, &apiError{status: http.StatusUpgradeRequired, code: "upgrade_required", msg: upgradeLine(v, s.version)})
 			return
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), machineKey{}, p.KeyID)))
 	})
+}
+
+type machineKey struct{}
+
+// keyID is the ID of the machine key the gate admitted r with, which machine puts on its context.
+func keyID(r *http.Request) int64 {
+	id, _ := r.Context().Value(machineKey{}).(int64)
+	return id
+}
+
+// bearer is the key r sends, which its own logged text must not carry.
+func bearer(r *http.Request) string {
+	token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	return token
 }
 
 // callerMode says what an identity route reads from its request beyond
@@ -66,7 +83,7 @@ const (
 
 // callerOf reads who an identity request acts as from its headers.
 func callerOf(r *http.Request, mode callerMode) (store.Caller, error) {
-	c := store.Caller{Session: r.Header.Get(headerSession), As: r.Header.Get(headerAs)}
+	c := store.Caller{Session: r.Header.Get(headerSession), As: r.Header.Get(headerAs), Key: keyID(r)}
 	if c.Session == "" && (mode != callerAnyone || c.As != "") {
 		return c, badRequest("Grelot-Session is required: send <provider>:<host session id>")
 	}
@@ -190,13 +207,9 @@ func (s *Server) identityFor(fn identityFunc, mode callerMode) http.Handler {
 }
 
 // headerKey is the draft-ietf-httpapi-idempotency-key-header request
-// header, a quoted RFC 8941 String of keyMin to keyMax characters drawn
-// from [A-Za-z0-9_-].
-const (
-	headerKey = "Idempotency-Key"
-	keyMin    = 16
-	keyMax    = 64
-)
+// header, a quoted RFC 8941 String of wire.IdempotencyKeyMin to
+// wire.IdempotencyKeyMax characters drawn from [A-Za-z0-9_-].
+const headerKey = "Idempotency-Key"
 
 // keyOf reads a keyed write's Idempotency-Key and binds it to the request:
 // its route, path, query, Grelot-Self and body, which it reads once under
@@ -208,7 +221,8 @@ func keyOf(r *http.Request, c store.Caller) (store.Keyed, error) {
 	}
 	key, ok := parseKey(values)
 	if !ok {
-		return store.Keyed{}, badRequest("the Idempotency-Key must be one quoted string of 16 to 64 letters, digits, - or _")
+		return store.Keyed{}, badRequest(fmt.Sprintf("the Idempotency-Key must be one quoted string of %d to %d letters, digits, - or _",
+			wire.IdempotencyKeyMin, wire.IdempotencyKeyMax))
 	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -226,7 +240,7 @@ func parseKey(values []string) (string, bool) {
 		return "", false
 	}
 	v := values[0]
-	if len(v) < keyMin+2 || len(v) > keyMax+2 || v[0] != '"' || v[len(v)-1] != '"' {
+	if len(v) < wire.IdempotencyKeyMin+2 || len(v) > wire.IdempotencyKeyMax+2 || v[0] != '"' || v[len(v)-1] != '"' {
 		return "", false
 	}
 	key := v[1 : len(v)-1]
@@ -243,7 +257,7 @@ func notKeyChar(ch rune) bool {
 // bodyError answers a request body that could not be read.
 func bodyError(err error) error {
 	if errors.As(err, new(*http.MaxBytesError)) {
-		return &apiError{status: http.StatusRequestEntityTooLarge, code: "too_large", msg: "the request body is over 128 KiB"}
+		return refusal(wire.ErrTooLarge, "the request body is over 128 KiB")
 	}
 	return badRequest("the request body could not be read: " + err.Error())
 }

@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cplieger/grelot/internal/auth/authtest"
 	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/server"
@@ -49,9 +50,11 @@ func newServerAt(t *testing.T, version string, refuse func(*http.Request) bool) 
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
+	a := authtest.New(t, nil)
+	ts.Key = authtest.Key(t, a, "cli")
 	srv := server.New(&server.Options{
-		Store: st, Logger: logger, Hub: hub, Version: version, Now: ts.clock.Now,
-		Config: server.Config{Token: "test-token", PathRoot: protopath.DefaultRoot},
+		Store: st, Logger: logger, Hub: hub, Version: version, Now: ts.clock.Now, Auth: a,
+		Config: server.Config{PathRoot: protopath.DefaultRoot},
 	})
 	h := srv.Handler()
 	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -112,7 +115,7 @@ func (ts *testServer) last(t *testing.T, method, route string) sent {
 // step the test takes outside the verbs under test.
 func (ts *testServer) call(t *testing.T, session string, self bool, req *client.Request, out any) {
 	t.Helper()
-	a, err := client.NewAPI(&client.Config{Server: ts.URL, Token: "test-token"}, "v1.1.0", t.TempDir())
+	a, err := client.NewAPI(&client.Config{Server: ts.URL, Token: ts.Key}, "v1.1.0", t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -113,7 +113,7 @@ func TestLifecycle_sessionEndSubagentStopAndTurnEnd(t *testing.T) {
 		return id
 	}
 	ended := func() bool {
-		st, err := h.store.Status(t.Context(), store.Caller{Session: sessA, Self: true})
+		st, err := h.store.Status(t.Context(), store.Caller{Key: h.keyID(), Session: sessA, Self: true})
 		if err != nil {
 			t.Fatalf("Status: %v", err)
 		}

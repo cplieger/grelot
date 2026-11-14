@@ -4,21 +4,28 @@ services:
     image: ghcr.io/cplieger/grelot:latest
     container_name: grelot
     restart: unless-stopped
-    # The server writes only its store under /data, so the rest stays read-only with no tmpfs.
+    # The server writes only its store and accounts files under /data, so the rest stays read-only with no tmpfs.
     read_only: true
 
     environment:
-      # Replace with a long random string, such as the output of "openssl rand -hex 32".
-      # Every client sends it. Prefer GRELOT_TOKEN_FILE, naming a mounted secret file.
-      GRELOT_TOKEN: "change-me-to-a-long-random-string"
+      # No shared token: each machine's client sends its own key, which
+      # "docker exec grelot /grelot key create <machine>" prints once.
+      # The address browsers open grelot's web UI at, through your TLS reverse proxy.
+      # Passkeys, single sign-on and the setup link all use it. To try grelot on
+      # this machine only, use "http://localhost:9737".
+      PUBLIC_URL: "https://grelot.example.com"
 
     volumes:
-      # The store. Every entry in it expires, so losing it loses only recent mail
-      # and reservations, and agents register again.
+      # The store and the accounts file. Every entry in the store expires, so losing it
+      # loses only recent mail and reservations, and agents register again. The accounts
+      # file keeps the settings: back it up.
       # Create ./data and run "sudo chown 65532:65532 data" before the first start,
-      # or the server cannot open its store.
+      # or the server cannot open its files.
       - "./data:/data"
 
     ports:
-      # Publish this port only to a network you trust, see README "Security".
+      # The API. Publish this port only to a network you trust, see README "Security".
       - "9737:9737"
+      # /healthz and /metrics, for your monitoring. Keep this port off the internet:
+      # bind it to a LAN address, such as "192.0.2.10:9738:9738".
+      - "127.0.0.1:9738:9738"

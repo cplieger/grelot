@@ -48,7 +48,7 @@ func (s *Store) Follow(ctx context.Context, k Keyed, c Caller, path string) (Fol
 			me.Threaded = true
 		}
 		w.touch(&me)
-		if err := s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {
+		if err := w.putIdentity(me.ID, &me); err != nil {
 			return Followed{}, err
 		}
 		if !live {
@@ -84,7 +84,7 @@ func (s *Store) Unfollow(ctx context.Context, k Keyed, c Caller, path string) (F
 		}
 		me.Follows = slices.DeleteFunc(me.Follows, func(f string) bool { return f == path })
 		w.touch(&me)
-		if err := s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {
+		if err := w.putIdentity(me.ID, &me); err != nil {
 			return Followed{}, err
 		}
 		var notices []string

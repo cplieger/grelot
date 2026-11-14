@@ -35,12 +35,12 @@ var linkEncoding = base32.StdEncoding.WithPadding(base32.NoPadding)
 // DenyThreads hold canonical paths or "announce"; AllowAgents and
 // DenyAgents hold names of live identities.
 type Grant struct {
-	Caller       Caller
 	Label        string
 	AllowThreads []string
 	AllowAgents  []string
 	DenyThreads  []string
 	DenyAgents   []string
+	Caller       Caller
 	TTL          time.Duration
 }
 
@@ -105,7 +105,7 @@ func (w *wtx) delegate(g *Grant) (Granted, error) {
 		return Granted{}, err
 	}
 	w.touch(&me)
-	if err := w.s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {
+	if err := w.putIdentity(me.ID, &me); err != nil {
 		return Granted{}, err
 	}
 	w.logInfo("delegate granted", "name", me.Name, "handle", handle, "ttl", fmtDur(g.TTL))
@@ -214,13 +214,9 @@ func (w *wtx) registerDelegate(r *Registration) (Registered, error) {
 	if err != nil {
 		return Registered{}, err
 	}
-	parent, found, err := w.s.t.identities.settle(w, link.Parent)
+	parent, err := w.linkParent(&link, r.Key)
 	if err != nil {
 		return Registered{}, err
-	}
-	// The parent's expiry, run by that settle, deletes the link.
-	if !found || parent.State != stateLive {
-		return Registered{}, linkGone()
 	}
 	session, err := w.delegateSession(r.Session, &parent)
 	if err != nil {
@@ -248,9 +244,9 @@ func (w *wtx) registerDelegate(r *Registration) (Registered, error) {
 	row := identityRow{
 		ID: id, Name: handle, Description: r.Fields.Description, State: stateLive, RegisteredAt: w.now, LastSeen: w.now,
 		Host: parent.Host, OS: parent.OS, Arch: parent.Arch, Provider: parent.Provider, Session: session,
-		Parent: parent.ID, Scope: &sc, TTL: link.TTL, Lease: ls,
+		Parent: parent.ID, Key: parent.Key, Scope: &sc, TTL: link.TTL, Lease: ls,
 	}
-	if err := w.s.t.identities.table.Put(w.tx, id, &row); err != nil {
+	if err := w.putIdentity(id, &row); err != nil {
 		return Registered{}, err
 	}
 	if _, err := w.s.t.links.table.Delete(w.tx, pairKey(link.Parent, link.ID)); err != nil {
@@ -259,6 +255,24 @@ func (w *wtx) registerDelegate(r *Registration) (Registered, error) {
 	w.logInfo("delegate registered", "handle", handle, "id", id, "parent", parent.ID, "own_session", session != "")
 	v, verr := w.viewOf(&row)
 	return Registered{Identity: v}, verr
+}
+
+// linkParent is the live parent link grants for a registration that came
+// with key, which must be the parent's unless the parent's no longer
+// authenticates; then the parent is rebound to key.
+func (w *wtx) linkParent(link *linkRow, key int64) (identityRow, error) {
+	parent, found, err := w.s.t.identities.settle(w, link.Parent)
+	switch {
+	case err != nil:
+		return identityRow{}, err
+	// The parent's expiry, run by that settle, deletes the link.
+	case !found || parent.State != stateLive:
+		return identityRow{}, linkGone()
+	}
+	if err = w.s.bound(parent.Key, key); err == nil {
+		err = w.rebind(&parent, key)
+	}
+	return parent, err
 }
 
 // checkDelegateFields refuses what a delegate's registration cannot set:
@@ -286,7 +300,7 @@ func (w *wtx) delegateSession(session string, parent *identityRow) (string, erro
 	if session == parent.Session {
 		return "", nil
 	}
-	own, found, err := w.identityBy(w.s.t.bySession, session)
+	own, found, err := w.ownFor(session, parent.Key)
 	switch {
 	case err != nil:
 		return "", err
@@ -463,7 +477,7 @@ func (w *wtx) capDelegates(parent *identityRow) error {
 		if d.Lease, err = identityPolicy.grant(w.now, d.TTL, end); err != nil {
 			return err
 		}
-		if err := w.s.t.identities.table.Put(w.tx, id, &d); err != nil {
+		if err := w.putIdentity(id, &d); err != nil {
 			return err
 		}
 	}
@@ -526,7 +540,7 @@ func (w *wtx) endDelegate(d *identityRow, why endWhy) error {
 	if err := w.leaveWatches(d); err != nil {
 		return err
 	}
-	if _, err := w.s.t.identities.table.Delete(w.tx, d.ID); err != nil {
+	if err := w.deleteIdentity(d.ID); err != nil {
 		return err
 	}
 	w.forgetSeen(d.ID)

@@ -15,6 +15,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cplieger/grelot/internal/auth/authtest"
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/server"
 	"github.com/cplieger/grelot/internal/store"
@@ -23,8 +24,9 @@ import (
 // serverVersion is the in-process server's version in these tests.
 const serverVersion = "v1.1.0-dev.4"
 
-// realServer runs grelot's server over a fresh store and returns its URL.
-func realServer(t *testing.T) string {
+// realServer runs grelot's server over a fresh store and returns its URL
+// and a machine key it admits.
+func realServer(t *testing.T) (url, key string) {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	hub := server.NewHub()
@@ -35,13 +37,32 @@ func realServer(t *testing.T) string {
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
+	a := authtest.New(t, nil)
 	srv := server.New(&server.Options{
-		Store: st, Logger: logger, Hub: hub, Version: serverVersion,
-		Config: server.Config{Token: "test-token", PathRoot: protopath.DefaultRoot},
+		Store: st, Logger: logger, Hub: hub, Version: serverVersion, Auth: a,
+		Config: server.Config{PathRoot: protopath.DefaultRoot},
 	})
 	h := httptest.NewServer(srv.Handler())
 	t.Cleanup(h.Close)
-	return h.URL
+	return h.URL, authtest.Key(t, a, "client")
+}
+
+// newServerAPI is an API of version on a realServer of its own.
+func newServerAPI(t *testing.T, version string) (*API, string) {
+	t.Helper()
+	url, key := realServer(t)
+	return newKeyedAPI(t, url, key, version)
+}
+
+// newKeyedAPI is newTestAPI sending key.
+func newKeyedAPI(t *testing.T, server, key, version string) (*API, string) {
+	t.Helper()
+	dir := t.TempDir()
+	a, err := NewAPI(&Config{Server: server, Token: key}, version, dir)
+	if err != nil {
+		t.Fatalf("NewAPI: %v", err)
+	}
+	return a, dir
 }
 
 // registerBody is a registration with no where values.
@@ -54,7 +75,7 @@ func registerBody(name string) map[string]any {
 }
 
 func TestMe_againstTheServer(t *testing.T) {
-	a, dir := newTestAPI(t, realServer(t), "v1.1.0")
+	a, dir := newServerAPI(t, "v1.1.0")
 	a.Session = "alpha:s-1"
 	if _, err := a.Do(t.Context(), &Request{Method: http.MethodPost, Path: "/v1/register", Body: registerBody("tool-dev")}, nil); err != nil {
 		t.Fatalf("register: %v", err)
@@ -75,7 +96,7 @@ func TestMe_againstTheServer(t *testing.T) {
 }
 
 func TestMe_aSessionWithNoIdentity(t *testing.T) {
-	a, _ := newTestAPI(t, realServer(t), "v1.1.0")
+	a, _ := newServerAPI(t, "v1.1.0")
 	a.Session = "alpha:s-new"
 	me, resp, err := a.Me(t.Context(), nil, nil)
 	if err != nil {
@@ -90,7 +111,7 @@ func TestMe_aSessionWithNoIdentity(t *testing.T) {
 }
 
 func TestMe_cachedRootCorrectedByTheNextMe(t *testing.T) {
-	a, dir := newTestAPI(t, realServer(t), "v1.1.0")
+	a, dir := newServerAPI(t, "v1.1.0")
 	a.Session = "alpha:s-1"
 	SaveFacts(dir, Facts{PathRoot: "/home/u/src"})
 	if _, _, err := a.Me(t.Context(), nil, nil); err != nil {
@@ -102,7 +123,7 @@ func TestMe_cachedRootCorrectedByTheNextMe(t *testing.T) {
 }
 
 func TestDo_oldClientGetsThe426(t *testing.T) {
-	a, _ := newTestAPI(t, realServer(t), "v0.9.0")
+	a, _ := newServerAPI(t, "v0.9.0")
 	a.Session = "alpha:s-1"
 	_, _, err := a.Me(t.Context(), nil, nil)
 	var ae *APIError
@@ -115,7 +136,8 @@ func TestDo_oldClientGetsThe426(t *testing.T) {
 }
 
 func TestDo_wrongTokenIsRefused(t *testing.T) {
-	a, err := NewAPI(&Config{Server: realServer(t), Token: "wrong"}, "v1.1.0", t.TempDir())
+	url, _ := realServer(t)
+	a, err := NewAPI(&Config{Server: url, Token: "wrong"}, "v1.1.0", t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,10 +194,11 @@ func dropFirstPost(t *testing.T, server string) (front string, keys func() []str
 }
 
 func TestDo_aPostCommittedButUnansweredIsReSentWithItsKeyAndAnswersItsFirstResult(t *testing.T) {
-	front, keys := dropFirstPost(t, realServer(t))
-	sender, _ := newTestAPI(t, front, "v1.1.0")
+	url, key := realServer(t)
+	front, keys := dropFirstPost(t, url)
+	sender, _ := newKeyedAPI(t, front, key, "v1.1.0")
 	sender.Session = "alpha:s-1"
-	reader, _ := newTestAPI(t, front, "v1.1.0")
+	reader, _ := newKeyedAPI(t, front, key, "v1.1.0")
 	reader.Session = "alpha:s-2"
 	for _, r := range []struct {
 		api  *API

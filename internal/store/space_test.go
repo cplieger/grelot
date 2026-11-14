@@ -256,7 +256,7 @@ func TestStoreFull_takesEveryWriteThatAddsNothing(t *testing.T) {
 		}},
 		{name: "a release", write: func() error { _, err := s.Release(ctx, Keyed{}, alpha, held.Reservation.ID); return err }},
 		{name: "a revoke", write: func() error { _, err := s.Revoke(ctx, Keyed{}, alpha, "rev"); return err }},
-		{name: "a session end", write: func() error { return s.EndSession(ctx, sess("alpha")) }},
+		{name: "a session end", write: func() error { return s.EndSession(ctx, sess("alpha"), 0) }},
 		{name: "a bye", write: func() error { _, _, err := s.Retire(ctx, Keyed{}, bravo); return err }},
 		{name: "a sweep", write: func() error { clk.advance(7 * time.Hour); _, err := s.sweep(ctx); return err }},
 	} {
@@ -293,7 +293,7 @@ const testMaxBytes = 32 << 20
 func TestMeasure_inUseFallsWhenABurstExpiresThoughTheFileDoesNot(t *testing.T) {
 	clk := &clock{t: testNow}
 	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{
-		Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: time.Hour, MaxBytes: testMaxBytes,
+		Logger: slog.New(newLogSink()), Now: clk.now, Retention: retainFor(time.Hour), MaxBytes: testMaxBytes,
 	})
 	if err != nil {
 		t.Fatal(err)

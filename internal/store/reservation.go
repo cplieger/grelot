@@ -100,7 +100,7 @@ func (w *wtx) reserve(r *Reserving) (Reserved, error) {
 		return Reserved{}, refuse(KindForbidden, "a delegate cannot reserve or queue: ask your parent to reserve the path")
 	}
 	w.touch(&me)
-	if perr := w.s.t.identities.table.Put(w.tx, me.ID, &me); perr != nil {
+	if perr := w.putIdentity(me.ID, &me); perr != nil {
 		return Reserved{}, perr
 	}
 	blocker, err := w.blocker(&reservationRow{Holder: me.ID, Path: r.Path, ID: math.MaxUint64})
@@ -144,7 +144,7 @@ func (w *wtx) addReservation(me *identityRow, r *Reserving, held bool) (reservat
 			return reservationRow{}, err
 		}
 	}
-	if err := w.s.t.resv.table.Put(w.tx, id, &row); err != nil {
+	if err := w.putReservation(id, &row); err != nil {
 		return reservationRow{}, err
 	}
 	w.logInfo(verb, "id", id, "name", me.Name, "path", r.Path)
@@ -213,7 +213,7 @@ func (s *Store) RenewReservation(ctx context.Context, k Keyed, c Caller, id uint
 			return Reservation{}, err
 		}
 		row.TTL = ttl
-		if err := s.t.resv.table.Put(w.tx, id, &row); err != nil {
+		if err := w.putReservation(id, &row); err != nil {
 			return Reservation{}, err
 		}
 		w.logInfo("reservation renewed", "id", id, "name", me.Name, "path", row.Path)
@@ -258,7 +258,7 @@ func (w *wtx) ownReservation(c Caller, id uint64) (identityRow, reservationRow, 
 		))
 	}
 	w.touch(&me)
-	err = w.s.t.identities.table.Put(w.tx, me.ID, &me)
+	err = w.putIdentity(me.ID, &me)
 	return me, row, err
 }
 
@@ -340,6 +340,7 @@ func (w *wtx) freeAndHandOff(rows []reservationRow) error {
 		if _, err := w.s.t.resv.table.Delete(w.tx, rows[i].ID); err != nil {
 			return err
 		}
+		w.changed.Agents = true
 	}
 	queue, err := w.queued()
 	if err != nil {
@@ -398,7 +399,7 @@ func (w *wtx) handOver(q *reservationRow) error {
 		return err
 	}
 	q.State, q.Since, q.Lease = reservationHeld, w.now, ls
-	if err := w.s.t.resv.table.Put(w.tx, q.ID, q); err != nil {
+	if err := w.putReservation(q.ID, q); err != nil {
 		return err
 	}
 	w.logInfo("reservation handed over", "id", q.ID, "holder", q.Holder, "path", q.Path)

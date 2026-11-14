@@ -87,7 +87,7 @@ func TestDormant_itsSessionOnlyReadsItsStatus(t *testing.T) {
 	expireToDormant(t, s, clk, "subflux-dev")
 	_, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Description: "new work"}})
 	wantRefusal(t, err, KindGone, "dormant", "your identity @subflux-dev expired 0 h ago with 0 unread; `grelot revive --ttl=<d>` restores it")
-	wantRefusal(t, s.EndSession(t.Context(), sessA), KindGone, "dormant")
+	wantRefusal(t, s.EndSession(t.Context(), sessA, 0), KindGone, "dormant")
 	got, err := s.Seen(t.Context(), Caller{Session: sessA})
 	if err != nil {
 		t.Fatalf("Seen of a dormant session: %v", err)
@@ -180,8 +180,8 @@ func TestPurge_afterDormantTTLFreesTheName(t *testing.T) {
 	}
 	clk.set(purge)
 	mustSweep(t, s)
-	if n := countRows(t, s, s.t.identities.table); n != 0 {
-		t.Errorf("%d identity rows after the purge, want none", n)
+	if n := countRows(t, s, s.t.identities.table); n != 1 {
+		t.Errorf("%d identity rows after the purge, want only @user's", n)
 	}
 	if n := countRows(t, s, s.t.deliveries.table); n != 1 {
 		t.Errorf("%d deliveries, want the row kept until its own expiry", n)

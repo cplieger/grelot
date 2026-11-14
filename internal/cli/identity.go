@@ -262,7 +262,7 @@ func (r *run) meWithoutSession(ctx context.Context, why error) error {
 		return err
 	}
 	r.printStatus(resp.Status)
-	fmt.Fprintf(r.Stdout, "grelot: the server at %s answers and accepts this token\n", safe(r.cfg.Server))
+	fmt.Fprintf(r.Stdout, "grelot: the server at %s answers and accepts this key\n", safe(r.cfg.Server))
 	fmt.Fprintln(r.Stdout, noSessionLine(why))
 	fmt.Fprintln(r.Stdout, "grelot: run grelot me in your agent's shell for its status line and the register command")
 	return nil

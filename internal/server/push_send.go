@@ -319,11 +319,11 @@ func (p *hostPush) send(ctx context.Context, id uint64, cur *pushee, due *store.
 		if ctx.Err() != nil {
 			return false, false
 		}
-		p.counted(d, obs.SendGaveUp)
+		p.counted(d, obs.SendGaveUp, to.Name)
 		p.identityOff(ctx, id, slog.LevelError, msgPushFailed, p.lineAttrs(d, to.Name, 0, err))
 		return false, true
 	}
-	p.counted(d, sendOutcome(res.Outcome))
+	p.counted(d, sendOutcome(res.Outcome), to.Name)
 	switch res.Outcome {
 	case transport.Accepted:
 		if _, _, err := p.s.store.RecordNudge(ctx, due, store.NudgeByPush); err != nil {
@@ -358,9 +358,19 @@ func sendOutcome(o transport.Outcome) string {
 	return obs.SendGaveUp
 }
 
-// counted counts one push try through d.
-func (p *hostPush) counted(d provider.ServerDoor, outcome string) {
+// counted counts one push try through d to the identity called name, and
+// records a retry or give up as an event.
+func (p *hostPush) counted(d provider.ServerDoor, outcome, name string) {
 	p.s.metrics.PushSends.Inc(doorLabel(d), outcome)
+	kind := obs.EventPushRetry
+	switch outcome {
+	case obs.SendRetry:
+	case obs.SendGaveUp:
+		kind = obs.EventPushGaveUp
+	default:
+		return
+	}
+	p.s.metrics.Events.Add(obs.Event{At: p.s.now(), Kind: kind, Detail: doorLabel(d), Agent: name})
 }
 
 // doorLabel is d's door label value: the provider and door names the

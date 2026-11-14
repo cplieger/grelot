@@ -146,7 +146,7 @@ func (w *wtx) recount() error {
 			return err
 		}
 		row.Unread = u
-		if err := w.s.t.identities.table.Put(w.tx, id, &row); err != nil {
+		if err := w.putIdentity(id, &row); err != nil {
 			return err
 		}
 	}

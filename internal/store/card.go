@@ -120,13 +120,13 @@ func (w *wtx) overlapping(p string) ([]uint64, error) {
 
 // storeCard stores c as a message in the cards thread, which Open created
 // and which never expires, holding the labels and where of the identity it
-// is about, living THREAD_TTL.
+// is about, living the retention.
 func (w *wtx) storeCard(c *card) (*messageRow, error) {
 	th, _, err := w.thread(cardsKey)
 	if err != nil {
 		return nil, err
 	}
-	ls := serverLease(w.now, w.s.threadTTL)
+	ls := serverLease(w.now, w.retention)
 	id, err := w.s.t.messages.table.NextID(w.tx)
 	if err != nil {
 		return nil, err

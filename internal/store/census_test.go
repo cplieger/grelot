@@ -137,7 +137,7 @@ func TestCensus_leavesOutRowsPastTheirExpiry(t *testing.T) {
 	if c.Live != 0 || c.Dormant != 4 {
 		t.Errorf("live %d dormant %d once the live leases are due and unswept, want 0 and 4", c.Live, c.Dormant)
 	}
-	clk.advance(DefaultThreadTTL)
+	clk.advance(DefaultRetention)
 	want := ThreadCounts{Announce: 1, Cards: 1}
 	if c = mustCensus(t, s, nil); c.Threads != want {
 		t.Errorf("threads %+v once the path and direct threads are due and unswept, want %+v", c.Threads, want)

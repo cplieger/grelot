@@ -75,7 +75,7 @@ func TestStatus_dormantGetsTheReviveOffer(t *testing.T) {
 func TestStatus_aDelegateIsPullOnly(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegister(sessA, "grelot-dev")
-	g, _, err := h.store.Delegate(t.Context(), store.Keyed{}, &store.Grant{Caller: store.Caller{Session: sessA}, Label: "tests", TTL: time.Hour})
+	g, _, err := h.store.Delegate(t.Context(), store.Keyed{}, &store.Grant{Caller: store.Caller{Key: h.keyID(), Session: sessA}, Label: "tests", TTL: time.Hour})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,5 +1,5 @@
 # Recommended alert rules for grelot, for Prometheus, Mimir or vmalert.
-# Scrape grelot's /metrics endpoint on port 9737 and load this group into
+# Scrape grelot's /metrics endpoint on port 9738 and load this group into
 # your ruler. Firing alerts go through your Alertmanager. grelot ships no
 # Loki rules: every alert it recommends is in this file.
 #
@@ -63,7 +63,8 @@ groups:
           description: >
             Above 90 % grelot refuses new posts, identities, follows, work
             paths, reservations and delegate links. Raise STORE_MAX_BYTES,
-            or shorten THREAD_TTL so old threads expire sooner.
+            or shorten the history retention in Settings so old threads
+            expire sooner.
 
       # Matches the server's own refusal: the writes the description lists
       # get a 507 while the bytes in use are above 90 % of the ceiling, and
@@ -146,3 +147,21 @@ groups:
             A skipped file's doors push nothing, and an unreadable folder
             leaves no door at all. Each provider invalid ERROR line names the
             file or folder and the problem. Fix it, then restart grelot.
+
+      # Counts each machine key or session that was sent and refused, each
+      # request acting for another key's identity, and each sign-in the
+      # failure limiter turned away. A request with no credential counts
+      # nothing, so a signed-out browser does not trip it.
+      - alert: GrelotAuthFailures
+        expr: sum(increase(grelot_auth_failures_total[15m])) > 50
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "grelot refused over 50 credentials in 15 minutes"
+          description: >
+            Someone may be guessing keys or passwords, or a machine still sends
+            a revoked key or the shared token grelot no longer reads. The access
+            log lines with status 401, 403 or 429 name each client address.
+            Revoke a leaked key with grelot key revoke. Behind a reverse proxy,
+            set TRUSTED_PROXIES so those addresses are the clients' own.

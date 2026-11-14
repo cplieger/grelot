@@ -33,7 +33,7 @@ func gateFixture(t *testing.T) (s *Store, sink logSink, parent Identity, link st
 
 func TestGate_unnamedRequestsFromASessionHoldingALinkMoveNothing(t *testing.T) {
 	s, _, parent, _ := gateFixture(t)
-	if err := s.EndSession(t.Context(), sess("parent")); err != nil {
+	if err := s.EndSession(t.Context(), sess("parent"), 0); err != nil {
 		t.Fatal(err)
 	}
 	before := getIdentity(t, s, parent.ID)

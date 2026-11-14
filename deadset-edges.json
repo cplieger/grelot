@@ -1,0 +1,55 @@
+{
+  "description": "Each edge pairs a constant of a wire enum type with the decoder list generated from it. No production Go code names these constants, so the generated decoder is their only use.",
+  "edges": {
+    "wire/EventPostRefused": {
+      "because": "cmd/wire-codegen writes this constant's value into EVENT_KINDS, the list the browser's response decoder accepts.",
+      "provides": "go://github.com/cplieger/grelot/internal/webui/wire#EventPostRefused",
+      "used_by": "ts://grelot-web/src/wire/decoders.gen.ts#EVENT_KINDS"
+    },
+    "wire/EventPushRetry": {
+      "because": "cmd/wire-codegen writes this constant's value into EVENT_KINDS, the list the browser's response decoder accepts.",
+      "provides": "go://github.com/cplieger/grelot/internal/webui/wire#EventPushRetry",
+      "used_by": "ts://grelot-web/src/wire/decoders.gen.ts#EVENT_KINDS"
+    },
+    "wire/EventPushGaveUp": {
+      "because": "cmd/wire-codegen writes this constant's value into EVENT_KINDS, the list the browser's response decoder accepts.",
+      "provides": "go://github.com/cplieger/grelot/internal/webui/wire#EventPushGaveUp",
+      "used_by": "ts://grelot-web/src/wire/decoders.gen.ts#EVENT_KINDS"
+    },
+    "wire/EventNudgeRepeat": {
+      "because": "cmd/wire-codegen writes this constant's value into EVENT_KINDS, the list the browser's response decoder accepts.",
+      "provides": "go://github.com/cplieger/grelot/internal/webui/wire#EventNudgeRepeat",
+      "used_by": "ts://grelot-web/src/wire/decoders.gen.ts#EVENT_KINDS"
+    },
+    "wire/ThreadAnnounce": {
+      "because": "cmd/wire-codegen writes this constant's value into THREAD_KINDS, the list the browser's response decoder accepts.",
+      "provides": "go://github.com/cplieger/grelot/internal/webui/wire#ThreadAnnounce",
+      "used_by": "ts://grelot-web/src/wire/decoders.gen.ts#THREAD_KINDS"
+    },
+    "wire/ThreadPath": {
+      "because": "cmd/wire-codegen writes this constant's value into THREAD_KINDS, the list the browser's response decoder accepts.",
+      "provides": "go://github.com/cplieger/grelot/internal/webui/wire#ThreadPath",
+      "used_by": "ts://grelot-web/src/wire/decoders.gen.ts#THREAD_KINDS"
+    },
+    "wire/ThreadDirect": {
+      "because": "cmd/wire-codegen writes this constant's value into THREAD_KINDS, the list the browser's response decoder accepts.",
+      "provides": "go://github.com/cplieger/grelot/internal/webui/wire#ThreadDirect",
+      "used_by": "ts://grelot-web/src/wire/decoders.gen.ts#THREAD_KINDS"
+    },
+    "wire/ReservationHeld": {
+      "because": "cmd/wire-codegen writes this constant's value into RESERVATION_STATES, the list the browser's response decoder accepts.",
+      "provides": "go://github.com/cplieger/grelot/internal/webui/wire#ReservationHeld",
+      "used_by": "ts://grelot-web/src/wire/decoders.gen.ts#RESERVATION_STATES"
+    },
+    "wire/ReservationQueued": {
+      "because": "cmd/wire-codegen writes this constant's value into RESERVATION_STATES, the list the browser's response decoder accepts.",
+      "provides": "go://github.com/cplieger/grelot/internal/webui/wire#ReservationQueued",
+      "used_by": "ts://grelot-web/src/wire/decoders.gen.ts#RESERVATION_STATES"
+    },
+    "wire/AgentDormant": {
+      "because": "cmd/wire-codegen writes this constant's value into AGENT_STATES, the list the browser's response decoder accepts.",
+      "provides": "go://github.com/cplieger/grelot/internal/webui/wire#AgentDormant",
+      "used_by": "ts://grelot-web/src/wire/decoders.gen.ts#AGENT_STATES"
+    }
+  }
+}

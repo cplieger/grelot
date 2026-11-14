@@ -4,6 +4,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -12,7 +13,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/store"
 )
 
@@ -21,18 +21,48 @@ const (
 	wantStale    = "the store sweep has not committed for over a minute"
 )
 
-// healthz sends a bare /healthz, with no bearer and no version, and returns
-// its status and reasons.
+// healthz sends a bare /healthz to the operations listener and returns its
+// status and reasons.
 func (h *harness) healthz(method string) (int, []string) {
 	h.t.Helper()
-	r := h.request(method, "/healthz", nil, map[string]string{"Authorization": "", headerVersion: ""})
-	var reasons []string
-	if list, ok := r.body["reasons"].([]any); ok {
-		for _, v := range list {
-			reasons = append(reasons, v.(string))
-		}
+	resp := h.opsCall(method, "/healthz")
+	defer resp.Body.Close()
+	var body struct{ Reasons []string }
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	return resp.StatusCode, body.Reasons
+}
+
+// The API listener serves neither operations route, whatever headers a
+// request sends, and the operations listener serves nothing else.
+func TestHandler_theOperationsRoutesAreOnTheirOwnListener(t *testing.T) {
+	h := newHarness(t)
+	h.srv.Beat(t.Context())
+	for _, path := range []string{"/healthz", "/metrics"} {
+		t.Run("the API answers 404 to "+path, func(t *testing.T) {
+			if r := h.request(http.MethodGet, path, nil, nil); r.status != http.StatusNotFound {
+				t.Errorf("GET %s on the API = %d, want 404", path, r.status)
+			}
+			if r := h.request(http.MethodGet, path, nil, map[string]string{"Authorization": "", headerVersion: ""}); r.status != http.StatusNotFound {
+				t.Errorf("bare GET %s on the API = %d, want 404", path, r.status)
+			}
+		})
+		t.Run("the operations listener answers 200 to "+path, func(t *testing.T) {
+			resp := h.opsCall(http.MethodGet, path)
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("GET %s on the operations listener = %d, want 200", path, resp.StatusCode)
+			}
+		})
 	}
-	return r.status, reasons
+	for _, path := range []string{"/v1/me", "/v1/version", "/api/conversations", "/"} {
+		t.Run("the operations listener answers 404 to "+path, func(t *testing.T) {
+			resp := h.opsCall(http.MethodGet, path)
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusNotFound {
+				t.Errorf("GET %s on the operations listener = %d, want 404", path, resp.StatusCode)
+			}
+		})
+	}
 }
 
 func TestHealthz_takesNoHeadersAndFollowsTheSweeperBeat(t *testing.T) {
@@ -65,7 +95,7 @@ func TestHealthz_aReleaseAnswers503AtOnceAndForGood(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h := newBubbleHarness(t)
 		h.srv.Beat(t.Context())
-		h.srv.Release()
+		h.srv.Release(t.Context())
 		if code, reasons := h.healthz(http.MethodGet); code != http.StatusServiceUnavailable || !slices.Equal(reasons, []string{wantStopping}) {
 			t.Errorf("after Release: %d %q, want 503 %q", code, reasons, wantStopping)
 		}
@@ -76,18 +106,31 @@ func TestHealthz_aReleaseAnswers503AtOnceAndForGood(t *testing.T) {
 	})
 }
 
-func TestAuthorize_bearer(t *testing.T) {
-	h := newHarness(t)
+func TestGate_refusesARequestWithNoValidMachineKey(t *testing.T) {
+	h := newSignedIn(t)
+	revoked, err := h.srv.auth.CreateKey(t.Context(), "retired")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := h.request(http.MethodGet, "/v1/version", nil, map[string]string{"Authorization": "Bearer " + revoked}); r.status != http.StatusOK {
+		t.Fatalf("GET /v1/version with the key before its revoke: %d %s, want 200", r.status, r.raw)
+	}
+	if err := h.srv.auth.RevokeKey(t.Context(), "retired"); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		name, header string
-	}{{"none", ""}, {"wrong token", "Bearer other"}, {"another scheme", "Basic " + testToken}} {
+	}{{"none", ""}, {"an unknown key", "Bearer grelot_unknown"}, {"another scheme", "Basic " + revoked}, {"a revoked key", "Bearer " + revoked}} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": tc.header, headerSession: sessA})
 			if r.status != http.StatusUnauthorized {
 				t.Fatalf("status %d, want 401", r.status)
 			}
-			if r.header.Get("WWW-Authenticate") == "" {
-				t.Error("no WWW-Authenticate header")
+			if got := r.header.Get("WWW-Authenticate"); !strings.HasPrefix(got, `Bearer realm="grelot"`) {
+				t.Errorf("WWW-Authenticate %q, want the Bearer challenge of realm grelot", got)
+			}
+			if !strings.Contains(r.str("error"), "grelot key create") {
+				t.Errorf("error %q, want it to name grelot key create", r.str("error"))
 			}
 			if _, ok := r.body["path_root"]; ok {
 				t.Error("a 401 carries the path root")
@@ -96,6 +139,29 @@ func TestAuthorize_bearer(t *testing.T) {
 				t.Error("a 401 names the server version")
 			}
 		})
+	}
+	t.Run("a browser session", func(t *testing.T) {
+		r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": "", "Cookie": h.browser.header(), headerSession: sessA})
+		if r.status != http.StatusForbidden || r.str("code") != "auth_key_required" {
+			t.Errorf("GET /v1/me with the signed-in session cookie: %d %s, want 403 auth_key_required", r.status, r.raw)
+		}
+	})
+}
+
+func TestGate_aFailingAccountsFileAnswers503(t *testing.T) {
+	a, db := testAuthDB(t)
+	h := newHarnessWith(t, store.Options{}, withAuth(a))
+	h.setUp()
+	h.mustRegister(sessA, "alpha")
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	r := h.as(sessA, http.MethodGet, "/v1/me", nil)
+
+	if r.status != http.StatusServiceUnavailable || r.str("code") != "auth_unavailable" || r.header.Get("Retry-After") != "5" {
+		t.Errorf("GET /v1/me with the accounts file closed: %d %s Retry-After %q, want 503 auth_unavailable, Retry-After 5",
+			r.status, r.raw, r.header.Get("Retry-After"))
 	}
 }
 
@@ -149,11 +215,18 @@ func TestVersionRoute(t *testing.T) {
 	})
 }
 
-func TestRoutes_unknownRouteIs404WithThePathRoot(t *testing.T) {
+func TestRoutes_anUnknownRouteIs404AndAWrongMethod405(t *testing.T) {
 	h := newHarness(t)
-	r := h.as(sessA, http.MethodGet, "/v1/nope", nil)
-	if r.status != http.StatusNotFound || r.str("path_root") != protopath.DefaultRoot {
-		t.Errorf("got %d %s, want 404 with path_root %s", r.status, r.raw, protopath.DefaultRoot)
+	if r := h.as(sessA, http.MethodGet, "/v1/nope", nil); r.status != http.StatusNotFound || r.str("code") != "auth_not_found" {
+		t.Errorf("GET /v1/nope: %d %s, want 404 auth_not_found", r.status, r.raw)
+	}
+	r := h.as(sessA, http.MethodPut, "/v1/me", nil)
+	if r.status != http.StatusMethodNotAllowed || r.str("code") != "auth_method_not_allowed" || r.header.Get("Allow") != "GET, HEAD, PATCH, DELETE" {
+		t.Errorf("PUT /v1/me: %d %s Allow %q, want 405 auth_method_not_allowed allowing GET, HEAD, PATCH, DELETE", r.status, r.raw, r.header.Get("Allow"))
+	}
+	r = h.as(sessA, http.MethodPut, "/api/auth/me", nil)
+	if r.status != http.StatusMethodNotAllowed || r.str("code") != "auth_method_not_allowed" || r.header.Get("Allow") != "GET, HEAD" {
+		t.Errorf("PUT /api/auth/me: %d %s Allow %q, want 405 auth_method_not_allowed allowing GET, HEAD", r.status, r.raw, r.header.Get("Allow"))
 	}
 }
 

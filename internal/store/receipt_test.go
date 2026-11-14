@@ -239,7 +239,7 @@ func TestReceipts_anExpiredMessageIsNotFoundBeforeTheSweep(t *testing.T) {
 	b := regAt(t, s, "cloudy-lake", repoSubflux)
 	keepAlive(t, s, a.ID, b.ID)
 	msg := mustPost(t, s, posting(sess("subflux-dev"), Target{Agent: "cloudy-lake"})).Message
-	clk.advance(DefaultThreadTTL)
+	clk.advance(DefaultRetention)
 	_, err := s.Receipts(t.Context(), plain("subflux-dev"), msg)
 	wantRefusal(t, err, KindNotFound, "", "no message")
 }

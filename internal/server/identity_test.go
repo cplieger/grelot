@@ -174,7 +174,7 @@ func TestMe_liveIdentityStatus(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegister(sessA, "grelot-dev")
 	ctx := t.Context()
-	own := store.Caller{Session: sessA, Self: true}
+	own := store.Caller{Key: h.keyID(), Session: sessA, Self: true}
 	if _, _, err := h.store.Reserve(ctx, store.Keyed{}, &store.Reserving{Path: repoGrelot + "/main.go", Reason: "editing", Caller: own, TTL: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestMe_liveIdentityStatus(t *testing.T) {
 func TestDelegateGate_refusesASessionWithDelegatesNamingNeither(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegister(sessA, "grelot-dev")
-	if _, _, err := h.store.Delegate(t.Context(), store.Keyed{}, &store.Grant{Caller: store.Caller{Session: sessA}, Label: "tests", TTL: time.Hour}); err != nil {
+	if _, _, err := h.store.Delegate(t.Context(), store.Keyed{}, &store.Grant{Caller: store.Caller{Key: h.keyID(), Session: sessA}, Label: "tests", TTL: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {

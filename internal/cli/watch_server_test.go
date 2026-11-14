@@ -5,9 +5,13 @@ package cli
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -337,6 +341,83 @@ func TestWait_timeoutPrintsOnlyTheStatusLine(t *testing.T) {
 	}
 	if holds < 3 {
 		t.Errorf("%d holds for a 350ms timeout under a 100ms ceiling, want one request per hold", holds)
+	}
+}
+
+// tooManyWaitsBody is the server's refusal of a wait past its key's cap.
+const tooManyWaitsBody = `{"error":"this machine's key holds 128 waits at once, its most: the client retries once one has answered","code":"too_many_waits"}`
+
+// refusingWaits fronts ts and answers its first fails in-turn waits 429
+// with body, counting every one it sees.
+func refusingWaits(t *testing.T, ts *testServer, fails int32, body string) (front string, waits *atomic.Int32) {
+	t.Helper()
+	target, err := url.Parse(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	waits = &atomic.Int32{}
+	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A hold of 0 is a plain read, which no cap refuses.
+		hold, _ := time.ParseDuration(r.URL.Query().Get("wait"))
+		if r.URL.Path != "/v1/inbox" || hold <= 0 || waits.Add(1) > fails {
+			proxy.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(hs.Close)
+	return hs.URL, waits
+}
+
+func TestWait_aWaitRefusedForTheWaitsHeldIsSentAgain(t *testing.T) {
+	ts, reader, writer := watchPair(t)
+	defer func(d time.Duration) { waitRetry = d }(waitRetry)
+	waitRetry = 10 * time.Millisecond
+	front, waits := refusingWaits(t, ts, 2, tooManyWaitsBody)
+	writeClientConfig(t, reader.env.ConfigDir, "server: "+front+"\ntoken: "+ts.Key+"\nhost: box\n")
+	writer.postTo("@reader-dev", "the answer")
+
+	code, out, errOut := reader.run("wait", "--timeout", "10s")
+
+	if code != 0 || !strings.Contains(out, "  | the answer\n") {
+		t.Errorf("exit %d, stdout %q, stderr %q, want 0 and the mail once the refusals passed", code, out, errOut)
+	}
+	if got := waits.Load(); got != 3 {
+		t.Errorf("%d waits sent, want 3: two refused, then the one that answered", got)
+	}
+}
+
+func TestWait_aWaitStillRefusedAtTheTimeoutEndsOnTheStatusLine(t *testing.T) {
+	ts, reader, _ := watchPair(t)
+	defer func(d time.Duration) { waitRetry = d }(waitRetry)
+	waitRetry = 10 * time.Millisecond
+	front, _ := refusingWaits(t, ts, 1<<30, tooManyWaitsBody)
+	writeClientConfig(t, reader.env.ConfigDir, "server: "+front+"\ntoken: "+ts.Key+"\nhost: box\n")
+
+	code, out, errOut := reader.run("wait", "--timeout", "100ms")
+
+	if code != 0 || strings.Count(out, "\n") != 1 || !strings.HasPrefix(out, "grelot: @reader-dev") {
+		t.Errorf("exit %d, stdout %q, stderr %q, want 0 and the status line only", code, out, errOut)
+	}
+}
+
+func TestWait_anotherRefusalIsNotSentAgain(t *testing.T) {
+	ts, reader, _ := watchPair(t)
+	defer func(d time.Duration) { waitRetry = d }(waitRetry)
+	waitRetry = 10 * time.Millisecond
+	front, waits := refusingWaits(t, ts, 1, `{"error":"over 20 requests a second from this machine's key: send again in 1s","code":"rate_limited"}`)
+	writeClientConfig(t, reader.env.ConfigDir, "server: "+front+"\ntoken: "+ts.Key+"\nhost: box\n")
+
+	code, _, errOut := reader.run("wait", "--timeout", "10s")
+
+	if code == 0 || !strings.Contains(errOut, "over 20 requests a second") {
+		t.Errorf("exit %d, stderr %q, want the rate refusal reported", code, errOut)
+	}
+	if got := waits.Load(); got != 1 {
+		t.Errorf("%d waits sent, want 1: only a refusal for the waits held is sent again", got)
 	}
 }
 

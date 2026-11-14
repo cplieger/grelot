@@ -254,8 +254,7 @@ func TestInbox_aCardIsQuietAndRelatedAtItsPath(t *testing.T) {
 
 func TestHold_advancesShownOnlyOverAWakeEvent(t *testing.T) {
 	s, _ := openClockStore(t)
-	mustRegister(t, s, registration(sess("bravo"), "bravo", envA(), repoSubflux))
-	bravo := getIdentity(t, s, 1)
+	bravo := mustRegister(t, s, registration(sess("bravo"), "bravo", envA(), repoSubflux))
 	mustRegister(t, s, registration(sess("charlie"), "charlie", envA(), repoSubflux))
 
 	h, err := s.Hold(t.Context(), Caller{Session: sess("bravo")})
@@ -386,7 +385,7 @@ func TestInbox_clearsEnded(t *testing.T) {
 	for _, call := range []string{"inbox", "ack", "hold"} {
 		s, _ := openClockStore(t)
 		me := regAt(t, s, "bravo", "/workspace/bravo")
-		if err := s.EndSession(t.Context(), sess("bravo")); err != nil {
+		if err := s.EndSession(t.Context(), sess("bravo"), 0); err != nil {
 			t.Fatal(err)
 		}
 		var err error
@@ -410,7 +409,7 @@ func TestInbox_clearsEnded(t *testing.T) {
 func TestAck_pastOnlyExpiredMailRecordsTheRangeFromRead(t *testing.T) {
 	clk := &clock{t: testNow}
 	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{
-		Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: 10 * time.Minute,
+		Logger: slog.New(newLogSink()), Now: clk.now, Retention: retainFor(10 * time.Minute),
 	})
 	if err != nil {
 		t.Fatalf("Open: %v", err)

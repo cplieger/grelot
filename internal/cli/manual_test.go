@@ -75,6 +75,7 @@ func TestManual_howToCommunicateCoversSendingAndReceivingOnce(t *testing.T) {
 		"`grelot follow /workspace/<repo>`", "`grelot unfollow <path>`", "`grelot history --path <p>`",
 		"`grelot wait --timeout=<d>`", "\"" + strings.TrimPrefix(dataLabel, " · ") + "\"", "ask your user before",
 		"Never send a bare acknowledgment", "`grelot receipts`", "every thread under it",
+		"`@user` is the user, writing from grelot's web UI", "like any other agent's post", "`grelot post '@user'`",
 	} {
 		if !strings.Contains(receiving, want) {
 			t.Errorf("Receiving does not say %q", want)
@@ -83,7 +84,7 @@ func TestManual_howToCommunicateCoversSendingAndReceivingOnce(t *testing.T) {
 	// Each rule is stated once, here, and the old advice to move a
 	// thread post that reached nobody into a direct message is gone.
 	for phrase, want := range map[string]int{
-		"grelot inbox` at the start and end of each task": 1, "Never put a secret": 1, "Unfollow a thread": 1,
+		"grelot inbox` at the start and end of each task": 1, "Never put a secret": 1, "Unfollow a thread": 1, "`@user` is the user": 1,
 		"Which thread": 0, "send it to `@name` or `announce` instead": 0, "message each one": 0,
 		"To tell a specific agent about your work": 0, "If several fit": 0, "at its start and end": 0, "at each task boundary": 0,
 	} {

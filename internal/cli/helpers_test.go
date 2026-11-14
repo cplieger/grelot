@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"net"
@@ -87,8 +88,10 @@ type sent struct {
 type testServer struct {
 	clock *clock
 	URL   string
-	mu    sync.Mutex
-	reqs  []sent
+	// Key is the machine key the server admits.
+	Key  string
+	mu   sync.Mutex
+	reqs []sent
 	// answer is the body of the last answer.
 	answer string
 }
@@ -117,7 +120,9 @@ var agentTable = processes{
 
 // agent is one shell a test runs grelot commands in.
 type agent struct {
-	t      *testing.T
+	t *testing.T
+	// key is the machine key of the server newAgent made it for.
+	key    string
 	env    *Env
 	vars   map[string]string
 	stdout *bytes.Buffer
@@ -132,8 +137,9 @@ type agent struct {
 func newAgent(t *testing.T, ts *testServer, session, extra string) *agent {
 	t.Helper()
 	dir := t.TempDir()
-	writeClientConfig(t, dir, fmt.Sprintf("server: %s\ntoken: test-token\nhost: box\n%s", ts.URL, extra))
-	a := &agent{t: t, vars: map[string]string{"ALPHA_ID": session}, stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, wd: dir}
+	key := cmp.Or(ts.Key, "test-key") // a fake server reads no key
+	writeClientConfig(t, dir, fmt.Sprintf("server: %s\ntoken: %s\nhost: box\n%s", ts.URL, key, extra))
+	a := &agent{t: t, key: key, vars: map[string]string{"ALPHA_ID": session}, stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, wd: dir}
 	a.env = &Env{
 		Stdin: strings.NewReader(""), Stdout: a.stdout, Stderr: a.stderr,
 		Lookup: func(name string) (string, bool) {

@@ -59,6 +59,7 @@ func (s *Server) eventHold(r *http.Request, c store.Caller) (status int, body an
 	switch {
 	case held.Counts.Wake() > 0:
 		out.Block = true
+		s.sampler.heldTurn(id, held.Identity.Name)
 		s.log.Info("hook shown", "via", holdStop, "name", held.Identity.Name, "count", held.Counts.Total())
 	case out.Wake == wakeDown && s.presence.tellDown(id):
 		out.Down = true
@@ -121,10 +122,11 @@ func (t turnStart) stale(id *store.Identity) bool {
 
 // inTurnWait is GET /v1/inbox?wait=: it holds until a wake delivery is
 // past read, whatever the nudge state, then answers the page; at wait's
-// end or on Release it answers the page as it stands. The wait is counted
-// open before its first Inbox, whose Seen wakes an ended session's
-// identity at its commit: a first nudge that wake finds uncovered goes out
-// for the mail this wait returns.
+// end or on Release it answers the page as it stands; past a held-wait
+// cap it holds nothing and answers 429. The wait is counted open before
+// its first Inbox, whose Seen wakes an ended session's identity at its
+// commit: a first nudge that wake finds uncovered goes out for the mail
+// this wait returns.
 func (s *Server) inTurnWait(ctx context.Context, c store.Caller, limit int, wait time.Duration) (page store.Page, err error) {
 	if wait == 0 {
 		return s.store.Inbox(ctx, c, limit)
@@ -134,6 +136,11 @@ func (s *Server) inTurnWait(ctx context.Context, c store.Caller, limit int, wait
 		// Inbox answers the refusal, so it reads as it does with no wait.
 		return s.store.Inbox(ctx, c, limit)
 	}
+	free, err := s.holdWait(c.Key)
+	if err != nil {
+		return store.Page{}, err
+	}
+	defer free()
 	id := me.ID
 	s.presence.inTurnOpened(id)
 	defer func() { s.inTurnEnded(id, newestWake(page.Entries)) }()

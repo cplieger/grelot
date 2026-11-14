@@ -30,6 +30,7 @@ type Target struct {
 
 // Posting is a post as Caller's identity. Every identity field is
 // required, NoChange keeping it; Where must come when the paths change.
+// A User caller's Fields and Where are ignored: @user's fields are fixed.
 type Posting struct {
 	Where      *Where
 	Caller     Caller
@@ -114,7 +115,7 @@ func (w *wtx) post(p *Posting) (Posted, error) {
 	if err != nil {
 		return Posted{}, err
 	}
-	if ferr := w.applyFields(&me, p.Fields, p.Where, fieldsEvery, false); ferr != nil {
+	if ferr := w.postFields(&me, p); ferr != nil {
 		return Posted{}, ferr
 	}
 	w.touch(&me)
@@ -125,7 +126,7 @@ func (w *wtx) post(p *Posting) (Posted, error) {
 	if aerr := w.address(&me, &rt, p.Body); aerr != nil {
 		return Posted{}, aerr
 	}
-	if perr := w.s.t.identities.table.Put(w.tx, me.ID, &me); perr != nil {
+	if perr := w.putIdentity(me.ID, &me); perr != nil {
 		return Posted{}, perr
 	}
 	where, err := w.s.whereOf(w.r, &me)
@@ -156,6 +157,15 @@ func (w *wtx) post(p *Posting) (Posted, error) {
 		return Posted{}, err
 	}
 	return out, nil
+}
+
+// postFields applies p's identity fields to me, the sender; @user's are
+// fixed, so a User post applies none.
+func (w *wtx) postFields(me *identityRow, p *Posting) error {
+	if p.Caller.User {
+		return nil
+	}
+	return w.applyFields(me, p.Fields, p.Where, fieldsEvery, false)
 }
 
 // fanOut writes msg's delivery to each recipient but the sender, in id
@@ -230,7 +240,8 @@ func (w *wtx) route(me *identityRow, to Target) (route, error) {
 }
 
 // announceRoute reaches every identity, live and dormant, but a delegate
-// whose scope leaves the announcements out.
+// whose scope leaves the announcements out and @user, who reads the thread
+// in the web UI: an agent's --notify-read would otherwise wait on the user.
 func (w *wtx) announceRoute() (route, error) {
 	th, _, err := w.thread(announceKey)
 	if err != nil {
@@ -239,7 +250,7 @@ func (w *wtx) announceRoute() (route, error) {
 	th.Kind = kindAnnounce
 	rt := route{thread: th, recipients: map[uint64]string{}}
 	err = w.s.t.identities.table.Scan(w.r, bolttable.Range{}, func(id uint64, v *identityRow) (bool, error) {
-		if v.Parent == 0 || v.Scope.allowsAnnounce() {
+		if !isUser(v) && (v.Parent == 0 || v.Scope.allowsAnnounce()) {
 			rt.recipients[id] = ""
 		}
 		return true, nil
@@ -249,12 +260,12 @@ func (w *wtx) announceRoute() (route, error) {
 
 // pathRoute reaches the identities with a work path, a held reservation
 // or a follow at p or above it, and the delegates whose scope allows p.
-// Posts go down the tree only, so a work path under p does not match.
-// Walking p's ancestors shortest first leaves each recipient labelled with
-// its most specific match. The sender follows p unless its work path or
-// a follow already reaches p, or it is a delegate, whose scope already
-// delivers p. Unlike grelot follow, this follow keeps
-// the sender's follows under p, so a post never removes one it chose.
+// Posts go down the tree only; walking p's ancestors shortest first labels
+// each recipient with its most specific match. An agent follows p unless
+// its work path or a follow already reaches p, and unlike grelot follow
+// keeps its follows under p; a delegate's scope already delivers p.
+// @user follows each path it posts at, wider follow or not, because
+// expireThread ends that follow with p's own thread.
 func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 	th, _, err := w.thread(p)
 	if err != nil {
@@ -269,6 +280,12 @@ func (w *wtx) pathRoute(me *identityRow, p string) (route, error) {
 	}
 	if me.Parent == 0 {
 		me.Threaded = true
+	}
+	if isUser(me) {
+		if !slices.Contains(me.Follows, p) {
+			me.Follows = append(me.Follows, p)
+		}
+		return rt, nil
 	}
 	if me.Parent != 0 || reachedBy(me, p) != "" {
 		return rt, nil
@@ -406,13 +423,13 @@ func dormantNotice(peer *identityRow) string {
 
 // storeMessage stores the post with the sender's labels and where as they
 // stand now, where being whereOf the sender, and moves a path or direct thread's expiry to the post's.
-// The expiry only ever moves later: a shorter THREAD_TTL after a restart,
-// or a clock step back, would otherwise expire the thread, and with it an
+// The expiry only ever moves later: a shorter retention, or a clock step
+// back, would otherwise expire the thread, and with it an
 // older message whose deliveries are still unread.
 func (w *wtx) storeMessage(me *identityRow, where Where, th *threadRow, p *Posting) (messageRow, error) {
 	ttl := announceTTL
 	if th.Kind != kindAnnounce {
-		ttl = w.s.threadTTL
+		ttl = w.retention
 		th.Lease = lease{Expires: later(th.Lease.Expires, w.now.Add(ttl))}
 	}
 	if err := w.s.t.threads.table.Put(w.tx, th.ID, th); err != nil {
@@ -428,6 +445,7 @@ func (w *wtx) storeMessage(me *identityRow, where Where, th *threadRow, p *Posti
 		Sender: me.ID, SenderName: me.Name, Host: me.Host, OS: me.OS, Arch: me.Arch, Where: cloneWhere(where),
 		Subject: p.Subject, Body: p.Body,
 	}
+	w.changedThread(th.ID)
 	if err := w.s.t.messages.table.Put(w.tx, pairKey(th.ID, id), &m); err != nil {
 		return messageRow{}, err
 	}

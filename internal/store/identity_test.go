@@ -311,7 +311,7 @@ func TestTakeOver_movesTheIdentityWithinItsEnvironment(t *testing.T) {
 				row.Follows, row.Read, row.Shown, row.Seq = []string{"/workspace/sse"}, 4, 5, 6
 				return s.t.identities.table.Put(w.tx, row.ID, &row)
 			})
-			if err := s.EndSession(t.Context(), sessA); err != nil {
+			if err := s.EndSession(t.Context(), sessA, 0); err != nil {
 				t.Fatal(err)
 			}
 			clk.advance(10 * time.Minute)
@@ -393,8 +393,8 @@ func TestRegister_aNamePastItsPurgeIsFreeWithoutASweep(t *testing.T) {
 	if got.ID == old.ID {
 		t.Errorf("the purged identity's id %d came back", old.ID)
 	}
-	if n := countRows(t, s, s.t.identities.table); n != 1 {
-		t.Errorf("%d identity rows, want the purged one gone", n)
+	if n := countRows(t, s, s.t.identities.table); n != 2 {
+		t.Errorf("%d identity rows, want @user's and the new one, the purged one gone", n)
 	}
 }
 
@@ -513,12 +513,12 @@ func TestSet_renameAndRefusals(t *testing.T) {
 
 func TestEndSession_capsTheLeaseAtAnHour(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
-	mustRegister(t, s, registration(sessA, "subflux-dev", envA()))
+	me := mustRegister(t, s, registration(sessA, "subflux-dev", envA()))
 	clk.advance(time.Hour)
-	if err := s.EndSession(t.Context(), sessA); err != nil {
+	if err := s.EndSession(t.Context(), sessA, 0); err != nil {
 		t.Fatal(err)
 	}
-	row := getIdentity(t, s, 1)
+	row := getIdentity(t, s, me.ID)
 	end := clk.now().Add(time.Hour)
 	if !row.Ended || !row.Lease.Expires.Equal(end) || !row.Lease.WarnAt.Equal(end.Add(-30*time.Minute)) {
 		t.Errorf("ended %v expires %v warn %v, want ended, %v and its warning 30m before", row.Ended, row.Lease.Expires, row.Lease.WarnAt, end)
@@ -529,7 +529,7 @@ func TestEndSession_capsTheLeaseAtAnHour(t *testing.T) {
 	r.TTL = 30 * time.Minute
 	short := mustRegister(t, s2, r)
 	before := getIdentity(t, s2, short.ID).Lease
-	if err := s2.EndSession(t.Context(), sessA); err != nil {
+	if err := s2.EndSession(t.Context(), sessA, 0); err != nil {
 		t.Fatal(err)
 	}
 	if row := getIdentity(t, s2, short.ID); !row.Lease.Expires.Equal(before.Expires) || !row.Lease.WarnAt.Equal(before.WarnAt) {
@@ -540,7 +540,7 @@ func TestEndSession_capsTheLeaseAtAnHour(t *testing.T) {
 func TestEndSession_aResumeRestoresNothing(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
 	mustRegister(t, s, registration(sessA, "subflux-dev", envA()))
-	if err := s.EndSession(t.Context(), sessA); err != nil {
+	if err := s.EndSession(t.Context(), sessA, 0); err != nil {
 		t.Fatal(err)
 	}
 	clk.advance(time.Minute)
@@ -586,7 +586,7 @@ func TestEndSession_aRepeatedRegisterOrWhoClearsEndedAndKeepsTheCap(t *testing.T
 			s, clk, _ := openIdentityStore(t)
 			r := registration(sessA, "subflux-dev", envA())
 			me := mustRegister(t, s, r)
-			if err := s.EndSession(t.Context(), sessA); err != nil {
+			if err := s.EndSession(t.Context(), sessA, 0); err != nil {
 				t.Fatal(err)
 			}
 			clk.advance(time.Minute)
