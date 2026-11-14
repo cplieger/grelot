@@ -9,7 +9,6 @@ import (
 	"math"
 	"net/http"
 	"slices"
-	"strconv"
 	"time"
 
 	"github.com/cplieger/access"
@@ -118,42 +117,31 @@ func (s *Server) webJSON(fn webFunc, route *wire.Route) http.Handler {
 	})
 }
 
-func uintParam(v, name string) (uint64, error) {
-	if v == "" {
-		return 0, nil
-	}
-	n, err := strconv.ParseUint(v, 10, 64)
+// idParam reads the id path wildcard of a route whose Params is P.
+func idParam[P wire.ConversationParams | wire.MessageParams](r *http.Request) (uint64, error) {
+	p, err := pathParams[P](r)
 	if err != nil {
-		return 0, badRequest(name + " must be a whole number")
+		return 0, err
 	}
-	return n, nil
-}
-
-func idParam(r *http.Request) (uint64, error) {
-	id, err := uintParam(r.PathValue("id"), "id")
-	if err == nil && id == 0 {
-		err = badRequest("id must be a whole number above 0")
+	id := wire.ConversationParams(p).ID
+	if id == 0 {
+		return 0, badRequest("id must be a whole number above 0")
 	}
-	return id, err
+	return id, nil
 }
 
 func (s *Server) listConversations(r *http.Request, _ store.Keyed) (body any, err error) {
-	q := r.URL.Query()
-	switch wire.Show(q.Get("kind")) {
+	q, err := queryParams[wire.ConversationsQuery](r)
+	if err != nil {
+		return nil, err
+	}
+	switch q.Kind {
 	case "", wire.ShowAll, wire.ShowThreads, wire.ShowDirect:
 	default:
 		return nil, badRequest("kind must be all, threads or direct")
 	}
-	before, err := uintParam(q.Get("before"), "before")
-	if err != nil {
-		return nil, err
-	}
-	beforeThread, err := uintParam(q.Get("before_thread"), "before_thread")
-	if err != nil {
-		return nil, err
-	}
 	page, err := s.store.Conversations(r.Context(), store.ConversationsQuery{
-		Show: q.Get("kind"), Before: before, BeforeThread: beforeThread,
+		Show: string(q.Kind), Before: q.Before, BeforeThread: q.BeforeThread,
 	})
 	if err != nil {
 		return nil, err
@@ -177,15 +165,15 @@ func (s *Server) listConversations(r *http.Request, _ store.Keyed) (body any, er
 }
 
 func (s *Server) getConversation(r *http.Request, _ store.Keyed) (body any, err error) {
-	id, err := idParam(r)
+	id, err := idParam[wire.ConversationParams](r)
 	if err != nil {
 		return nil, err
 	}
-	before, err := uintParam(r.URL.Query().Get("before"), "before")
+	q, err := queryParams[wire.PageQuery](r)
 	if err != nil {
 		return nil, err
 	}
-	c, err := s.store.Conversation(r.Context(), id, before, 0)
+	c, err := s.store.Conversation(r.Context(), id, q.Before, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +195,7 @@ func (s *Server) getConversation(r *http.Request, _ store.Keyed) (body any, err 
 }
 
 func (s *Server) markConversationRead(r *http.Request, _ store.Keyed) (body any, err error) {
-	id, err := idParam(r)
+	id, err := idParam[wire.ConversationParams](r)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +215,7 @@ func (s *Server) markConversationRead(r *http.Request, _ store.Keyed) (body any,
 }
 
 func (s *Server) getReceipts(r *http.Request, _ store.Keyed) (body any, err error) {
-	id, err := idParam(r)
+	id, err := idParam[wire.MessageParams](r)
 	if err != nil {
 		return nil, err
 	}
@@ -276,7 +264,11 @@ func (s *Server) listAgents(r *http.Request, _ store.Keyed) (body any, err error
 }
 
 func (s *Server) getAgent(r *http.Request, _ store.Keyed) (body any, err error) {
-	card, err := s.store.AgentCard(r.Context(), r.PathValue("name"))
+	p, err := pathParams[wire.AgentParams](r)
+	if err != nil {
+		return nil, err
+	}
+	card, err := s.store.AgentCard(r.Context(), p.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -286,11 +278,15 @@ func (s *Server) getAgent(r *http.Request, _ store.Keyed) (body any, err error) 
 }
 
 func (s *Server) getAgentHistory(r *http.Request, _ store.Keyed) (body any, err error) {
-	before, err := uintParam(r.URL.Query().Get("before"), "before")
+	p, err := pathParams[wire.AgentParams](r)
 	if err != nil {
 		return nil, err
 	}
-	h, err := s.store.AgentHistory(r.Context(), r.PathValue("name"), before, 0)
+	q, err := queryParams[wire.PageQuery](r)
+	if err != nil {
+		return nil, err
+	}
+	h, err := s.store.AgentHistory(r.Context(), p.Name, q.Before, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -302,12 +298,16 @@ func (s *Server) getAgentHistory(r *http.Request, _ store.Keyed) (body any, err 
 	return out, nil
 }
 
-var statsRanges = map[string]time.Duration{
-	string(wire.Range6h): 6 * time.Hour, string(wire.Range24h): 24 * time.Hour, string(wire.Range72h): 72 * time.Hour,
+var statsRanges = map[wire.StatsRange]time.Duration{
+	wire.Range6h: 6 * time.Hour, wire.Range24h: 24 * time.Hour, wire.Range72h: 72 * time.Hour,
 }
 
 func (s *Server) getStats(r *http.Request, _ store.Keyed) (body any, err error) {
-	span, ok := statsRanges[r.URL.Query().Get("range")]
+	q, err := queryParams[wire.StatsQuery](r)
+	if err != nil {
+		return nil, err
+	}
+	span, ok := statsRanges[q.Range]
 	if !ok {
 		return nil, badRequest("range must be 6h, 24h or 72h")
 	}
