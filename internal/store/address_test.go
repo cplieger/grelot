@@ -217,6 +217,16 @@ func TestPost_onlyUnknownNamesAreReportedAndWakeEveryRecipient(t *testing.T) {
 		map[string]bool{"bravo": false, "charlie": false})
 }
 
+func TestPost_onlyUnknownNamesAtAPathNobodyElseHearsAddNoFallbackNotice(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	regAt(t, s, "alpha", repoSubflux)
+	got := mustPost(t, s, addressed("alpha", repoSubflux, "@nobody-here: the fix is on dev"))
+	want := []string{"@nobody-here is not registered; nobody of that name gets this"}
+	if !slices.Equal(got.Notices, want) || got.Delivered != 0 {
+		t.Errorf("notices %q delivered %d, want %q and 0", got.Notices, got.Delivered, want)
+	}
+}
+
 func TestPost_anUnknownDelegateHandleIsReported(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	delegateOf(t, s, "bravo", "rev")
