@@ -19,6 +19,8 @@ func built() fstest.MapFS {
 		"app-ABCDEFGH.js":               {Data: []byte("console.log(1)")},
 		"app-ABCDEFGH.css":              {Data: []byte("p{}")},
 		"assets/check-QRSTUVWX.svg":     {Data: []byte("<svg/>")},
+		"assets/font-ABCDEFGH.woff2":    {Data: []byte("wOF2")},
+		"licenses/ui/NOTICE.md":         {Data: []byte("# Notice")},
 		"licenses/ui/LICENSE":           {Data: []byte("Apache")},
 		".gitkeep":                      {},
 		"assets/.hidden":                {Data: []byte("x")},
@@ -43,7 +45,7 @@ func get(t *testing.T, h http.Handler, method, target string) answer {
 	return answer{status: rec.Code, header: rec.Result().Header, body: string(body)}
 }
 
-// The headers design D10 puts on every answer.
+// The headers every answer carries.
 var wantHeaders = map[string]string{
 	"Content-Security-Policy": "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; " +
 		"connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
@@ -85,10 +87,12 @@ func TestHandler_everyAppAddressAnswersTheIndexRevalidated(t *testing.T) {
 
 func TestHandler_aBundledFileIsCachedForAYear(t *testing.T) {
 	h := webui.Handler(built())
+	// RFC 9239 for JavaScript, RFC 8081 for WOFF2.
 	for target, typ := range map[string]string{
-		"/app-ABCDEFGH.js":           "text/javascript",
-		"/app-ABCDEFGH.css":          "text/css",
-		"/assets/check-QRSTUVWX.svg": "image/svg+xml",
+		"/app-ABCDEFGH.js":            "text/javascript",
+		"/app-ABCDEFGH.css":           "text/css",
+		"/assets/check-QRSTUVWX.svg":  "image/svg+xml",
+		"/assets/font-ABCDEFGH.woff2": "font/woff2",
 	} {
 		t.Run(strings.ReplaceAll(target, "/", "_"), func(t *testing.T) {
 			a := get(t, h, http.MethodGet, target)
@@ -106,13 +110,27 @@ func TestHandler_aBundledFileIsCachedForAYear(t *testing.T) {
 	}
 }
 
-func TestHandler_aNoticeIsRevalidated(t *testing.T) {
-	a := get(t, webui.Handler(built()), http.MethodGet, "/licenses/ui/LICENSE")
-	if a.status != http.StatusOK || a.body != "Apache" {
-		t.Fatalf("%d %q, want 200 and the notice", a.status, a.body)
+func TestHandler_aNoticeIsRevalidatedPlainText(t *testing.T) {
+	for _, target := range []string{"/licenses/ui/LICENSE", "/licenses/ui/NOTICE.md"} {
+		t.Run(strings.ReplaceAll(target, "/", "_"), func(t *testing.T) {
+			a := get(t, webui.Handler(built()), http.MethodGet, target)
+			if a.status != http.StatusOK {
+				t.Fatalf("%d %q, want 200 and the notice", a.status, a.body)
+			}
+			if got := a.header.Get("Cache-Control"); got != "no-cache" {
+				t.Errorf("Cache-Control %q, want no-cache", got)
+			}
+			if got := a.header.Get("Content-Type"); got != "text/plain; charset=utf-8" {
+				t.Errorf("Content-Type %q, want text/plain; charset=utf-8", got)
+			}
+		})
 	}
-	if got := a.header.Get("Cache-Control"); got != "no-cache" {
-		t.Errorf("Cache-Control %q, want no-cache", got)
+}
+
+func TestHandler_aFileOfAnUntypedExtensionIsOctetStream(t *testing.T) {
+	a := get(t, webui.Handler(built()), http.MethodGet, "/assets/sub/inner-ABCDEFGH.txt")
+	if got := a.header.Get("Content-Type"); got != "application/octet-stream" {
+		t.Errorf("Content-Type %q, want application/octet-stream", got)
 	}
 }
 

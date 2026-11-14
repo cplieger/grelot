@@ -14,12 +14,23 @@ import (
 	"time"
 )
 
-// Index is the page every app address answers with.
-const Index = "index.html"
+// indexPage is the page every app address answers with.
+const indexPage = "index.html"
 
 // licenseDir holds the notices of the libraries the bundle ships, under
 // their own names, so they are revalidated rather than kept for a year.
 const licenseDir = "licenses"
+
+// contentTypes types each extension cmd/bundle writes outside licenseDir.
+// It replaces mime.TypeByExtension, which reads the Windows registry and
+// can answer application/javascript for .js. RFC 9239 names text/javascript.
+var contentTypes = map[string]string{
+	".html":  "text/html; charset=utf-8",
+	".js":    "text/javascript; charset=utf-8",
+	".css":   "text/css; charset=utf-8",
+	".svg":   "image/svg+xml",
+	".woff2": "font/woff2",
+}
 
 // notBuilt is the answer to an app address while the bundle is missing.
 const notBuilt = "The web UI was not built: run go run ./cmd/bundle"
@@ -40,9 +51,11 @@ var securityHeaders = map[string]string{
 }
 
 // Handler serves files, a built UI as Files gives it. Every file but
-// Index and the notices is content-addressed by cmd/bundle, so it is
-// cached for a year; Index is revalidated on every load. An app address
-// answers 503 while files holds no Index.
+// the index page and the notices is content-addressed by cmd/bundle, so
+// it is cached for a year; the index page is revalidated on every load.
+// A notice is plain text, a file whose extension contentTypes lacks is
+// application/octet-stream, and an app address answers 503 while files
+// holds no index page.
 func Handler(files fs.FS) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for k, v := range securityHeaders {
@@ -66,7 +79,7 @@ func Handler(files fs.FS) http.Handler {
 }
 
 func isPage(name string) bool {
-	if name == "" || name == "." || name == Index {
+	if name == "" || name == "." || name == indexPage {
 		return true
 	}
 	first, _, _ := strings.Cut(name, "/")
@@ -88,14 +101,15 @@ func servable(name string) bool {
 }
 
 func servePage(w http.ResponseWriter, r *http.Request, files fs.FS) {
-	body, err := fs.ReadFile(files, Index)
+	body, err := fs.ReadFile(files, indexPage)
 	if err != nil {
 		w.Header().Set("Cache-Control", "no-store")
 		http.Error(w, notBuilt, http.StatusServiceUnavailable)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-cache")
-	http.ServeContent(w, r, Index, time.Time{}, bytes.NewReader(body))
+	w.Header().Set("Content-Type", contentTypes[".html"])
+	http.ServeContent(w, r, indexPage, time.Time{}, bytes.NewReader(body))
 }
 
 func serveFile(w http.ResponseWriter, r *http.Request, files fs.FS, name string) {
@@ -113,8 +127,17 @@ func serveFile(w http.ResponseWriter, r *http.Request, files fs.FS, name string)
 	}
 	if strings.HasPrefix(name, licenseDir+"/") {
 		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	} else {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		w.Header().Set("Content-Type", contentType(name))
 	}
 	http.ServeContent(w, r, name, time.Time{}, rs)
+}
+
+func contentType(name string) string {
+	if t, ok := contentTypes[path.Ext(name)]; ok {
+		return t
+	}
+	return "application/octet-stream"
 }

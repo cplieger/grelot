@@ -1,12 +1,16 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/cplieger/grelot/internal/webui"
 )
 
 // fixture writes a front-end package shaped like internal/webui/static-src,
@@ -180,6 +184,27 @@ func TestRun_everyOtherOutputIsContentStamped(t *testing.T) {
 		}
 		if !stamped.MatchString(name) {
 			t.Errorf("%s carries no content stamp", name)
+		}
+	}
+}
+
+// internal/webui.Handler types a file by its extension and serves one it
+// does not know as application/octet-stream, which a browser refuses as a
+// script, a stylesheet or a font.
+func TestRun_internalWebuiTypesEveryOutput(t *testing.T) {
+	o := fixture(t)
+	if err := run(o); err != nil {
+		t.Fatal(err)
+	}
+	h := webui.Handler(os.DirFS(o.out))
+	for _, name := range outputs(t, o.out) {
+		if name == keepName {
+			continue
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/"+name, nil))
+		if got := rec.Header().Get("Content-Type"); rec.Code != http.StatusOK || got == "application/octet-stream" {
+			t.Errorf("%s: %d %q, want 200 and a type of its own", name, rec.Code, got)
 		}
 	}
 }
