@@ -164,7 +164,6 @@ func TestPost_aPathPostNamingNoIdentityWakesEveryRecipient(t *testing.T) {
 	for _, tc := range []struct{ name, body string }{
 		{"no mention", "the fix is on dev"},
 		{"a mention later in the body", "the fix is on dev, thanks @bravo"},
-		{"an unknown name", "@nobody-here: the fix is on dev"},
 		{"only the sender", "@alpha: note to self"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -173,8 +172,9 @@ func TestPost_aPathPostNamingNoIdentityWakesEveryRecipient(t *testing.T) {
 			b := regAt(t, s, "bravo", repoSubflux)
 			c := regAt(t, s, "charlie", repoSubflux)
 			got := mustPost(t, s, addressed("alpha", repoSubflux, tc.body))
-			if got.Delivered != 2 || got.Woken != nil || got.Quiet != 0 {
-				t.Errorf("delivered %d woken %q quiet %d, want 2, none named, 0", got.Delivered, got.Woken, got.Quiet)
+			if got.Delivered != 2 || got.Woken != nil || got.Quiet != 0 || len(got.Notices) != 0 {
+				t.Errorf("delivered %d woken %q quiet %d notices %q, want 2, none named, 0 and no notice",
+					got.Delivered, got.Woken, got.Quiet, got.Notices)
 			}
 			wantQuiet(t, quietOf(t, s, got.Message, map[string]uint64{"bravo": b.ID, "charlie": c.ID}),
 				map[string]bool{"bravo": false, "charlie": false})
@@ -182,17 +182,52 @@ func TestPost_aPathPostNamingNoIdentityWakesEveryRecipient(t *testing.T) {
 	}
 }
 
-func TestPost_anUnknownNameBesideAKnownOneIsIgnored(t *testing.T) {
+func TestPost_anUnknownNameBesideAKnownOneIsReported(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	regAt(t, s, "alpha", repoSubflux)
 	b := regAt(t, s, "bravo", repoSubflux)
 	c := regAt(t, s, "charlie", repoSubflux)
 	got := mustPost(t, s, addressed("alpha", repoSubflux, "@nobody-here @bravo: the fix is on dev"))
-	if !slices.Equal(got.Woken, []string{"bravo"}) || got.Quiet != 1 || len(got.Notices) != 0 {
-		t.Errorf("woken %q quiet %d notices %q, want [bravo], 1 and no notice", got.Woken, got.Quiet, got.Notices)
+	want := []string{"@nobody-here is not registered; nobody of that name gets this"}
+	if !slices.Equal(got.Woken, []string{"bravo"}) || got.Quiet != 1 || !slices.Equal(got.Notices, want) {
+		t.Errorf("woken %q quiet %d notices %q, want [bravo], 1 and %q", got.Woken, got.Quiet, got.Notices, want)
 	}
 	wantQuiet(t, quietOf(t, s, got.Message, map[string]uint64{"bravo": b.ID, "charlie": c.ID}),
 		map[string]bool{"bravo": false, "charlie": true})
+}
+
+func TestPost_onlyUnknownNamesAreReportedAndWakeEveryRecipient(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	regAt(t, s, "alpha", repoSubflux)
+	b := regAt(t, s, "bravo", repoSubflux)
+	c := regAt(t, s, "charlie", repoSubflux)
+	got := mustPost(t, s, addressed("alpha", repoSubflux, "@nobody-here and @gone-dev: the fix is on dev"))
+	want := []string{
+		"@nobody-here is not registered; nobody of that name gets this",
+		"@gone-dev is not registered; nobody of that name gets this",
+		"no name it opens with is registered, so it woke every follower",
+	}
+	if !slices.Equal(got.Notices, want) {
+		t.Errorf("notices %q, want %q", got.Notices, want)
+	}
+	if got.Delivered != 2 || got.Woken != nil || got.Quiet != 0 {
+		t.Errorf("delivered %d woken %q quiet %d, want 2, none named, 0", got.Delivered, got.Woken, got.Quiet)
+	}
+	wantQuiet(t, quietOf(t, s, got.Message, map[string]uint64{"bravo": b.ID, "charlie": c.ID}),
+		map[string]bool{"bravo": false, "charlie": false})
+}
+
+func TestPost_anUnknownDelegateHandleIsReported(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	delegateOf(t, s, "bravo", "rev")
+	regAt(t, s, "alpha", repoSubflux)
+	c := regAt(t, s, "charlie", repoSubflux)
+	got := mustPost(t, s, addressed("alpha", repoSubflux, "@bravo/gone @charlie: check the diff"))
+	want := []string{"@bravo/gone is not registered; nobody of that name gets this"}
+	if !slices.Equal(got.Notices, want) || !slices.Equal(got.Woken, []string{"charlie"}) {
+		t.Errorf("notices %q woken %q, want %q and [charlie]", got.Notices, got.Woken, want)
+	}
+	wantQuiet(t, quietOf(t, s, got.Message, map[string]uint64{"charlie": c.ID}), map[string]bool{"charlie": false})
 }
 
 func TestPost_announceAndDirectPostsIgnoreMentions(t *testing.T) {
@@ -261,8 +296,8 @@ func TestPost_aDelegateHandleIsNamedAsADirectPostReachesIt(t *testing.T) {
 		regAt(t, s, "alpha", repoSubflux)
 		c := regAt(t, s, "charlie", repoSubflux)
 		got := mustPost(t, s, addressed("alpha", repoSubflux, "@bravo/rev: check the diff"))
-		if got.Woken != nil || got.Quiet != 0 {
-			t.Errorf("woken %q quiet %d, want none named and 0 quiet", got.Woken, got.Quiet)
+		if got.Woken != nil || got.Quiet != 0 || len(got.Notices) != 0 {
+			t.Errorf("woken %q quiet %d notices %q, want none named, 0 quiet and no notice", got.Woken, got.Quiet, got.Notices)
 		}
 		if ds := deliveriesTo(t, s, d.ID); len(ds) != 0 {
 			t.Errorf("the delegate got %+v outside its scope", ds)
@@ -285,8 +320,8 @@ func TestPost_aDelegateSenderWakesOnlyTheNamesItsScopeReaches(t *testing.T) {
 
 	t.Run("a name outside its scope reaches it not and wakes everyone", func(t *testing.T) {
 		got := post("@echo: check this")
-		if got.Woken != nil || got.Quiet != 0 {
-			t.Errorf("woken %q quiet %d, want none named and 0 quiet", got.Woken, got.Quiet)
+		if got.Woken != nil || got.Quiet != 0 || len(got.Notices) != 0 {
+			t.Errorf("woken %q quiet %d notices %q, want none named, 0 quiet and no notice", got.Woken, got.Quiet, got.Notices)
 		}
 		if ds := deliveriesTo(t, s, e.ID); len(ds) != 0 {
 			t.Errorf("echo got %+v outside the delegate's scope", ds)
