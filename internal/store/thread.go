@@ -26,10 +26,13 @@ func directKey(a, b uint64) string {
 	return fmt.Sprintf("direct:%d:%d", min(a, b), max(a, b))
 }
 
-// ensureServerThreads creates the announcement and cards threads at the
-// store's first start.
-func (s *Store) ensureServerThreads(ctx context.Context) error {
+// ensureServerRows creates the announcement and cards threads and @user's
+// identity at the store's first start.
+func (s *Store) ensureServerRows(ctx context.Context) error {
 	return s.update(ctx, func(w *wtx) error {
+		if err := w.ensureUser(); err != nil {
+			return err
+		}
 		for _, st := range [...]struct{ key, kind string }{{announceKey, kindAnnounce}, {cardsKey, kindCards}} {
 			th, found, err := w.thread(st.key)
 			if err != nil {
@@ -44,6 +47,24 @@ func (s *Store) ensureServerThreads(ctx context.Context) error {
 			}
 		}
 		return nil
+	})
+}
+
+// ensureUser creates @user's row: live under a zero lease, so it never
+// warns, expires or goes dormant, and with no session, so no agent request
+// resolves to it.
+func (w *wtx) ensureUser() error {
+	_, _, found, err := w.s.t.byName.Lookup(w.r, []byte(UserName))
+	if err != nil || found {
+		return err
+	}
+	id, err := w.s.t.identities.table.NextID(w.tx)
+	if err != nil {
+		return err
+	}
+	return w.putIdentity(id, &identityRow{
+		ID: id, Name: UserName, State: stateLive, RegisteredAt: w.now,
+		Description: "the user, through grelot's web UI", Provider: userProvider,
 	})
 }
 
@@ -66,7 +87,7 @@ func (w *wtx) thread(key string) (threadRow, bool, error) {
 }
 
 // PathThread is a live path thread: its path and when it expires, which is
-// THREAD_TTL after its last post.
+// the retention after its last post.
 type PathThread struct {
 	Expires time.Time
 	Path    string

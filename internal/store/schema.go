@@ -104,6 +104,9 @@ type identityRow struct {
 	Nudges int           `json:"nudges"`
 	// Parent is a delegate's parent identity, 0 on any other row.
 	Parent uint64 `json:"parent,omitempty"`
+	// Key is the machine key that registered the identity, or its
+	// parent's; 0 on @user.
+	Key int64 `json:"key,omitempty"`
 	// Threaded is set for good by the identity's first follow or path
 	// post, whatever it unfollows later.
 	Threaded bool `json:"threaded,omitempty"`
@@ -281,8 +284,9 @@ func newSchema() (*bolttable.Schema, *tables, error) {
 	}
 	silent := bolttable.TableOptions{Silent: true}
 	var t tables
+	// Version 4 resets an older store, whose identities name no Key.
 	ids, err := bolttable.Define(ns, prefixIdentities, "identities",
-		bolttable.Uint64Key{}, bolttable.JSON[identityRow](2), silent)
+		bolttable.Uint64Key{}, bolttable.JSON[identityRow](4), silent)
 	if err != nil {
 		return nil, nil, err
 	}

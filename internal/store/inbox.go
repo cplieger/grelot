@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/cplieger/bolttable"
@@ -223,7 +224,7 @@ func (s *Store) Ack(ctx context.Context, k Keyed, c Caller, upto uint64) (Acked,
 			w.wake(me.ID)
 		}
 		w.touch(&me)
-		if err := s.t.identities.table.Put(w.tx, me.ID, &me); err != nil {
+		if err := w.putIdentity(me.ID, &me); err != nil {
 			return Acked{}, err
 		}
 		v, verr := w.viewOf(&me)
@@ -237,6 +238,82 @@ func (s *Store) Ack(ctx context.Context, k Keyed, c Caller, upto uint64) (Acked,
 	})
 }
 
+// ReadThread marks @user's unread posts up to message upTo in thread's
+// conversation read (a path thread's takes in the live path threads under
+// it, as Conversation shows them): it stamps read_at on each unexpired post
+// delivery there, takes @user out of each receipt watch they name, and moves
+// read over every delivery up to the first unread post left, a later one in
+// thread included. It returns how many it stamped. Refusals: KindForbidden
+// for a caller other than User; KindNotFound for a thread Conversation would
+// refuse.
+func (s *Store) ReadThread(ctx context.Context, c Caller, thread, upTo uint64) (int, error) {
+	if !c.User {
+		return 0, refuse(KindForbidden, "only @user marks a thread read; an agent acks its inbox")
+	}
+	n := 0
+	err := s.update(ctx, func(w *wtx) error {
+		me, err := w.liveAs(c)
+		if err != nil {
+			return err
+		}
+		th, found, err := s.t.threads.table.Get(w.r, thread)
+		if err != nil {
+			return err
+		}
+		if !found || th.Kind == kindCards || th.Lease.due(w.now) {
+			return refuse(KindNotFound, fmt.Sprintf("no conversation %d: it never existed or has expired", thread))
+		}
+		threads, err := s.conversationThreads(w.r, thread, w.now)
+		if err != nil {
+			return err
+		}
+		to, err := w.stampThread(&me, threads, upTo, &n)
+		if err != nil || to <= me.Read {
+			return err
+		}
+		if _, err := w.passRead(&me, to); err != nil {
+			return err
+		}
+		return w.putIdentity(me.ID, &me)
+	})
+	return n, err
+}
+
+// stampThread stamps me's unread post deliveries in threads whose message
+// is at or below upTo, counting them into n, and returns the seq read may
+// move to: the last delivery before the first unexpired post still unread.
+func (w *wtx) stampThread(me *identityRow, threads []uint64, upTo uint64, n *int) (uint64, error) {
+	var rows []deliveryRow
+	to, blocked := me.Read, false
+	err := w.s.t.deliveries.table.Scan(w.r, pastRange(me.ID, me.Read, 0), func(_ []byte, d *deliveryRow) (bool, error) {
+		unread := !d.Lease.due(w.now) && isPost(d.Kind) && d.ReadAt.IsZero()
+		if unread && d.Message <= upTo && slices.Contains(threads, d.Thread) {
+			rows = append(rows, *d)
+			unread = false
+		}
+		blocked = blocked || unread
+		if !blocked {
+			to = d.Seq
+		}
+		return true, nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	for i := range rows {
+		rows[i].ReadAt = w.now
+		w.changedThread(rows[i].Thread)
+		if err := w.s.t.deliveries.table.Put(w.tx, pairKey(me.ID, rows[i].Seq), &rows[i]); err != nil {
+			return 0, err
+		}
+		if err := w.leaveWatch(rows[i].Watch, me, exitRead); err != nil {
+			return 0, err
+		}
+	}
+	*n = len(rows)
+	return to, nil
+}
+
 // stampRead moves me's read to to, sets read_at on the unexpired
 // deliveries it passes, takes me out of each receipt watch they name, and
 // returns them in seq order.
@@ -247,6 +324,7 @@ func (w *wtx) stampRead(me *identityRow, to uint64) ([]deliveryRow, error) {
 	}
 	for i := range rows {
 		rows[i].ReadAt = w.now
+		w.changedThread(rows[i].Thread)
 		if err := w.s.t.deliveries.table.Put(w.tx, pairKey(me.ID, rows[i].Seq), &rows[i]); err != nil {
 			return nil, err
 		}
@@ -312,7 +390,7 @@ func (w *wtx) hold(c Caller) (Held, error) {
 	if out.Identity, err = w.viewOf(&me); err != nil {
 		return out, err
 	}
-	return out, w.s.t.identities.table.Put(w.tx, me.ID, &me)
+	return out, w.putIdentity(me.ID, &me)
 }
 
 // held counts me's deliveries past max(read, shown) and, when one of them

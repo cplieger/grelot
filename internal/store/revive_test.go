@@ -345,7 +345,7 @@ func TestTakeOverHint(t *testing.T) {
 			r := registration(sessA, "subflux-dev", envA())
 			r.Proc = proc
 			mustRegister(t, s, r)
-			got, found, err := s.TakeOverHint(t.Context(), tt.session, tt.proc, tt.caller)
+			got, found, err := s.TakeOverHint(t.Context(), tt.session, 0, tt.proc, tt.caller)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -364,7 +364,7 @@ func TestTakeOverHint_dormantAndLive(t *testing.T) {
 	mustRegister(t, s, r)
 	clk.advance(15 * time.Minute)
 
-	got, found, err := s.TakeOverHint(t.Context(), sessB, proc, envA())
+	got, found, err := s.TakeOverHint(t.Context(), sessB, 0, proc, envA())
 	if err != nil || !found || got.Name != "subflux-dev" || got.State != stateDormant {
 		t.Errorf("hint %q state %q found %v err %v, want the dormant subflux-dev", got.Name, got.State, found, err)
 	}
@@ -372,13 +372,13 @@ func TestTakeOverHint_dormantAndLive(t *testing.T) {
 	fresh := registration(sessB, "subflux-two", envA())
 	fresh.Proc = proc
 	mustRegister(t, s, fresh)
-	got, found, err = s.TakeOverHint(t.Context(), sessC, proc, envA())
+	got, found, err = s.TakeOverHint(t.Context(), sessC, 0, proc, envA())
 	if err != nil || !found || got.Name != "subflux-two" {
 		t.Errorf("hint %q found %v err %v, want the live subflux-two before the dormant one", got.Name, found, err)
 	}
 
 	clk.advance(72 * time.Hour)
-	if got, found, err = s.TakeOverHint(t.Context(), sessC, proc, envA()); err != nil || found && got.Name == "subflux-dev" {
+	if got, found, err = s.TakeOverHint(t.Context(), sessC, 0, proc, envA()); err != nil || found && got.Name == "subflux-dev" {
 		t.Errorf("hint %q found %v err %v, want the purged identity never offered", got.Name, found, err)
 	}
 }

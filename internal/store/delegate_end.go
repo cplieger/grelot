@@ -47,7 +47,7 @@ func (w *wtx) revoke(c Caller, label string) (Revoked, error) {
 		return Revoked{}, refuse(KindNotFound, fmt.Sprintf("no live delegate or unused link is labelled %s: grelot who lists your delegates", label))
 	}
 	if w.seen(&me) {
-		err = w.s.t.identities.table.Put(w.tx, me.ID, &me)
+		err = w.putIdentity(me.ID, &me)
 	}
 	return out, err
 }
@@ -97,12 +97,19 @@ func (w *wtx) revokeLink(me *identityRow, label string) (bool, error) {
 // SubagentStop ends the session's own identity when that is a delegate
 // registered from a session of its own. It sits outside the delegate gate
 // and changes nothing for any other session, since hosts report their
-// internal agents' stops too and a parent's session names no subagent.
-func (s *Store) SubagentStop(ctx context.Context, session string) error {
+// internal agents' stops too and a parent's session names no subagent. A
+// session another live key's identity holds is KindForbidden.
+func (s *Store) SubagentStop(ctx context.Context, session string, key int64) error {
 	return s.update(ctx, func(w *wtx) error {
 		own, found, err := w.identityBy(s.t.bySession, session)
-		if err != nil || !found || own.State != stateLive || own.Parent == 0 {
+		if err != nil || !found {
 			return err
+		}
+		if kerr := w.s.bound(own.Key, key); kerr != nil {
+			return kerr
+		}
+		if own.State != stateLive || own.Parent == 0 {
+			return nil
 		}
 		return w.endDelegate(&own, endSubagent)
 	})

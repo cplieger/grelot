@@ -30,7 +30,7 @@ func TestHub_aCommitBetweenTheReadAndTheBlockWakesTheWait(t *testing.T) {
 
 	wake, release := h.srv.hub.take(bravo)
 	defer release()
-	page, err := h.store.Inbox(t.Context(), store.Caller{Session: sessB}, 10)
+	page, err := h.store.Inbox(t.Context(), store.Caller{Key: h.keyID(), Session: sessB}, 10)
 	if err != nil {
 		t.Fatalf("Inbox: %v", err)
 	}

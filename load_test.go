@@ -29,13 +29,15 @@ import (
 	"time"
 
 	"github.com/cplieger/go/slogx"
+	"github.com/cplieger/grelot/internal/auth/authtest"
 	"github.com/cplieger/grelot/internal/server"
 	"github.com/cplieger/grelot/internal/store"
 )
 
 // go test -tags loadtest -run TestLoad -timeout 60m -v . starts the server
 // as a child process, so the memory it reads is the server's alone, and
-// drives it at the API's limits until the store refuses posts. Optional:
+// drives it at the API's limits until the store refuses posts, four agents
+// to each machine key. Optional:
 // LOAD_IDENTITIES (100), LOAD_STORE_MAX_BYTES (the default ceiling),
 // LOAD_GOMEMLIMIT (no limit), LOAD_TURN (20s between inbox reads),
 // LOAD_DEADLINE (30m), and the paths LOAD_REPORT (JSON) and
@@ -43,7 +45,6 @@ import (
 
 const (
 	loadServeEnv = "GRELOT_LOAD_SERVE"
-	loadToken    = "load-token"
 	// The API's limits: 120 characters of subject, 64 KiB of body, 30
 	// posts a minute per identity, 100 entries an inbox page, 55 s waits.
 	loadSubjectLen = 120
@@ -52,6 +53,11 @@ const (
 	loadInboxLimit = 100
 	loadWait       = "55s"
 	loadRepos      = 10
+	// loadAgentsPerKey is how many agents share one machine key. Each sends
+	// about one request a second (a post every loadPostEvery, its inbox
+	// pages, acks and re-held wait), so 16 stay under a key's 20 a second;
+	// their 16 standing waits sit far under its 128.
+	loadAgentsPerKey = 16
 )
 
 func TestMain(m *testing.M) {
@@ -61,8 +67,8 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// serveForLoad is run's serve on a free loopback port, so the parent
-// reads the address from the listening line.
+// serveForLoad is run's serve on free loopback ports, so the parent reads
+// the addresses from the listening line.
 func serveForLoad() int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer stop()
@@ -81,7 +87,7 @@ func serveForLoad() int {
 		}
 		defer pprof.StopCPUProfile()
 	}
-	if err := serve(ctx, &cfg, "127.0.0.1:0", logger); err != nil {
+	if err := serve(ctx, &cfg, listeners{api: "127.0.0.1:0", ops: "127.0.0.1:0"}, logger); err != nil {
 		logger.Error("server stopped", "error", err)
 		return 1
 	}
@@ -147,8 +153,8 @@ func TestLoad(t *testing.T) {
 	rep := &loadReport{Identities: n, MaxBytes: maxBytes, GOMEMLIMIT: os.Getenv("LOAD_GOMEMLIMIT")}
 	rep.HostLoad[0] = hostLoad()
 
-	child := startLoadServer(t, maxBytes, rep.GOMEMLIMIT)
-	c := &loadClient{base: "http://" + child.addr, http: &http.Client{
+	child := startLoadServer(t, maxBytes, rep.GOMEMLIMIT, (n+loadAgentsPerKey-1)/loadAgentsPerKey)
+	c := &loadClient{base: "http://" + child.addrs.api, ops: "http://" + child.addrs.ops, keys: map[string]string{}, http: &http.Client{
 		Timeout:   90 * time.Second,
 		Transport: &http.Transport{MaxIdleConnsPerHost: 4 * n, DisableCompression: true},
 	}}
@@ -162,6 +168,7 @@ func TestLoad(t *testing.T) {
 	agents := make([]*loadAgent, n)
 	for i := range agents {
 		agents[i] = &loadAgent{i: i, name: fmt.Sprintf("agent-%03d", i), session: "load:session-" + strconv.Itoa(i)}
+		c.keys[agents[i].session] = child.keys[i/loadAgentsPerKey]
 		agents[i].register(t, c, &cnt)
 	}
 
@@ -316,7 +323,12 @@ func (c *loadCounts) miss(request string, status int) {
 
 type loadClient struct {
 	http *http.Client
+	// keys is each agent session's machine key, written before the first
+	// request.
+	keys map[string]string
 	base string
+	// ops is the operations listener's URL, for /metrics and /healthz.
+	ops string
 }
 
 // do sends one request as session, or with no session when it is empty,
@@ -365,7 +377,7 @@ func (c *loadClient) send(ctx context.Context, method, path, session, key string
 	if err != nil {
 		return 0, "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+loadToken)
+	req.Header.Set("Authorization", "Bearer "+c.keys[session])
 	req.Header.Set("Grelot-Version", "v1.1.0")
 	if session != "" {
 		req.Header.Set("Grelot-Session", session)
@@ -391,10 +403,25 @@ func (c *loadClient) send(ctx context.Context, method, path, session, key string
 	return resp.StatusCode, refusal.Code, err
 }
 
+// healthz sends a bare GET /healthz to the operations listener.
+func (c *loadClient) healthz(ctx context.Context) (int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.ops+"/healthz", http.NoBody)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	return resp.StatusCode, nil
+}
+
 // scrape reads every series of /metrics, its labels included as the page
 // prints them.
 func (c *loadClient) scrape(ctx context.Context) map[string]float64 {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/metrics", http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.ops+"/metrics", http.NoBody)
 	if err != nil {
 		return nil
 	}
@@ -616,13 +643,15 @@ func (a *loadAgent) postOnce(ctx context.Context, c *loadClient, cnt *loadCounts
 type loadServer struct {
 	cmd    *exec.Cmd
 	exited chan error
-	addr   string
+	addrs  listeners
+	// keys are the machine keys the server admits.
+	keys []string
 	// errorLines is the server's error-level lines, complete once exited
 	// has sent.
 	errorLines []string
 }
 
-func startLoadServer(t *testing.T, maxBytes int64, gomemlimit string) *loadServer {
+func startLoadServer(t *testing.T, maxBytes int64, gomemlimit string, keys int) *loadServer {
 	t.Helper()
 	exe, err := os.Executable()
 	if err != nil {
@@ -633,14 +662,16 @@ func startLoadServer(t *testing.T, maxBytes int64, gomemlimit string) *loadServe
 		t.Fatal(err)
 	}
 	env := slices.DeleteFunc(os.Environ(), func(kv string) bool {
-		for _, p := range []string{"GOMEMLIMIT=", "GRELOT_", "STORE_", "PROVIDERS_DIR=", "THREAD_TTL=", "DORMANT_TTL=", "RESERVATION_MAX_TTL="} {
+		for _, p := range []string{"GOMEMLIMIT=", "GRELOT_", "STORE_", "ACCOUNTS_PATH=", "PROVIDERS_DIR=", "LISTEN_ADDR=", "OPS_LISTEN_ADDR=", "THREAD_TTL=", "DORMANT_TTL=", "RESERVATION_MAX_TTL=", "PUBLIC_URL=", "TRUSTED_PROXIES=", "OIDC_", "ADMIN_SOCKET="} {
 			if strings.HasPrefix(kv, p) {
 				return true
 			}
 		}
 		return false
 	})
-	env = append(env, loadServeEnv+"=1", "GRELOT_TOKEN="+loadToken, "STORE_PATH="+filepath.Join(dir, "grelot.db"),
+	seeded := authtest.SeedKeys(t, filepath.Join(dir, "accounts.db"), keys)
+	env = append(env, loadServeEnv+"=1", "PUBLIC_URL=http://localhost:9737", "STORE_PATH="+filepath.Join(dir, "grelot.db"),
+		"ACCOUNTS_PATH="+filepath.Join(dir, "accounts.db"), "ADMIN_SOCKET="+filepath.Join(dir, "admin.sock"),
 		"STORE_MAX_BYTES="+strconv.FormatInt(maxBytes, 10), "PROVIDERS_DIR="+filepath.Join(dir, "providers"))
 	if gomemlimit != "" {
 		env = append(env, "GOMEMLIMIT="+gomemlimit)
@@ -654,15 +685,15 @@ func startLoadServer(t *testing.T, maxBytes int64, gomemlimit string) *loadServe
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	s := &loadServer{cmd: cmd, exited: make(chan error, 1)}
-	addr := make(chan string, 1)
+	s := &loadServer{cmd: cmd, exited: make(chan error, 1), keys: seeded}
+	addrs := make(chan listeners, 1)
 	go func() {
 		sc := bufio.NewScanner(stderr)
 		sc.Buffer(make([]byte, 64<<10), 1<<20)
 		for sc.Scan() {
 			line := sc.Text()
 			if m := listeningAddr.FindStringSubmatch(line); m != nil {
-				addr <- m[1]
+				addrs <- listeners{api: m[1], ops: m[2]}
 			}
 			if strings.Contains(line, `"level":"ERROR"`) {
 				s.errorLines = append(s.errorLines, line)
@@ -672,7 +703,7 @@ func startLoadServer(t *testing.T, maxBytes int64, gomemlimit string) *loadServe
 	}()
 	t.Cleanup(func() { _ = cmd.Process.Kill() })
 	select {
-	case s.addr = <-addr:
+	case s.addrs = <-addrs:
 	case err := <-s.exited:
 		t.Fatalf("server exited before listening: %v", err)
 	case <-time.After(30 * time.Second):
@@ -702,7 +733,7 @@ func (s *loadServer) sample(ctx context.Context, c *loadClient, rep *loadReport)
 		page := c.scrape(ctx)
 		rep.PeakHeapInuse = math.Max(rep.PeakHeapInuse, page["go_memstats_heap_inuse_bytes"])
 		rep.PeakGoroutines = math.Max(rep.PeakGoroutines, page["go_goroutines"])
-		if code, err := c.do(ctx, http.MethodGet, "/healthz", "", nil, nil); ctx.Err() == nil && (err != nil || code != http.StatusOK) {
+		if code, err := c.healthz(ctx); ctx.Err() == nil && (err != nil || code != http.StatusOK) {
 			rep.HealthzFailures++
 		}
 	}

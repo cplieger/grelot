@@ -60,8 +60,12 @@ func TestPost_logLineIsOneRedactedCappedLine(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegister(sessA, "sender")
 	h.mustRegister(sessB, "reader")
-	body := "token " + testToken + "\nsecond line " + strings.Repeat("x", 5000)
-	if r := h.as(sessA, http.MethodPost, "/v1/posts", postBody(map[string]any{"agent": "reader"}, "with "+testToken, body)); r.status != http.StatusCreated {
+	key, err := h.machineKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := "token " + key + "\nsecond line " + strings.Repeat("x", 5000)
+	if r := h.as(sessA, http.MethodPost, "/v1/posts", postBody(map[string]any{"agent": "reader"}, "with "+key, body)); r.status != http.StatusCreated {
 		t.Fatalf("post: %d %s", r.status, r.raw)
 	}
 	lines := h.logs.lines(slog.LevelInfo, "message posted")
@@ -77,8 +81,8 @@ func TestPost_logLineIsOneRedactedCappedLine(t *testing.T) {
 		t.Errorf("to = %q, want the direct post's recipient, reader", attrs["to"])
 	}
 	for _, k := range []string{"subject", "body"} {
-		if strings.Contains(attrs[k], testToken) {
-			t.Errorf("%s carries the bearer token: %q", k, attrs[k])
+		if strings.Contains(attrs[k], key) {
+			t.Errorf("%s carries the request's machine key: %q", k, attrs[k])
 		}
 	}
 	if b := attrs["body"]; len(b) > logTextCap || strings.Contains(b, "\n") || !strings.HasPrefix(b, "token ") {

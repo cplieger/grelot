@@ -65,8 +65,10 @@ type request struct {
 type testServer struct {
 	clock *clock
 	URL   string
-	mu    sync.Mutex
-	reqs  []request
+	// Key is the machine key the server admits.
+	Key  string
+	mu   sync.Mutex
+	reqs []request
 }
 
 func (ts *testServer) count() int {

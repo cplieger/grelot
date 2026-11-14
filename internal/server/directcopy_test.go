@@ -107,7 +107,7 @@ func TestPost_aReplyToAQuestionOverAnHourOldHintsNothing(t *testing.T) {
 }
 
 func TestPost_aReplyToAQuestionTheThreadStillHoldsHintsNothing(t *testing.T) {
-	h := newHarnessWith(t, store.Options{ThreadTTL: 168 * time.Hour})
+	h := newHarnessWith(t, store.Options{Retention: func() time.Duration { return 168 * time.Hour }})
 	sessions := []string{sessA, sessB, sessC}
 	h.mustRegister(sessA, "answerer")
 	h.mustRegister(sessB, "early")
@@ -125,7 +125,7 @@ func TestPost_aReplyToAQuestionTheThreadStillHoldsHintsNothing(t *testing.T) {
 	h.postNotices(sessA, agent("late"), "Re: the schema")
 	h.clk.advance(5 * time.Minute)
 	if n := h.postNotices(sessA, agent("early"), "Re: the schema"); copyHinted(n) {
-		t.Errorf("answer to a 96 h old question under a 168 h THREAD_TTL: notices = %q, want no hint for a reply", n)
+		t.Errorf("answer to a 96 h old question under a 168 h retention: notices = %q, want no hint for a reply", n)
 	}
 }
 

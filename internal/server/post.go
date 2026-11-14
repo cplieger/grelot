@@ -91,7 +91,7 @@ func (s *Server) post(r *http.Request, c store.Caller, k store.Keyed) (status in
 	if serr == nil {
 		at, retry, ok := s.posts.take(key, s.now())
 		if !ok {
-			s.metrics.PostsRefused.Inc(obs.RefusedRateLimited)
+			s.refusedPost(obs.RefusedRateLimited, sender)
 			return 0, nil, &apiError{
 				status: http.StatusTooManyRequests, code: "rate_limited", retryAfter: retry,
 				msg: "over " + strconv.Itoa(postsPerMinute) + " posts a minute from this identity and its delegates: post again in " + retry.String(),
@@ -112,9 +112,10 @@ func (s *Server) post(r *http.Request, c store.Caller, k store.Keyed) (status in
 		s.postRefused(err, sender)
 		return 0, nil, err
 	case !replayed:
-		s.log.Info("message posted", "thread_kind", kind, "path", s.redact(to.Path), "to", to.Agent, "sender", got.Identity.Name,
+		key := bearer(r)
+		s.log.Info("message posted", "thread_kind", kind, "path", s.redact(to.Path, key), "to", to.Agent, "sender", got.Identity.Name,
 			"message", got.Message, "recipients", got.Delivered, "woken", got.Delivered-got.Quiet, "same_environment", got.SameEnvironment,
-			"other", got.Other, "subject", s.redact(req.Subject), "body", s.redact(req.Body))
+			"other", got.Other, "subject", s.redact(req.Subject, key), "body", s.redact(req.Body, key))
 	}
 	return http.StatusCreated, postOut(&got), nil
 }
@@ -135,11 +136,17 @@ func (s *Server) postRefused(err error, sender string) {
 	switch {
 	case !ok:
 	case se.Kind == store.KindForbidden:
-		s.metrics.PostsRefused.Inc(obs.RefusedScope)
+		s.refusedPost(obs.RefusedScope, sender)
 		s.log.Info("post refused", "sender", sender, "rule", s.redact(se.Msg))
 	case se.Kind == store.KindFull:
-		s.metrics.PostsRefused.Inc(obs.RefusedStoreFull)
+		s.refusedPost(obs.RefusedStoreFull, sender)
 	}
+}
+
+// refusedPost counts a post refused for reason and records it as an event.
+func (s *Server) refusedPost(reason, sender string) {
+	s.metrics.PostsRefused.Inc(reason)
+	s.metrics.Events.Add(obs.Event{At: s.now(), Kind: obs.EventPostRefused, Detail: reason, Agent: sender})
 }
 
 // postTarget reads to: "announce", {"path": p} or {"agent": name}.
@@ -182,9 +189,10 @@ func notifyRead(raw json.RawMessage) (store.NotifyRead, error) {
 }
 
 // redact makes client text fit a log line: one line, at most logTextCap
-// bytes, with the bearer token and every door secret cut out.
-func (s *Server) redact(text string) string {
-	out, _ := textsafe.RedactSingleLineCapped(text, logTextCap, "…", s.needles...)
+// bytes, with every door secret and each of more cut out.
+func (s *Server) redact(text string, more ...string) string {
+	needles := append(slices.Clip(s.needles), slices.DeleteFunc(more, func(m string) bool { return m == "" })...)
+	out, _ := textsafe.RedactSingleLineCapped(text, logTextCap, "…", needles...)
 	return out
 }
 

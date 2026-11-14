@@ -59,7 +59,7 @@ type PeerQueued struct {
 	Place int
 }
 
-// Who lists live identities, by name, as c's identity sees them, each
+// Who lists live identities but @user, by name, as c's identity sees them, each
 // live parent's delegates nested under it and nowhere else; q filters the
 // parents. A session with no live identity sees every relation as unknown.
 // Refusals: KindInvalid for a filter path that is not canonical or a repo
@@ -89,7 +89,7 @@ func (s *Store) Who(ctx context.Context, c Caller, query *WhoQuery) ([]Peer, err
 		delegates := map[uint64][]identityRow{}
 		err = s.t.identities.table.Scan(r, bolttable.Range{}, func(_ uint64, v *identityRow) (bool, error) {
 			switch v = settled(v, now, s.dormantTTL); {
-			case v == nil:
+			case v == nil, isUser(v):
 			case v.Parent != 0:
 				delegates[v.Parent] = append(delegates[v.Parent], *v)
 			case s.whoShows(&q, v, caller.where, held[v.ID], queued[v.ID]):

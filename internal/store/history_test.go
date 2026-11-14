@@ -484,7 +484,7 @@ func TestHistory_skipsExpiredRowsTheSweepHasNotReached(t *testing.T) {
 	regAt(t, s, "bravo", "/workspace/bravo")
 	say(t, s, "alpha", Target{Agent: "bravo"}, "old")
 	say(t, s, "bravo", Target{Path: "/workspace/bravo/x"}, "own-old")
-	clk.advance(shortThreadTTL)
+	clk.advance(shortRetention)
 	say(t, s, "alpha", Target{Agent: "bravo"}, "new")
 
 	wantSubjects(t, "after the first two expired", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: testNow}), "new")
@@ -518,7 +518,7 @@ func TestHistory_needsALiveIdentity(t *testing.T) {
 func TestHistory_clearsEnded(t *testing.T) {
 	s, _ := openClockStore(t)
 	bravo := regAt(t, s, "bravo", "/workspace/bravo")
-	if err := s.EndSession(t.Context(), sess("bravo")); err != nil {
+	if err := s.EndSession(t.Context(), sess("bravo"), 0); err != nil {
 		t.Fatal(err)
 	}
 	mustHistory(t, s, sess("bravo"), HistoryQuery{})
@@ -530,7 +530,7 @@ func TestHistory_clearsEnded(t *testing.T) {
 func TestThreads_clearsEnded(t *testing.T) {
 	s, _ := openClockStore(t)
 	bravo := regAt(t, s, "bravo", "/workspace/bravo")
-	if err := s.EndSession(t.Context(), sess("bravo")); err != nil {
+	if err := s.EndSession(t.Context(), sess("bravo"), 0); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Threads(t.Context(), Caller{Session: sess("bravo")}, ""); err != nil {

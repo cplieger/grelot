@@ -304,7 +304,7 @@ func TestWait_aHoldThatShowsTheMailLeavesTheWaitHolding(t *testing.T) {
 		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
 		synctest.Wait()
 		h.srv.presence.turnClosed(id)
-		if _, err := h.store.Hold(t.Context(), store.Caller{Session: sessA, Self: true}); err != nil {
+		if _, err := h.store.Hold(t.Context(), store.Caller{Key: h.keyID(), Session: sessA, Self: true}); err != nil {
 			t.Fatalf("Hold: %v", err)
 		}
 		if r := wait.answer(); r.status != http.StatusNoContent {
@@ -376,7 +376,7 @@ func TestWait_sessionEndedAnswersEndedAndLeavesItSet(t *testing.T) {
 			t.Fatalf("session_end: %d %s", r.status, r.raw)
 		}
 		ended := func() bool {
-			id, err := h.store.Watcher(t.Context(), store.Caller{Session: sessA, Self: true})
+			id, err := h.store.Watcher(t.Context(), store.Caller{Key: h.keyID(), Session: sessA, Self: true})
 			if err != nil {
 				t.Fatalf("Watcher: %v", err)
 			}
@@ -521,7 +521,7 @@ func TestRelease_answersEveryHeldWaitAtOnce(t *testing.T) {
 		inTurn := h.inTurn(sessA, 55*time.Second)
 		synctest.Wait()
 		start := time.Now()
-		h.srv.Release()
+		h.srv.Release(t.Context())
 		if r := standing.answer(); r.status != http.StatusServiceUnavailable || r.str("code") != "shutting_down" || time.Since(start) != 0 {
 			t.Errorf("the held standing wait = %d %s after %v, want 503 shutting_down at once", r.status, r.raw, time.Since(start))
 		}

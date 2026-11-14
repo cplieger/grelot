@@ -49,8 +49,8 @@ type NudgeState struct {
 }
 
 // Nudging is identity id's nudge state now. found is false when id has no
-// live identity. A delegate, which is pull only, and a session the
-// SessionEnd report closed are never nudged.
+// live identity. A delegate, which is pull only, a session the SessionEnd
+// report closed and @user are never nudged.
 func (s *Store) Nudging(ctx context.Context, id uint64) (out NudgeState, found bool, err error) {
 	err = s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
@@ -88,7 +88,7 @@ func (s *Store) RecordNudge(ctx context.Context, n *Nudge, via NudgeVia) (got Nu
 		got.Seq = n.Seq
 		recorded = true
 		w.recordNudge(&me, &got, via)
-		return w.s.t.identities.table.Put(w.tx, me.ID, &me)
+		return w.putIdentity(me.ID, &me)
 	})
 	return got, recorded, err
 }
@@ -105,9 +105,13 @@ func (w *wtx) recordNudge(me *identityRow, n *Nudge, via NudgeVia) {
 	if n.Attempt > 1 {
 		attempt = obs.AttemptRepeat
 	}
+	name, at := me.Name, w.now
 	w.tx.AfterCommit(func() {
 		w.s.m.Nudges.Inc(string(via), attempt)
 		w.s.m.NudgeDelay.Observe(delay.Seconds(), string(via))
+		if attempt == obs.AttemptRepeat {
+			w.s.m.Events.Add(obs.Event{At: at, Kind: obs.EventNudgeRepeat, Detail: string(via), Agent: name})
+		}
 	})
 }
 
@@ -117,7 +121,7 @@ func (w *wtx) recordNudge(me *identityRow, n *Nudge, via NudgeVia) {
 // is unread, since that warning is sent once.
 func (s *Store) nudging(r *bolttable.ReadTx, me *identityRow, now time.Time) (NudgeState, error) {
 	var out NudgeState
-	if me.Parent != 0 || me.Ended {
+	if me.Parent != 0 || me.Ended || isUser(me) {
 		return out, nil
 	}
 	outstanding := me.Read < me.Nudged

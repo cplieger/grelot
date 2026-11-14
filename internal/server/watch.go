@@ -41,14 +41,20 @@ var errReplaced = &apiError{
 
 // standingWait is POST /v1/events/wait: it holds until a nudge for the
 // caller's identity goes out, sending a due one itself unless host push
-// works, and returns it; 204 when wait passes with none, and 410 replaced
-// once a newer standing wait of the caller's session opens.
+// works, and returns it; 204 when wait passes with none, 410 replaced
+// once a newer standing wait of the caller's session opens, and 429 past
+// a held-wait cap.
 func (s *Server) standingWait(r *http.Request, c store.Caller) (status int, body any, err error) {
 	ctx := r.Context()
 	id, wait, err := s.watchFor(r, c)
 	if err != nil {
 		return 0, nil, err
 	}
+	free, err := s.holdWait(c.Key)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer free()
 	t := s.presence.opened(id, c.Session)
 	defer func() { s.presence.closed(t, s.now()) }()
 	deadline := s.now().Add(wait)

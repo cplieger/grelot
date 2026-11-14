@@ -13,6 +13,9 @@ import (
 	"github.com/cplieger/bolttable"
 )
 
+// everyPost bounds a ReadThread past every post a test makes.
+const everyPost = ^uint64(0)
+
 // testNow is the fixed clock every store test starts from.
 var testNow = time.Date(2026, 11, 4, 5, 39, 0, 0, time.UTC)
 
@@ -85,6 +88,11 @@ func (c *clock) set(t time.Time) {
 }
 
 func (c *clock) advance(d time.Duration) { c.set(c.now().Add(d)) }
+
+// retainFor is an Options.Retention that answers d.
+func retainFor(d time.Duration) func() time.Duration {
+	return func() time.Duration { return d }
+}
 
 // openClockStore opens a store in a fresh directory on a clock the test
 // moves, starting at testNow.

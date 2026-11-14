@@ -72,12 +72,12 @@ func TestVersion(t *testing.T) {
 			t.Errorf("stdout %q, want the 404's version", out)
 		}
 	})
-	t.Run("a refused token says why the server's version is unknown", func(t *testing.T) {
+	t.Run("a refused key says why the server's version is unknown", func(t *testing.T) {
 		ts := newServer(t)
 		a := newAgent(t, ts, "s-1", "")
 		writeClientConfig(t, a.env.ConfigDir, "server: "+ts.URL+"\ntoken: wrong\n")
 		a.env.Build = "v1.1.0"
-		if out := a.must("version"); out != "grelot client v1.1.0\ngrelot server unknown: a valid bearer token is required: set token in the grelot client config\n" {
+		if out := a.must("version"); out != "grelot client v1.1.0\ngrelot server unknown: a valid machine key is required: set token in the grelot client config to a key from grelot key create\n" {
 			t.Errorf("stdout %q, want the 401's reason", out)
 		}
 	})

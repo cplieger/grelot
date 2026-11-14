@@ -66,6 +66,8 @@ func TestNew_servesEverySeriesOfTheSeriesList(t *testing.T) {
 		{"grelot_providers_invalid", measure.TypeGauge, nil},
 		{"grelot_nudges_total", measure.TypeCounter, []string{"via", "attempt"}},
 		{"grelot_nudge_delay_seconds", measure.TypeHistogram, []string{"via"}},
+		{"grelot_auth_failures_total", measure.TypeCounter, []string{"reason"}},
+		{"grelot_requests_limited_total", measure.TypeCounter, []string{"limit"}},
 		{"grelot_identities", measure.TypeGauge, []string{"state"}},
 		{"grelot_identities_online", measure.TypeGauge, nil},
 		{"grelot_threads", measure.TypeGauge, []string{"kind"}},

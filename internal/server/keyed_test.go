@@ -16,17 +16,31 @@ import (
 	"github.com/cplieger/grelot/internal/store"
 )
 
-// slowCommits is a store Woke hook that, once armed, holds each commit
-// that wakes an identity for delay before the write returns.
+// slowCommits holds each write for delay once armed: as a store Woke hook
+// after a commit that wakes an identity, as a Retention hook before any
+// write commits.
 type slowCommits struct {
 	armed atomic.Bool
 	delay time.Duration
 }
 
+// slowCommitDeadline is a request's deadline over slowCommits, and
+// slowCommitDelay the hold past it: the deadline leaves the key check and
+// the write a second to reach the commit on a loaded host.
+const (
+	slowCommitDeadline = time.Second
+	slowCommitDelay    = 1500 * time.Millisecond
+)
+
 func (s *slowCommits) woke([]uint64) {
 	if s.armed.Load() {
 		time.Sleep(s.delay)
 	}
+}
+
+func (s *slowCommits) retention() time.Duration {
+	s.woke(nil)
+	return store.DefaultRetention
 }
 
 // pauseNext is a server clock that, once armed, holds the next request to
@@ -86,15 +100,18 @@ func (h *harness) postsTo(session, subject string) int {
 }
 
 func TestKeyedPost_pastItsDeadlineIs503TimeoutWithNothingStored(t *testing.T) {
-	h := newInProcessHarness(t, store.Options{})
+	slow := &slowCommits{delay: slowCommitDelay}
+	h := newInProcessHarness(t, store.Options{Retention: slow.retention})
 	h.mustRegister(sessA, "sender")
 	h.mustRegister(sessB, "reader")
-	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+	slow.armed.Store(true)
+	ctx, cancel := context.WithTimeout(t.Context(), slowCommitDeadline)
 	defer cancel()
 
 	r := h.requestCtx(ctx, http.MethodPost, "/v1/posts", postBody(map[string]any{"agent": "reader"}, "late", "a body"),
 		map[string]string{headerSession: sessA})
 
+	slow.armed.Store(false)
 	if r.status != http.StatusServiceUnavailable || r.str("code") != "timeout" || r.header.Get("Retry-After") != "1" {
 		t.Errorf("post past its deadline: %d Retry-After %q %s, want 503 timeout after 1 s", r.status, r.header.Get("Retry-After"), r.raw)
 	}
@@ -107,12 +124,12 @@ func TestKeyedPost_pastItsDeadlineIs503TimeoutWithNothingStored(t *testing.T) {
 }
 
 func TestKeyedPost_committedAsItsDeadlinePassesIs201WithItsStatusLine(t *testing.T) {
-	slow := &slowCommits{delay: 300 * time.Millisecond}
+	slow := &slowCommits{delay: slowCommitDelay}
 	h := newInProcessHarness(t, store.Options{Woke: slow.woke})
 	h.mustRegister(sessA, "sender")
 	h.mustRegister(sessB, "reader")
 	slow.armed.Store(true)
-	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), slowCommitDeadline)
 	defer cancel()
 
 	r := h.requestCtx(ctx, http.MethodPost, "/v1/posts", postBody(map[string]any{"agent": "reader"}, "slow", "a body"),
@@ -131,13 +148,13 @@ func TestKeyedPost_committedAsItsDeadlinePassesIs201WithItsStatusLine(t *testing
 }
 
 func TestEventHold_committedAsItsDeadlinePassesIs200(t *testing.T) {
-	slow := &slowCommits{delay: 300 * time.Millisecond}
+	slow := &slowCommits{delay: slowCommitDelay}
 	h := newInProcessHarness(t, store.Options{Woke: slow.woke})
 	h.mustRegister(sessA, "sender")
 	h.mustRegister(sessB, "reader")
 	h.directPost(sessA, "reader")
 	slow.armed.Store(true)
-	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), slowCommitDeadline)
 	defer cancel()
 
 	r := h.requestCtx(ctx, http.MethodPost, "/v1/events/hold", map[string]any{"for": "stop"}, map[string]string{headerSession: sessB})

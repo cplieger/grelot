@@ -181,7 +181,7 @@ func (s *Server) lifecycle(r *http.Request, c store.Caller) (status int, body an
 	ctx := r.Context()
 	switch req.Event {
 	case eventSubagentStop:
-		err = s.store.SubagentStop(ctx, c.Session)
+		err = s.store.SubagentStop(ctx, c.Session, c.Key)
 	case eventSessionEnd, eventTurnEnd:
 		if req.AgentID != "" {
 			break
@@ -192,7 +192,7 @@ func (s *Server) lifecycle(r *http.Request, c store.Caller) (status int, body an
 		}
 		if req.Event == eventTurnEnd {
 			s.endTurn(me.ID)
-		} else if err = s.store.EndSession(ctx, c.Session); err == nil {
+		} else if err = s.store.EndSession(ctx, c.Session, c.Key); err == nil {
 			s.rewait(me.ID)
 		}
 	default:

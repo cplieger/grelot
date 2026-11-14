@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"maps"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cplieger/go/httpserver"
+	"github.com/cplieger/grelot/internal/auth/authtest"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
 	"go.yaml.in/yaml/v4"
@@ -35,6 +37,7 @@ var shippedAlerts = map[string]string{
 	"GrelotPushFailing":       "",
 	"GrelotPushDoorOff":       "",
 	"GrelotProviderInvalid":   "",
+	"GrelotAuthFailures":      "",
 }
 
 type ruleFile struct {
@@ -94,12 +97,12 @@ func TestAlerts_aShippedAlertLeavesOnlyByARecordedDecision(t *testing.T) {
 func servedSeries(t *testing.T) map[string]bool {
 	t.Helper()
 	m := obs.New()
-	st, srv, err := build(testConfig(t), slog.New(slog.DiscardHandler), m)
+	st, srv, err := build(testConfig(t), nil, authtest.New(t, nil), slog.New(slog.DiscardHandler), m)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		srv.Release()
+		srv.Release(context.WithoutCancel(t.Context()))
 		st.Close()
 	})
 	const door = "provider/door"
@@ -111,7 +114,7 @@ func servedSeries(t *testing.T) map[string]bool {
 	m.RecordHTTP(httpserver.RequestMetric{Path: "/v1/me", Status: http.StatusOK, Latency: time.Millisecond})
 
 	rec := httptest.NewRecorder()
-	srv.HTTPServer().Handler.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", http.NoBody))
+	srv.OpsHTTPServer().Handler.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", http.NoBody))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /metrics: %d", rec.Code)
 	}

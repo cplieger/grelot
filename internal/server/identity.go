@@ -88,7 +88,7 @@ func (s *Server) register(r *http.Request, c store.Caller, k store.Keyed) (statu
 		return 0, nil, derr
 	}
 	got, replayed, err := s.store.Register(r.Context(), k, &store.Registration{
-		Where: req.Where, Session: c.Session, Link: req.Delegate,
+		Where: req.Where, Session: c.Session, Key: c.Key, Link: req.Delegate,
 		Host: req.Host, OS: req.OS, Arch: req.Arch, Proc: req.Proc,
 		Fields: store.Fields{Name: req.Name, Description: req.Description, Paths: req.Paths},
 		TTL:    time.Duration(req.TTL), TakeOver: req.TakeOver, Self: c.Self,
@@ -143,7 +143,7 @@ func (s *Server) revive(r *http.Request, c store.Caller, k store.Keyed) (status 
 		return 0, nil, derr
 	}
 	got, replayed, err := s.store.Revive(r.Context(), k, &store.Revival{
-		Where: req.Where, Session: c.Session, Name: req.Name,
+		Where: req.Where, Session: c.Session, Key: c.Key, Name: req.Name,
 		Host: req.Host, OS: req.OS, Arch: req.Arch, Proc: req.Proc, TTL: time.Duration(req.TTL),
 	})
 	if err != nil {
@@ -325,7 +325,7 @@ func (s *Server) hint(r *http.Request, c store.Caller) (*hintJSON, error) {
 		return nil, nil
 	}
 	caller := store.Where{Machine: r.Header.Get(headerMachine), Environment: r.Header.Get(headerEnvironment)}
-	id, found, err := s.store.TakeOverHint(r.Context(), c.Session, proc, caller)
+	id, found, err := s.store.TakeOverHint(r.Context(), c.Session, c.Key, proc, caller)
 	if err != nil || !found {
 		return nil, err
 	}

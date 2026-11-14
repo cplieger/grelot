@@ -337,3 +337,25 @@ func TestPost_aDeadlineNamesAQuietRecipientStillUnread(t *testing.T) {
 	wantEvents(t, s, sender.ID, kindReceiptsDue,
 		fmt.Sprintf("message %d: 0 of 1 have read %s by the deadline; still unread: @charlie", msg, subject))
 }
+
+func TestPost_aPathPostOpeningWithUserReachesTheUserUnreadAndWakesNoFollower(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	regAt(t, s, "alpha", repoSubflux)
+	b := regAt(t, s, "bravo", repoSubflux)
+	c := regAt(t, s, "charlie", repoSubflux)
+	got := mustPost(t, s, addressed("alpha", repoSubflux, "@user: the fix is on dev, can you check it?"))
+	if got.Delivered != 3 || !slices.Equal(got.Woken, []string{UserName}) || got.Quiet != 2 {
+		t.Errorf("delivered %d woken %q quiet %d, want 3, [user], 2", got.Delivered, got.Woken, got.Quiet)
+	}
+	u := userRow(t, s)
+	wantQuiet(t, quietOf(t, s, got.Message, map[string]uint64{UserName: u.ID, "bravo": b.ID, "charlie": c.ID}),
+		map[string]bool{UserName: false, "bravo": true, "charlie": true})
+	if u.Unread.Counts.Path != 1 || u.Unread.Counts.QuietPath != 0 {
+		t.Errorf("@user's unread %+v, want the post as one unread path delivery", u.Unread.Counts)
+	}
+	for name, sid := range map[string]string{"bravo": sess("bravo"), "charlie": sess("charlie")} {
+		if w := mustInbox(t, s, sid, 0).Unread.Wake(); w != 0 {
+			t.Errorf("%s has %d waking deliveries, want none", name, w)
+		}
+	}
+}

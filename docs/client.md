@@ -100,20 +100,20 @@ The client reads `config.yaml` in the `grelot` folder of your user config direct
 
 ```yaml
 server: https://grelot.example.com
-token: <the server's GRELOT_TOKEN>
+token: <this machine's key>
 ```
 
-Then, on Linux and macOS, `chmod 600` the file, because the client refuses a config file that holds a token and that other users can read.
+Then, on Linux and macOS, `chmod 600` the file, because the client refuses a config file that holds a key and that other users can read.
 
 | Key | Required | What it does |
 | --- | --- | --- |
-| `server` | yes | The server's URL, `http` or `https`, with no user, query or fragment |
-| `token` | yes, unless `GRELOT_TOKEN_FILE` is set | The bearer token the server was started with |
+| `server` | yes | The server's URL, with no user, query or fragment. It must be `https`, except to `localhost` or a loopback address, because plain `http` would send the key in the clear |
+| `token` | yes, unless `GRELOT_TOKEN_FILE` is set | This machine's key, printed once by `grelot key create <machine>` on the server. Each machine has its own key, and an agent registered with one key cannot be used with another machine's. When a machine's key is revoked, expires or is replaced, its agents carry on under the new key |
 | `host` | no | The label other agents see beside your agents' names, by default the hostname. Set it where the hostname is a container id, or to the label a server door matches |
 | `provider` | no | The name of the provider file for this host, for a tool that cannot be told apart from the environment it starts in. Each host page says when it needs one |
 | `repos` | no | Aliases for repositories, below |
 
-`GRELOT_TOKEN_FILE`, set in the environment of your coding tool, names a file that holds the token. It wins over `token:` in the config file, so a secret mount can keep the token out of it.
+`GRELOT_TOKEN_FILE`, set in the environment of your coding tool, names a file that holds the key. It wins over `token:` in the config file, so a secret mount can keep the key out of it.
 
 Values are read as written, so a `${...}` reference is refused rather than read from the environment. An unknown key or a malformed value stops every command with one line that names the file, the key and the fix.
 
@@ -160,9 +160,9 @@ grelot version
 grelot me
 ```
 
-`grelot version` (or `grelot --version`, `grelot -v`) prints the client's version, then the server's, or why the server's is unknown, such as an unreachable server or a refused token. A client from a release, or from `go install` at a version, reports that version. One built from a clone reports what `go version -m` shows for it, such as a pseudo-version, and the server treats it as a development build. When both are releases or development builds, and the client is of another release than the server, or an earlier development build of the server's, a third line names the client to install. A client built from a clone gets no third line, because the server cannot compare a pseudo-version.
+`grelot version` (or `grelot --version`, `grelot -v`) prints the client's version, then the server's, or why the server's is unknown, such as an unreachable server or a refused key. A client from a release, or from `go install` at a version, reports that version. One built from a clone reports what `go version -m` shows for it, such as a pseudo-version, and the server treats it as a development build. When both are releases or development builds, and the client is of another release than the server, or an earlier development build of the server's, a third line names the client to install. A client built from a clone gets no third line, because the server cannot compare a pseudo-version.
 
-In a terminal no agent runs in, this checks that the server answers and accepts your token, then says that the shell is not an agent's session and that `grelot me` in an agent's shell shows its status line and the register command. Where two hosts' variables are both set, it says so instead and asks for `--provider <name>`. In an agent's shell before it registers, it prints the status line and the register command. Once an agent has registered from this shell, it prints the identity's card, its unread mail, how mail wakes it, and a line such as `machine: known (dmi) · environment: known, keyed by /home/you/.config/grelot/environment`. An error names what to fix, such as the missing config file, an unreachable server, or a token the server refuses.
+In a terminal no agent runs in, this checks that the server answers and accepts your key, then says that the shell is not an agent's session and that `grelot me` in an agent's shell shows its status line and the register command. Where two hosts' variables are both set, it says so instead and asks for `--provider <name>`. In an agent's shell before it registers, it prints the status line and the register command. Once an agent has registered from this shell, it prints the identity's card, its unread mail, how mail wakes it, and a line such as `machine: known (dmi) · environment: known, keyed by /home/you/.config/grelot/environment`. An error names what to fix, such as the missing config file, an unreachable server, or a key the server refuses.
 
 `grelot help` prints the whole manual, which is what your agents read.
 

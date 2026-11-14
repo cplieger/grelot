@@ -5,6 +5,7 @@ package store
 import (
 	"fmt"
 	"math"
+	"slices"
 	"time"
 )
 
@@ -14,15 +15,56 @@ func (s *Store) wireLeases() {
 	t := s.t
 	t.identities.onWarn = warnIdentity
 	t.identities.onExpire = expireIdentity
-	// A follow is of the path, not the thread, so it outlives the thread.
-	t.threads.onExpire = func(w *wtx, k uint64, _ *threadRow) error { return deleteRow(w, t.threads, k) }
-	t.messages.onExpire = func(w *wtx, k []byte, _ *messageRow) error { return deleteRow(w, t.messages, k) }
+	t.threads.onExpire = expireThread
+	t.messages.onExpire = expireMessage
 	t.deliveries.onExpire = expireDelivery
 	t.resv.onWarn = warnReservation
 	t.resv.onExpire = expireReservation
 	t.links.onExpire = func(w *wtx, k []byte, _ *linkRow) error { return deleteRow(w, t.links, k) }
 	t.watches.onExpire = expireWatch
 	t.requests.onExpire = func(w *wtx, k []byte, _ *requestRow) error { return deleteRow(w, t.requests, k) }
+}
+
+// expireThread deletes a thread. A follow is of the path, not the thread,
+// so an agent's outlives the thread; @user's follow of a path thread's
+// path ends with it, because @user never expires and has no unfollow, and
+// the follow would deliver that path's posts to it for good.
+func expireThread(w *wtx, k uint64, v *threadRow) error {
+	if v.Kind == kindPath {
+		if err := w.unfollowUser(v.Path); err != nil {
+			return err
+		}
+		w.changedPathThread(k, v.Path)
+	} else {
+		w.changedThread(k)
+	}
+	return deleteRow(w, w.s.t.threads, k)
+}
+
+// expireMessage deletes a message, naming its thread's conversation as
+// changed when the message is a post, which the conversation shows.
+func expireMessage(w *wtx, k []byte, v *messageRow) error {
+	switch {
+	case v.Kind == kindPath:
+		w.changedPathThread(v.Thread, v.Path)
+	case isPost(v.Kind):
+		w.changedThread(v.Thread)
+	}
+	return deleteRow(w, w.s.t.messages, k)
+}
+
+// unfollowUser drops p from @user's follows.
+func (w *wtx) unfollowUser(p string) error {
+	id, _, found, err := w.s.t.byName.Lookup(w.r, []byte(UserName))
+	if err != nil || !found {
+		return err
+	}
+	row, found, err := w.s.t.identities.table.Get(w.r, id)
+	if err != nil || !found || !slices.Contains(row.Follows, p) {
+		return err
+	}
+	row.Follows = slices.DeleteFunc(row.Follows, func(f string) bool { return f == p })
+	return w.putIdentity(id, &row)
 }
 
 func deleteRow[K, V any](w *wtx, l *leased[K, V], k K) error {
@@ -43,7 +85,7 @@ func expireIdentity(w *wtx, k uint64, v *identityRow) error {
 		if err := w.leaveWatches(v); err != nil {
 			return err
 		}
-		return deleteRow(w, w.s.t.identities, k)
+		return w.deleteIdentity(k)
 	}
 	if err := w.freeHolder(k); err != nil {
 		return err
@@ -56,7 +98,7 @@ func expireIdentity(w *wtx, k uint64, v *identityRow) error {
 	}
 	w.queueCards(kindLeft, v, v.Paths)
 	d := dormantRow(v, w.s.dormantTTL)
-	return w.s.t.identities.table.Put(w.tx, k, &d)
+	return w.putIdentity(k, &d)
 }
 
 // dormantRow is v once its lease ran out: dormant since its expiry, under
@@ -100,13 +142,13 @@ func (w *wtx) oweEvent(to uint64, kind, text string) {
 }
 
 // writeEvent writes a server event to identity id under its next seq,
-// living THREAD_TTL from now.
+// living the retention from now.
 func (w *wtx) writeEvent(id uint64, kind, text string) error {
 	row, found, err := w.s.t.identities.table.Get(w.r, id)
 	if err != nil || !found {
 		return err
 	}
-	return w.deliver(&row, &deliveryRow{Kind: kind, Text: text, Lease: serverLease(w.now, w.s.threadTTL)})
+	return w.deliver(&row, &deliveryRow{Kind: kind, Text: text, Lease: serverLease(w.now, w.retention)})
 }
 
 // deliver writes d to row's identity under its next seq and stores row
@@ -117,7 +159,7 @@ func (w *wtx) deliver(row *identityRow, d *deliveryRow) error {
 	d.Agent, d.Seq, d.Written = row.ID, row.Seq, w.now
 	row.Unread.add(d)
 	w.wake(row.ID)
-	if err := w.s.t.identities.table.Put(w.tx, row.ID, row); err != nil {
+	if err := w.putIdentity(row.ID, row); err != nil {
 		return err
 	}
 	return w.s.t.deliveries.table.Put(w.tx, pairKey(row.ID, row.Seq), d)

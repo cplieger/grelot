@@ -283,6 +283,17 @@ func sleep(ctx context.Context, d time.Duration) error {
 	}
 }
 
+// waitRetry is the pause before grelot wait sends a wait its machine's key
+// or the server refused for holding too many.
+var waitRetry = 2 * time.Second
+
+// tooManyWaits reports the server refusing a wait for the waits already
+// held, which pass once one answers.
+func tooManyWaits(err error) bool {
+	ae, ok := errors.AsType[*client.APIError](err)
+	return ok && ae.HTTP == http.StatusTooManyRequests && ae.Code == "too_many_waits"
+}
+
 // wait is grelot wait --timeout: the in-turn wait, one request per hold of
 // at most maxHold. The first page with mail is printed and read; at the
 // timeout only the status line is.
@@ -314,6 +325,13 @@ func (r *run) wait(ctx context.Context, args []string) error {
 		}
 		var page client.Inbox
 		resp, err := a.Do(ctx, r.bounded(req), &page)
+		// Past the deadline the next request holds 0, a read no cap refuses.
+		if tooManyWaits(err) {
+			if serr := sleep(ctx, max(min(waitRetry, time.Until(deadline)), 0)); serr != nil {
+				return serr
+			}
+			continue
+		}
 		if err != nil {
 			return err
 		}

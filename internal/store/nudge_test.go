@@ -254,7 +254,7 @@ func TestNudge_aClosedSessionIsNotNudged(t *testing.T) {
 	regAt(t, s, "alpha")
 	bravo := regAt(t, s, "bravo")
 	seq := directTo(t, s, "alpha", "bravo", bravo.ID)
-	if err := s.EndSession(t.Context(), sess("bravo")); err != nil {
+	if err := s.EndSession(t.Context(), sess("bravo"), 0); err != nil {
 		t.Fatal(err)
 	}
 	t.Run("no first nudge", func(t *testing.T) {
@@ -268,7 +268,7 @@ func TestNudge_aClosedSessionIsNotNudged(t *testing.T) {
 	})
 	t.Run("no re-nudge", func(t *testing.T) {
 		mustSend(t, s, bravo.ID)
-		if err := s.EndSession(t.Context(), sess("bravo")); err != nil {
+		if err := s.EndSession(t.Context(), sess("bravo"), 0); err != nil {
 			t.Fatal(err)
 		}
 		clk.advance(30 * time.Minute)

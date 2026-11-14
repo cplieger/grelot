@@ -18,13 +18,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cplieger/go/sse/v2"
+	"github.com/cplieger/grelot/internal/auth"
+	"github.com/cplieger/grelot/internal/auth/authtest"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/store"
 )
 
+// testKeepalive spaces the event stream's keepalives, so a test sees one
+// soon after it opens a stream.
+const testKeepalive = 200 * time.Millisecond
+
 const (
-	testToken   = "test-token"
 	testVersion = "v1.1.0-dev.4"
 	sessA       = "kiro-cli:session-a"
 	sessB       = "kiro-cli:session-b"
@@ -112,14 +118,20 @@ func (l logSink) atLeast(level slog.Level) []slog.Record {
 	return out
 }
 
+// unlimited lifts every /v1 limit, so a test sends as many requests as it
+// needs on the harness's frozen clock; a limit's own test sets Limits.
+var unlimited = Limits{Rate: 1e9, Burst: 1e9, KeyWaits: 1e6, ServerWaits: 1e6}
+
 // harness is one server over a fresh store on a test clock.
 type harness struct {
 	t     *testing.T
 	store *store.Store
 	srv   *Server
 	http  *httptest.Server
-	clk   *clock
-	push  *fakePush
+	// ops serves the server's OpsHandler; nil for a bubble harness.
+	ops  *httptest.Server
+	clk  *clock
+	push *fakePush
 	// metrics is the page the store and server record into.
 	metrics *obs.Metrics
 	// open opens the store at dbPath with storeOpts and builds the server
@@ -128,6 +140,57 @@ type harness struct {
 	logs      logSink
 	dbPath    string
 	storeOpts store.Options
+	// browser is the cookies the sign-in routes set, sent with every /api
+	// request.
+	browser *browser
+	// auth is the account service every server of the harness runs on
+	// when its edits name none; machine is the key its /v1 requests send,
+	// minted on the first.
+	auth      *auth.Auth
+	machine   string
+	machineMu sync.Mutex
+}
+
+// browser is one user agent's cookies for the server, kept by name: the
+// harness serves over plain http, where a cookie jar would drop the
+// session cookie's Secure flag along with the cookie.
+type browser struct {
+	cookies map[string]string
+	mu      sync.Mutex
+}
+
+func (b *browser) add(r *http.Request) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for name, value := range b.cookies {
+		r.AddCookie(&http.Cookie{Name: name, Value: value})
+	}
+}
+
+func (b *browser) keep(resp *http.Response) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, c := range resp.Cookies() {
+		if c.MaxAge < 0 || c.Value == "" {
+			delete(b.cookies, c.Name)
+		} else {
+			b.cookies[c.Name] = c.Value
+		}
+	}
+}
+
+// header is the browser's cookies as one Cookie header.
+func (b *browser) header() string {
+	r := &http.Request{Header: http.Header{}}
+	b.add(r)
+	return r.Header.Get("Cookie")
+}
+
+// forget drops every cookie, as a new browser would have none.
+func (b *browser) forget() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	clear(b.cookies)
 }
 
 func newHarness(t *testing.T) *harness {
@@ -144,6 +207,8 @@ func newHarnessWith(t *testing.T, o store.Options, edits ...func(*Options)) *har
 	h.clk = clk
 	h.http = httptest.NewServer(h.srv.Handler())
 	t.Cleanup(h.http.Close)
+	h.ops = httptest.NewServer(h.srv.OpsHandler())
+	t.Cleanup(h.ops.Close)
 	return h
 }
 
@@ -158,13 +223,20 @@ func newBubbleHarness(t *testing.T, edits ...func(*Options)) *harness {
 // buildHarness applies edits to the server's Options before New.
 func buildHarness(t *testing.T, o store.Options, now func() time.Time, edits ...func(*Options)) *harness {
 	t.Helper()
-	h := &harness{t: t, logs: newLogSink(), dbPath: filepath.Join(t.TempDir(), "grelot.db"), storeOpts: o}
+	h := &harness{
+		t: t, logs: newLogSink(), dbPath: filepath.Join(t.TempDir(), "grelot.db"), storeOpts: o,
+		browser: &browser{cookies: map[string]string{}},
+	}
 	h.open = func() {
 		so := h.storeOpts
 		logger := slog.New(h.logs)
-		hub := NewHub()
+		hub, events := NewHub(), newEvents(logger, sse.WithKeepalive(testKeepalive), sse.WithWriteTimeout(10*time.Second))
 		m := obs.New()
 		so.Logger, so.Now, so.PathRoot, so.Woke, so.Metrics = logger, now, protopath.DefaultRoot, hub.Woke, m
+		so.Changed = events.Changed
+		if so.KeyLive == nil {
+			so.KeyLive = func(id int64) (bool, error) { return h.srv.auth.KeyLive(id) }
+		}
 		if before := h.storeOpts.Woke; before != nil {
 			so.Woke = func(ids []uint64) {
 				before(ids)
@@ -178,14 +250,20 @@ func buildHarness(t *testing.T, o store.Options, now func() time.Time, edits ...
 		t.Cleanup(func() { _ = st.Close() })
 		h.push = &fakePush{states: map[uint64]pushState{}}
 		opts := &Options{
-			Store: st, Logger: logger, Now: now, Version: testVersion, Push: h.push, Hub: hub, Metrics: m,
-			Config: Config{Token: testToken, PathRoot: protopath.DefaultRoot},
+			Store: st, Logger: logger, Now: now, Version: testVersion, Push: h.push, Hub: hub, Events: events, Metrics: m,
+			Config: Config{PathRoot: protopath.DefaultRoot}, Limits: unlimited,
 		}
 		for _, edit := range edits {
 			edit(opts)
 		}
+		if opts.Auth == nil {
+			if h.auth == nil {
+				h.auth = authtest.New(t, AuthErrors(logger, m))
+			}
+			opts.Auth = h.auth
+		}
 		h.store, h.srv, h.metrics = st, New(opts), m
-		t.Cleanup(h.srv.Release)
+		t.Cleanup(func() { h.srv.Release(context.WithoutCancel(t.Context())) })
 	}
 	h.open()
 	return h
@@ -207,7 +285,7 @@ func (h *harness) restartAfter(down time.Duration) {
 	if h.http != nil {
 		h.t.Fatal("restart needs a bubble harness")
 	}
-	h.srv.Release()
+	h.srv.Release(h.t.Context())
 	if err := h.store.Close(); err != nil {
 		h.t.Fatalf("store.Close: %v", err)
 	}
@@ -220,7 +298,7 @@ func (h *harness) restartAfter(down time.Duration) {
 // answers 507 from then on.
 func (h *harness) fill() {
 	h.t.Helper()
-	h.srv.Release()
+	h.srv.Release(h.t.Context())
 	if err := h.store.Close(); err != nil {
 		h.t.Fatalf("store.Close: %v", err)
 	}
@@ -230,6 +308,9 @@ func (h *harness) fill() {
 		h.http.Close()
 		h.http = httptest.NewServer(h.srv.Handler())
 		h.t.Cleanup(h.http.Close)
+		h.ops.Close()
+		h.ops = httptest.NewServer(h.srv.OpsHandler())
+		h.t.Cleanup(h.ops.Close)
 	}
 }
 
@@ -265,7 +346,7 @@ func (f *fakePush) set(id uint64, st pushState) {
 // idOf is the store id of the identity session acts as.
 func (h *harness) idOf(session string) uint64 {
 	h.t.Helper()
-	st, err := h.store.Status(h.t.Context(), store.Caller{Session: session})
+	st, err := h.store.Status(h.t.Context(), store.Caller{Key: h.keyID(), Session: session})
 	if err != nil {
 		h.t.Fatalf("Status(%s): %v", session, err)
 	}
@@ -287,7 +368,41 @@ func (r *response) str(key string) string {
 	return v
 }
 
-// request sends method path with the bearer, the version and headers,
+const harnessKeyLabel = "harness"
+
+// machineKey is the key the harness's /v1 requests send, minted once from
+// the server's account service, whose first admin owns it.
+func (h *harness) machineKey() (string, error) {
+	h.machineMu.Lock()
+	defer h.machineMu.Unlock()
+	if h.machine == "" {
+		key, err := h.srv.auth.CreateKey(context.Background(), harnessKeyLabel)
+		if err != nil {
+			return "", fmt.Errorf("mint the harness's machine key: %w", err)
+		}
+		h.machine = key
+	}
+	return h.machine, nil
+}
+
+// keyID is the ID of machineKey, which a store call acting for an identity
+// the harness registered names.
+func (h *harness) keyID() int64 {
+	h.t.Helper()
+	key, err := h.machineKey()
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	r := httptest.NewRequestWithContext(h.t.Context(), http.MethodGet, "/v1/me", http.NoBody)
+	r.Header.Set("Authorization", "Bearer "+key)
+	p, err := h.srv.auth.Authenticate(r)
+	if err != nil || !p.IsAPIKey() {
+		h.t.Fatalf("the harness's machine key does not authenticate: %v", err)
+	}
+	return p.KeyID
+}
+
+// request sends method path with the machine key, the version and headers,
 // body encoded as JSON when it is not nil.
 func (h *harness) request(method, path string, body any, headers map[string]string) *response {
 	h.t.Helper()
@@ -325,10 +440,23 @@ func (h *harness) send(ctx context.Context, method, path string, body any, heade
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+testToken)
+	if strings.HasPrefix(path, "/v1/") {
+		key, kerr := h.machineKey()
+		if kerr != nil {
+			return nil, kerr
+		}
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
 	req.Header.Set(headerVersion, testVersion)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	if route, _, _ := strings.Cut(path, "?"); method != http.MethodGet && !sentOnce[route] {
 		req.Header.Set(headerKey, newTestKey())
+	}
+	if strings.HasPrefix(path, "/api/") {
+		h.browser.add(req)
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 	}
 	for k, v := range headers {
 		if v == "" {
@@ -342,6 +470,7 @@ func (h *harness) send(ctx context.Context, method, path string, body any, heade
 		return nil, err
 	}
 	defer resp.Body.Close()
+	h.browser.keep(resp)
 	raw, _ := io.ReadAll(resp.Body)
 	out := &response{status: resp.StatusCode, header: resp.Header, raw: string(raw)}
 	_ = json.Unmarshal(raw, &out.body)
@@ -423,7 +552,33 @@ func (h *harness) roundTrip(req *http.Request) (*http.Response, error) {
 		h.srv.Handler().ServeHTTP(rec, req)
 		return rec.Result(), nil
 	}
-	return h.http.Client().Do(req)
+	client := *h.http.Client()
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return client.Do(req)
+}
+
+// opsCall sends a bare method path, with no header, to the operations
+// listener, over the network or in process for a bubble harness.
+func (h *harness) opsCall(method, path string) *http.Response {
+	h.t.Helper()
+	base := ""
+	if h.ops != nil {
+		base = h.ops.URL
+	}
+	req, err := http.NewRequestWithContext(h.t.Context(), method, base+path, http.NoBody)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	if h.ops == nil {
+		rec := httptest.NewRecorder()
+		h.srv.OpsHandler().ServeHTTP(rec, req)
+		return rec.Result()
+	}
+	resp, err := h.ops.Client().Do(req)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return resp
 }
 
 // as sends a request from session.
@@ -467,7 +622,7 @@ func (h *harness) directPost(session, to string) {
 	h.t.Helper()
 	nc := store.Fields{Name: store.NoChange, Description: store.NoChange, Paths: []string{store.NoChange}}
 	if _, _, err := h.store.Post(h.t.Context(), store.Keyed{}, &store.Posting{
-		Caller: store.Caller{Session: session}, Subject: "hello", Body: "a body",
+		Caller: store.Caller{Key: h.keyID(), Session: session}, Subject: "hello", Body: "a body",
 		To: store.Target{Agent: to}, Fields: nc,
 	}); err != nil {
 		h.t.Fatalf("Post to %s: %v", to, err)

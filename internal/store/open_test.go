@@ -124,8 +124,8 @@ func writeOtherFormat(t *testing.T, path string) {
 }
 
 // freshRows is what an empty store holds after Open: the announcement and
-// cards threads, created at first start.
-const freshRows = 2
+// cards threads and @user's identity, created at first start.
+const freshRows = 3
 
 func rowCount(ctx context.Context, t *testing.T, s *Store) int {
 	t.Helper()
@@ -246,7 +246,7 @@ var movedAsideName = regexp.MustCompile(`^\.\d{8}T\d{6}\.\d{9}Z\.invalid$`)
 func TestOpen_compactsAFileMostlyFreeAndKeepsItsRows(t *testing.T) {
 	clk := &clock{t: testNow}
 	path := filepath.Join(t.TempDir(), "grelot.db")
-	o := Options{Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: time.Hour}
+	o := Options{Logger: slog.New(newLogSink()), Now: clk.now, Retention: retainFor(time.Hour)}
 	s, err := Open(path, &o)
 	if err != nil {
 		t.Fatal(err)

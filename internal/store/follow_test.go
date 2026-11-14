@@ -12,14 +12,14 @@ import (
 	"time"
 )
 
-// shortThreadTTL lets a thread expire inside the 6-hour leases the test
+// shortRetention lets a thread expire inside the 6-hour leases the test
 // identities register with.
-const shortThreadTTL = 2 * time.Hour
+const shortRetention = 2 * time.Hour
 
 func openShortThreadStore(t *testing.T) (*Store, *clock) {
 	t.Helper()
 	clk := &clock{t: testNow}
-	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: shortThreadTTL})
+	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{Logger: slog.New(newLogSink()), Now: clk.now, Retention: retainFor(shortRetention)})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestFollow_withNoThreadYetReceivesTheFirstPost(t *testing.T) {
 		t.Errorf("following a live thread: notices %q, want none", again.Notices)
 	}
 	// The thread is past its expiry, unswept.
-	clk.advance(shortThreadTTL)
+	clk.advance(shortRetention)
 	if after := mustFollowed(t, s, sess("bravo"), p); len(after.Notices) != 1 {
 		t.Errorf("following an expired thread: notices %q, want the no-thread line", after.Notices)
 	}
@@ -305,9 +305,9 @@ func followThreadsFixture(t *testing.T) (s *Store, ids map[string]uint64) {
 	mustFollow(t, s, sess("charlie"), sharedX+"/sub")
 	mustPost(t, s, posting(sess("alpha"), Target{Path: "/workspace/shared/y"}))
 	mustFollow(t, s, sess("delta"), "/workspace/shared/y")
-	// x expires at its last post plus the thread TTL, half an hour before
+	// x expires at its last post plus the retention, half an hour before
 	// the others.
-	clk.advance(shortThreadTTL - 30*time.Minute)
+	clk.advance(shortRetention - 30*time.Minute)
 	return s, ids
 }
 

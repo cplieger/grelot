@@ -3,6 +3,7 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -12,12 +13,99 @@ import (
 
 // Caller is who an identity request acts as: the identity bound to
 // Session or, with As (the Grelot-As header), the delegate of that handle,
-// which only its parent's session or its own may act as. Self is the Grelot-Self header, which an agent sends to act
-// as its own identity past the delegate gate.
+// which only its parent's session or its own may act as. Self is the
+// Grelot-Self header, which an agent sends to act as its own identity past
+// the delegate gate. Key is the machine key the request came with: an
+// identity acts only for the key that registered it. User acts as @user and
+// takes neither Session nor As; only the web UI's signed-in handlers may
+// set it.
 type Caller struct {
 	Session string
 	As      string
+	Key     int64
 	Self    bool
+	User    bool
+}
+
+// ErrOtherKey refuses a request naming an identity or session another
+// machine's key holds.
+var ErrOtherKey = refuse(KindForbidden, "this identity belongs to another machine's key: register this session under its own name")
+
+// keyOwns refuses c acting on row when row is another live key's; @user
+// is the web UI's and belongs to no key.
+func (s *Store) keyOwns(c Caller, row *identityRow) error {
+	if c.User {
+		return nil
+	}
+	return s.bound(row.Key, c.Key)
+}
+
+// bound refuses key acting on a row held binds, unless held no longer
+// authenticates: a row of a revoked, expired or deleted key belongs to no
+// machine, so rotating a machine's key never strands its sessions. Key ids
+// are never reused, so a dead key stays dead and the answer may come from
+// outside the transaction.
+func (s *Store) bound(held, key int64) error {
+	if held == key {
+		return nil
+	}
+	live, err := s.keyLive(held)
+	switch {
+	case err != nil:
+		return err
+	case live:
+		return ErrOtherKey
+	}
+	return nil
+}
+
+// keyMayTake reports whether key may act on a row held binds: bound's
+// answer, with another live key's refusal as false.
+func (s *Store) keyMayTake(held, key int64) (bool, error) {
+	err := s.bound(held, key)
+	if errors.Is(err, ErrOtherKey) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// ownFor is the identity bound to session, refused when another live key
+// holds it.
+func (w *wtx) ownFor(session string, key int64) (identityRow, bool, error) {
+	own, found, err := w.identityBy(w.s.t.bySession, session)
+	if err == nil && found {
+		err = w.s.bound(own.Key, key)
+	}
+	return own, found, err
+}
+
+// rebind binds row and its delegates to key, which bound admitted.
+func (w *wtx) rebind(row *identityRow, key int64) error {
+	if row.Key == key {
+		return nil
+	}
+	row.Key = key
+	if err := w.putIdentity(row.ID, row); err != nil {
+		return err
+	}
+	ids, err := w.s.delegatesOf(w.r, row.ID)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		d, found, err := w.s.t.identities.table.Get(w.r, id)
+		if err != nil {
+			return err
+		}
+		if !found || d.Key == key {
+			continue
+		}
+		d.Key = key
+		if err := w.putIdentity(id, &d); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // callerRow reads the identity c acts as for a write, running its due
@@ -30,9 +118,13 @@ func (w *wtx) callerRow(c Caller) (identityRow, bool, error) {
 		return identityRow{}, false, orEnded(err, c)
 	}
 	d, found, err := w.s.t.identities.table.Get(w.r, id)
-	switch {
-	case err != nil || !found:
+	if err != nil || !found {
 		return identityRow{}, false, orEnded(err, c)
+	}
+	if kerr := w.s.keyOwns(c, &d); kerr != nil {
+		return identityRow{}, false, kerr
+	}
+	switch {
 	case d.Parent == 0 && c.As != "":
 		return identityRow{}, false, notHandle(c.As)
 	case d.Parent == 0:
@@ -57,7 +149,7 @@ func (w *wtx) callerRow(c Caller) (identityRow, bool, error) {
 // ownRow reads the identity a session acts as for itself, past the gate.
 func (w *wtx) ownRow(id uint64, c Caller) (identityRow, bool, error) {
 	row, found, err := w.s.t.identities.settle(w, id)
-	if err == nil && found && row.State == stateLive && !c.Self {
+	if err == nil && found && row.State == stateLive && !c.Self && !c.User {
 		err = w.s.gateRefusal(w.r, &row, w.now)
 	}
 	if err != nil {
@@ -78,13 +170,16 @@ func (s *Store) callerFor(r *bolttable.ReadTx, c Caller, now time.Time) (identit
 	if err != nil || !found {
 		return identityRow{}, false, orEnded(err, c)
 	}
+	if kerr := s.keyOwns(c, &row); kerr != nil {
+		return identityRow{}, false, kerr
+	}
 	v := settled(&row, now, s.dormantTTL)
 	switch {
 	case v == nil:
 		return identityRow{}, false, orEnded(nil, c)
 	case v.Parent == 0 && c.As != "":
 		return identityRow{}, false, notHandle(c.As)
-	case v.Parent == 0 && v.State == stateLive && !c.Self:
+	case v.Parent == 0 && v.State == stateLive && !c.Self && !c.User:
 		if gerr := s.gateRefusal(r, v, now); gerr != nil {
 			return identityRow{}, false, gerr
 		}
@@ -119,8 +214,12 @@ func (s *Store) callerID(r *bolttable.ReadTx, c Caller) (id uint64, found bool, 
 	if cerr := checkCaller(c); cerr != nil {
 		return 0, false, cerr
 	}
-	if c.As != "" {
-		id, _, found, err = s.t.byName.Lookup(r, []byte(c.As))
+	if c.As != "" || c.User {
+		name := c.As
+		if c.User {
+			name = UserName
+		}
+		id, _, found, err = s.t.byName.Lookup(r, []byte(name))
 		return id, found, err
 	}
 	id, _, found, err = s.t.bySession.Lookup(r, []byte(c.Session))
@@ -157,6 +256,8 @@ func (s *Store) liveFor(r *bolttable.ReadTx, c Caller, now time.Time) (identityR
 
 func checkCaller(c Caller) error {
 	switch {
+	case c.User && (c.Session != "" || c.As != "" || c.Self):
+		return refuse(KindInvalid, "a caller acting as @user names no session, handle or --self")
 	case c.As == "":
 		return nil
 	case c.Self:

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["src/main.ts", "src/prepaint.ts", "eslint.config.base.mjs", "src/**/*.test.ts"],
+  "project": ["src/**/*.ts", "!src/**/*.d.ts"],
+  "ignore": ["src/wire/*.gen.ts"],
+  "ignoreDependencies": ["stylelint-config-standard"],
+  "treatConfigHintsAsErrors": true,
+  "rules": { "cycles": "error" },
+  "includeEntryExports": true
+}

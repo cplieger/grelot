@@ -1,0 +1,2695 @@
+{
+  "components": {
+    "schemas": {
+      "Agent": {
+        "properties": {
+          "arch": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "dormant_since_ms": {
+            "type": "integer"
+          },
+          "expires_ms": {
+            "type": "integer"
+          },
+          "follows": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "host": {
+            "type": "string"
+          },
+          "last_seen_ms": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "os": {
+            "type": "string"
+          },
+          "paths": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "provider": {
+            "type": "string"
+          },
+          "registered_ms": {
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AgentState"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "state",
+          "paths",
+          "follows",
+          "registered_ms"
+        ],
+        "type": "object"
+      },
+      "AgentList": {
+        "properties": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/Agent"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "agents"
+        ],
+        "type": "object"
+      },
+      "AgentPage": {
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/Agent"
+          },
+          "delegates": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "reservations": {
+            "items": {
+              "$ref": "#/components/schemas/Reservation"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "reservations",
+          "delegates",
+          "agent"
+        ],
+        "type": "object"
+      },
+      "AgentState": {
+        "enum": [
+          "live",
+          "dormant"
+        ],
+        "type": "string"
+      },
+      "AgentStats": {
+        "properties": {
+          "longest_wait_ms": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "post_times_ms": {
+            "items": {
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "posts": {
+            "type": "integer"
+          },
+          "read": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "post_times_ms",
+          "posts",
+          "read",
+          "longest_wait_ms"
+        ],
+        "type": "object"
+      },
+      "Changed": {
+        "properties": {
+          "agents": {
+            "type": "boolean"
+          },
+          "conversations": {
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "conversations",
+          "agents"
+        ],
+        "type": "object"
+      },
+      "Conversation": {
+        "properties": {
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/Agent"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "followers": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "posts": {
+            "items": {
+              "$ref": "#/components/schemas/Post"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "reservations": {
+            "items": {
+              "$ref": "#/components/schemas/Reservation"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "thread": {
+            "$ref": "#/components/schemas/Thread"
+          }
+        },
+        "required": [
+          "posts",
+          "reservations",
+          "followers",
+          "cards",
+          "thread"
+        ],
+        "type": "object"
+      },
+      "ConversationCounts": {
+        "properties": {
+          "direct": {
+            "type": "integer"
+          },
+          "threads": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "threads",
+          "direct"
+        ],
+        "type": "object"
+      },
+      "ConversationRow": {
+        "properties": {
+          "agents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ThreadKind"
+          },
+          "last": {
+            "$ref": "#/components/schemas/LastPost"
+          },
+          "participants": {
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "unread": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "last",
+          "kind",
+          "title",
+          "id",
+          "participants",
+          "unread"
+        ],
+        "type": "object"
+      },
+      "ConversationsPage": {
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/ConversationCounts"
+          },
+          "next": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "next_thread": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationRow"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "rows",
+          "counts"
+        ],
+        "type": "object"
+      },
+      "DelayHistogram": {
+        "properties": {
+          "counts": {
+            "items": {
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "edges_ms": {
+            "items": {
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "median_ms": {
+            "type": "integer"
+          },
+          "p95_ms": {
+            "type": "integer"
+          },
+          "read": {
+            "type": "integer"
+          },
+          "unread": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "edges_ms",
+          "counts",
+          "median_ms",
+          "p95_ms",
+          "read",
+          "unread"
+        ],
+        "type": "object"
+      },
+      "Error": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "path_root": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "Event": {
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "at_ms": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EventKind"
+          }
+        },
+        "required": [
+          "kind",
+          "agent",
+          "detail",
+          "at_ms"
+        ],
+        "type": "object"
+      },
+      "EventCounts": {
+        "properties": {
+          "nudge_repeat": {
+            "type": "integer"
+          },
+          "post_refused": {
+            "type": "integer"
+          },
+          "push_gave_up": {
+            "type": "integer"
+          },
+          "push_retry": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "post_refused",
+          "push_retry",
+          "push_gave_up",
+          "nudge_repeat"
+        ],
+        "type": "object"
+      },
+      "EventKind": {
+        "enum": [
+          "post_refused",
+          "push_retry",
+          "push_gave_up",
+          "nudge_repeat"
+        ],
+        "type": "string"
+      },
+      "HeldTurns": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "turns": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "turns"
+        ],
+        "type": "object"
+      },
+      "HistoryPage": {
+        "properties": {
+          "next": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "posts": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryPost"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "posts"
+        ],
+        "type": "object"
+      },
+      "HistoryPost": {
+        "properties": {
+          "at_ms": {
+            "type": "integer"
+          },
+          "body": {
+            "type": "string"
+          },
+          "conversation": {
+            "$ref": "#/components/schemas/Thread"
+          },
+          "from": {
+            "type": "string"
+          },
+          "from_kind": {
+            "$ref": "#/components/schemas/SenderKind"
+          },
+          "id": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "read": {
+            "$ref": "#/components/schemas/ReadCount"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "unread": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "conversation",
+          "from",
+          "from_kind",
+          "subject",
+          "body",
+          "read",
+          "id",
+          "thread",
+          "at_ms"
+        ],
+        "type": "object"
+      },
+      "LastPost": {
+        "properties": {
+          "at_ms": {
+            "type": "integer"
+          },
+          "from": {
+            "type": "string"
+          },
+          "id": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "subject",
+          "preview",
+          "id",
+          "at_ms"
+        ],
+        "type": "object"
+      },
+      "MarkReadRequest": {
+        "properties": {
+          "up_to": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "up_to"
+        ],
+        "type": "object"
+      },
+      "MarkedRead": {
+        "properties": {
+          "read": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "read"
+        ],
+        "type": "object"
+      },
+      "Methods": {
+        "properties": {
+          "oidc": {
+            "type": "boolean"
+          },
+          "passkeys": {
+            "type": "boolean"
+          },
+          "password": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "password",
+          "passkeys",
+          "oidc"
+        ],
+        "type": "object"
+      },
+      "Post": {
+        "properties": {
+          "at_ms": {
+            "type": "integer"
+          },
+          "body": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "from_kind": {
+            "$ref": "#/components/schemas/SenderKind"
+          },
+          "id": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "read": {
+            "$ref": "#/components/schemas/ReadCount"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "unread": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "from",
+          "from_kind",
+          "subject",
+          "body",
+          "read",
+          "id",
+          "thread",
+          "at_ms"
+        ],
+        "type": "object"
+      },
+      "PostBucket": {
+        "properties": {
+          "announce": {
+            "type": "integer"
+          },
+          "direct": {
+            "type": "integer"
+          },
+          "open": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "integer"
+          },
+          "start_ms": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start_ms",
+          "announce",
+          "path",
+          "direct"
+        ],
+        "type": "object"
+      },
+      "PostRequest": {
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "to": {
+            "$ref": "#/components/schemas/PostTarget"
+          }
+        },
+        "required": [
+          "subject",
+          "body",
+          "to"
+        ],
+        "type": "object"
+      },
+      "PostTarget": {
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "announce": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Posted": {
+        "properties": {
+          "delivered": {
+            "type": "integer"
+          },
+          "message": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "thread": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "message",
+          "thread",
+          "delivered"
+        ],
+        "type": "object"
+      },
+      "ReadCount": {
+        "properties": {
+          "read": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "read",
+          "total"
+        ],
+        "type": "object"
+      },
+      "Receipt": {
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "read_at_ms": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "state"
+        ],
+        "type": "object"
+      },
+      "Receipts": {
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "message": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "posted_at_ms": {
+            "type": "integer"
+          },
+          "recipients": {
+            "items": {
+              "$ref": "#/components/schemas/Receipt"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "registered_since": {
+            "type": "integer"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "kind",
+          "recipients",
+          "message",
+          "posted_at_ms",
+          "registered_since"
+        ],
+        "type": "object"
+      },
+      "Reservation": {
+        "properties": {
+          "expires_ms": {
+            "type": "integer"
+          },
+          "holder": {
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "id": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          },
+          "place": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "since_ms": {
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ReservationState"
+          }
+        },
+        "required": [
+          "path",
+          "holder",
+          "state",
+          "id",
+          "since_ms",
+          "expires_ms"
+        ],
+        "type": "object"
+      },
+      "ReservationState": {
+        "enum": [
+          "held",
+          "queued"
+        ],
+        "type": "string"
+      },
+      "Sample": {
+        "properties": {
+          "at_ms": {
+            "type": "integer"
+          },
+          "counted": {
+            "type": "boolean"
+          },
+          "dormant": {
+            "type": "integer"
+          },
+          "errors": {
+            "type": "integer"
+          },
+          "goroutines": {
+            "type": "integer"
+          },
+          "heap_bytes": {
+            "type": "integer"
+          },
+          "held": {
+            "type": "integer"
+          },
+          "in_use_bytes": {
+            "type": "integer"
+          },
+          "live": {
+            "type": "integer"
+          },
+          "max_bytes": {
+            "type": "integer"
+          },
+          "oldest_unread_ms": {
+            "type": "integer"
+          },
+          "online": {
+            "type": "integer"
+          },
+          "p95_ms": {
+            "type": "integer"
+          },
+          "queued": {
+            "type": "integer"
+          },
+          "requests": {
+            "type": "integer"
+          },
+          "resident_bytes": {
+            "type": "integer"
+          },
+          "unread": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "at_ms",
+          "requests",
+          "errors",
+          "p95_ms",
+          "live",
+          "dormant",
+          "online",
+          "unread",
+          "oldest_unread_ms",
+          "held",
+          "queued",
+          "in_use_bytes",
+          "max_bytes",
+          "heap_bytes",
+          "resident_bytes",
+          "goroutines",
+          "counted"
+        ],
+        "type": "object"
+      },
+      "SenderKind": {
+        "enum": [
+          "agent",
+          "user"
+        ],
+        "type": "string"
+      },
+      "Settings": {
+        "properties": {
+          "methods": {
+            "$ref": "#/components/schemas/Methods"
+          },
+          "oidc_configured": {
+            "type": "boolean"
+          },
+          "retention_max_ms": {
+            "type": "integer"
+          },
+          "retention_min_ms": {
+            "type": "integer"
+          },
+          "retention_ms": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "retention_ms",
+          "retention_min_ms",
+          "retention_max_ms",
+          "methods",
+          "oidc_configured"
+        ],
+        "type": "object"
+      },
+      "SettingsRequest": {
+        "properties": {
+          "methods": {
+            "$ref": "#/components/schemas/Methods"
+          },
+          "retention_ms": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "methods",
+          "retention_ms"
+        ],
+        "type": "object"
+      },
+      "Show": {
+        "enum": [
+          "all",
+          "threads",
+          "direct"
+        ],
+        "type": "string"
+      },
+      "SignIn": {
+        "properties": {
+          "oidc_label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "oidc_label"
+        ],
+        "type": "object"
+      },
+      "Stats": {
+        "properties": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/AgentStats"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "bucket_ms": {
+            "type": "integer"
+          },
+          "delays": {
+            "$ref": "#/components/schemas/DelayHistogram"
+          },
+          "end_ms": {
+            "type": "integer"
+          },
+          "event_counts": {
+            "$ref": "#/components/schemas/EventCounts"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/Event"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "held_turns": {
+            "items": {
+              "$ref": "#/components/schemas/HeldTurns"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "posts": {
+            "items": {
+              "$ref": "#/components/schemas/PostBucket"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/Sample"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "start_ms": {
+            "type": "integer"
+          },
+          "started_ms": {
+            "type": "integer"
+          },
+          "threads": {
+            "items": {
+              "$ref": "#/components/schemas/ThreadStats"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "posts",
+          "agents",
+          "threads",
+          "samples",
+          "events",
+          "held_turns",
+          "delays",
+          "event_counts",
+          "start_ms",
+          "end_ms",
+          "bucket_ms",
+          "started_ms"
+        ],
+        "type": "object"
+      },
+      "StatsRange": {
+        "enum": [
+          "6h",
+          "24h",
+          "72h"
+        ],
+        "type": "string"
+      },
+      "Thread": {
+        "properties": {
+          "agents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ThreadKind"
+          },
+          "path": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "id"
+        ],
+        "type": "object"
+      },
+      "ThreadKind": {
+        "enum": [
+          "announce",
+          "path",
+          "direct"
+        ],
+        "type": "string"
+      },
+      "ThreadStats": {
+        "properties": {
+          "deliveries": {
+            "type": "integer"
+          },
+          "participants": {
+            "type": "integer"
+          },
+          "posts": {
+            "type": "integer"
+          },
+          "thread": {
+            "$ref": "#/components/schemas/Thread"
+          }
+        },
+        "required": [
+          "thread",
+          "posts",
+          "participants",
+          "deliveries"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "The routes the web UI calls, under /api, for a signed-in session.",
+    "title": "grelot web API",
+    "version": "2"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/agents": {
+      "get": {
+        "operationId": "listAgents",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized: auth_required, auth_session_expired, auth_invalid_credentials, auth_key_invalid",
+            "x-error-codes": {
+              "auth_invalid_credentials": {},
+              "auth_key_invalid": {},
+              "auth_required": {},
+              "auth_session_expired": {}
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden: auth_session_required",
+            "x-error-codes": {
+              "auth_session_required": {}
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Method Not Allowed: auth_method_not_allowed",
+            "x-error-codes": {
+              "auth_method_not_allowed": {}
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error: internal_error",
+            "x-error-codes": {
+              "internal_error": {}
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "x-error-codes": {
+              "auth_unavailable": {},
+              "shutting_down": {},
+              "timeout": {}
+            }
+          }
+        },
+        "security": [],
+        "summary": "Every live and dormant agent, by name"
+      }
+    },
+    "/api/agents/{name}": {
+      "get": {
+        "operationId": "getAgent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentPage"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized: auth_required, auth_session_expired, auth_invalid_credentials, auth_key_invalid",
+            "x-error-codes": {
+              "auth_invalid_credentials": {},
+              "auth_key_invalid": {},
+              "auth_required": {},
+              "auth_session_expired": {}
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden: auth_session_required",
+            "x-error-codes": {
+              "auth_session_required": {}
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: not_found",
+            "x-error-codes": {
+              "not_found": {}
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Method Not Allowed: auth_method_not_allowed",
+            "x-error-codes": {
+              "auth_method_not_allowed": {}
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error: internal_error",
+            "x-error-codes": {
+              "internal_error": {}
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "x-error-codes": {
+              "auth_unavailable": {},
+              "shutting_down": {},
+              "timeout": {}
+            }
+          }
+        },
+        "security": [],
+        "summary": "An agent's card, reservations and delegates"
+      }
+    },
+    "/api/agents/{name}/history": {
+      "get": {
+        "operationId": "getAgentHistory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryPage"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request: invalid",
+            "x-error-codes": {
+              "invalid": {}
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized: auth_required, auth_session_expired, auth_invalid_credentials, auth_key_invalid",
+            "x-error-codes": {
+              "auth_invalid_credentials": {},
+              "auth_key_invalid": {},
+              "auth_required": {},
+              "auth_session_expired": {}
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden: auth_session_required",
+            "x-error-codes": {
+              "auth_session_required": {}
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: not_found",
+            "x-error-codes": {
+              "not_found": {}
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Method Not Allowed: auth_method_not_allowed",
+            "x-error-codes": {
+              "auth_method_not_allowed": {}
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error: internal_error",
+            "x-error-codes": {
+              "internal_error": {}
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "x-error-codes": {
+              "auth_unavailable": {},
+              "shutting_down": {},
+              "timeout": {}
+            }
+          }
+        },
+        "security": [],
+        "summary": "Every post an agent sent or received, newest first, 100 a page"
+      }
+    },
+    "/api/conversations": {
+      "get": {
+        "operationId": "listConversations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Show"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_thread",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationsPage"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request: invalid",
+            "x-error-codes": {
+              "invalid": {}
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized: auth_required, auth_session_expired, auth_invalid_credentials, auth_key_invalid",
+            "x-error-codes": {
+              "auth_invalid_credentials": {},
+              "auth_key_invalid": {},
+              "auth_required": {},
+              "auth_session_expired": {}
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden: auth_session_required",
+            "x-error-codes": {
+              "auth_session_required": {}
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Method Not Allowed: auth_method_not_allowed",
+            "x-error-codes": {
+              "auth_method_not_allowed": {}
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error: internal_error",
+            "x-error-codes": {
+              "internal_error": {}
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "x-error-codes": {
+              "auth_unavailable": {},
+              "shutting_down": {},
+              "timeout": {}
+            }
+          }
+        },
+        "security": [],
+        "summary": "Conversations newest activity first, 50 a page"
+      }
+    },
+    "/api/conversations/{id}": {
+      "get": {
+        "operationId": "getConversation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request: invalid",
+            "x-error-codes": {
+              "invalid": {}
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized: auth_required, auth_session_expired, auth_invalid_credentials, auth_key_invalid",
+            "x-error-codes": {
+              "auth_invalid_credentials": {},
+              "auth_key_invalid": {},
+              "auth_required": {},
+              "auth_session_expired": {}
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden: auth_session_required",
+            "x-error-codes": {
+              "auth_session_required": {}
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: not_found",
+            "x-error-codes": {
+              "not_found": {}
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Method Not Allowed: auth_method_not_allowed",
+            "x-error-codes": {
+              "auth_method_not_allowed": {}
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error: internal_error",
+            "x-error-codes": {
+              "internal_error": {}
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "x-error-codes": {
+              "auth_unavailable": {},
+              "shutting_down": {},
+              "timeout": {}
+            }
+          }
+        },
+        "security": [],
+        "summary": "A conversation's posts oldest first, 100 a page, and its context"
+      }
+    },
+    "/api/conversations/{id}/read": {
+      "post": {
+        "operationId": "markConversationRead",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkReadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkedRead"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request: invalid",
+            "x-error-codes": {
+              "invalid": {}
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized: auth_required, auth_session_expired, auth_invalid_credentials, auth_key_invalid",
+            "x-error-codes": {
+              "auth_invalid_credentials": {},
+              "auth_key_invalid": {},
+              "auth_required": {},
+              "auth_session_expired": {}
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden: forbidden, auth_cross_origin, auth_session_required",
+            "x-error-codes": {
+              "auth_cross_origin": {},
+              "auth_session_required": {},
+              "forbidden": {}
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: not_found",
+            "x-error-codes": {
+              "not_found": {}
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Method Not Allowed: auth_method_not_allowed",
+            "x-error-codes": {
+              "auth_method_not_allowed": {}
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error: internal_error",
+            "x-error-codes": {
+              "internal_error": {}
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "x-error-codes": {
+              "auth_unavailable": {},
+              "shutting_down": {},
+              "timeout": {}
+            }
+          }
+        },
+        "security": [],
+        "summary": "Mark the user's unread posts in a conversation read, up to the newest shown"
+      }
+    },
+    "/api/events": {
+      "get": {
+        "operationId": "events",
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "x-events": {
+                  "changed": {
+                    "$ref": "#/components/schemas/Changed"
+                  }
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized: auth_required, auth_session_expired, auth_invalid_credentials, auth_key_invalid",
+            "x-error-codes": {
+              "auth_invalid_credentials": {},
+              "auth_key_invalid": {},
+              "auth_required": {},
+              "auth_session_expired": {}
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden: auth_session_required",
+            "x-error-codes": {
+              "auth_session_required": {}
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Method Not Allowed: auth_method_not_allowed",
+            "x-error-codes": {
+              "auth_method_not_allowed": {}
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error: streaming_unsupported",
+            "x-error-codes": {
+              "streaming_unsupported": {}
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable: auth_unavailable, sse_unavailable",
+            "x-error-codes": {
+              "auth_unavailable": {},
+              "sse_unavailable": {}
+            }
+          }
+        },
+        "security": [],
+        "summary": "A changed event after each commit the web UI shows, resumed from Last-Event-ID, between the sse hub's hello and keepalive events"
+      }
+    },
+    "/api/messages/{id}/receipts": {
+      "get": {
+        "operationId": "getReceipts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Receipts"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request: invalid",
+            "x-error-codes": {
+              "invalid": {}
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized: auth_required, auth_session_expired, auth_invalid_credentials, auth_key_invalid",
+            "x-error-codes": {
+              "auth_invalid_credentials": {},
+              "auth_key_invalid": {},
+              "auth_required": {},
+              "auth_session_expired": {}
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden: auth_session_required",
+            "x-error-codes": {
+              "auth_session_required": {}
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: not_found",
+            "x-error-codes": {
+              "not_found": {}
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Method Not Allowed: auth_method_not_allowed",
+            "x-error-codes": {
+              "auth_method_not_allowed": {}
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error: internal_error",
+            "x-error-codes": {
+              "internal_error": {}
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "x-error-codes": {
+              "auth_unavailable": {},
+              "shutting_down": {},
+              "timeout": {}
+            }
+          }
+        },
+        "security": [],
+        "summary": "Who has read a message"
+      }
+    },
+    "/api/posts": {
+      "post": {
+        "operationId": "createPost",
+        "parameters": [
+          {
+            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 66,
+              "minLength": 18,
+              "pattern": "^[\\x20-\\x7E]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Posted"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request: invalid",
+            "x-error-codes": {
+              "invalid": {}
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized: auth_required, auth_session_expired, auth_invalid_credentials, auth_key_invalid",
+            "x-error-codes": {
+              "auth_invalid_credentials": {},
+              "auth_key_invalid": {},
+              "auth_required": {},
+              "auth_session_expired": {}
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden: forbidden, auth_cross_origin, auth_session_required",
+            "x-error-codes": {
+              "auth_cross_origin": {},
+              "auth_session_required": {},
+              "forbidden": {}
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: not_found",
+            "x-error-codes": {
+              "not_found": {}
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Method Not Allowed: auth_method_not_allowed",
+            "x-error-codes": {
+              "auth_method_not_allowed": {}
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: conflict",
+            "x-error-codes": {
+              "conflict": {}
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Gone: gone",
+            "x-error-codes": {
+              "gone": {}
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request Entity Too Large: too_large",
+            "x-error-codes": {
+              "too_large": {}
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity: key_reused",
+            "x-error-codes": {
+              "key_reused": {}
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error: internal_error",
+            "x-error-codes": {
+              "internal_error": {}
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "x-error-codes": {
+              "auth_unavailable": {},
+              "shutting_down": {},
+              "timeout": {}
+            }
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient Storage: store_full",
+            "x-error-codes": {
+              "store_full": {}
+            }
+          }
+        },
+        "security": [],
+        "summary": "Post as @user to announce, a path thread or an agent"
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "operationId": "getSettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized: auth_required, auth_session_expired, auth_invalid_credentials, auth_key_invalid",
+            "x-error-codes": {
+              "auth_invalid_credentials": {},
+              "auth_key_invalid": {},
+              "auth_required": {},
+              "auth_session_expired": {}
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden: auth_session_required",
+            "x-error-codes": {
+              "auth_session_required": {}
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Method Not Allowed: auth_method_not_allowed",
+            "x-error-codes": {
+              "auth_method_not_allowed": {}
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error: internal_error",
+            "x-error-codes": {
+              "internal_error": {}
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "x-error-codes": {
+              "auth_unavailable": {},
+              "shutting_down": {},
+              "timeout": {}
+            }
+          }
+        },
+        "security": [],
+        "summary": "The history retention and sign-in methods"
+      },
+      "put": {
+        "operationId": "putSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request: invalid",
+            "x-error-codes": {
+              "invalid": {}
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized: auth_required, auth_session_expired, auth_invalid_credentials, auth_key_invalid",
+            "x-error-codes": {
+              "auth_invalid_credentials": {},
+              "auth_key_invalid": {},
+              "auth_required": {},
+              "auth_session_expired": {}
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden: forbidden, recent_auth_required, auth_cross_origin, auth_session_required",
+            "x-error-codes": {
+              "auth_cross_origin": {},
+              "auth_session_required": {},
+              "forbidden": {},
+              "recent_auth_required": {}
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Method Not Allowed: auth_method_not_allowed",
+            "x-error-codes": {
+              "auth_method_not_allowed": {}
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: would_lock_out",
+            "x-error-codes": {
+              "would_lock_out": {}
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error: internal_error",
+            "x-error-codes": {
+              "internal_error": {}
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "x-error-codes": {
+              "auth_unavailable": {},
+              "shutting_down": {},
+              "timeout": {}
+            }
+          }
+        },
+        "security": [],
+        "summary": "Replace the settings; a change of sign-in methods needs a recent sign-in"
+      }
+    },
+    "/api/sign-in": {
+      "get": {
+        "operationId": "getSignIn",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignIn"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Method Not Allowed: auth_method_not_allowed",
+            "x-error-codes": {
+              "auth_method_not_allowed": {}
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error: internal_error",
+            "x-error-codes": {
+              "internal_error": {}
+            }
+          }
+        },
+        "security": [],
+        "summary": "What the sign-in page shows beside the sign-in routes' state; needs no session"
+      }
+    },
+    "/api/stats": {
+      "get": {
+        "operationId": "getStats",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "range",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/StatsRange"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stats"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request: invalid",
+            "x-error-codes": {
+              "invalid": {}
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized: auth_required, auth_session_expired, auth_invalid_credentials, auth_key_invalid",
+            "x-error-codes": {
+              "auth_invalid_credentials": {},
+              "auth_key_invalid": {},
+              "auth_required": {},
+              "auth_session_expired": {}
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden: auth_session_required",
+            "x-error-codes": {
+              "auth_session_required": {}
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Method Not Allowed: auth_method_not_allowed",
+            "x-error-codes": {
+              "auth_method_not_allowed": {}
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error: internal_error",
+            "x-error-codes": {
+              "internal_error": {}
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "x-error-codes": {
+              "auth_unavailable": {},
+              "shutting_down": {},
+              "timeout": {}
+            }
+          }
+        },
+        "security": [],
+        "summary": "The Statistics tab over a range"
+      }
+    }
+  }
+}

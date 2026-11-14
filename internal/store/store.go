@@ -36,7 +36,7 @@ const (
 
 // Default lifetimes, used where Options leaves one zero.
 const (
-	DefaultThreadTTL  = 72 * time.Hour
+	DefaultRetention  = 72 * time.Hour
 	DefaultDormantTTL = 72 * time.Hour
 	DefaultMaxBytes   = 512 << 20
 	// DefaultReservationMaxTTL is RESERVATION_MAX_TTL's default.
@@ -44,8 +44,8 @@ const (
 )
 
 // Options configures Open; nil is the zero Options. A nil Logger discards; a nil Now is time.Now;
-// a nil Metrics records to a page nobody serves; a zero TTL takes its
-// default.
+// a nil Metrics records to a page nobody serves; a nil Retention is
+// DefaultRetention; a zero TTL takes its default.
 type Options struct {
 	Logger *slog.Logger
 	Now    func() time.Time
@@ -56,12 +56,24 @@ type Options struct {
 	// identity, recorded a nudge for it or moved its read, with those ids.
 	// It runs in commit order and must not start a write transaction.
 	Woke func(ids []uint64)
+	// Changed, when set, is called after each commit that wrote what the
+	// web UI shows, with what it wrote. It runs in commit order, after
+	// Woke, and must not block or start a write transaction.
+	Changed func(WebChange)
+	// Retention is how long a path or direct thread, a post and an event
+	// live after they are written, read once per write transaction, so a
+	// change applies to what is written from then on. It must answer a
+	// positive duration and must not block.
+	Retention func() time.Duration
+	// KeyLive reports whether the machine key with an id still
+	// authenticates. It is asked only when a request's key differs from the
+	// one an identity is bound to, inside a read or write transaction, so
+	// it must answer quickly and must not start a write transaction. Nil
+	// holds every key live.
+	KeyLive func(key int64) (bool, error)
 	// PathRoot is the canonical root every repo lies in, <root>/<repo>,
 	// which Who's Repo filter reads; the caller checks it is canonical.
 	PathRoot string
-	// ThreadTTL is how long a path or direct thread, a post and an event
-	// live after they are written.
-	ThreadTTL time.Duration
 	// DormantTTL is how long an expired identity stays revivable.
 	DormantTTL time.Duration
 	// MaxBytes is the ceiling on the bytes in use; past 90 % of it every
@@ -79,13 +91,15 @@ type Store struct {
 	now func() time.Time
 	m   *obs.Metrics
 	// space reads the file's space; tests replace it.
-	space func() (bolttable.Space, error)
-	woke  func(ids []uint64)
+	space     func() (bolttable.Space, error)
+	woke      func(ids []uint64)
+	changed   func(WebChange)
+	retention func() time.Duration
+	keyLive   func(key int64) (bool, error)
 	// seen is each identity's newest request time; seenMu guards it.
 	seen       map[uint64]time.Time
 	pathRoot   string
 	resvPolicy leasePolicy
-	threadTTL  time.Duration
 	dormantTTL time.Duration
 	maxBytes   int64
 	seenMu     sync.Mutex
@@ -118,7 +132,7 @@ func Open(path string, o *Options) (*Store, error) {
 	s.logOpen(path, &rep)
 	s.db, s.t, s.space = db, t, db.Space
 	s.wireLeases()
-	if err := s.ensureServerThreads(context.Background()); err != nil {
+	if err := s.ensureServerRows(context.Background()); err != nil {
 		return nil, errors.Join(err, db.Close())
 	}
 	return s, nil
@@ -154,7 +168,7 @@ func (s *Store) logOpen(path string, rep *bolttable.OpenReport) {
 
 // newStore is a Store configured by o, each zero option taking its default.
 func newStore(o *Options) *Store {
-	s := &Store{log: o.Logger, now: o.Now, m: o.Metrics, woke: o.Woke, threadTTL: o.ThreadTTL, dormantTTL: o.DormantTTL, maxBytes: o.MaxBytes, seen: map[uint64]time.Time{}}
+	s := &Store{log: o.Logger, now: o.Now, m: o.Metrics, woke: o.Woke, changed: o.Changed, retention: o.Retention, dormantTTL: o.DormantTTL, maxBytes: o.MaxBytes, seen: map[uint64]time.Time{}}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
 	}
@@ -164,8 +178,11 @@ func newStore(o *Options) *Store {
 	if s.m == nil {
 		s.m = obs.New()
 	}
-	if s.threadTTL == 0 {
-		s.threadTTL = DefaultThreadTTL
+	if s.retention == nil {
+		s.retention = func() time.Duration { return DefaultRetention }
+	}
+	if s.keyLive = o.KeyLive; s.keyLive == nil {
+		s.keyLive = func(int64) (bool, error) { return true, nil }
 	}
 	if s.dormantTTL == 0 {
 		s.dormantTTL = DefaultDormantTTL
@@ -195,7 +212,8 @@ func closed(err error) error {
 // Close closes the file, waiting for open transactions.
 func (s *Store) Close() error { return s.db.Close() }
 
-// wtx is one write transaction with the time it runs at.
+// wtx is one write transaction with the time it runs at and the retention
+// every lease it writes takes.
 type wtx struct {
 	now time.Time
 	s   *Store
@@ -203,6 +221,8 @@ type wtx struct {
 	r   *bolttable.ReadTx
 	// refusal is what update returns once this transaction commits.
 	refusal *Error
+	// changedPaths are the paths of changed path threads, by id.
+	changedPaths map[uint64]string
 	// cards and events are owed so far, written once fn is done.
 	cards  []card
 	events []owedEvent
@@ -210,6 +230,9 @@ type wtx struct {
 	woke []uint64
 	// recounts are the identities whose unread summary recount rebuilds.
 	recounts []uint64
+	// changed is what Options.Changed reports once this commits.
+	changed   WebChange
+	retention time.Duration
 }
 
 // refuseCommitting has update return e once this transaction commits: a
@@ -237,26 +260,39 @@ func (w *wtx) wake(id uint64) {
 func (s *Store) update(ctx context.Context, fn func(*wtx) error) error {
 	var refusal *Error
 	err := closed(s.db.Update(ctx, func(tx *bolttable.Tx) error {
-		w := &wtx{s: s, tx: tx, r: tx.Read(), now: s.now()}
+		w := &wtx{s: s, tx: tx, r: tx.Read(), now: s.now(), retention: s.retention()}
 		defer func() { refusal = w.refusal }()
 		if err := fn(w); err != nil {
 			return err
 		}
-		if err := w.flushOwed(); err != nil {
-			return err
-		}
-		if err := w.recount(); err != nil {
-			return err
-		}
-		if ids := w.woke; len(ids) > 0 && s.woke != nil {
-			tx.AfterCommit(func() { s.woke(ids) })
-		}
-		return nil
+		return w.finish()
 	}))
 	if err == nil && refusal != nil {
 		return refusal
 	}
 	return err
+}
+
+// finish writes what fn owes, then has Options.Woke and Options.Changed
+// report what it wrote once this commits.
+func (w *wtx) finish() error {
+	if err := w.flushOwed(); err != nil {
+		return err
+	}
+	if err := w.recount(); err != nil {
+		return err
+	}
+	if err := w.nameParents(); err != nil {
+		return err
+	}
+	s := w.s
+	if ids := w.woke; len(ids) > 0 && s.woke != nil {
+		w.tx.AfterCommit(func() { s.woke(ids) })
+	}
+	if c := w.changed; (c.Agents || len(c.Conversations) > 0) && s.changed != nil {
+		w.tx.AfterCommit(func() { s.changed(c) })
+	}
+	return nil
 }
 
 // read runs fn in one read transaction.

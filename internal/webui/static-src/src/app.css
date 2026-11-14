@@ -1,0 +1,9 @@
+@import url("@cplieger/ui/css/system");
+
+/* grelot's seeds, checked with the ui-design skill's seeds.py. */
+:root {
+  --cp-accent-h: 200;
+  --cp-accent-c: 0.09;
+  --cp-neutral-h: 200;
+  --cp-neutral-c: 0.012;
+}

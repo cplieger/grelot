@@ -12,7 +12,7 @@ func TestDelegate_parentSessionEndEndsTheDelegatesAndKeepsTheParent(t *testing.T
 	s, _, sink := openIdentityStore(t)
 	p, shared := delegateOf(t, s, "parent", "review")
 	own := mustRegisterDelegate(t, s, "codex:thread-1", mustGrant(t, s, grantFrom("parent", "codex")).Link)
-	if err := s.EndSession(t.Context(), sess("parent")); err != nil {
+	if err := s.EndSession(t.Context(), sess("parent"), 0); err != nil {
 		t.Fatal(err)
 	}
 	for _, d := range []Identity{shared, own} {
@@ -86,7 +86,7 @@ func TestDelegate_subagentStop(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
 		regAt(t, s, "parent", repoSubflux)
 		d := mustRegisterDelegate(t, s, "codex:thread-1", mustGrant(t, s, grantFrom("parent", "codex")).Link)
-		if err := s.SubagentStop(t.Context(), "codex:thread-1"); err != nil {
+		if err := s.SubagentStop(t.Context(), "codex:thread-1", 0); err != nil {
 			t.Fatal(err)
 		}
 		if identityExists(t, s, d.ID) {
@@ -97,7 +97,7 @@ func TestDelegate_subagentStop(t *testing.T) {
 		s, sink, _, _ := gateFixture(t)
 		d := mustRegisterDelegate(t, s, sess("parent"), mustGrant(t, s, grantFrom("parent", "bound")).Link)
 		lines := len(*sink.records)
-		if err := s.SubagentStop(t.Context(), sess("parent")); err != nil {
+		if err := s.SubagentStop(t.Context(), sess("parent"), 0); err != nil {
 			t.Errorf("SubagentStop from the parent's session: %v, want no refusal", err)
 		}
 		if n := len(*sink.records) - lines; n != 0 {
@@ -265,7 +265,7 @@ func TestDelegate_standingWaitIsRefused(t *testing.T) {
 		})
 	}
 	t.Run("the parent's wait holds, and leaves ended set", func(t *testing.T) {
-		if err := s.EndSession(t.Context(), sess("parent")); err != nil {
+		if err := s.EndSession(t.Context(), sess("parent"), 0); err != nil {
 			t.Fatal(err)
 		}
 		got, err := s.Watcher(t.Context(), self("parent"))

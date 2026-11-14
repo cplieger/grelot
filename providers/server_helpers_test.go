@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cplieger/grelot/internal/auth/authtest"
 	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/server"
@@ -33,9 +34,11 @@ func newServer(t *testing.T) *testServer {
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
+	a := authtest.New(t, nil)
+	ts.Key = authtest.Key(t, a, "providers")
 	h := server.New(&server.Options{
-		Store: st, Logger: logger, Hub: hub, Version: "v1.1.0", Now: ts.clock.Now,
-		Config: server.Config{Token: "test-token", PathRoot: protopath.DefaultRoot},
+		Store: st, Logger: logger, Hub: hub, Version: "v1.1.0", Now: ts.clock.Now, Auth: a,
+		Config: server.Config{PathRoot: protopath.DefaultRoot},
 	}).Handler()
 	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -59,7 +62,7 @@ func newShell(t *testing.T, srv *testServer, name string, vars map[string]string
 	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(file, fmt.Appendf(nil, "server: %s\ntoken: test-token\nhost: box\n", srv.URL), 0o600); err != nil {
+	if err := os.WriteFile(file, fmt.Appendf(nil, "server: %s\ntoken: %s\nhost: box\n", srv.URL, srv.Key), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return s
