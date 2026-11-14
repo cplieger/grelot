@@ -27,7 +27,7 @@ func run() int {
 	// Loading packages runs go as a subprocess; an interrupt cancels it.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := generate(ctx, ".", "."); err != nil {
+	if err := generate(ctx, "."); err != nil {
 		if errors.Is(err, context.Canceled) {
 			fmt.Fprintln(os.Stderr, "wire-codegen: interrupted")
 			return 130
@@ -40,15 +40,15 @@ func run() int {
 }
 
 // generate writes every generated file under out, at the paths the committed
-// tree holds them; the edges' Go side is the code of the repo rooted at repo.
-func generate(ctx context.Context, repo, out string) error {
+// tree holds them; the edges' Go side is the code below the working directory.
+func generate(ctx context.Context, out string) error {
 	return registry().Generate(ctx,
 		wiregen.WithTSDir(filepath.Join(out, "internal", "webui", "static-src", "src", "wire")),
 		wiregen.WithTransportImport("../transport.js"),
 		wiregen.WithHeaderComment(headerComment),
 		wiregen.WithRequireJSONTags(true),
 		wiregen.WithOpenAPIFiles(filepath.Join(out, "docs", "openapi.json")),
-		wiregen.WithDeadsetEdges(repo),
+		wiregen.WithDeadsetEdges("."),
 		wiregen.WithDeadsetEdgesFile(filepath.Join(out, "deadset-edges.json")),
 	)
 }

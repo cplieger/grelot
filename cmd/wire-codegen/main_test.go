@@ -10,9 +10,11 @@ import (
 
 const regenerate = "run go run ./cmd/wire-codegen from the repo root and commit the result"
 
-// The committed client, document and edges file are what the route table
-// generates now, file for file.
+// The committed client, OpenAPI document and edges file match what generate
+// writes, byte for byte.
 func TestGenerate_matchesTheCommittedFiles(t *testing.T) {
+	t.Chdir(filepath.Join("..", ".."))
+	repo := "."
 	tmp := t.TempDir()
 	tsDir := filepath.Join("internal", "webui", "static-src", "src", "wire")
 	for _, d := range []string{tsDir, "docs"} {
@@ -20,20 +22,18 @@ func TestGenerate_matchesTheCommittedFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	repo := filepath.Join("..", "..")
-	// The edges' TypeScript side takes its package name from package.json,
-	// and generating merges into the edges file already there, so the temp
-	// tree holds both as the repo does.
-	for _, rel := range []string{filepath.Join("internal", "webui", "static-src", "package.json"), "deadset-edges.json"} {
-		b, err := os.ReadFile(filepath.Join(repo, rel))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(tmp, rel), b, 0o600); err != nil {
-			t.Fatal(err)
-		}
+	// The edges' TypeScript side is named by package.json. The committed edges
+	// file is not copied: generating merges into it, so a copy would pass
+	// with the edges write gone.
+	pkg := filepath.Join("internal", "webui", "static-src", "package.json")
+	b, err := os.ReadFile(pkg)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err := generate(t.Context(), repo, tmp); err != nil {
+	if err := os.WriteFile(filepath.Join(tmp, pkg), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := generate(t.Context(), tmp); err != nil {
 		t.Fatalf("generate: %v", err)
 	}
 	generated := genFiles(t, filepath.Join(tmp, tsDir))
@@ -47,7 +47,7 @@ func TestGenerate_matchesTheCommittedFiles(t *testing.T) {
 	for _, rel := range rels {
 		want, err := os.ReadFile(filepath.Join(tmp, rel))
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("generate wrote no %s: %v", rel, err)
 		}
 		got, err := os.ReadFile(filepath.Join(repo, rel))
 		switch {
