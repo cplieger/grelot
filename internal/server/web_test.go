@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cplieger/access/gate"
+	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/webui/wire"
 )
@@ -390,5 +391,46 @@ func TestWeb_statsCountsTheRangeInBuckets(t *testing.T) {
 	}
 	if st.Samples == nil || st.Events == nil || st.HeldTurns == nil {
 		t.Errorf("samples %v, events %v, held turns %v, want empty lists", st.Samples, st.Events, st.HeldTurns)
+	}
+}
+
+func TestWeb_reservationStatesAreTheWireMembers(t *testing.T) {
+	h := newSignedIn(t)
+	h.mustRegister(sessA, "alpha")
+	h.mustRegister(sessB, "bravo")
+	body := map[string]any{"path": repoGrelot, "reason": "editing", "ttl": "1h"}
+	if r := h.as(sessA, http.MethodPost, "/v1/reservations", body); r.status != http.StatusCreated {
+		t.Fatalf("reserve: %d %s", r.status, r.raw)
+	}
+	body["queue"] = true
+	if r := h.as(sessB, http.MethodPost, "/v1/reservations", body); r.status != http.StatusCreated {
+		t.Fatalf("queue: %d %s", r.status, r.raw)
+	}
+	for name, want := range map[string]wire.ReservationState{"alpha": wire.ReservationHeld, "bravo": wire.ReservationQueued} {
+		rs := webGet[wire.AgentPage](h, "/api/agents/"+name).Reservations
+		if len(rs) != 1 || rs[0].State != want {
+			t.Errorf("%s's reservations %+v, want one %s", name, rs, want)
+		}
+	}
+}
+
+func TestWeb_anExpiredAgentIsTheWireDormantState(t *testing.T) {
+	h := newSignedIn(t)
+	h.mustRegister(sessA, "alpha")
+	h.clk.advance(7 * time.Hour)
+	if a := webGet[wire.AgentPage](h, "/api/agents/alpha").Agent; a.State != wire.AgentDormant || a.Online {
+		t.Errorf("alpha past its 6h lease: state %q online %v, want %q offline", a.State, a.Online, wire.AgentDormant)
+	}
+}
+
+func TestWeb_everyEventKindIsAWireMember(t *testing.T) {
+	want := map[obs.EventKind]wire.EventKind{
+		obs.EventPostRefused: wire.EventPostRefused, obs.EventPushRetry: wire.EventPushRetry,
+		obs.EventPushGaveUp: wire.EventPushGaveUp, obs.EventNudgeRepeat: wire.EventNudgeRepeat,
+	}
+	for k, w := range want {
+		if got := wire.EventKind(k.String()); got != w {
+			t.Errorf("obs kind %d sends %q, want %q", k, got, w)
+		}
 	}
 }
