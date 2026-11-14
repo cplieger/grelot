@@ -59,7 +59,7 @@ export type ScreenMount<S extends FrameScreen> = (
 
 export type Screens = { readonly [S in FrameScreen]: ScreenMount<S> };
 
-export interface ShellOptions {
+interface ShellOptions {
   readonly root: HTMLElement;
   readonly router: Router;
   readonly live: Live;

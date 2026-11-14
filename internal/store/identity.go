@@ -19,9 +19,9 @@ import (
 // value; a post's Paths keeps the paths as the one element NoChange.
 const NoChange = "no change"
 
-// UserName is the reserved name of the user's identity, @user, which Open
+// userName is the reserved name of the user's identity, @user, which Open
 // creates and no agent may take. Its row never expires and has no session.
-const UserName = "user"
+const userName = "user"
 
 // userProvider is @user's provider label; no session carries it.
 const userProvider = "web"
@@ -776,7 +776,7 @@ func checkName(n string) error {
 	switch {
 	case !namePattern.MatchString(n):
 		return refuse(KindInvalid, fmt.Sprintf("name %q must be 2 to 48 lowercase letters, digits and hyphens, starting with a letter or digit", n))
-	case n == UserName:
+	case n == userName:
 		return refuse(KindInvalid, "the name user is reserved for the user, who posts as @user from the web UI")
 	}
 	return nil
@@ -784,7 +784,7 @@ func checkName(n string) error {
 
 // isUser reports whether row is @user's, which checkName keeps every
 // other identity from naming.
-func isUser(row *identityRow) bool { return row.Name == UserName && row.Parent == 0 }
+func isUser(row *identityRow) bool { return row.Name == userName && row.Parent == 0 }
 
 func checkDescription(d string) error {
 	if n := utf8.RuneCountInString(d); n > maxDescription || !utf8.ValidString(d) || strings.ContainsFunc(d, isControl) {

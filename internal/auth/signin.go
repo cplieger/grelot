@@ -40,8 +40,8 @@ type OIDC struct {
 	Label        string
 }
 
-// Configured reports whether o names a provider.
-func (o *OIDC) Configured() bool { return o.Issuer != "" }
+// configured reports whether o names a provider.
+func (o *OIDC) configured() bool { return o.Issuer != "" }
 
 // CallbackURL is the single sign-on callback under public, which the
 // provider's registration must list.
@@ -74,14 +74,6 @@ func (a *Auth) Routes() []accesshttp.Route { return slices.Clone(a.routes) }
 
 // Authenticator is access's request authenticator, for the server's gate.
 func (a *Auth) Authenticator() *access.Authenticator { return a.svc.Authenticator() }
-
-// Authenticate is r's principal: a session from its cookie, or an API key
-// from its bearer. The error matches access.ErrAuthBackend when the
-// accounts file failed, access.ErrInvalidCredential for a credential
-// presented and refused, access.ErrUnauthenticated otherwise.
-func (a *Auth) Authenticate(r *http.Request) (access.Principal, error) {
-	return a.svc.Authenticator().Authenticate(r)
-}
 
 func clientAddr(r *http.Request, trusted []netip.Prefix) access.ClientAddr {
 	return clientVia(httpserver.ResolveClient(r, trusted...))
@@ -143,7 +135,7 @@ var (
 // it answers. A registration access refuses is New's error.
 func (a *Auth) startDiscovery(ctx context.Context, o OIDC) error {
 	ctx, a.stopDiscovery = context.WithCancel(context.WithoutCancel(ctx))
-	if !o.Configured() {
+	if !o.configured() {
 		close(a.discovered)
 		return nil
 	}

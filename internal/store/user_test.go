@@ -19,7 +19,7 @@ func userRow(t *testing.T, s *Store) identityRow {
 	var found bool
 	if err := s.db.View(t.Context(), func(r *bolttable.ReadTx) error {
 		var err error
-		id, _, found, err = s.t.byName.Lookup(r, []byte(UserName))
+		id, _, found, err = s.t.byName.Lookup(r, []byte(userName))
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -85,12 +85,12 @@ func TestUser_noAgentMayTakeTheName(t *testing.T) {
 	const reserved = "reserved for the user"
 	t.Run("register", func(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
-		_, _, err := s.Register(t.Context(), Keyed{}, new(registration(sessA, UserName, envA())))
+		_, _, err := s.Register(t.Context(), Keyed{}, new(registration(sessA, userName, envA())))
 		wantRefusal(t, err, KindInvalid, "", reserved)
 	})
 	t.Run("take-over", func(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
-		r := registration(sessA, UserName, envA())
+		r := registration(sessA, userName, envA())
 		r.TakeOver = true
 		_, _, err := s.Register(t.Context(), Keyed{}, &r)
 		wantRefusal(t, err, KindInvalid, "", reserved)
@@ -98,26 +98,26 @@ func TestUser_noAgentMayTakeTheName(t *testing.T) {
 	t.Run("set", func(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
 		regAt(t, s, "alpha")
-		_, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("alpha")}, Change{Fields: Fields{Name: UserName}})
+		_, err := s.Set(t.Context(), Keyed{}, Caller{Session: sess("alpha")}, Change{Fields: Fields{Name: userName}})
 		wantRefusal(t, err, KindInvalid, "", reserved)
 	})
 	t.Run("post name", func(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
 		regAt(t, s, "alpha")
 		p := posting(sess("alpha"), Target{Announce: true})
-		p.Fields.Name = UserName
+		p.Fields.Name = userName
 		_, _, err := s.Post(t.Context(), Keyed{}, &p)
 		wantRefusal(t, err, KindInvalid, "", reserved)
 	})
 	t.Run("revive by name", func(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
-		_, _, err := s.Revive(t.Context(), Keyed{}, new(revival(sessA, UserName, envA())))
+		_, _, err := s.Revive(t.Context(), Keyed{}, new(revival(sessA, userName, envA())))
 		wantRefusal(t, err, KindInvalid, "", reserved)
 	})
 	t.Run("the row is left as it was", func(t *testing.T) {
 		s, _, _ := openIdentityStore(t)
 		before := userRow(t, s)
-		_, _, _ = s.Register(t.Context(), Keyed{}, new(registration(sessA, UserName, envA())))
+		_, _, _ = s.Register(t.Context(), Keyed{}, new(registration(sessA, userName, envA())))
 		if after := userRow(t, s); after.Session != before.Session || after.ID != before.ID {
 			t.Errorf("@user row %+v after a refused register, want %+v", after, before)
 		}
@@ -132,7 +132,7 @@ func TestUser_noAgentRequestActsAsUser(t *testing.T) {
 	})
 	t.Run("the name is no delegate handle", func(t *testing.T) {
 		p := posting(sessA, Target{Announce: true})
-		p.Caller.As = UserName
+		p.Caller.As = userName
 		_, _, err := s.Post(t.Context(), Keyed{}, &p)
 		wantRefusal(t, err, KindInvalid, "", "not a delegate handle")
 	})
@@ -147,7 +147,7 @@ func TestUser_noAgentRequestActsAsUser(t *testing.T) {
 func TestUser_receivesAnAgentsDirectPost(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	regAt(t, s, "alpha")
-	got := mustPost(t, s, posting(sess("alpha"), Target{Agent: UserName}))
+	got := mustPost(t, s, posting(sess("alpha"), Target{Agent: userName}))
 	if got.Delivered != 1 {
 		t.Errorf("delivered %d, want 1", got.Delivered)
 	}
@@ -184,7 +184,7 @@ func TestUser_postsReachTheirRecipientsLikeAnAgentsPost(t *testing.T) {
 		}
 		p := mustInbox(t, s, sess("bravo"), 0)
 		last := p.Entries[len(p.Entries)-1]
-		if last.Kind != kindDirect || last.From != UserName || last.Message != got.Message {
+		if last.Kind != kindDirect || last.From != userName || last.Message != got.Message {
 			t.Errorf("bravo's last entry %+v, want the direct post from user", last)
 		}
 	})
@@ -193,7 +193,7 @@ func TestUser_postsReachTheirRecipientsLikeAnAgentsPost(t *testing.T) {
 			t.Errorf("identity %d has %d deliveries, want the announcement and its one other post", id, len(ds))
 		}
 	}
-	if u := userRow(t, s); u.Name != UserName || u.Description != "the user, through grelot's web UI" {
+	if u := userRow(t, s); u.Name != userName || u.Description != "the user, through grelot's web UI" {
 		t.Errorf("@user's fields %q %q after posts that set none", u.Name, u.Description)
 	}
 }
@@ -315,7 +315,7 @@ func TestUser_aChildThreadItNeverPostedInEndsWithTheParentsFollow(t *testing.T) 
 func TestUser_isLeftOutOfCensusWhoAndPush(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	regAt(t, s, "alpha")
-	mustPost(t, s, posting(sess("alpha"), Target{Agent: UserName}))
+	mustPost(t, s, posting(sess("alpha"), Target{Agent: userName}))
 	u := userRow(t, s)
 	t.Run("census", func(t *testing.T) {
 		c := mustCensus(t, s, func(*Identity) bool { return true })
@@ -356,12 +356,12 @@ func TestReadThread_marksTheThreadsPostsRead(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
 	alpha := regAt(t, s, "alpha")
 	regAt(t, s, "bravo")
-	watched := posting(sess("alpha"), Target{Agent: UserName})
-	watched.NotifyRead = NotifyRead{Names: []string{UserName}}
+	watched := posting(sess("alpha"), Target{Agent: userName})
+	watched.NotifyRead = NotifyRead{Names: []string{userName}}
 	first := mustPost(t, s, watched)
-	mustPost(t, s, posting(sess("alpha"), Target{Agent: UserName}))
-	other := mustPost(t, s, posting(sess("bravo"), Target{Agent: UserName}))
-	mustPost(t, s, posting(sess("alpha"), Target{Agent: UserName}))
+	mustPost(t, s, posting(sess("alpha"), Target{Agent: userName}))
+	other := mustPost(t, s, posting(sess("bravo"), Target{Agent: userName}))
+	mustPost(t, s, posting(sess("alpha"), Target{Agent: userName}))
 	u := userRow(t, s)
 	clk.advance(time.Minute)
 
@@ -409,8 +409,8 @@ func TestReadThread_marksTheThreadsPostsRead(t *testing.T) {
 func TestReadThread_leavesPostsAfterTheBoundUnread(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	regAt(t, s, "alpha")
-	shown := mustPost(t, s, posting(sess("alpha"), Target{Agent: UserName}))
-	later := mustPost(t, s, posting(sess("alpha"), Target{Agent: UserName}))
+	shown := mustPost(t, s, posting(sess("alpha"), Target{Agent: userName}))
+	later := mustPost(t, s, posting(sess("alpha"), Target{Agent: userName}))
 	u := userRow(t, s)
 
 	n, err := s.ReadThread(t.Context(), Caller{User: true}, shown.Thread, shown.Message)
@@ -437,7 +437,7 @@ func TestReadThread_leavesPostsAfterTheBoundUnread(t *testing.T) {
 func TestReadThread_isOnlyForUser(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	regAt(t, s, "alpha")
-	got := mustPost(t, s, posting(sess("alpha"), Target{Agent: UserName}))
+	got := mustPost(t, s, posting(sess("alpha"), Target{Agent: userName}))
 	_, err := s.ReadThread(t.Context(), Caller{Session: sess("alpha")}, got.Thread, everyPost)
 	wantRefusal(t, err, KindForbidden, "", "only @user")
 }

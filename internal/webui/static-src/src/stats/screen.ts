@@ -87,7 +87,7 @@ function section(id: string, heading: string, part: Loadable): HTMLElement {
   );
 }
 
-export interface StatisticsOptions {
+interface StatisticsOptions {
   /** How often the open tab reads the statistics again, which the server samples each minute. */
   readonly refreshMs?: number;
 }

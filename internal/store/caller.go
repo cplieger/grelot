@@ -217,7 +217,7 @@ func (s *Store) callerID(r *bolttable.ReadTx, c Caller) (id uint64, found bool, 
 	if c.As != "" || c.User {
 		name := c.As
 		if c.User {
-			name = UserName
+			name = userName
 		}
 		id, _, found, err = s.t.byName.Lookup(r, []byte(name))
 		return id, found, err

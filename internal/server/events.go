@@ -66,5 +66,6 @@ func (e *Events) Changed(c store.WebChange) {
 func (e *Events) serve(w http.ResponseWriter, r *http.Request) { e.hub.Serve(w, r) }
 
 // shutdown ends every stream and refuses new ones, waiting for the open
-// ones to end until ctx does.
-func (e *Events) shutdown(ctx context.Context) error { return e.hub.Shutdown(ctx) }
+// ones to end until ctx does. Its only failure is ctx ending first, which
+// the hub logs with the streams still open.
+func (e *Events) shutdown(ctx context.Context) { _ = e.hub.Shutdown(ctx) }

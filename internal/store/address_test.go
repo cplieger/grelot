@@ -344,12 +344,12 @@ func TestPost_aPathPostOpeningWithUserReachesTheUserUnreadAndWakesNoFollower(t *
 	b := regAt(t, s, "bravo", repoSubflux)
 	c := regAt(t, s, "charlie", repoSubflux)
 	got := mustPost(t, s, addressed("alpha", repoSubflux, "@user: the fix is on dev, can you check it?"))
-	if got.Delivered != 3 || !slices.Equal(got.Woken, []string{UserName}) || got.Quiet != 2 {
+	if got.Delivered != 3 || !slices.Equal(got.Woken, []string{userName}) || got.Quiet != 2 {
 		t.Errorf("delivered %d woken %q quiet %d, want 3, [user], 2", got.Delivered, got.Woken, got.Quiet)
 	}
 	u := userRow(t, s)
-	wantQuiet(t, quietOf(t, s, got.Message, map[string]uint64{UserName: u.ID, "bravo": b.ID, "charlie": c.ID}),
-		map[string]bool{UserName: false, "bravo": true, "charlie": true})
+	wantQuiet(t, quietOf(t, s, got.Message, map[string]uint64{userName: u.ID, "bravo": b.ID, "charlie": c.ID}),
+		map[string]bool{userName: false, "bravo": true, "charlie": true})
 	if u.Unread.Counts.Path != 1 || u.Unread.Counts.QuietPath != 0 {
 		t.Errorf("@user's unread %+v, want the post as one unread path delivery", u.Unread.Counts)
 	}

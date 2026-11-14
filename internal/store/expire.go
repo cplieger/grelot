@@ -55,7 +55,7 @@ func expireMessage(w *wtx, k []byte, v *messageRow) error {
 
 // unfollowUser drops p from @user's follows.
 func (w *wtx) unfollowUser(p string) error {
-	id, _, found, err := w.s.t.byName.Lookup(w.r, []byte(UserName))
+	id, _, found, err := w.s.t.byName.Lookup(w.r, []byte(userName))
 	if err != nil || !found {
 		return err
 	}

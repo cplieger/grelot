@@ -15,9 +15,9 @@ import (
 // The Statistics tab's ranges: 6 hours in 15-minute buckets, 24 and 72
 // hours in hourly ones.
 const (
-	StatsRange6h  = 6 * time.Hour
-	StatsRange24h = 24 * time.Hour
-	StatsRange72h = 72 * time.Hour
+	statsRange6h  = 6 * time.Hour
+	statsRange24h = 24 * time.Hour
+	statsRange72h = 72 * time.Hour
 )
 
 // StatsWindow is a range aligned to its buckets: End is the end of the
@@ -29,14 +29,14 @@ type StatsWindow struct {
 	Bucket time.Duration
 }
 
-// StatsWindowAt aligns span, one of the StatsRange values, at now.
+// statsWindowAt aligns span, one of the statsRange values, at now.
 // Refusals: KindInvalid for any other span.
-func StatsWindowAt(now time.Time, span time.Duration) (StatsWindow, error) {
+func statsWindowAt(now time.Time, span time.Duration) (StatsWindow, error) {
 	var bucket time.Duration
 	switch span {
-	case StatsRange6h:
+	case statsRange6h:
 		bucket = 15 * time.Minute
-	case StatsRange24h, StatsRange72h:
+	case statsRange24h, statsRange72h:
 		bucket = time.Hour
 	default:
 		return StatsWindow{}, refuse(KindInvalid, "the range must be 6h, 24h or 72h")
@@ -45,11 +45,11 @@ func StatsWindowAt(now time.Time, span time.Duration) (StatsWindow, error) {
 	return StatsWindow{Start: end.Add(-span), End: end, Bucket: bucket}, nil
 }
 
-// Buckets is the number of buckets in w.
-func (w StatsWindow) Buckets() int { return int(w.End.Sub(w.Start) / w.Bucket) }
+// buckets is the number of buckets in w.
+func (w StatsWindow) buckets() int { return int(w.End.Sub(w.Start) / w.Bucket) }
 
-// Index is the bucket t falls in, false outside w.
-func (w StatsWindow) Index(t time.Time) (int, bool) {
+// index is the bucket t falls in, false outside w.
+func (w StatsWindow) index(t time.Time) (int, bool) {
 	if t.Before(w.Start) || !t.Before(w.End) {
 		return 0, false
 	}
@@ -117,10 +117,10 @@ var delayLadder = []time.Duration{
 	24 * time.Hour, 72 * time.Hour, 7 * 24 * time.Hour, 14 * 24 * time.Hour, 30 * 24 * time.Hour, 90 * 24 * time.Hour,
 }
 
-// Stats reads the window of span, one of the StatsRange values, ending
+// Stats reads the window of span, 6, 24 or 72 hours, ending
 // in the bucket now falls in. Refusals: KindInvalid for any other span.
 func (s *Store) Stats(ctx context.Context, span time.Duration) (Stats, error) {
-	w, err := StatsWindowAt(s.now(), span)
+	w, err := statsWindowAt(s.now(), span)
 	if err != nil {
 		return Stats{}, err
 	}
@@ -130,7 +130,7 @@ func (s *Store) Stats(ctx context.Context, span time.Duration) (Stats, error) {
 		if rerr != nil {
 			return rerr
 		}
-		st := statsScan{wr: wr, w: w, agents: map[uint64]*AgentStats{}, threads: map[uint64]*threadTally{}, posts: make([]PostCounts, w.Buckets())}
+		st := statsScan{wr: wr, w: w, agents: map[uint64]*AgentStats{}, threads: map[uint64]*threadTally{}, posts: make([]PostCounts, w.buckets())}
 		out, rerr = st.run()
 		return rerr
 	})
@@ -216,7 +216,7 @@ func (st *statsScan) thread(id uint64) *threadTally {
 func (st *statsScan) scanPosts() error {
 	wr := st.wr
 	return wr.s.t.messages.table.Scan(wr.r, bolttable.Range{}, func(_ []byte, m *messageRow) (bool, error) {
-		i, in := st.w.Index(m.PostedAt)
+		i, in := st.w.index(m.PostedAt)
 		if !in || m.Lease.due(wr.now) || !isPost(m.Kind) {
 			return true, nil
 		}
@@ -249,12 +249,12 @@ func (st *statsScan) scanDeliveries() error {
 		if d.Lease.due(wr.now) || !isPost(d.Kind) || d.Via != "" {
 			return true, nil
 		}
-		if _, in := st.w.Index(d.Written); in {
+		if _, in := st.w.index(d.Written); in {
 			t := st.thread(d.Thread)
 			t.Deliveries++
 			t.ids[d.Agent] = true
 		}
-		if _, in := st.w.Index(d.ReadAt); in && d.Agent != wr.user.ID {
+		if _, in := st.w.index(d.ReadAt); in && d.Agent != wr.user.ID {
 			wait := d.ReadAt.Sub(d.Written)
 			a := st.agent(d.Agent, d.Name)
 			a.Read++

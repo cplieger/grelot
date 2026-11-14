@@ -395,7 +395,7 @@ func (h *harness) keyID() int64 {
 	}
 	r := httptest.NewRequestWithContext(h.t.Context(), http.MethodGet, "/v1/me", http.NoBody)
 	r.Header.Set("Authorization", "Bearer "+key)
-	p, err := h.srv.auth.Authenticate(r)
+	p, err := h.srv.auth.Authenticator().Authenticate(r)
 	if err != nil || !p.IsAPIKey() {
 		h.t.Fatalf("the harness's machine key does not authenticate: %v", err)
 	}
@@ -535,17 +535,7 @@ var testKeys atomic.Uint64
 // newTestKey is a key no other request of the test binary sends.
 func newTestKey() string { return fmt.Sprintf(`"test-key-%016d"`, testKeys.Add(1)) }
 
-// do sends req over the network, or in process for a bubble harness.
-func (h *harness) do(req *http.Request) *http.Response {
-	h.t.Helper()
-	resp, err := h.roundTrip(req)
-	if err != nil {
-		h.t.Fatal(err)
-	}
-	return resp
-}
-
-// roundTrip is do returning its error instead of failing the test.
+// roundTrip sends req over the network, or in process for a bubble harness.
 func (h *harness) roundTrip(req *http.Request) (*http.Response, error) {
 	if h.http == nil {
 		rec := httptest.NewRecorder()

@@ -54,7 +54,7 @@ func (s *Store) ensureServerRows(ctx context.Context) error {
 // warns, expires or goes dormant, and with no session, so no agent request
 // resolves to it.
 func (w *wtx) ensureUser() error {
-	_, _, found, err := w.s.t.byName.Lookup(w.r, []byte(UserName))
+	_, _, found, err := w.s.t.byName.Lookup(w.r, []byte(userName))
 	if err != nil || found {
 		return err
 	}
@@ -63,7 +63,7 @@ func (w *wtx) ensureUser() error {
 		return err
 	}
 	return w.putIdentity(id, &identityRow{
-		ID: id, Name: UserName, State: stateLive, RegisteredAt: w.now,
+		ID: id, Name: userName, State: stateLive, RegisteredAt: w.now,
 		Description: "the user, through grelot's web UI", Provider: userProvider,
 	})
 }

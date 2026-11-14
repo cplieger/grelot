@@ -21,7 +21,7 @@ export interface Draft {
 }
 
 /** A post's Subject and Message fields, its error summary and its Send button. */
-export interface ComposeFields {
+interface ComposeFields {
   readonly summary: HTMLElement;
   readonly subjectField: HTMLElement;
   readonly bodyField: HTMLElement;

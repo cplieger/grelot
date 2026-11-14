@@ -35,7 +35,7 @@ const (
 
 	AuthRateLimited      = "rate_limited"
 	AuthWrongKeyIdentity = "wrong_key_identity"
-	AuthOther            = "other"
+	authOther            = "other"
 
 	LimitRate        = "rate"
 	LimitWaitsKey    = "waits_key"
@@ -49,7 +49,7 @@ const (
 var authReasons = []string{
 	"key_unknown", "key_expired", "key_retired", "account_disabled", "session_expired", "session_unknown",
 	"credential_invalid", "key_required", "session_required",
-	"recovery_session", "cross_origin", AuthRateLimited, AuthWrongKeyIdentity, AuthOther,
+	"recovery_session", "cross_origin", AuthRateLimited, AuthWrongKeyIdentity, authOther,
 }
 
 // AuthReason is reason as auth_failures_total labels it.
@@ -57,7 +57,7 @@ func AuthReason(reason string) string {
 	if slices.Contains(authReasons, reason) {
 		return reason
 	}
-	return AuthOther
+	return authOther
 }
 
 // labelReason is the label of every counter that sorts by cause.

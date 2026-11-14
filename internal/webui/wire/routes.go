@@ -43,7 +43,7 @@ var (
 	// The event stream's hub answers these two itself: once it is shut
 	// down or at its client cap, and on a writer that cannot flush.
 	ErrSSEUnavailable       = ErrorCode{"sse_unavailable", http.StatusServiceUnavailable}
-	ErrStreamingUnsupported = ErrorCode{"streaming_unsupported", http.StatusInternalServerError}
+	errStreamingUnsupported = ErrorCode{"streaming_unsupported", http.StatusInternalServerError}
 )
 
 // Route is one web API route. A nil type is none: no path parameters, no
@@ -82,23 +82,23 @@ func (r *Route) Pattern() string { return r.Method + " " + r.Path }
 // The access gate's refusals, access/gate's Codes for a Session row with
 // their statuses; the server's tests hold each route's list to it.
 var (
-	ErrMethodNotAllowed    = ErrorCode{"auth_method_not_allowed", http.StatusMethodNotAllowed}
-	ErrAuthRequired        = ErrorCode{"auth_required", http.StatusUnauthorized}
-	ErrSessionExpired      = ErrorCode{"auth_session_expired", http.StatusUnauthorized}
-	ErrInvalidCredentials  = ErrorCode{"auth_invalid_credentials", http.StatusUnauthorized}
-	ErrKeyInvalid          = ErrorCode{"auth_key_invalid", http.StatusUnauthorized}
-	ErrAuthSessionRequired = ErrorCode{"auth_session_required", http.StatusForbidden}
-	ErrAuthUnavailable     = ErrorCode{"auth_unavailable", http.StatusServiceUnavailable}
-	// ErrCrossOrigin refuses a write from another site.
-	ErrCrossOrigin = ErrorCode{"auth_cross_origin", http.StatusForbidden}
+	errMethodNotAllowed    = ErrorCode{"auth_method_not_allowed", http.StatusMethodNotAllowed}
+	errAuthRequired        = ErrorCode{"auth_required", http.StatusUnauthorized}
+	errSessionExpired      = ErrorCode{"auth_session_expired", http.StatusUnauthorized}
+	errInvalidCredentials  = ErrorCode{"auth_invalid_credentials", http.StatusUnauthorized}
+	errKeyInvalid          = ErrorCode{"auth_key_invalid", http.StatusUnauthorized}
+	errAuthSessionRequired = ErrorCode{"auth_session_required", http.StatusForbidden}
+	errAuthUnavailable     = ErrorCode{"auth_unavailable", http.StatusServiceUnavailable}
+	// errCrossOrigin refuses a write from another site.
+	errCrossOrigin = ErrorCode{"auth_cross_origin", http.StatusForbidden}
 )
 
 func typeOf[T any]() reflect.Type { return reflect.TypeFor[T]() }
 
 // sessionGate is what the gate answers on a session's route.
 var sessionGate = []ErrorCode{
-	ErrMethodNotAllowed, ErrAuthRequired, ErrSessionExpired, ErrInvalidCredentials, ErrKeyInvalid,
-	ErrAuthSessionRequired, ErrAuthUnavailable,
+	errMethodNotAllowed, errAuthRequired, errSessionExpired, errInvalidCredentials, errKeyInvalid,
+	errAuthSessionRequired, errAuthUnavailable,
 }
 
 // every route's refusals beyond its own: the gate's, a deadline passed,
@@ -109,7 +109,7 @@ func errs(own ...ErrorCode) []ErrorCode { return append(own, common...) }
 
 // writes is errs for a route that changes something, which the gate also
 // refuses from another site.
-func writes(own ...ErrorCode) []ErrorCode { return errs(append(own, ErrCrossOrigin)...) }
+func writes(own ...ErrorCode) []ErrorCode { return errs(append(own, errCrossOrigin)...) }
 
 // Routes is the web API, every route under /api. The server binds exactly
 // these, and the browser's client and docs/openapi.json are generated
@@ -177,11 +177,11 @@ var Routes = []Route{
 	{
 		Name: "getSignIn", Method: http.MethodGet, Path: "/api/sign-in",
 		Summary:  "What the sign-in page shows beside the sign-in routes' state; needs no session",
-		Response: typeOf[SignIn](), Public: true, Errors: []ErrorCode{ErrMethodNotAllowed, ErrInternal},
+		Response: typeOf[SignIn](), Public: true, Errors: []ErrorCode{errMethodNotAllowed, ErrInternal},
 	},
 	{
 		Name: "events", Method: http.MethodGet, Path: "/api/events",
 		Summary: "A changed event after each commit the web UI shows, resumed from Last-Event-ID, between the sse hub's hello and keepalive events",
-		Kind:    KindEventStream, Errors: append(slices.Clone(sessionGate), ErrSSEUnavailable, ErrStreamingUnsupported),
+		Kind:    KindEventStream, Errors: append(slices.Clone(sessionGate), ErrSSEUnavailable, errStreamingUnsupported),
 	},
 }

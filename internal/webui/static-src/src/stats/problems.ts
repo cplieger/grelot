@@ -10,7 +10,7 @@ import { rangeWords } from "./charts.js";
 import { figure, type Figure } from "./figures.js";
 
 /** A Needs attention figure's dialog, as the address names it. */
-export type Problems = NonNullable<Extract<Route, { readonly screen: "statistics" }>["problems"]>;
+type Problems = NonNullable<Extract<Route, { readonly screen: "statistics" }>["problems"]>;
 
 interface Kind {
   readonly label: string;
@@ -138,7 +138,7 @@ function eventRow(e: Event, signal: AbortSignal): HTMLElement {
   );
 }
 
-export interface NeedsAttention {
+interface NeedsAttention {
   readonly element: HTMLElement;
   /** The three dialogs, appended once beside the section. */
   readonly dialogs: HTMLElement;

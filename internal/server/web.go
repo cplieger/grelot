@@ -465,7 +465,7 @@ func wireStats(rep *statsReport, started time.Time) wire.Stats {
 	return out
 }
 
-func wireSample(sm *Sample) wire.Sample {
+func wireSample(sm *sample) wire.Sample {
 	return wire.Sample{
 		AtMS: ms(sm.At), Requests: sm.Requests, Errors: sm.Errors, P95MS: sm.P95.Milliseconds(),
 		Live: sm.Live, Dormant: sm.Dormant, Online: sm.Online, Unread: sm.Unread,

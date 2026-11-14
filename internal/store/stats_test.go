@@ -41,17 +41,17 @@ func TestStatsWindowAt_endsWithTheBucketNowFillsAndSpansTheRange(t *testing.T) {
 		{"72h", 72 * time.Hour, time.Date(2026, 11, 1, 6, 0, 0, 0, time.UTC), time.Date(2026, 11, 4, 6, 0, 0, 0, time.UTC), time.Hour, 72},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			w, err := StatsWindowAt(now, tc.span)
+			w, err := statsWindowAt(now, tc.span)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !w.Start.Equal(tc.start) || !w.End.Equal(tc.end) || w.Bucket != tc.bucket || w.Buckets() != tc.buckets {
-				t.Errorf("window %v to %v by %v (%d buckets), want %v to %v by %v (%d)", w.Start, w.End, w.Bucket, w.Buckets(), tc.start, tc.end, tc.bucket, tc.buckets)
+			if !w.Start.Equal(tc.start) || !w.End.Equal(tc.end) || w.Bucket != tc.bucket || w.buckets() != tc.buckets {
+				t.Errorf("window %v to %v by %v (%d buckets), want %v to %v by %v (%d)", w.Start, w.End, w.Bucket, w.buckets(), tc.start, tc.end, tc.bucket, tc.buckets)
 			}
 		})
 	}
 	t.Run("another range", func(t *testing.T) {
-		if _, err := StatsWindowAt(now, 12*time.Hour); !isKind(err, KindInvalid) {
+		if _, err := statsWindowAt(now, 12*time.Hour); !isKind(err, KindInvalid) {
 			t.Errorf("12h: %v, want KindInvalid", err)
 		}
 		if _, err := openTestStore(t).Stats(t.Context(), 5*time.Hour); !isKind(err, KindInvalid) {

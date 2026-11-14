@@ -40,8 +40,8 @@ const (
 	activityThrottle = time.Minute
 )
 
-// SetupTTL is how long a setup token stays valid.
-const SetupTTL = 24 * time.Hour
+// setupTTL is how long a setup token stays valid.
+const setupTTL = 24 * time.Hour
 
 // keyPrefix starts every machine key, so a leaked one is recognisable.
 const keyPrefix = "grelot_"
@@ -154,7 +154,7 @@ func New(ctx context.Context, db *accounts.DB, o *Options) (*Auth, error) {
 	}
 	a := &Auth{
 		db: db, store: store, limiter: limiter, public: o.PublicURL, rp: rp, log: logger, now: o.Now,
-		oidcLabel: o.OIDC.Label, oidcConfigured: o.OIDC.Configured(), discovered: make(chan struct{}),
+		oidcLabel: o.OIDC.Label, oidcConfigured: o.OIDC.configured(), discovered: make(chan struct{}),
 	}
 	if a.now == nil {
 		a.now = time.Now
@@ -190,10 +190,10 @@ func (a *Auth) Close(ctx context.Context) error {
 }
 
 // SetupToken mints the token that creates the first account, valid for
-// SetupTTL, and voids any earlier one. Once an account exists it refuses.
+// setupTTL, and voids any earlier one. Once an account exists it refuses.
 func (a *Auth) SetupToken(ctx context.Context) (Token, error) {
-	expires := time.Now().Add(SetupTTL)
-	tok, err := a.svc.IssueSetupToken(ctx, operator, SetupTTL)
+	expires := time.Now().Add(setupTTL)
+	tok, err := a.svc.IssueSetupToken(ctx, operator, setupTTL)
 	if errors.Is(err, account.ErrSetupComplete) {
 		return Token{}, errors.New("setup is done: an account exists; to regain it, run grelot recovery <username>")
 	}

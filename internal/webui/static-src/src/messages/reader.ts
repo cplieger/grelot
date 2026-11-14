@@ -10,7 +10,7 @@ export type Answer =
   { readonly draw: () => boolean } | { readonly failure: Failure } | null;
 
 /** One view's reads, which reader sequences. */
-export interface ReadSource {
+interface ReadSource {
   /** The view shows an answer a refresh can read again; otherwise a read loads. */
   readonly holds: () => boolean;
   /** Fetches the view from nothing. */
@@ -24,7 +24,7 @@ export interface ReadSource {
 }
 
 /** A view's reads: only the newest request's answer ever reaches the screen. */
-export interface Reader {
+interface Reader {
   /** Aborts any read and loads; until the first load, changes, resyncs and retries do nothing. */
   load(): Promise<void>;
   /** Something the view shows changed: reads it, or once more after the running read. */

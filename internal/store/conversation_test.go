@@ -80,9 +80,9 @@ func TestConversations_newestActivityFirstUnderEachFilter(t *testing.T) {
 		want []string
 	}{
 		{"", []string{"@alpha and @bravo", pathMarotte, "announce"}},
-		{ShowAll, []string{"@alpha and @bravo", pathMarotte, "announce"}},
-		{ShowThreads, []string{pathMarotte, "announce"}},
-		{ShowDirect, []string{"@alpha and @bravo"}},
+		{showAll, []string{"@alpha and @bravo", pathMarotte, "announce"}},
+		{showThreads, []string{pathMarotte, "announce"}},
+		{showDirect, []string{"@alpha and @bravo"}},
 	} {
 		t.Run("show "+tc.show, func(t *testing.T) {
 			p := mustConversations(t, s, ConversationsQuery{Show: tc.show})
@@ -230,9 +230,9 @@ func TestConversations_aPageBoundaryBetweenRowsSharingTheirNewestPost(t *testing
 
 func TestConversations_countsEachFiltersRowsWhateverThePage(t *testing.T) {
 	s, clk, _, _, _ := threeKinds(t)
-	first := mustConversations(t, s, ConversationsQuery{Show: ShowThreads, Limit: 1})
-	second := mustConversations(t, s, ConversationsQuery{Show: ShowThreads, Limit: 1, Before: first.Next, BeforeThread: first.NextThread})
-	direct := mustConversations(t, s, ConversationsQuery{Show: ShowDirect})
+	first := mustConversations(t, s, ConversationsQuery{Show: showThreads, Limit: 1})
+	second := mustConversations(t, s, ConversationsQuery{Show: showThreads, Limit: 1, Before: first.Next, BeforeThread: first.NextThread})
+	direct := mustConversations(t, s, ConversationsQuery{Show: showDirect})
 	want := ConversationCounts{Threads: 2, Direct: 1}
 	for name, p := range map[string]ConversationPage{"first threads page": first, "second threads page": second, "direct": direct} {
 		if p.Counts != want {
@@ -259,9 +259,9 @@ func TestConversations_unreadCountsUsersUnreadPosts(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	regAt(t, s, "alpha")
 	regAt(t, s, "bravo")
-	fromAlpha := mustPost(t, s, posting(sess("alpha"), Target{Agent: UserName}))
-	mustPost(t, s, posting(sess("alpha"), Target{Agent: UserName}))
-	fromBravo := mustPost(t, s, posting(sess("bravo"), Target{Agent: UserName}))
+	fromAlpha := mustPost(t, s, posting(sess("alpha"), Target{Agent: userName}))
+	mustPost(t, s, posting(sess("alpha"), Target{Agent: userName}))
+	fromBravo := mustPost(t, s, posting(sess("bravo"), Target{Agent: userName}))
 
 	p := mustConversations(t, s, ConversationsQuery{})
 	if a, b := rowFor(t, p, fromAlpha.Thread).Unread, rowFor(t, p, fromBravo.Thread).Unread; a != 2 || b != 1 {
@@ -405,9 +405,9 @@ func TestConversation_aPostTheUserReadInTheUIReadsRead(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	regAt(t, s, "alpha")
 	regAt(t, s, "bravo")
-	mustPost(t, s, posting(sess("alpha"), Target{Agent: UserName}))
-	mustPost(t, s, posting(sess("bravo"), Target{Agent: UserName}))
-	second := mustPost(t, s, posting(sess("alpha"), Target{Agent: UserName}))
+	mustPost(t, s, posting(sess("alpha"), Target{Agent: userName}))
+	mustPost(t, s, posting(sess("bravo"), Target{Agent: userName}))
+	second := mustPost(t, s, posting(sess("alpha"), Target{Agent: userName}))
 	if _, err := s.ReadThread(t.Context(), Caller{User: true}, second.Thread, everyPost); err != nil {
 		t.Fatal(err)
 	}
@@ -428,7 +428,7 @@ func TestConversation_aPostTheUserReadInTheUIReadsRead(t *testing.T) {
 func TestConversation_marksOnlyThePostsTheUserHasNotRead(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	regAt(t, s, "alpha")
-	toUser := mustPost(t, s, posting(sess("alpha"), Target{Agent: UserName}))
+	toUser := mustPost(t, s, posting(sess("alpha"), Target{Agent: userName}))
 	mustPost(t, s, userPosting(Target{Agent: "alpha"}))
 
 	unread := func() []bool {
@@ -477,7 +477,7 @@ func TestConversation_aDirectThreadCarriesBothCardsAndMarksUsersPosts(t *testing
 	s, _, _ := openIdentityStore(t)
 	regAt(t, s, "alpha")
 	sent := mustPost(t, s, userPosting(Target{Agent: "alpha"}))
-	mustPost(t, s, posting(sess("alpha"), Target{Agent: UserName}))
+	mustPost(t, s, posting(sess("alpha"), Target{Agent: userName}))
 
 	c := mustConversation(t, s, sent.Thread, 0, 0)
 	if c.Thread.Title != "@alpha and @user" {
@@ -490,7 +490,7 @@ func TestConversation_aDirectThreadCarriesBothCardsAndMarksUsersPosts(t *testing
 	for i := range c.Cards {
 		names = append(names, c.Cards[i].Name)
 	}
-	if !slices.Equal(names, []string{"alpha", UserName}) {
+	if !slices.Equal(names, []string{"alpha", userName}) {
 		t.Errorf("cards %q, want alpha and user", names)
 	}
 	if len(c.Reservations) != 0 || len(c.Followers) != 0 {

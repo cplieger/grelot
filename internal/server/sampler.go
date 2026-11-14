@@ -23,10 +23,10 @@ const (
 	statsFor      = 30 * time.Second
 )
 
-// Sample is one minute of the server: the requests answered in it (5xx
+// sample is one minute of the server: the requests answered in it (5xx
 // counted apart, P95 over every route but the held waits) and the page's
 // gauges read at its end.
-type Sample struct {
+type sample struct {
 	At time.Time
 	obs.Snapshot
 	P95      time.Duration
@@ -37,7 +37,7 @@ type Sample struct {
 // sampler is the Statistics tab's in-memory record: the minute samples,
 // the requests of the minute filling, and each identity's held turns.
 type sampler struct {
-	ring  []Sample
+	ring  []sample
 	held  map[uint64]heldTurns
 	stats map[time.Duration]cachedStats
 	// minute is the start of the minute the request tally fills.
@@ -63,7 +63,7 @@ type cachedStats struct {
 }
 
 func newSampler() *sampler {
-	return &sampler{ring: make([]Sample, 0, sampleSlots), held: map[uint64]heldTurns{}, stats: map[time.Duration]cachedStats{}}
+	return &sampler{ring: make([]sample, 0, sampleSlots), held: map[uint64]heldTurns{}, stats: map[time.Duration]cachedStats{}}
 }
 
 // heldWait reports whether route holds by design, so its latency is the
@@ -101,12 +101,12 @@ func (sp *sampler) tick(now time.Time, snap *obs.Snapshot) {
 		return
 	}
 	if !sp.minute.IsZero() {
-		sp.add(&Sample{At: sp.minute, Snapshot: *snap, Requests: sp.requests, Errors: sp.errors, P95: p95(sp.latency)})
+		sp.add(&sample{At: sp.minute, Snapshot: *snap, Requests: sp.requests, Errors: sp.errors, P95: p95(sp.latency)})
 	}
 	sp.minute, sp.requests, sp.errors, sp.timed, sp.latency = minute, 0, 0, 0, sp.latency[:0]
 }
 
-func (sp *sampler) add(s *Sample) {
+func (sp *sampler) add(s *sample) {
 	if len(sp.ring) < sampleSlots {
 		sp.ring = append(sp.ring, *s)
 	} else {
@@ -116,10 +116,10 @@ func (sp *sampler) add(s *Sample) {
 }
 
 // series lists the samples at or after from and before to, oldest first.
-func (sp *sampler) series(from, to time.Time) []Sample {
+func (sp *sampler) series(from, to time.Time) []sample {
 	sp.mu.Lock()
 	defer sp.mu.Unlock()
-	out := []Sample{}
+	out := []sample{}
 	start := 0
 	if len(sp.ring) == sampleSlots {
 		start = sp.next
@@ -189,7 +189,7 @@ type statsReport struct {
 	Events      []obs.Event
 	EventCounts map[obs.EventKind]int
 	HeldTurns   map[string]int
-	Samples     []Sample
+	Samples     []sample
 	store.Stats
 }
 

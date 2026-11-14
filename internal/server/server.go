@@ -140,7 +140,7 @@ func (s *Server) Release(ctx context.Context) {
 		// told the server is stopping.
 		s.health.BeginDrain()
 		close(s.stopping)
-		_ = s.events.shutdown(ctx) // the hub logs a missed deadline itself
+		s.events.shutdown(ctx)
 		s.push.stop()
 	})
 }

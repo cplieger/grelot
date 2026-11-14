@@ -29,7 +29,7 @@ type Screen = Route["screen"];
 const gateScreens: ReadonlySet<Screen> = new Set(["sign-in", "setup", "recover"]);
 
 /** A parsed address: its route, and what it held that the app does not know. */
-export interface Parsed {
+interface Parsed {
   readonly route: Route;
   readonly dropped: readonly string[];
 }

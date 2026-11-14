@@ -18,9 +18,9 @@ import (
 // The Conversations filters: every conversation, the announcement and
 // path threads, or the direct threads.
 const (
-	ShowAll     = "all"
-	ShowThreads = "threads"
-	ShowDirect  = "direct"
+	showAll     = "all"
+	showThreads = "threads"
+	showDirect  = "direct"
 )
 
 // Web read page sizes: a limit of 0 takes the default.
@@ -31,8 +31,8 @@ const (
 	previewRunes              = 200
 )
 
-// ConversationsQuery filters Conversations. Show is ShowAll ("" too),
-// ShowThreads or ShowDirect; Before and BeforeThread are the Next and
+// ConversationsQuery filters Conversations. Show is showAll ("" too),
+// showThreads or showDirect; Before and BeforeThread are the Next and
 // NextThread of the page before, both 0 for the newest page.
 type ConversationsQuery struct {
 	Show         string
@@ -85,7 +85,7 @@ type ConversationPage struct {
 }
 
 // ConversationCounts counts the conversations each filter lists: Threads
-// under ShowThreads, Direct under ShowDirect; ShowAll lists their sum.
+// under showThreads, Direct under showDirect; showAll lists their sum.
 type ConversationCounts struct {
 	Threads int
 	Direct  int
@@ -352,23 +352,23 @@ func webLimit(limit, def int) (int, error) {
 	return limit, nil
 }
 
-// listedKinds are the thread kinds Conversations lists under ShowAll.
+// listedKinds are the thread kinds Conversations lists under showAll.
 var listedKinds = []string{kindAnnounce, kindPath, kindDirect}
 
 func showKinds(show string) ([]string, error) {
 	switch show {
-	case "", ShowAll:
+	case "", showAll:
 		return listedKinds, nil
-	case ShowThreads:
+	case showThreads:
 		return []string{kindAnnounce, kindPath}, nil
-	case ShowDirect:
+	case showDirect:
 		return []string{kindDirect}, nil
 	}
-	return nil, refuse(KindInvalid, fmt.Sprintf("show must be %s, %s or %s", ShowAll, ShowThreads, ShowDirect))
+	return nil, refuse(KindInvalid, fmt.Sprintf("show must be %s, %s or %s", showAll, showThreads, showDirect))
 }
 
 func (s *Store) webRead(r *bolttable.ReadTx) (*webReader, error) {
-	id, _, found, err := s.t.byName.Lookup(r, []byte(UserName))
+	id, _, found, err := s.t.byName.Lookup(r, []byte(userName))
 	if err != nil {
 		return nil, err
 	}

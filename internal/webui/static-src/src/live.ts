@@ -35,7 +35,7 @@ export interface Live {
   reconnect(): void;
 }
 
-export interface LiveOptions {
+interface LiveOptions {
   /** Closes the stream when it aborts. */
   readonly signal: AbortSignal;
   /** The session ended: a 401 on the stream. */
