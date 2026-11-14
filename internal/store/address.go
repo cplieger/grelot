@@ -3,6 +3,7 @@
 package store
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
 )
@@ -11,29 +12,42 @@ import (
 // mentions name, as wakeNamed says, and every other recipient gets the
 // post quietly. When no mention names an identity the post can reach,
 // rt.woken stays nil and the post wakes everyone, as any other post does.
+// Each name of no identity, live or dormant, adds a notice, and one more
+// says so when every name is such and the post has another recipient.
 func (w *wtx) address(me *identityRow, rt *route, body string) error {
 	if rt.thread.Kind != kindPath {
 		return nil
 	}
-	for _, name := range mentions(body) {
-		if err := w.wakeNamed(me, rt, name); err != nil {
+	names := mentions(body)
+	unknown := 0
+	for _, name := range names {
+		found, err := w.wakeNamed(me, rt, name)
+		if err != nil {
 			return err
 		}
+		if !found {
+			unknown++
+			rt.notices = append(rt.notices, fmt.Sprintf("@%s is not registered; nobody of that name gets this", name))
+		}
+	}
+	if unknown > 0 && unknown == len(names) && othersIn(rt, me.ID) {
+		rt.notices = append(rt.notices, "no name it opens with is registered, so it woke every follower")
 	}
 	return nil
 }
 
 // wakeNamed has the post wake the identity named name, other than the
 // sender, joining it to the recipients when a direct post would reach it;
-// a dormant one adds directRoute's notice. An unknown name is ignored.
-func (w *wtx) wakeNamed(me *identityRow, rt *route, name string) error {
+// a dormant one adds directRoute's notice. It reports whether name names
+// an identity, live or dormant, whether or not the post reaches it.
+func (w *wtx) wakeNamed(me *identityRow, rt *route, name string) (bool, error) {
 	peer, found, err := w.identityBy(w.s.t.byName, name)
 	if err != nil || !found || peer.ID == me.ID {
-		return err
+		return found, err
 	}
 	if _, in := rt.recipients[peer.ID]; !in {
 		if !reaches(me, &peer) || !reaches(&peer, me) {
-			return nil
+			return true, nil
 		}
 		rt.recipients[peer.ID] = ""
 	}
@@ -44,12 +58,22 @@ func (w *wtx) wakeNamed(me *identityRow, rt *route, name string) error {
 	if peer.State == stateDormant {
 		rt.notices = append(rt.notices, dormantNotice(&peer))
 	}
-	return nil
+	return true, nil
 }
 
 // reaches reports whether from's scope lets it post directly to to: an
 // agent's always does, a delegate's only within its scope.
 func reaches(from, to *identityRow) bool { return from.Parent == 0 || allowsAgent(from, to) }
+
+// othersIn reports whether rt has a recipient other than me.
+func othersIn(rt *route, me uint64) bool {
+	for id := range rt.recipients {
+		if id != me {
+			return true
+		}
+	}
+	return false
+}
 
 // quiet reports whether recipient id gets the post without a wake.
 func (rt *route) quiet(id uint64) bool { return rt.woken != nil && !rt.woken[id] }

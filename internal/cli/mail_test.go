@@ -208,6 +208,26 @@ func TestPost_anAddressedPathPostSaysWhoItWoke(t *testing.T) {
 	}
 }
 
+func TestPost_anAddressedPathPostNamesItsUnknownNames(t *testing.T) {
+	ts := newServer(t)
+	a, dir := registerAt(t, ts, "s-1", "ant-dev")
+	b, _ := registerAt(t, ts, "s-2", "bee-dev")
+	b.must("follow", dir)
+
+	_, out, _ := a.postIn("@gone-dev @bee-dev: the build is green", append([]string{dir, "Review"}, keep...)...)
+	want := "; 1 woken (@bee-dev), 0 quiet\ngrelot: @gone-dev is not registered; nobody of that name gets this\n"
+	if !strings.HasSuffix(out, want) {
+		t.Errorf("output = %q, want it to end with %q", out, want)
+	}
+	_, out, _ = a.postIn("@gone-dev: the build is green", append([]string{dir, "Status"}, keep...)...)
+	want = ": delivered to 1: 0 same environment, 1 other\n" +
+		"grelot: @gone-dev is not registered; nobody of that name gets this\n" +
+		"grelot: no name it opens with is registered, so it woke every follower\n"
+	if !strings.HasSuffix(out, want) {
+		t.Errorf("output = %q, want it to end with %q", out, want)
+	}
+}
+
 func TestMe_countsAQuietPathPostApartFromTheWake(t *testing.T) {
 	ts := newServer(t)
 	a, dir := registerAt(t, ts, "s-1", "ant-dev")
