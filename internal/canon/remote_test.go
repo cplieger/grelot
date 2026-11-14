@@ -21,8 +21,7 @@ func TestNormalizeRemote(t *testing.T) {
 		{"nested owner path", "https://gitlab.example.com/team/sub/docs.git", "gitlab.example.com/team/sub/docs"},
 		{"owner case kept", "git@GitLab.example.com:Team/Docs.git", "gitlab.example.com/Team/Docs"},
 		{"scp form without user", "example.org:repos/x.git", "example.org/repos/x"},
-		{"repeated .git", "https://github.com/cplieger/toolbelt.git.git", "github.com/cplieger/toolbelt"},
-		{".git after a slash", "git@github.com:cplieger/toolbelt.git/.git", "github.com/cplieger/toolbelt"},
+		{".git as the last segment", "git@github.com:cplieger/toolbelt/.git", "github.com/cplieger/toolbelt"},
 		{"non-ASCII host", "git@bücher.example:team/docs.git", "bücher.example/team/docs"},
 		{"space inside an scp name", "git@github.com:o/my repo", "github.com/o/my repo"},
 		{"escaped space inside an https name", "https://github.com/o/my%20repo", "github.com/o/my repo"},
@@ -71,6 +70,8 @@ func TestNormalizeRemote_unreadable(t *testing.T) {
 		{"escaped trailing space", "https://github.com/o/r%20"},
 		{"escaped trailing no-break space", "https://github.com/o/r%C2%A0/"},
 		{"space path", "a1: /"},
+		{"repeated .git", "https://github.com/cplieger/toolbelt.git.git"},
+		{".git after a slash", "git@github.com:cplieger/toolbelt.git/.git"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -81,12 +82,32 @@ func TestNormalizeRemote_unreadable(t *testing.T) {
 	}
 }
 
-func TestNormalizeRemote_formsRefuseTheSameHosts(t *testing.T) {
-	for _, host := range []string{"a{b", "a}b", "a|b", "a^b", "a`b", "a b", "a\u00a0b", "a\x86", "a\u0085b"} {
-		t.Run(fmt.Sprintf("%q", host), func(t *testing.T) {
-			for _, raw := range []string{"git@" + host + ":o/r", "https://" + host + "/o/r"} {
-				if got, ok := NormalizeRemote(raw); ok {
-					t.Errorf("NormalizeRemote(%q) = %q, true; want refused", raw, got)
+func TestNormalizeRemote_formsAgreeOnHosts(t *testing.T) {
+	tests := []struct {
+		host string
+		ok   bool
+	}{
+		{"a]b", true},
+		{"[ab]", false},
+		{"a{b", false},
+		{"a}b", false},
+		{"a|b", false},
+		{"a^b", false},
+		{"a`b", false},
+		{"a b", false},
+		{"a\u00a0b", false},
+		{"a\x86", false},
+		{"a\u0085b", false},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%q", tt.host), func(t *testing.T) {
+			want := ""
+			if tt.ok {
+				want = tt.host + "/o/r"
+			}
+			for _, raw := range []string{"git@" + tt.host + ":o/r", "https://" + tt.host + "/o/r"} {
+				if got, ok := NormalizeRemote(raw); ok != tt.ok || got != want {
+					t.Errorf("NormalizeRemote(%q) = %q, %v; want %q, %v", raw, got, ok, want, tt.ok)
 				}
 			}
 		})
