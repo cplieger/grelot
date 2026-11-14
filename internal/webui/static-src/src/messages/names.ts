@@ -3,7 +3,7 @@ import { el } from "@cplieger/reactive/dom";
 import { agentHref } from "../router.js";
 import type { Thread } from "../wire/types.gen.js";
 
-/** The reserved name the user posts as (internal/store UserName). */
+/** The reserved name the user posts as (internal/store userName). */
 const userName = "user";
 
 type Named = Pick<Thread, "kind" | "title" | "path" | "agents">;

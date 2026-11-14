@@ -10,11 +10,11 @@ import (
 	"time"
 )
 
-func mustStats(t *testing.T, s *Store, span time.Duration) Stats {
+func mustStats(t *testing.T, s *Store, rg StatsRange) Stats {
 	t.Helper()
-	st, err := s.Stats(t.Context(), span)
+	st, err := s.Stats(t.Context(), rg)
 	if err != nil {
-		t.Fatalf("Stats(%v): %v", span, err)
+		t.Fatalf("Stats(%v): %v", rg, err)
 	}
 	return st
 }
@@ -31,33 +31,22 @@ func TestStatsWindowAt_endsWithTheBucketNowFillsAndSpansTheRange(t *testing.T) {
 	now := time.Date(2026, 11, 4, 5, 39, 30, 0, time.UTC)
 	for _, tc := range []struct {
 		name       string
-		span       time.Duration
 		start, end time.Time
 		bucket     time.Duration
 		buckets    int
+		rg         StatsRange
 	}{
-		{"6h", 6 * time.Hour, time.Date(2026, 11, 3, 23, 45, 0, 0, time.UTC), time.Date(2026, 11, 4, 5, 45, 0, 0, time.UTC), 15 * time.Minute, 24},
-		{"24h", 24 * time.Hour, time.Date(2026, 11, 3, 6, 0, 0, 0, time.UTC), time.Date(2026, 11, 4, 6, 0, 0, 0, time.UTC), time.Hour, 24},
-		{"72h", 72 * time.Hour, time.Date(2026, 11, 1, 6, 0, 0, 0, time.UTC), time.Date(2026, 11, 4, 6, 0, 0, 0, time.UTC), time.Hour, 72},
+		{"6h", time.Date(2026, 11, 3, 23, 45, 0, 0, time.UTC), time.Date(2026, 11, 4, 5, 45, 0, 0, time.UTC), 15 * time.Minute, 24, StatsRange6h},
+		{"24h", time.Date(2026, 11, 3, 6, 0, 0, 0, time.UTC), time.Date(2026, 11, 4, 6, 0, 0, 0, time.UTC), time.Hour, 24, StatsRange24h},
+		{"72h", time.Date(2026, 11, 1, 6, 0, 0, 0, time.UTC), time.Date(2026, 11, 4, 6, 0, 0, 0, time.UTC), time.Hour, 72, StatsRange72h},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			w, err := statsWindowAt(now, tc.span)
-			if err != nil {
-				t.Fatal(err)
-			}
+			w := statsWindowAt(now, tc.rg)
 			if !w.Start.Equal(tc.start) || !w.End.Equal(tc.end) || w.Bucket != tc.bucket || w.buckets() != tc.buckets {
 				t.Errorf("window %v to %v by %v (%d buckets), want %v to %v by %v (%d)", w.Start, w.End, w.Bucket, w.buckets(), tc.start, tc.end, tc.bucket, tc.buckets)
 			}
 		})
 	}
-	t.Run("another range", func(t *testing.T) {
-		if _, err := statsWindowAt(now, 12*time.Hour); !isKind(err, KindInvalid) {
-			t.Errorf("12h: %v, want KindInvalid", err)
-		}
-		if _, err := openTestStore(t).Stats(t.Context(), 5*time.Hour); !isKind(err, KindInvalid) {
-			t.Errorf("Stats(5h): %v, want KindInvalid", err)
-		}
-	})
 }
 
 func TestStats_bucketsRankingAndReads(t *testing.T) {
@@ -78,7 +67,7 @@ func TestStats_bucketsRankingAndReads(t *testing.T) {
 	direct := say(t, s, "alpha", Target{Agent: "bravo"}, "d1")
 	mustPost(t, s, userPosting(Target{Announce: true}))
 
-	st := mustStats(t, s, 6*time.Hour)
+	st := mustStats(t, s, StatsRange6h)
 
 	t.Run("posts by bucket and kind", func(t *testing.T) {
 		// The window runs 23:45 to 05:45 in 15-minute buckets.
@@ -162,7 +151,7 @@ func TestStats_leavesOutExpiredPostsAndAgentsDormantBeforeTheWindow(t *testing.T
 	editIdentity(t, s, early.ID, func(r *identityRow) { r.State, r.DormantSince = stateDormant, testNow.Add(-7*time.Hour) })
 	editIdentity(t, s, late.ID, func(r *identityRow) { r.State, r.DormantSince = stateDormant, testNow.Add(-2*time.Hour) })
 
-	st := mustStats(t, s, 6*time.Hour)
+	st := mustStats(t, s, StatsRange6h)
 
 	if got := agentNames(st.Agents); !slices.Equal(got, []string{"alpha", "late-sleeper"}) {
 		t.Errorf("agents %q, want alpha and late-sleeper", got)
@@ -181,7 +170,7 @@ func TestStats_threadsRankByPostsBeforeDeliveries(t *testing.T) {
 	direct := say(t, s, "alpha", Target{Agent: "bravo"}, "d1")
 	say(t, s, "alpha", Target{Agent: "bravo"}, "d2")
 
-	st := mustStats(t, s, 6*time.Hour)
+	st := mustStats(t, s, StatsRange6h)
 
 	// The announcement has 3 deliveries from 1 post, the direct thread 2
 	// from 2 posts.
@@ -197,7 +186,7 @@ func TestStats_aParentsCopyIsNoDelivery(t *testing.T) {
 	review := scopedDelegate(t, s, "alpha", "review", func(g *Grant) { g.AllowAgents = []string{"bravo"} })
 	say(t, s, "bravo", Target{Agent: review.Name}, "for review")
 
-	st := mustStats(t, s, 6*time.Hour)
+	st := mustStats(t, s, StatsRange6h)
 
 	if len(st.Threads) != 1 || st.Threads[0].Deliveries != 1 || st.Threads[0].Participants != 2 {
 		t.Errorf("threads %+v, want one delivery to the delegate and two participants", st.Threads)

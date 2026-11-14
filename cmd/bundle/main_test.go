@@ -188,9 +188,8 @@ func TestRun_everyOtherOutputIsContentStamped(t *testing.T) {
 	}
 }
 
-// internal/webui.Handler types a file by its extension and serves one it
-// does not know as application/octet-stream, which a browser refuses as a
-// script, a stylesheet or a font.
+// Under nosniff a browser refuses an untyped script or stylesheet, and it
+// draws no untyped SVG.
 func TestRun_internalWebuiTypesEveryOutput(t *testing.T) {
 	o := fixture(t)
 	if err := run(o); err != nil {

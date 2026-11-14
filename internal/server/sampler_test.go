@@ -11,13 +11,14 @@ import (
 
 	"github.com/cplieger/go/httpserver"
 	"github.com/cplieger/grelot/internal/obs"
+	"github.com/cplieger/grelot/internal/store"
 )
 
-func (h *harness) statsReport(span time.Duration) statsReport {
+func (h *harness) statsReport(rg store.StatsRange) statsReport {
 	h.t.Helper()
-	r, err := h.srv.statsReport(h.t.Context(), span)
+	r, err := h.srv.statsReport(h.t.Context(), rg)
 	if err != nil {
-		h.t.Fatalf("statsReport(%v): %v", span, err)
+		h.t.Fatalf("statsReport(%v): %v", rg, err)
 	}
 	return r
 }
@@ -90,7 +91,7 @@ func TestBeat_samplesTheGaugesOncePerMinute(t *testing.T) {
 	h.clk.advance(10 * time.Second)
 	h.srv.Beat(t.Context())
 
-	got := h.statsReport(6 * time.Hour).Samples
+	got := h.statsReport(store.StatsRange6h).Samples
 
 	if len(got) != 1 || !got[0].At.Equal(testNow) || !got[0].State || got[0].Live != 1 || got[0].MaxBytes == 0 {
 		t.Errorf("samples %+v, want one at %v with one live agent and the ceiling", got, testNow)
@@ -104,7 +105,7 @@ func TestStatsReport_readsTheStoreAtMostEvery30Seconds(t *testing.T) {
 	h.mustPost(sessB, map[string]any{"agent": "reader"}, "first")
 	posts := func() int {
 		n := 0
-		for _, c := range h.statsReport(6 * time.Hour).Posts {
+		for _, c := range h.statsReport(store.StatsRange6h).Posts {
 			n += c.Direct
 		}
 		return n
@@ -134,7 +135,7 @@ func TestHold_countsEachHeldTurnPerAgent(t *testing.T) {
 	h.stopHold(sessA, true)
 	h.stopHold(sessB, false)
 
-	got := h.statsReport(6 * time.Hour).HeldTurns
+	got := h.statsReport(store.StatsRange6h).HeldTurns
 
 	if len(got) != 1 || got["reader"] != 2 {
 		t.Errorf("held turns %v, want reader 2: a hold with nothing new and the writer's hold held none", got)
@@ -154,7 +155,7 @@ func TestPost_aRefusalIsAnEventNamingTheSenderAndNoLabel(t *testing.T) {
 		t.Fatalf("post past the limit: %d %s, want 429", r.status, r.raw)
 	}
 
-	rep := h.statsReport(6 * time.Hour)
+	rep := h.statsReport(store.StatsRange6h)
 
 	want := []obs.Event{{At: testNow, Kind: obs.EventPostRefused, Detail: obs.RefusedRateLimited, Agent: sender}}
 	if !slices.Equal(rep.Events, want) {

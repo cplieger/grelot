@@ -12,13 +12,23 @@ import (
 	"github.com/cplieger/bolttable"
 )
 
+// StatsRange is a Statistics tab range.
+type StatsRange uint8
+
 // The Statistics tab's ranges: 6 hours in 15-minute buckets, 24 and 72
 // hours in hourly ones.
 const (
-	statsRange6h  = 6 * time.Hour
-	statsRange24h = 24 * time.Hour
-	statsRange72h = 72 * time.Hour
+	StatsRange6h StatsRange = iota
+	StatsRange24h
+	StatsRange72h
 )
+
+// statsRanges are each StatsRange's length and bucket.
+var statsRanges = [...]struct{ span, bucket time.Duration }{
+	StatsRange6h:  {6 * time.Hour, 15 * time.Minute},
+	StatsRange24h: {24 * time.Hour, time.Hour},
+	StatsRange72h: {72 * time.Hour, time.Hour},
+}
 
 // StatsWindow is a range aligned to its buckets: End is the end of the
 // bucket now falls in, which is still filling, and Start is the range's
@@ -29,20 +39,11 @@ type StatsWindow struct {
 	Bucket time.Duration
 }
 
-// statsWindowAt aligns span, one of the statsRange values, at now.
-// Refusals: KindInvalid for any other span.
-func statsWindowAt(now time.Time, span time.Duration) (StatsWindow, error) {
-	var bucket time.Duration
-	switch span {
-	case statsRange6h:
-		bucket = 15 * time.Minute
-	case statsRange24h, statsRange72h:
-		bucket = time.Hour
-	default:
-		return StatsWindow{}, refuse(KindInvalid, "the range must be 6h, 24h or 72h")
-	}
-	end := now.Truncate(bucket).Add(bucket)
-	return StatsWindow{Start: end.Add(-span), End: end, Bucket: bucket}, nil
+// statsWindowAt aligns rg at now.
+func statsWindowAt(now time.Time, rg StatsRange) StatsWindow {
+	r := statsRanges[rg]
+	end := now.Truncate(r.bucket).Add(r.bucket)
+	return StatsWindow{Start: end.Add(-r.span), End: end, Bucket: r.bucket}
 }
 
 // buckets is the number of buckets in w.
@@ -117,15 +118,11 @@ var delayLadder = []time.Duration{
 	24 * time.Hour, 72 * time.Hour, 7 * 24 * time.Hour, 14 * 24 * time.Hour, 30 * 24 * time.Hour, 90 * 24 * time.Hour,
 }
 
-// Stats reads the window of span, 6, 24 or 72 hours, ending
-// in the bucket now falls in. Refusals: KindInvalid for any other span.
-func (s *Store) Stats(ctx context.Context, span time.Duration) (Stats, error) {
-	w, err := statsWindowAt(s.now(), span)
-	if err != nil {
-		return Stats{}, err
-	}
+// Stats reads rg's window, ending in the bucket now falls in.
+func (s *Store) Stats(ctx context.Context, rg StatsRange) (Stats, error) {
+	w := statsWindowAt(s.now(), rg)
 	var out Stats
-	err = s.read(ctx, func(r *bolttable.ReadTx) error {
+	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		wr, rerr := s.webRead(r)
 		if rerr != nil {
 			return rerr

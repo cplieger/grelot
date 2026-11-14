@@ -15,12 +15,15 @@ import (
 	"github.com/cplieger/bolttable"
 )
 
+// Show is a Conversations filter.
+type Show uint8
+
 // The Conversations filters: every conversation, the announcement and
 // path threads, or the direct threads.
 const (
-	showAll     = "all"
-	showThreads = "threads"
-	showDirect  = "direct"
+	ShowAll Show = iota
+	ShowThreads
+	ShowDirect
 )
 
 // Web read page sizes: a limit of 0 takes the default.
@@ -31,14 +34,13 @@ const (
 	previewRunes              = 200
 )
 
-// ConversationsQuery filters Conversations. Show is "all" ("" too),
-// "threads" or "direct"; Before and BeforeThread are the Next and
-// NextThread of the page before, both 0 for the newest page.
+// ConversationsQuery filters Conversations. Before and BeforeThread are
+// the Next and NextThread of the page before, both 0 for the newest page.
 type ConversationsQuery struct {
-	Show         string
 	Before       uint64
 	BeforeThread uint64
 	Limit        int
+	Show         Show
 }
 
 // ConversationThread names a thread for the web UI. Title is a path
@@ -145,17 +147,14 @@ type webReader struct {
 
 // Conversations lists the announcement, path and direct threads whose
 // conversation has an unexpired post, as @user reads them, newest last
-// post first. Refusals: KindInvalid for an unknown Show, a limit outside 0
-// to maxWebLimit, or a cursor missing one of its two parts.
+// post first. Refusals: KindInvalid for a limit outside 0 to maxWebLimit,
+// or a cursor missing one of its two parts.
 func (s *Store) Conversations(ctx context.Context, q ConversationsQuery) (ConversationPage, error) {
 	limit, lerr := webLimit(q.Limit, defaultConversationsLimit)
 	if lerr != nil {
 		return ConversationPage{}, lerr
 	}
-	kinds, kerr := showKinds(q.Show)
-	if kerr != nil {
-		return ConversationPage{}, kerr
-	}
+	kinds := showKinds[q.Show]
 	if (q.Before == 0) != (q.BeforeThread == 0) {
 		return ConversationPage{}, refuse(KindInvalid, "the page cursor needs both its post and its thread")
 	}
@@ -352,19 +351,14 @@ func webLimit(limit, def int) (int, error) {
 	return limit, nil
 }
 
-// listedKinds are the thread kinds Conversations lists under showAll.
+// listedKinds are the thread kinds Conversations lists under ShowAll.
 var listedKinds = []string{kindAnnounce, kindPath, kindDirect}
 
-func showKinds(show string) ([]string, error) {
-	switch show {
-	case "", showAll:
-		return listedKinds, nil
-	case showThreads:
-		return []string{kindAnnounce, kindPath}, nil
-	case showDirect:
-		return []string{kindDirect}, nil
-	}
-	return nil, refuse(KindInvalid, fmt.Sprintf("show must be %s, %s or %s", showAll, showThreads, showDirect))
+// showKinds are the thread kinds each Show lists.
+var showKinds = [...][]string{
+	ShowAll:     listedKinds,
+	ShowThreads: {kindAnnounce, kindPath},
+	ShowDirect:  {kindDirect},
 }
 
 func (s *Store) webRead(r *bolttable.ReadTx) (*webReader, error) {

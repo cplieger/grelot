@@ -39,7 +39,7 @@ type sample struct {
 type sampler struct {
 	ring  []sample
 	held  map[uint64]heldTurns
-	stats map[time.Duration]cachedStats
+	stats map[store.StatsRange]cachedStats
 	// minute is the start of the minute the request tally fills.
 	minute   time.Time
 	latency  []time.Duration
@@ -63,7 +63,7 @@ type cachedStats struct {
 }
 
 func newSampler() *sampler {
-	return &sampler{ring: make([]sample, 0, sampleSlots), held: map[uint64]heldTurns{}, stats: map[time.Duration]cachedStats{}}
+	return &sampler{ring: make([]sample, 0, sampleSlots), held: map[uint64]heldTurns{}, stats: map[store.StatsRange]cachedStats{}}
 }
 
 // heldWait reports whether route holds by design, so its latency is the
@@ -182,7 +182,7 @@ func (s *Server) sample(ctx context.Context) {
 
 const msgSampleFailed = "statistics sample failed"
 
-// statsReport is the Statistics tab's data over span: the store's part,
+// statsReport is the Statistics tab's data over rg: the store's part,
 // the window's minute samples, its delivery problems with their counts,
 // and the turns held per agent since start.
 type statsReport struct {
@@ -193,8 +193,8 @@ type statsReport struct {
 	store.Stats
 }
 
-func (s *Server) statsReport(ctx context.Context, span time.Duration) (statsReport, error) {
-	st, err := s.stats(ctx, span)
+func (s *Server) statsReport(ctx context.Context, rg store.StatsRange) (statsReport, error) {
+	st, err := s.stats(ctx, rg)
 	if err != nil {
 		return statsReport{}, err
 	}
@@ -205,21 +205,21 @@ func (s *Server) statsReport(ctx context.Context, span time.Duration) (statsRepo
 	}, nil
 }
 
-// stats is the store's Stats over span, read at most once per statsFor.
-func (s *Server) stats(ctx context.Context, span time.Duration) (store.Stats, error) {
+// stats is the store's Stats over rg, read at most once per statsFor.
+func (s *Server) stats(ctx context.Context, rg store.StatsRange) (store.Stats, error) {
 	now := s.now()
 	s.sampler.mu.Lock()
-	c, ok := s.sampler.stats[span]
+	c, ok := s.sampler.stats[rg]
 	s.sampler.mu.Unlock()
 	if ok && now.Sub(c.at) < statsFor {
 		return c.stats, nil
 	}
-	st, err := s.store.Stats(ctx, span)
+	st, err := s.store.Stats(ctx, rg)
 	if err != nil {
 		return st, err
 	}
 	s.sampler.mu.Lock()
-	s.sampler.stats[span] = cachedStats{at: now, stats: st}
+	s.sampler.stats[rg] = cachedStats{at: now, stats: st}
 	s.sampler.mu.Unlock()
 	return st, nil
 }

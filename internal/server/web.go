@@ -130,18 +130,21 @@ func idParam[P wire.ConversationParams | wire.MessageParams](r *http.Request) (u
 	return id, nil
 }
 
+var showFilters = map[wire.Show]store.Show{
+	"": store.ShowAll, wire.ShowAll: store.ShowAll, wire.ShowThreads: store.ShowThreads, wire.ShowDirect: store.ShowDirect,
+}
+
 func (s *Server) listConversations(r *http.Request, _ store.Keyed) (body any, err error) {
 	q, err := queryParams[wire.ConversationsQuery](r)
 	if err != nil {
 		return nil, err
 	}
-	switch q.Kind {
-	case "", wire.ShowAll, wire.ShowThreads, wire.ShowDirect:
-	default:
+	show, ok := showFilters[q.Kind]
+	if !ok {
 		return nil, badRequest("kind must be all, threads or direct")
 	}
 	page, err := s.store.Conversations(r.Context(), store.ConversationsQuery{
-		Show: string(q.Kind), Before: q.Before, BeforeThread: q.BeforeThread,
+		Show: show, Before: q.Before, BeforeThread: q.BeforeThread,
 	})
 	if err != nil {
 		return nil, err
@@ -298,8 +301,8 @@ func (s *Server) getAgentHistory(r *http.Request, _ store.Keyed) (body any, err 
 	return out, nil
 }
 
-var statsRanges = map[wire.StatsRange]time.Duration{
-	wire.Range6h: 6 * time.Hour, wire.Range24h: 24 * time.Hour, wire.Range72h: 72 * time.Hour,
+var statsRanges = map[wire.StatsRange]store.StatsRange{
+	wire.Range6h: store.StatsRange6h, wire.Range24h: store.StatsRange24h, wire.Range72h: store.StatsRange72h,
 }
 
 func (s *Server) getStats(r *http.Request, _ store.Keyed) (body any, err error) {
@@ -307,11 +310,11 @@ func (s *Server) getStats(r *http.Request, _ store.Keyed) (body any, err error) 
 	if err != nil {
 		return nil, err
 	}
-	span, ok := statsRanges[q.Range]
+	rg, ok := statsRanges[q.Range]
 	if !ok {
 		return nil, badRequest("range must be 6h, 24h or 72h")
 	}
-	rep, err := s.statsReport(r.Context(), span)
+	rep, err := s.statsReport(r.Context(), rg)
 	if err != nil {
 		return nil, err
 	}

@@ -76,15 +76,15 @@ func threeKinds(t *testing.T) (s *Store, clk *clock, announce, path, direct Post
 func TestConversations_newestActivityFirstUnderEachFilter(t *testing.T) {
 	s, _, _, _, _ := threeKinds(t)
 	for _, tc := range []struct {
-		show string
+		name string
 		want []string
+		show Show
 	}{
-		{"", []string{"@alpha and @bravo", pathMarotte, "announce"}},
-		{showAll, []string{"@alpha and @bravo", pathMarotte, "announce"}},
-		{showThreads, []string{pathMarotte, "announce"}},
-		{showDirect, []string{"@alpha and @bravo"}},
+		{"all", []string{"@alpha and @bravo", pathMarotte, "announce"}, ShowAll},
+		{"threads", []string{pathMarotte, "announce"}, ShowThreads},
+		{"direct", []string{"@alpha and @bravo"}, ShowDirect},
 	} {
-		t.Run("show "+tc.show, func(t *testing.T) {
+		t.Run("show "+tc.name, func(t *testing.T) {
 			p := mustConversations(t, s, ConversationsQuery{Show: tc.show})
 			if got := titles(p); !slices.Equal(got, tc.want) {
 				t.Errorf("titles %q, want %q", got, tc.want)
@@ -230,9 +230,9 @@ func TestConversations_aPageBoundaryBetweenRowsSharingTheirNewestPost(t *testing
 
 func TestConversations_countsEachFiltersRowsWhateverThePage(t *testing.T) {
 	s, clk, _, _, _ := threeKinds(t)
-	first := mustConversations(t, s, ConversationsQuery{Show: showThreads, Limit: 1})
-	second := mustConversations(t, s, ConversationsQuery{Show: showThreads, Limit: 1, Before: first.Next, BeforeThread: first.NextThread})
-	direct := mustConversations(t, s, ConversationsQuery{Show: showDirect})
+	first := mustConversations(t, s, ConversationsQuery{Show: ShowThreads, Limit: 1})
+	second := mustConversations(t, s, ConversationsQuery{Show: ShowThreads, Limit: 1, Before: first.Next, BeforeThread: first.NextThread})
+	direct := mustConversations(t, s, ConversationsQuery{Show: ShowDirect})
 	want := ConversationCounts{Threads: 2, Direct: 1}
 	for name, p := range map[string]ConversationPage{"first threads page": first, "second threads page": second, "direct": direct} {
 		if p.Counts != want {
@@ -304,9 +304,7 @@ func TestConversations_aRetiredSenderKeepsItsNameAtThePost(t *testing.T) {
 
 func TestConversations_refusesABadQuery(t *testing.T) {
 	s := openTestStore(t)
-	_, err := s.Conversations(t.Context(), ConversationsQuery{Show: "dm"})
-	wantRefusal(t, err, KindInvalid, "", "show must be")
-	_, err = s.Conversations(t.Context(), ConversationsQuery{Limit: maxWebLimit + 1})
+	_, err := s.Conversations(t.Context(), ConversationsQuery{Limit: maxWebLimit + 1})
 	wantRefusal(t, err, KindInvalid, "", "page limit")
 	_, err = s.Conversations(t.Context(), ConversationsQuery{BeforeThread: 3})
 	wantRefusal(t, err, KindInvalid, "", "cursor needs both")
