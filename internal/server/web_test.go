@@ -424,13 +424,20 @@ func TestWeb_anExpiredAgentIsTheWireDormantState(t *testing.T) {
 }
 
 func TestWeb_everyEventKindIsAWireMember(t *testing.T) {
-	want := map[obs.EventKind]wire.EventKind{
-		obs.EventPostRefused: wire.EventPostRefused, obs.EventPushRetry: wire.EventPushRetry,
-		obs.EventPushGaveUp: wire.EventPushGaveUp, obs.EventNudgeRepeat: wire.EventNudgeRepeat,
+	h := newSignedIn(t)
+	// String answers "unknown" past the last kind, so this records one
+	// event of every kind obs declares.
+	for k := obs.EventKind(0); k.String() != "unknown"; k++ {
+		h.metrics.Events.Add(obs.Event{At: h.clk.now(), Kind: k})
 	}
-	for k, w := range want {
-		if got := wire.EventKind(k.String()); got != w {
-			t.Errorf("obs kind %d sends %q, want %q", k, got, w)
-		}
+
+	var sent []wire.EventKind
+	for _, e := range webGet[wire.Stats](h, "/api/stats?range=6h").Events {
+		sent = append(sent, e.Kind)
+	}
+	slices.Sort(sent)
+	want := []wire.EventKind{wire.EventNudgeRepeat, wire.EventPostRefused, wire.EventPushGaveUp, wire.EventPushRetry}
+	if !slices.Equal(sent, want) {
+		t.Errorf("one event of every obs kind is sent as %q, want the wire members %q", sent, want)
 	}
 }
