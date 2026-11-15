@@ -156,23 +156,31 @@ func TestWatch_holdLapsePrintsIdleAndExitsZero(t *testing.T) {
 
 // A cancel mid-poll ends an exit door with one output, its idle output when
 // it holds and its end output otherwise, since its host reads the run's
-// stdout as the result; a stdout or exec door's host has stopped reading.
+// stdout as the result. A stdout door's host is the one that stopped it, so
+// a trailing line is no delivery, and an exec door does not start its
+// command after a cancel.
 func TestWatch_aCancelMidPoll(t *testing.T) {
 	cases := []struct {
 		name     string
 		args     []string
+		exec     bool
 		wantOut  string
 		wantCode int
 	}{
 		{name: "a held exit door", args: []string{"--door", "long"}, wantOut: "idle\n", wantCode: 0},
 		{name: "an exit door", args: []string{"--door", "once"}, wantOut: "[grelot:end] grelot (automated, not the user): this watcher stopped (cancelled); run grelot me\n", wantCode: exitFailed},
 		{name: "a stdout door", args: []string{"--door", "tray"}, wantOut: "", wantCode: exitFailed},
-		{name: "an exec door", args: []string{"--transport", "exec", "--", "true"}, wantOut: "", wantCode: exitFailed},
+		{name: "an exec door", exec: true, wantOut: "", wantCode: exitFailed},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			args, file := c.args, ""
+			if c.exec {
+				file = filepath.Join(t.TempDir(), "lines")
+				args = []string{"--transport", "exec", "--", "sh", "-c", `printf '%s\n' "$1" >> "$2"`, "sh", "{{.Line}}", file}
+			}
 			ts, reader, _ := watchPair(t)
-			w := reader.start(append([]string{"watch"}, c.args...)...)
+			w := reader.start(append([]string{"watch"}, args...)...)
 			awaitRequest(t, ts, "/v1/events/wait")
 			w.cancel()
 			if code := w.exit(t); code != c.wantCode {
@@ -180,6 +188,12 @@ func TestWatch_aCancelMidPoll(t *testing.T) {
 			}
 			if got := w.stdout.String(); got != c.wantOut {
 				t.Errorf("stdout %q, want %q", got, c.wantOut)
+			}
+			if file == "" {
+				return
+			}
+			if got, _ := os.ReadFile(file); len(got) != 0 {
+				t.Errorf("the command ran after the cancel and wrote %q", got)
 			}
 		})
 	}

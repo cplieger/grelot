@@ -103,10 +103,11 @@ const (
 
 // stopWatch ends a watcher's run on err. A cancel ends an exit door with
 // its idle output, or its end output when it has no hold, because its host
-// reads the run's stdout as one result; a stdout or exec door owes nothing
-// then, since its host has stopped reading. Any other error ends every
-// door with its end, endError, since waiting again would not pass it, and
-// is then printed.
+// reads the run's stdout as one result. A cancel adds nothing to a stdout
+// door, whose host is the one that stopped it, so a trailing line is no
+// delivery, nor to an exec door, which must not start its command after a
+// cancel. Any other error ends every door with its end, endError, since
+// waiting again would not pass it, and is then printed.
 func (r *run) stopWatch(ctx context.Context, ws *watcher, data *provider.Data, err error) error {
 	if _, ok := errors.AsType[*exitError](err); ok || err == nil {
 		return err

@@ -502,7 +502,7 @@ func TestKiroCLIWorkflowDoor_aPollThatDoesNotLapse(t *testing.T) {
 			}
 			got := sh.runCtx(ctx, "", "watch", "--door", "workflow")
 			if got.Code != 0 {
-				t.Errorf("exit %d, want 0: the watch reads any other code as idle without reading the line; stderr %q", got.Code, got.Stderr)
+				t.Errorf("exit %d, want 0: the watch reads a non-zero exit as idle or a failure, never as this line; stderr %q", got.Code, got.Stderr)
 			}
 			if strings.Count(got.Stdout, "\n") != 1 || !strings.HasSuffix(got.Stdout, "\n") {
 				t.Fatalf("stdout %q, want one line", got.Stdout)
