@@ -69,6 +69,18 @@ func (r *run) watch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	log := slog.New(slog.NewTextHandler(r.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	w, err := transport.NewWatch(door, r.Stdout, log)
+	if err != nil {
+		return err
+	}
+	ws := &watcher{door: door, w: w, log: log, cannotAck: func() string { return client.CannotAck(r.ConfigDir, r.Version) }}
+	data := &provider.Data{}
+	return r.stopWatch(ctx, ws, data, r.startWatch(ctx, p, ws, data))
+}
+
+// startWatch runs ws until its door exits or an error ends the run.
+func (r *run) startWatch(ctx context.Context, p *provider.Provider, ws *watcher, data *provider.Data) error {
 	api, err := r.client(true)
 	if err != nil {
 		return err
@@ -77,13 +89,52 @@ func (r *run) watch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	log := slog.New(slog.NewTextHandler(r.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	w, err := transport.NewWatch(door, r.Stdout, log)
-	if err != nil {
+	ws.api, data.Session = api, sid
+	return ws.run(ctx, data)
+}
+
+// The end reasons this client gives a watcher's end line, beside the
+// server's: a client that cannot ack, a cancel such as a signal ending an
+// exit door with no hold, and an error ending the run.
+const (
+	endUpgrade   = "upgrade"
+	endCancelled = "cancelled"
+	endError     = "error"
+)
+
+// stopWatch ends a watcher's run on err. A cancel ends an exit door with
+// its idle output, or its end output when it has no hold, because its host
+// reads the run's stdout as one result; a stdout or exec door owes nothing
+// then, since its host has stopped reading. Any other error ends every
+// door with its end, endError, since waiting again would not pass it, and
+// is then printed.
+func (r *run) stopWatch(ctx context.Context, ws *watcher, data *provider.Data, err error) error {
+	if _, ok := errors.AsType[*exitError](err); ok || err == nil {
 		return err
 	}
-	ws := &watcher{api: api, door: door, w: w, log: log, cannotAck: func() string { return client.CannotAck(r.ConfigDir, r.Version) }}
-	return ws.run(ctx, &provider.Data{Session: sid})
+	cancelled := ctx.Err() != nil
+	if cancelled && ws.door.Transport != provider.TransportExit {
+		return err
+	}
+	var step transport.Step
+	var stopErr error
+	if cancelled && ws.door.Hold > 0 {
+		step, stopErr = ws.w.Idle(ctx, data)
+	} else {
+		reason := endError
+		if cancelled {
+			reason = endCancelled
+		}
+		data.Line, data.Seq = transport.EndLine(reason), 0
+		step, stopErr = ws.w.End(ctx, data)
+	}
+	if stopErr != nil {
+		return errors.Join(err, stopErr)
+	}
+	if !cancelled {
+		r.fail(err)
+	}
+	return &exitError{code: step.Code}
 }
 
 // cutDashes splits args at the first --, answering what follows it and
@@ -177,9 +228,6 @@ func (ws *watcher) run(ctx context.Context, data *provider.Data) error {
 		}
 	}
 }
-
-// endUpgrade is the end reason of a watcher whose client cannot ack.
-const endUpgrade = "upgrade"
 
 func (ws *watcher) stopForUpgrade() bool {
 	line := ws.cannotAck()

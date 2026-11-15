@@ -39,7 +39,9 @@ one_shot:
 doors:
   # One grelot watch run is one poll of the workflow's command watch: it
   # prints one JSON result line and always exits 0, since the watch reads
-  # any other exit as idle without reading the line.
+  # any other exit as idle without reading the line and fails the run on an
+  # exit 0 without one. A poll cut short prints idle, and an error that
+  # waiting again would not pass prints the end.
   - name: workflow
     layer: 2
     transport: exit

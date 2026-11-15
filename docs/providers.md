@@ -152,7 +152,7 @@ The client's watcher, `grelot watch`, waits on the server and delivers each noti
 
 - **`exec`** runs `argv` for each notice, with no shell and no input or output, and goes on watching. `argv` is required, one template per argument, its first element the program. A run has 10 seconds. After a non-zero exit or a timeout the notice comes again later. The third non-zero exit in a row stops the watcher with exit code 1, and timeouts do not count.
 - **`stdout`** prints `line` for each notice and goes on watching, for a tool that reads a background command's output as it comes.
-- **`exit`** prints `line` and exits 0, for a tool that wakes a session when a background command ends. The session starts the watcher again.
+- **`exit`** prints `line` and exits 0, for a tool that wakes a session when a background command ends. The session starts the watcher again. A run of an `exit` door always ends with one output: a run cut short, by a signal for one, prints `idle` and exits 0 when the door has a `hold`, and otherwise prints `end` with the end line `(cancelled)` and exits with `end_exit`. A `stdout` or `exec` door cut short delivers nothing more, since its host has stopped reading.
 
 `stdout` and `exit` doors take these keys:
 
@@ -166,7 +166,7 @@ The client's watcher, `grelot watch`, waits on the server and delivers each noti
 
 A session keeps one watcher. Each wait a watcher opens ends the session's other open waits with the end reason `replaced`, so when two watchers run, the one whose wait opened last keeps running and one message wakes the session once. A nudge the server was about to answer the replaced one with goes to the one that keeps running. The replaced one exits 0, because nothing failed. A watcher of another session, on the same machine or not, is never replaced.
 
-The end line says why the watcher stopped: `ended` after the session's end report, `none` or `dormant` when the session has no live identity, `replaced` when another watcher of the same session took over, and `upgrade` when the server refuses this client's inbox ack:
+The end line says why the watcher stopped: `ended` after the session's end report, `none` or `dormant` when the session has no live identity, `replaced` when another watcher of the same session took over, `upgrade` when the server refuses this client's inbox ack, `cancelled` when an `exit` door with no `hold` is cut short, and `error` when an error that waiting again would not pass ends the run, such as a refused token or a shell with no session id. After `error`, the watcher also writes the error to stderr. A server that does not answer, or answers 429 or 5xx, is waited out and never ends the run:
 
 ```text
 [grelot:end] grelot (automated, not the user): this watcher stopped (ended); run grelot me
