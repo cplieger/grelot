@@ -61,6 +61,7 @@ func TestManual_howToCommunicateCoversSendingAndReceivingOnce(t *testing.T) {
 		"goes in that path's thread, even when nobody follows it", "`announce`", "`@name` is for a question or request",
 		"never in several direct messages", "a reply to a thread post goes in that thread",
 		"Open a thread post with the `@names` it is for", "Only they are woken", "gets it quietly",
+		"A name that matches no registered agent is not delivered to, and the post's answer says so.",
 		"Leave the names out when the post is news for every follower",
 		"opened with the `@name` of the agent you answer, so only it is woken",
 		"the sender picks only whom a post wakes, by opening it with their `@names`",
