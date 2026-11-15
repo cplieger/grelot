@@ -79,7 +79,6 @@ func (r *run) watch(ctx context.Context, args []string) error {
 	return r.stopWatch(ctx, ws, data, r.startWatch(ctx, p, ws, data))
 }
 
-// startWatch runs ws until its door exits or an error ends the run.
 func (r *run) startWatch(ctx context.Context, p *provider.Provider, ws *watcher, data *provider.Data) error {
 	api, err := r.client(true)
 	if err != nil {

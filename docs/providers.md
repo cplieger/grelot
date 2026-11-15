@@ -152,7 +152,7 @@ The client's watcher, `grelot watch`, waits on the server and delivers each noti
 
 - **`exec`** runs `argv` for each notice, with no shell and no input or output, and goes on watching. `argv` is required, one template per argument, its first element the program. A run has 10 seconds. After a non-zero exit or a timeout the notice comes again later. The third non-zero exit in a row stops the watcher with exit code 1, and timeouts do not count.
 - **`stdout`** prints `line` for each notice and goes on watching, for a tool that reads a background command's output as it comes.
-- **`exit`** prints `line` and exits 0, for a tool that wakes a session when a background command ends. The session starts the watcher again. A run of an `exit` door always ends with one output: a run cut short, by a signal for one, prints `idle` and exits 0 when the door has a `hold`, and otherwise prints `end` with the end line `(cancelled)` and exits with `end_exit`. A `stdout` or `exec` door cut short delivers nothing more, since its host has stopped reading.
+- **`exit`** prints `line` and exits 0, for a tool that wakes a session when a background command ends. The session starts the watcher again. A run of an `exit` door always ends with one output: a run cut short by SIGINT or SIGTERM prints `idle` and exits 0 when the door has a `hold`, and otherwise prints `end` with the end line `(cancelled)` and exits with `end_exit`. A `stdout` or `exec` door cut short delivers nothing more, since its host has stopped reading.
 
 `stdout` and `exit` doors take these keys:
 
