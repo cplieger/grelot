@@ -11,13 +11,15 @@ import (
 	"time"
 )
 
-// alphaDoors is alpha with three watcher doors: tray prints a line per
-// nudge, once exits on the first, and poll holds 300 ms and prints JSON-free
-// stand-ins for the idle and end outputs, exiting 0 after the end.
+// alphaDoors is alpha with four watcher doors: tray prints a line per
+// nudge, once exits on the first, poll holds 300 ms and prints JSON-free
+// stand-ins for the idle and end outputs, exiting 0 after the end, and long
+// is poll with a hold no test outlasts.
 const alphaDoors = alphaFile + `doors:
   - {name: tray, layer: 2, transport: stdout, line: 'tray {{.Session}} {{.Line}}'}
   - {name: once, layer: 2, transport: exit}
   - {name: poll, layer: 2, transport: exit, hold: 300ms, idle: idle, end: 'end {{.Line}}', end_exit: 0}
+  - {name: long, layer: 2, transport: exit, hold: 1h, idle: idle, end: 'end {{.Line}}', end_exit: 0}
 `
 
 // syncBuffer is an output a watcher writes while the test reads it.
@@ -67,7 +69,6 @@ func TestWatch_triesAgainWhileTheServerFails(t *testing.T) {
 	}{
 		{name: "two 503s then a nudge", answers: []int{503, 503, 200}, wantCode: 0, wantOut: signal(4, 1) + "\n", wantWarn: 1},
 		{name: "a 204 between two outages", answers: []int{503, 204, 502, 200}, wantCode: 0, wantOut: signal(4, 1) + "\n", wantWarn: 2},
-		{name: "a 401 ends it", answers: []int{401}, wantCode: exitFailed},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -97,6 +98,47 @@ func TestWatch_triesAgainWhileTheServerFails(t *testing.T) {
 			}
 			if got := strings.Count(errOut, "level=WARN"); c.wantWarn > 0 && got != c.wantWarn {
 				t.Errorf("%d WARN lines, want one per outage, %d: %q", got, c.wantWarn, errOut)
+			}
+		})
+	}
+}
+
+// An error that waiting again would not pass ends the run with the door's
+// end output, the end line naming the error, and its end_exit.
+func TestWatch_aRunEndingErrorDeliversTheEnd(t *testing.T) {
+	const end = "[grelot:end] grelot (automated, not the user): this watcher stopped (error); run grelot me"
+	cases := []struct {
+		name      string
+		door      string
+		wantOut   string
+		wantErr   string
+		wantCode  int
+		noSession bool
+	}{
+		{name: "a refused token on an exit door", door: "once", wantOut: end + "\n", wantErr: "refused", wantCode: exitFailed},
+		{name: "a refused token on a held exit door", door: "poll", wantOut: "end " + end + "\n", wantErr: "refused", wantCode: 0},
+		{name: "a refused token on a stdout door", door: "tray", wantOut: "tray s-1 " + end + "\n", wantErr: "refused", wantCode: exitFailed},
+		{name: "no session id", door: "poll", noSession: true, wantOut: "end " + end + "\n", wantErr: "ALPHA_ID", wantCode: 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"error":"refused","code":"unauthorized"}`))
+			}))
+			defer fake.Close()
+			a := newAgent(t, &testServer{URL: fake.URL}, "s-1", "")
+			a.env.Providers = providerSet(t, "alpha", alphaDoors)
+			if c.noSession {
+				delete(a.vars, "ALPHA_ID")
+			}
+			code, out, errOut := a.run("--provider", "alpha", "watch", "--door", c.door)
+			if code != c.wantCode || out != c.wantOut {
+				t.Errorf("exit %d, stdout %q, want %d, %q; stderr %q", code, out, c.wantCode, c.wantOut, errOut)
+			}
+			if !strings.Contains(errOut, c.wantErr) {
+				t.Errorf("stderr %q, want the error naming %q", errOut, c.wantErr)
 			}
 		})
 	}

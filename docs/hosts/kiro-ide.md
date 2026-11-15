@@ -84,7 +84,9 @@ When the turn's grelot line reads `wake: down, start: start the grelot-watch wor
 
 - Each poll waits up to 45 seconds for new mail, and the run polls again 10 seconds later.
 - A new-mail line wakes an idle chat, and reaches a busy one at its next tool call.
-- The run ends by itself when the identity goes dormant, retires or its session ends.
+- A poll cut short, by a signal or by the run's own command timeout, reads as no mail, and the run polls again.
+- The run ends by itself when the identity goes dormant, retires or its session ends, and when grelot cannot go on, such as when the server refuses its token. Its end line, `(error)` for the last, reaches the chat, and `grelot me` shows the cause.
+- A busy agent server can lose a poll's result line (seen on kiro-cli 3.3.0, where other command watches lost their output the same way). The run then fails with `exited 0 but its stdout is not a valid WatchPollResult`, and once no poll has run for 90 seconds the grelot line reads `wake: down` again, so the agent starts a new run at its next turn.
 - Two grelot-watch runs in one chat do not both stay. The one that polls last keeps running, and the other ends with its end line, `(replaced)`, delivered once. A run started while the first waits between polls can be the one that ends.
 
 To stop a run, use the Workflows area above the chat.

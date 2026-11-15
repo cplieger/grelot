@@ -3,8 +3,10 @@
 package providers_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/provider"
+	"github.com/cplieger/grelot/internal/transport"
 	"github.com/cplieger/grelot/providers"
 )
 
@@ -465,4 +468,57 @@ func TestKiroIDE(t *testing.T) {
 			t.Errorf("session_end other: stdout %q, requests %v; want nothing", got.Stdout, got.Requests)
 		}
 	})
+}
+
+// The workflow's command watch fails the whole run on an exit 0 whose
+// stdout is not one result, so every way a poll ends prints one: a poll cut
+// short has no mail, and an error waiting again would not pass ends the run.
+func TestKiroCLIWorkflowDoor_aPollThatDoesNotLapse(t *testing.T) {
+	refusing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"refused","code":"unauthorized"}`))
+	}))
+	defer refusing.Close()
+	stopped := transport.EndLine("error")
+	cases := []struct {
+		want   map[string]any
+		server string
+		name   string
+		cut    bool
+	}{
+		{name: "cut short", server: newSilentServer(t).URL, cut: true, want: map[string]any{"outcome": "idle", "cursor": nil}},
+		{name: "a refused token", server: refusing.URL, want: map[string]any{"outcome": "terminal-state", "cursor": nil, "payload": stopped}},
+	}
+	for _, c := range cases {
+		t.Run(strings.ReplaceAll(c.name, " ", "_"), func(t *testing.T) {
+			sh := kiroShell(t, newServer(t), "kiro-cli", kiroSession)
+			sh.useServer(c.server)
+			ctx := t.Context()
+			if c.cut {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, 300*time.Millisecond)
+				defer cancel()
+			}
+			got := sh.runCtx(ctx, "", "watch", "--door", "workflow")
+			if got.Code != 0 {
+				t.Errorf("exit %d, want 0: the watch reads a non-zero exit as idle or a failure, never as this line; stderr %q", got.Code, got.Stderr)
+			}
+			if strings.Count(got.Stdout, "\n") != 1 || !strings.HasSuffix(got.Stdout, "\n") {
+				t.Fatalf("stdout %q, want one line", got.Stdout)
+			}
+			var result map[string]any
+			if err := json.Unmarshal([]byte(got.Stdout), &result); err != nil {
+				t.Fatalf("stdout %q is not JSON: %v", got.Stdout, err)
+			}
+			if len(result) != len(c.want) {
+				t.Errorf("result %v, want %v", result, c.want)
+			}
+			for k, v := range c.want {
+				if g, ok := result[k]; !ok || g != v {
+					t.Errorf("%s = %v, want %v", k, g, v)
+				}
+			}
+		})
+	}
 }
