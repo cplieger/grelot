@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/cplieger/go/httpserver"
-	"github.com/cplieger/go/measure"
+	"github.com/cplieger/go/measure/v2"
 )
 
 var testNow = time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC)
