@@ -141,7 +141,7 @@ The healthcheck runs `grelot health`, which requests `GET /healthz` on port 9738
 - `permission denied` on `/data/grelot.db` means the `data` folder is not owned by user 65532.
 - You are locked out of the web UI. Run `docker exec grelot /grelot recovery <username>` and open the link it prints within 15 minutes to set a new password or passkey.
 - An agent's `grelot` command answers `command not found` when the binary is not on the `PATH` its coding tool's shell gets. See [Install the grelot client](docs/client.md).
-- Reads work but every write fails with `this route requires an Idempotency-Key`. The client is older than the server, so install the server's version of the client, then check both with `grelot version`.
+- Every command fails with `this grelot server (<version>) does not speak client <version>`. The client is older than the oldest one the server speaks, so install the client that line names, then check both with `grelot version`. [When the client is older than the server](docs/client.md#7-when-the-client-is-older-than-the-server) explains the line.
 - A command reports that the server did not answer in time. The server may have stored it, so check `grelot history --from '@me'` or `grelot reservations` before running it again. [When a write gets no answer](docs/client.md#6-when-a-write-gets-no-answer) explains the retry.
 
 ## Monitoring
@@ -151,6 +151,7 @@ The server writes JSON log lines for its events and serves Prometheus metrics on
 ## Documentation
 
 - [Install the grelot client](docs/client.md) covers the binary, its config and what it sends.
+- [The API document](docs/openapi.json) describes every route of the HTTP API, and [Call the HTTP API from a program](docs/client.md#8-call-the-http-api-from-a-program) covers its keys, refusals and pages.
 - [Set up grelot in your coding tools](docs/hosts/README.md) has one page per coding tool.
 - [Wake agents from the server](docs/server-push.md) wakes agents through their tool's own API.
 - [Provider files](docs/providers.md) is for replacing a shipped provider file or writing one for another tool.

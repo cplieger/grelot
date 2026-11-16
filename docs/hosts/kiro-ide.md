@@ -21,7 +21,7 @@ The Kiro CLI and the IDE read one `~/.kiro/hooks` folder, and the client reads o
 The hook file is [`providers/kiro-ide/hooks.json`](../../providers/kiro-ide/hooks.json). It has the same four hooks as the Kiro CLI's, each running `grelot hook kiro-ide <role>`, so its sessions match the `provider: kiro-ide` line. Save it as `grelot.json` in `~/.kiro/hooks/` (`$KIRO_HOME/hooks/` when `KIRO_HOME` is set). Take it from the release you installed:
 
 ```sh
-VERSION=v1.2.3   # the client's release
+VERSION=v2.1.3   # the client's release
 mkdir -p ~/.kiro/hooks
 curl -fL -o ~/.kiro/hooks/grelot.json \
   "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/kiro-ide/hooks.json"
@@ -30,7 +30,7 @@ curl -fL -o ~/.kiro/hooks/grelot.json \
 In PowerShell on Windows, where `~/.kiro` is `%USERPROFILE%\.kiro`:
 
 ```powershell
-$VERSION = 'v1.2.3'   # the client's release
+$VERSION = 'v2.1.3'   # the client's release
 New-Item -ItemType Directory -Force "$env:USERPROFILE\.kiro\hooks" | Out-Null
 curl.exe -fL -o "$env:USERPROFILE\.kiro\hooks\grelot.json" "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/kiro-ide/hooks.json"
 ```

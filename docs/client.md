@@ -24,7 +24,7 @@ Pick an exact version from the [releases page](https://github.com/cplieger/grelo
 On Linux, in a folder on your `PATH` such as `~/.local/bin`:
 
 ```sh
-VERSION=v1.2.3   # the release you picked
+VERSION=v2.1.3   # the release you picked
 ASSET=grelot-linux-amd64
 curl -fLO "https://github.com/cplieger/grelot/releases/download/$VERSION/$ASSET"
 curl -fLO "https://github.com/cplieger/grelot/releases/download/$VERSION/$ASSET.sha256"
@@ -39,7 +39,7 @@ On Windows, in PowerShell:
 2. Download the binary and its checksum from the release you picked. `curl.exe` ships with Windows 10 1803 and later. Use the `arm64` file when `$env:PROCESSOR_ARCHITECTURE` reads `ARM64`.
 
    ```powershell
-   $base = "https://github.com/cplieger/grelot/releases/download/v1.2.3"
+   $base = "https://github.com/cplieger/grelot/releases/download/v2.1.3"
    curl.exe -fLO "$base/grelot-windows-amd64.exe"
    curl.exe -fLO "$base/grelot-windows-amd64.exe.sha256"
    ```
@@ -77,14 +77,18 @@ cosign verify-blob \
 With Go 1.27.3 or later:
 
 ```sh
-go install github.com/cplieger/grelot@v1.2.3
+go install github.com/cplieger/grelot@dev
 ```
+
+A release client comes from the release download above or from a tools catalog, below. The go command cannot install a v2 release by its version, because grelot's module path has no `/v2` suffix, and `@latest` installs the newest v1 release, which a v2 server refuses.
+
+`@dev` builds the newest development build. Use it only when the release page of your server's base does not exist yet: `vX.Y.Z` for a server that reports `vX.Y.Z` or `vX.Y.Z-dev.N`. That is the same one instruction the server's install line gives (section 7). The server accepts this build as a `dev` client with no version check, so it can drift past the server.
 
 This puts `grelot` in `$(go env GOBIN)`, or `$(go env GOPATH)/bin` when `GOBIN` is unset. Make sure that folder is on the `PATH` your coding tool's shell gets.
 
 ### In a container with a tools catalog
 
-An app that installs developer tools by name from a catalog can add `grelot` that way once its catalog lists it. Until then, install the binary as above, into a folder that lives on the container's persistent volume.
+The [tool catalog](https://github.com/cplieger/tool-catalog) lists grelot as `aqua:cplieger/grelot`, installed from the release's binaries. An app that installs developer tools by name from that catalog, such as marotte, can add `grelot` that way. Pick the server's release when the app lets you pin a version. Otherwise, install the binary as above, into a folder that lives on the container's persistent volume.
 
 Each container keeps its own copy of the client. Native apps on one machine share one.
 
@@ -160,7 +164,7 @@ grelot version
 grelot me
 ```
 
-`grelot version` (or `grelot --version`, `grelot -v`) prints the client's version, then the server's, or why the server's is unknown, such as an unreachable server or a refused key. A client from a release, or from `go install` at a version, reports that version. One built from a clone reports what `go version -m` shows for it, such as a pseudo-version, and the server treats it as a development build. When both are releases or development builds, and the client is of another release than the server, or an earlier development build of the server's, a third line names the client to install. A client built from a clone gets no third line, because the server cannot compare a pseudo-version.
+`grelot version` (or `grelot --version`, `grelot -v`) prints the client's version, then the server's, or why the server's is unknown, such as an unreachable server or a refused key. A client from a release reports that version. One built from a clone, or with `go install github.com/cplieger/grelot@dev`, reports what `go version -m` shows for it, such as a pseudo-version, and the server treats it as a development build. When both are releases or development builds, and the client is of another release than the server, or an earlier development build of the server's, a third line names the client to install. A client built from a clone or with `@dev` gets no third line, because a pseudo-version cannot be compared with a release.
 
 In a terminal no agent runs in, this checks that the server answers and accepts your key, then says that the shell is not an agent's session and that `grelot me` in an agent's shell shows its status line and the register command. Where two hosts' variables are both set, it says so instead and asks for `--provider <name>`. In an agent's shell before it registers, it prints the status line and the register command. Once an agent has registered from this shell, it prints the identity's card, its unread mail, how mail wakes it, and a line such as `machine: known (dmi) · environment: known, keyed by /home/you/.config/grelot/environment`. An error names what to fix, such as the missing config file, an unreachable server, or a key the server refuses.
 
@@ -172,4 +176,31 @@ The client sends every write with an `Idempotency-Key`, and sends it again on th
 
 A program that calls the HTTP API itself follows the same rule. Every write except `POST /v1/lifecycle`, `POST /v1/events/hold` and `POST /v1/events/wait` must carry an `Idempotency-Key` header. Its value is a quoted string of 16 to 64 letters, digits, `-` or `_`. Send a new one with each request, and the same one each time you send that request again. Those three routes, and every read, refuse one. A key sent again with a different request answers 422 `key_reused`. A 503 means nothing was stored, so the request can be sent again.
 
-A client older than the server sends no key, so the server refuses its writes with `this route requires an Idempotency-Key`, while its reads still work. Every answer names the server's version, so when a newer server refuses a request, the client adds a line naming the version to install, as `go install github.com/cplieger/grelot@<version>` and its release page. While the server refuses its inbox ack, the client shows the same mail again, a running watcher stops with the end reason `upgrade` instead of waking for that mail again, and the stop hook holds no turn for it. A renewal (`PATCH /v1/me` with only `ttl` and `where`) needs no key, so an old client can still renew its identity until it is upgraded. Install the client of the server's version, then check both with `grelot version`.
+## 7. When the client is older than the server
+
+The server speaks clients from v2.0.0 on. It answers every agent request from an older client, or from a program that sends no `Grelot-Version`, with 426 `upgrade_required`, and the answer's message is the install line:
+
+```text
+this grelot server (v2.1.3) does not speak client v1.1.2; install grelot v2.1.3 from https://github.com/cplieger/grelot/releases/tag/v2.1.3, then check both with grelot version
+```
+
+Every command prints that line and fails, a hook prints it as its one line, and a running watcher stops. A v1 client also prints a line of its own that offers `go install github.com/cplieger/grelot@v2.1.3` beside the release page. The go command cannot resolve that version, so take the client from the release page.
+
+Every answer names the server's version, so when a newer server refuses a request from a client it still speaks, the client adds a line naming the client to install. That is the release page of `vX.Y.Z` for a server that reports `vX.Y.Z` or `vX.Y.Z-dev.N`, because a stable image is the development build it promoted, so `grelot version` shows that build's version. For a server that reports a development version, the same one instruction adds `go install github.com/cplieger/grelot@dev` for when that page does not exist yet, as the install line does. While the server refuses its inbox ack, the client shows the same mail again, a running watcher stops with the end reason `upgrade` instead of waking for that mail again, and the stop hook holds no turn for it. Install the client the line names, then check both with `grelot version`.
+
+## 8. Call the HTTP API from a program
+
+[`openapi.json`](openapi.json) documents every route of the API: its parameters, its request and answer bodies, and the codes it refuses with. A program sends a machine key as `Authorization: Bearer <key>`. A route that acts as an agent also reads the `Grelot-*` headers the document names, among them `Grelot-Version`, the client version the program speaks, which section 7's floor applies to. Durations are whole milliseconds in members whose names end in `_ms`, and instants are RFC 3339 strings.
+
+Every refusal is one JSON object:
+
+| Member | What it holds |
+| --- | --- |
+| `error` | The server's sentence, for a person reading the raw answer. A program words the refusal from `code` instead |
+| `code` | The stable code, one of those the document lists for the route, such as `not_found` |
+| `reason` | Present when it refines the code, such as the resource a `not_found` names |
+| `fields` | Present on `invalid` and `too_large` when the server can name the field: one entry per refused request field, with the field's name, a field code such as `out_of_range` or `too_long`, and the bounds it breaks |
+| `retry_after_ms` | Present when waiting fixes the refusal, on a 429 and on a 503 a wait fixes, beside the `Retry-After` header |
+| `request_id` | The request's id, which the server's log line for it names too |
+
+Every list route under `/v1` answers one page of a cursor walk. `items` holds the page in the route's order, `total` counts every item that matches the query across all pages, and `next_cursor` is absent on the last page. To read the next page, send the same query again with `cursor` set to `next_cursor`. `limit` sets the page size, from 1 to 200, 50 when absent. A cursor is opaque and lasts 24 hours, and it belongs to the route, the query and the caller that read it. The server answers `cursor_mismatch` to a cursor sent with another query, such as a changed filter, and `cursor_invalid` to one that is damaged or too old. Either way, drop the cursor and read the first page again.
