@@ -79,7 +79,7 @@ func (s *Server) history(r *http.Request, c store.Caller, _ store.Keyed) (status
 	p := pagingOf(r)
 	hq.Limit = p.limit
 	if p.after != nil {
-		if hq.Before, err = afterHistory(p.after); err != nil {
+		if hq.Before, hq.Since, err = afterHistory(p.after); err != nil {
 			return 0, nil, err
 		}
 	}
@@ -89,7 +89,7 @@ func (s *Server) history(r *http.Request, c store.Caller, _ store.Keyed) (status
 	}
 	out := wire.History{List: wire.List[wire.Entry]{Items: entriesOut(got.Items), Total: got.Total}}
 	if len(got.Items) > 0 {
-		out.NextCursor, err = s.next(r, got.More, historyPosition(got.Items[0].Key()))
+		out.NextCursor, err = s.next(r, got.More, historyPosition(got.Items[0].Key(), got.Since))
 	}
 	return http.StatusOK, out, err
 }

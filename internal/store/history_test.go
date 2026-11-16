@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func mustHistory(t *testing.T, s *Store, session string, q HistoryQuery) Listing[Entry] {
+func mustHistory(t *testing.T, s *Store, session string, q HistoryQuery) HistoryPage {
 	t.Helper()
 	h, err := s.History(t.Context(), Caller{Session: session}, &q)
 	if err != nil {
@@ -330,6 +330,28 @@ func TestHistory_sinceAndUntil(t *testing.T) {
 		HistoryQuery{Until: testNow.Add(25 * time.Hour)}), "m2")
 	_, err = s.History(t.Context(), Caller{Session: sess("bravo")}, &HistoryQuery{Until: testNow.Add(time.Hour)})
 	wantRefusal(t, err, KindInvalid, "", "--until", "default 24 h window", "--since")
+}
+
+func TestHistory_reportsTheLowerBoundItRead(t *testing.T) {
+	s, clk := openClockStore(t)
+	regAt(t, s, "bravo", "/workspace/bravo")
+	since := testNow.Add(-time.Hour)
+	for _, tc := range []struct {
+		name string
+		q    HistoryQuery
+		want time.Time
+	}{
+		{"no since: the 24 h before now", HistoryQuery{}, clk.now().Add(-24 * time.Hour)},
+		{"an explicit since", HistoryQuery{Since: since}, since},
+		{"a path read is whole", HistoryQuery{Path: "/workspace/lib"}, time.Time{}},
+		{"the last read page is whole", HistoryQuery{LastRead: true}, time.Time{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := mustHistory(t, s, sess("bravo"), tc.q).Since; !got.Equal(tc.want) {
+				t.Errorf("Since = %v, want %v", got, tc.want)
+			}
+		})
+	}
 }
 
 func TestHistory_grepIgnoresCaseOverSubjectAndBody(t *testing.T) {

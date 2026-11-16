@@ -138,6 +138,33 @@ func TestHistory_routeMapsEveryFilterAndMovesNothing(t *testing.T) {
 	}
 }
 
+func TestHistory_aWalkWithNoSinceKeepsTheWindowOfItsFirstPage(t *testing.T) {
+	h := newHarness(t)
+	for _, a := range []struct{ session, name string }{{sessA, "asker"}, {sessB, "peer"}} {
+		if r := h.as(a.session, http.MethodPost, "/v1/register", registerBody(a.name, "24h", "/workspace/"+a.name)); r.status != http.StatusCreated {
+			t.Fatalf("register %s: %d %s", a.name, r.status, r.raw)
+		}
+	}
+	h.mustPost(sessB, map[string]any{"agent": "asker"}, "old")
+	h.clk.advance(23*time.Hour + 50*time.Minute)
+	if r := h.as(sessA, http.MethodPatch, "/v1/me", map[string]any{"ttl_ms": durMS("24h"), "where": where("a")}); r.status != http.StatusOK {
+		t.Fatalf("renew asker: %d %s", r.status, r.raw)
+	}
+	h.mustPost(sessB, map[string]any{"agent": "asker"}, "new1")
+	h.mustPost(sessB, map[string]any{"agent": "asker"}, "new2")
+	first := h.as(sessA, http.MethodGet, "/v1/history?limit=2", nil)
+	if items := entriesOf(t, first); len(items) != 2 || first.body["total"] != float64(3) {
+		t.Fatalf("page 1 = %s, want new1 and new2 of 3", first.raw)
+	}
+	cursor, _ := first.body["next_cursor"].(string)
+	h.clk.advance(20 * time.Minute)
+	second := h.as(sessA, http.MethodGet, "/v1/history?limit=2&cursor="+cursor, nil)
+	items := entriesOf(t, second)
+	if len(items) != 1 || items[0]["subject"] != "old" || second.body["total"] != float64(3) {
+		t.Errorf("page 2 = %s, want old and the total of page 1, 3", second.raw)
+	}
+}
+
 func TestHistory_lastReadIsTheLastAckedPage(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegisterAlone(sessA, "asker")

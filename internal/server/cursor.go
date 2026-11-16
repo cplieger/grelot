@@ -145,20 +145,32 @@ func afterSeq(p []byte) (uint64, error) {
 	return binary.BigEndian.Uint64(p), nil
 }
 
-func historyPosition(k store.EntryKey) []byte {
+// historyPosition is the entry key a history page resumes before and the
+// lower bound page 1 read, a zero bound sealed as 0.
+func historyPosition(k store.EntryKey, since time.Time) []byte {
 	p := binary.BigEndian.AppendUint64(nil, uint64(k.Written.UnixNano()))
 	p = binary.BigEndian.AppendUint64(p, k.Message)
-	return binary.BigEndian.AppendUint64(p, k.Seq)
+	p = binary.BigEndian.AppendUint64(p, k.Seq)
+	var bound int64
+	if !since.IsZero() {
+		bound = since.UnixNano()
+	}
+	return binary.BigEndian.AppendUint64(p, uint64(bound))
 }
 
-func afterHistory(p []byte) (store.EntryKey, error) {
-	if len(p) != 24 {
-		return store.EntryKey{}, errCursorInvalid
+func afterHistory(p []byte) (store.EntryKey, time.Time, error) {
+	if len(p) != 32 {
+		return store.EntryKey{}, time.Time{}, errCursorInvalid
 	}
-	return store.EntryKey{
+	k := store.EntryKey{
 		Written: time.Unix(0, int64(binary.BigEndian.Uint64(p))).UTC(), //nolint:gosec // sealed by historyPosition
 		Message: binary.BigEndian.Uint64(p[8:]), Seq: binary.BigEndian.Uint64(p[16:]),
-	}, nil
+	}
+	var since time.Time
+	if bound := int64(binary.BigEndian.Uint64(p[24:])); bound != 0 { //nolint:gosec // sealed by historyPosition
+		since = time.Unix(0, bound).UTC()
+	}
+	return k, since, nil
 }
 
 // paging is a Paged row's page request, which the chain reads before the

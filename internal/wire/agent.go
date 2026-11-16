@@ -377,7 +377,9 @@ type Receipt struct {
 // HistoryQuery is GET /v1/history's query; from is @me or a name; the
 // flags are 1 or 0.
 type HistoryQuery struct {
-	// Since is an RFC 3339 instant, the oldest entry's earliest time.
+	// Since is an RFC 3339 instant, the oldest entry's earliest time; when
+	// absent, the 24 hours before the first page, or every entry with path
+	// or last_read=1.
 	Since time.Time `json:"since,omitzero"`
 	// Until is an RFC 3339 instant, the newest entry's latest time.
 	Until    time.Time `json:"until,omitzero"`

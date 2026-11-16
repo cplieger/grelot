@@ -413,7 +413,11 @@ export interface HistoryPost {
  * flags are 1 or 0.
  */
 export interface HistoryQuery {
-  /** Since is an RFC 3339 instant, the oldest entry's earliest time. */
+  /**
+   * Since is an RFC 3339 instant, the oldest entry's earliest time; when
+   * absent, the 24 hours before the first page, or every entry with path
+   * or last_read=1.
+   */
   since?: string;
   /** Until is an RFC 3339 instant, the newest entry's latest time. */
   until?: string;

@@ -25,13 +25,14 @@ const (
 // longestPosition is each Paged row's longest position, from design 1.1:
 // a name or delegate handle of 97 bytes, a thread path of 1024, a
 // reservation id or a delivery seq of 8, and a history entry's key of 24
-// (its written time, message and seq; an own post carries no seq).
+// (its written time, message and seq; an own post carries no seq) with
+// the walk's 8-byte lower bound.
 var longestPosition = map[string][]byte{
 	"listIdentities":   bytes.Repeat([]byte("n"), 97),
 	"listThreads":      bytes.Repeat([]byte("p"), wantMaxPosition),
 	"listReservations": bytes.Repeat([]byte{0xff}, 8),
 	"readInbox":        bytes.Repeat([]byte{0xff}, 8),
-	"getHistory":       bytes.Repeat([]byte{0xff}, 24),
+	"getHistory":       bytes.Repeat([]byte{0xff}, 32),
 }
 
 func cursorCode(err error) string {

@@ -57,6 +57,14 @@ func (k EntryKey) compare(o EntryKey) int {
 	return cmp.Or(k.Written.Compare(o.Written), cmp.Compare(k.Message, o.Message), cmp.Compare(k.Seq, o.Seq))
 }
 
+// HistoryPage is a history read: a page of entries, and Since, the lower
+// bound the read applied (zero when it read whole). A page after the first
+// passes Since back as its query's Since, so the walk keeps one window.
+type HistoryPage struct {
+	Since time.Time
+	Listing[Entry]
+}
+
 // History pages c's own mailbox, read and unread, and unless From names
 // another identity or LastRead is set its own posts there, in time order;
 // with Path and no LastRead, every post of the live path threads under
@@ -64,15 +72,16 @@ func (k EntryKey) compare(o EntryKey) int {
 // relation "you". Refusals: KindInvalid for a bad path or time window,
 // From with FromMe, or With naming the caller; KindNotFound for an unknown
 // name; KindGone for a session with no live identity.
-func (s *Store) History(ctx context.Context, c Caller, query *HistoryQuery) (Listing[Entry], error) {
+func (s *Store) History(ctx context.Context, c Caller, query *HistoryQuery) (HistoryPage, error) {
 	q := *query
 	if err := checkHistory(&q); err != nil {
-		return Listing[Entry]{}, err
+		return HistoryPage{}, err
 	}
 	if _, err := s.Seen(ctx, c); err != nil {
-		return Listing[Entry]{}, err
+		return HistoryPage{}, err
 	}
 	var all []Entry
+	var since time.Time
 	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		me, err := s.liveFor(r, c, now)
@@ -80,13 +89,17 @@ func (s *Store) History(ctx context.Context, c Caller, query *HistoryQuery) (Lis
 			return err
 		}
 		h, ok, err := s.historyWalk(r, &me, &q, now)
+		since = h.since
 		if err != nil || !ok {
 			return err
 		}
 		all, err = h.read(r)
 		return err
 	})
-	return historyPage(all, &q), err
+	if err != nil {
+		return HistoryPage{}, err
+	}
+	return HistoryPage{Since: since, Listing: historyPage(all, &q)}, nil
 }
 
 // historyPage is the page of all, in order, that q asks for.
