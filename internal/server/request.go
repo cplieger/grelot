@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -123,5 +124,16 @@ func decode(r *http.Request, v any) error {
 	return badRequest("the request body must be one JSON object: " + err.Error())
 }
 
-// durationMS is a request's _ms duration; 0 is none.
-func durationMS(ms int64) time.Duration { return time.Duration(ms) * time.Millisecond }
+// durationMS is a request's _ms duration; 0 is none. A value past
+// time.Duration's range saturates, so every later range check refuses it
+// rather than reading a wrapped product.
+func durationMS(ms int64) time.Duration {
+	const limit = math.MaxInt64 / int64(time.Millisecond)
+	switch {
+	case ms > limit:
+		return math.MaxInt64
+	case ms < -limit:
+		return math.MinInt64
+	}
+	return time.Duration(ms) * time.Millisecond
+}
