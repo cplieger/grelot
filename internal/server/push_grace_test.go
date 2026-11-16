@@ -94,12 +94,16 @@ func TestPush_aFailingSendStillReadsHostPushForTwoMinutes(t *testing.T) {
 		wait := h.watchAsync(sessA, 55*time.Second)
 		synctest.Wait()
 		mustReturnNow(t, wait)
-		h.mustWakeAll(t, "watcher once one is online, the run still unaccepted", sessA, wakeWatcher, true)
+		// The watcher's nudge made the retry obsolete, which ends the run.
+		h.mustWakeAll(t, "host push once the watcher sent the nudge", sessA, wakePush, true)
+		if got := h.pushState(sessA); got != string(pushOK) {
+			t.Errorf("push after the watcher's nudge = %q, want ok", got)
+		}
 	})
 }
 
-// The stop hook shows the mail, which ends the pending retry with no
-// accepted send, so the failing run goes on.
+// The stop hook shows the mail, which ends the pending retry, and with it
+// the failing run, so push is ok again with no accepted send.
 func TestPush_theStopHookReadsTheGracedWake(t *testing.T) {
 	t.Setenv(doorTokenEnv, doorSecret)
 	rcv := newPushReceiver(t, pushReply{status: http.StatusServiceUnavailable, header: map[string]string{"Retry-After": "20"}})
@@ -115,7 +119,50 @@ func TestPush_theStopHookReadsTheGracedWake(t *testing.T) {
 		h.mustWakeAll(t, "a second before the grace ends", sessA, wakePush, true)
 		time.Sleep(time.Second)
 		synctest.Wait()
-		h.mustWakeAll(t, "once the run has gone the grace with no accepted send", sessA, wakeDown, true)
+		h.mustWakeAll(t, "a grace after the first failure, no retry pending", sessA, wakePush, true)
+		if got := h.pushState(sessA); got != string(pushOK) {
+			t.Errorf("push = %q, want ok once the stop hook read the mail", got)
+		}
+	})
+}
+
+func TestPush_aReadThatEndsTheRetryEndsTheFailingRun(t *testing.T) {
+	t.Setenv(doorTokenEnv, doorSecret)
+	rcv := newPushReceiver(t, pushReply{status: http.StatusServiceUnavailable, header: map[string]string{"Retry-After": "600"}})
+	synctest.Test(t, func(t *testing.T) {
+		h := newPushHarness(t, rcv.kiroDoor()...)
+		h.mustRegisterAlone(sessA, "reader")
+		h.mustRegisterAlone(sessB, "writer")
+		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
+		synctest.Wait()
+		if got := h.pushState(sessA); got != string(pushFailing) {
+			t.Fatalf("push = %q, want failing", got)
+		}
+		h.mustWakeAll(t, "after one failed send, the stop hook reading the mail", sessA, wakePush, true)
+		synctest.Wait()
+		if got := h.pushState(sessA); got != string(pushOK) {
+			t.Fatalf("push after the read = %q, want ok", got)
+		}
+		time.Sleep(grace + time.Second)
+		synctest.Wait()
+		h.mustWakeAll(t, "past the grace with no retry pending", sessA, wakePush, true)
+		if got := h.pushState(sessA); got != string(pushOK) {
+			t.Errorf("push past the grace = %q, want ok", got)
+		}
+
+		h.mustPost(sessB, map[string]any{"agent": "reader"}, "again")
+		synctest.Wait()
+		waitForRequests(t, rcv, 2, 5*time.Minute)
+		if got := h.pushState(sessA); got != string(pushFailing) {
+			t.Fatalf("push after the new mail's send = %q, want failing", got)
+		}
+		h.mustWake(t, "a new single failure", sessA, wakePush)
+		time.Sleep(grace - time.Second)
+		synctest.Wait()
+		h.mustWake(t, "a second before the new failure's grace ends", sessA, wakePush)
+		time.Sleep(time.Second)
+		synctest.Wait()
+		h.mustWake(t, "down once the new failure has gone the grace", sessA, wakeDown)
 	})
 }
 
@@ -269,6 +316,10 @@ func TestWait_aPushIdentitysWatcherEndsOnceHostPushHasWorkedForTwoMinutes(t *tes
 			mustReturnNow(t, first)
 			if n := h.sentByWatcher(); n != 1 {
 				t.Fatalf("%d nudges via watcher, want the failed push's", n)
+			}
+			synctest.Wait()
+			if got := h.pushState(sessA); got != string(pushOK) {
+				t.Fatalf("push after the watcher's nudge = %q, want ok, the retry obsolete", got)
 			}
 			nudged := time.Now()
 			end, at := h.watchUntilEnd(t, sessA, 9)

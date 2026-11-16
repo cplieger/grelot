@@ -903,7 +903,8 @@ func pushDoors(url string) fstest.MapFS {
 }
 
 // A push that waits on its retry still wakes the session, so the turn line
-// names no start line until the push has failed for 2 minutes.
+// names no start line until one nudge's retries have failed for 2 minutes.
+// Reading the mail ends the retries, and with them the failing run.
 func TestHookPrompt_aFailingPushNamesNoStartLineForTwoMinutes(t *testing.T) {
 	var tries atomic.Int32
 	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -916,31 +917,49 @@ func TestHookPrompt_aFailingPushNamesNoStartLineForTwoMinutes(t *testing.T) {
 	file := hookTurnFile + "doors:\n  - {name: tray, layer: 2, transport: stdout, start: grelot watch --door tray}\n"
 	a := turnAgent(t, ts, file)
 	b, _ := registerAt(t, ts, "s-2", "bee-dev")
-	b.postTo("@toolbelt-dev", "a question")
-	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		var me map[string]any
-		ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodGet, Path: "/v1/me"}, &me)
-		if me["push"] == "failing" {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("push never failed: %d tries, me %v", tries.Load(), me)
+	pushReads := func(want string, n int32) {
+		t.Helper()
+		for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+			var me map[string]any
+			ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodGet, Path: "/v1/me"}, &me)
+			if me["push"] == want && tries.Load() >= n {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("push never read %s: %d tries, me %v", want, tries.Load(), me)
+			}
 		}
 	}
+	b.postTo("@toolbelt-dev", "a question")
+	pushReads("failing", 1)
 
+	if out := a.must("me"); !strings.Contains(statusOf(out), "wake: host push") {
+		t.Errorf("me status %q one failed push in, want wake: host push", statusOf(out))
+	}
 	if _, out := a.prompt("go on"); strings.Contains(out, "wake: down") {
 		t.Errorf("turn line %q names the start line one failed push in", out)
 	}
 	if out := a.must("inbox"); !strings.Contains(statusOf(out), "wake: host push") {
-		t.Errorf("inbox status %q, want wake: host push", statusOf(out))
+		t.Errorf("inbox status %q one failed push in, want wake: host push", statusOf(out))
 	}
+	pushReads("ok", 1)
 	ts.clock.advance(2 * time.Minute)
+	if _, out := a.prompt("go on"); strings.Contains(out, "wake: down") {
+		t.Errorf("turn line %q names the start line 2 min after the read ended the retry", out)
+	}
+	if out := a.must("me"); !strings.Contains(statusOf(out), "wake: host push") {
+		t.Errorf("me status %q 2 min after the read ended the retry, want wake: host push", statusOf(out))
+	}
+
+	b.postTo("@toolbelt-dev", "another question")
+	pushReads("failing", 2)
+	ts.clock.advance(2 * time.Minute)
+	if out := a.must("me"); !strings.Contains(statusOf(out), "wake: down") {
+		t.Errorf("me status %q after 2 min of failed retries, want wake: down", statusOf(out))
+	}
 	want := "wake: down, start: grelot watch --door tray"
 	if _, out := a.prompt("go on"); !strings.Contains(out, want) {
-		t.Errorf("turn line %q after 2 min of failed push, want %q", out, want)
-	}
-	if out := a.must("me"); !strings.Contains(statusOf(out), "wake: down") {
-		t.Errorf("me status %q after 2 min of failed push, want wake: down", statusOf(out))
+		t.Errorf("turn line %q after 2 min of failed retries, want %q", out, want)
 	}
 }
 

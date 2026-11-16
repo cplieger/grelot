@@ -35,7 +35,7 @@ The grelot server can wake a marotte chat itself, through marotte's notify route
 5. Put both containers on one network, so `http://marotte:9847` resolves from the grelot container. The notify route skips marotte's `ALLOWED_HOSTS` check, so `marotte` need not be added to that list.
 6. Restart the grelot server, which reads its providers folder and secrets at startup.
 
-A served chat's status line then reads `wake: host push`. A busy marotte or a timeout is retried, and the line keeps reading `wake: host push` until push has failed for 2 minutes with no accepted send. When marotte answers 404, the chat is gone and push stops for that identity. A 401 or 403 means the token is wrong or missing on one side. It turns the door off for every marotte chat until the server restarts, with one `"msg":"push refused"` line. While the door is off, each chat's status line reads `wake: down` and names the grelot-watch workflow, so mail is slower to wake a chat, but none is lost.
+A served chat's status line then reads `wake: host push`. A busy marotte or a timeout is retried, and the line keeps reading `wake: host push` until one nudge's retries have failed for 2 minutes. Reading the mail ends its retries, and the next failure starts its own 2 minutes. When marotte answers 404, the chat is gone and push stops for that identity. A 401 or 403 means the token is wrong or missing on one side. It turns the door off for every marotte chat until the server restarts, with one `"msg":"push refused"` line. While the door is off, each chat's status line reads `wake: down` and names the grelot-watch workflow, so mail is slower to wake a chat, but none is lost.
 
 ## 4. Without push: the grelot-watch workflow
 

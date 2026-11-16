@@ -57,12 +57,13 @@ type pushee struct {
 	at time.Time
 	// retryAt is when the failed send key is tried again, zero for none.
 	retryAt time.Time
-	// failing and healthy are pushReading's.
-	failing time.Time
-	healthy time.Time
-	door    provider.ServerDoor
-	key     sendKey
-	off     bool
+	// failing, healthy and unproven are pushReading's.
+	failing  time.Time
+	healthy  time.Time
+	door     provider.ServerDoor
+	key      sendKey
+	off      bool
+	unproven bool
 }
 
 // sendKey is what a send's dedupe key is made of besides the identity.
@@ -108,7 +109,7 @@ func (p *hostPush) Reading(id uint64) pushReading {
 	case e.off || p.doorOff[e.door.Door]:
 		return pushReading{state: pushOff}
 	}
-	r := pushReading{failing: e.failing, healthy: e.healthy, state: pushOK}
+	r := pushReading{failing: e.failing, healthy: e.healthy, state: pushOK, unproven: e.unproven}
 	if !e.retryAt.IsZero() {
 		r.state = pushFailing
 	}
@@ -128,7 +129,7 @@ func (p *hostPush) registered(id uint64, prov, host string) {
 		if e := p.ids[id]; e != nil && e.door.Door == d.Door {
 			fresh.retryAt, fresh.key, fresh.at = e.retryAt, e.key, e.at
 			if !e.off {
-				fresh.failing, fresh.healthy = e.failing, e.healthy
+				fresh.failing, fresh.healthy, fresh.unproven = e.failing, e.healthy, e.unproven
 			}
 		}
 		p.ids[id] = fresh
@@ -274,7 +275,7 @@ func (p *hostPush) look(ctx context.Context, id uint64) bool {
 			p.forget(id, cur)
 			return true
 		case st.Due == nil:
-			p.edit(id, func(e *pushee) { e.retryAt, e.at = time.Time{}, st.Next })
+			p.edit(id, func(e *pushee) { e.retryAt, e.failing, e.at = time.Time{}, time.Time{}, st.Next })
 			return true
 		}
 		key := sendKey{read: st.Due.Read, attempt: st.Due.Attempt}
@@ -291,13 +292,17 @@ func (p *hostPush) look(ctx context.Context, id uint64) bool {
 // waits reports whether due, whose send is key, is not to go out yet, and
 // sets when to look again: a failed send waits for its retry time, and a
 // first nudge for the hooks (Server.deferred). Any other send due ends a
-// pending retry, since a standing wait or a read moved the nudge on.
+// pending retry and its failing run, since a standing wait or a read moved
+// the nudge on.
 func (p *hostPush) waits(id uint64, e *pushee, due *store.Nudge, key sendKey) bool {
-	if !e.retryAt.IsZero() {
-		if key == e.key && p.s.now().Before(e.retryAt) {
-			p.edit(id, func(e *pushee) { e.at = e.retryAt })
-			return true
-		}
+	switch {
+	case e.retryAt.IsZero() && e.failing.IsZero():
+	case key != e.key:
+		p.edit(id, func(e *pushee) { e.retryAt, e.failing = time.Time{}, time.Time{} })
+	case p.s.now().Before(e.retryAt):
+		p.edit(id, func(e *pushee) { e.at = e.retryAt })
+		return true
+	default:
 		p.edit(id, func(e *pushee) { e.retryAt = time.Time{} })
 	}
 	until, deferred := p.s.deferred(id, due)
@@ -392,13 +397,13 @@ func doorAttrs(d provider.ServerDoor, status int) []any {
 	return []any{"provider", d.File, "door", d.Door.Name, attrStatus, status}
 }
 
-// accepted ends id's failing run, if one is open, so a standing wait's
-// hand-back is measured from now.
+// accepted ends id's failing run and proves push again after a failure,
+// so a standing wait's hand-back is measured from now.
 func (p *hostPush) accepted(id uint64) {
 	now := p.s.now()
 	p.edit(id, func(e *pushee) {
-		if !e.failing.IsZero() {
-			e.failing, e.healthy = time.Time{}, now
+		if e.unproven {
+			e.failing, e.healthy, e.unproven = time.Time{}, now, false
 		}
 	})
 }
@@ -415,7 +420,7 @@ func (p *hostPush) retryLater(ctx context.Context, id uint64, key sendKey, res t
 	now := p.s.now()
 	at := now.Add(res.RetryAfter)
 	p.edit(id, func(e *pushee) {
-		e.retryAt, e.key, e.at = at, key, at
+		e.retryAt, e.key, e.at, e.unproven = at, key, at, true
 		if e.failing.IsZero() {
 			e.failing = now
 		}
@@ -427,7 +432,7 @@ func (p *hostPush) retryLater(ctx context.Context, id uint64, key sendKey, res t
 // revived, and hands its nudge to its standing waits.
 func (p *hostPush) identityOff(ctx context.Context, id uint64, level slog.Level, msg string, attrs []any) {
 	p.s.log.Log(ctx, level, msg, attrs...)
-	p.edit(id, func(e *pushee) { e.off, e.retryAt, e.at, e.failing = true, time.Time{}, time.Time{}, time.Time{} })
+	p.edit(id, func(e *pushee) { e.off, e.retryAt, e.at = true, time.Time{}, time.Time{} })
 	p.s.hub.Woke([]uint64{id})
 }
 
