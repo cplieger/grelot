@@ -33,8 +33,9 @@ func routeInputs() map[string]reflect.Type {
 	return out
 }
 
-// instant is the type the document writes as an RFC 3339 date-time.
-var instant = reflect.TypeFor[time.Time]()
+// instant is the type the document writes as an optional RFC 3339
+// date-time.
+var instant = reflect.TypeFor[*time.Time]()
 
 // sent is the text the test sends for a field of type t: an RFC 3339
 // instant for a date-time, 7 for the rest.
@@ -47,7 +48,7 @@ func sent(t reflect.Type) string {
 
 // asSent is a bound field's value in the form sent wrote it.
 func asSent(fv reflect.Value) string {
-	if t, ok := reflect.TypeAssert[time.Time](fv); ok {
+	if t, ok := reflect.TypeAssert[*time.Time](fv); ok && t != nil {
 		return t.Format(time.RFC3339)
 	}
 	return fmt.Sprint(fv.Interface())
@@ -127,7 +128,7 @@ func TestBind_anInstantThatIsNotRFC3339IsRefusedByItsJSONName(t *testing.T) {
 		}
 	}
 	if cases == 0 {
-		t.Fatal("no route input declares a date-time field; delete this test with bindFields' time.Time arm")
+		t.Fatal("no route input declares a date-time field; delete this test with setField's *time.Time arm")
 	}
 }
 

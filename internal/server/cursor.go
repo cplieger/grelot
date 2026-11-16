@@ -145,32 +145,48 @@ func afterSeq(p []byte) (uint64, error) {
 	return binary.BigEndian.Uint64(p), nil
 }
 
-// historyPosition is the entry key a history page resumes before and the
-// lower bound page 1 read, a zero bound sealed as 0.
-func historyPosition(k store.EntryKey, since time.Time) []byte {
-	p := binary.BigEndian.AppendUint64(nil, uint64(k.Written.UnixNano()))
-	p = binary.BigEndian.AppendUint64(p, k.Message)
-	p = binary.BigEndian.AppendUint64(p, k.Seq)
-	var bound int64
-	if !since.IsZero() {
-		bound = since.UnixNano()
-	}
-	return binary.BigEndian.AppendUint64(p, uint64(bound))
+// instantBytes is a sealed instant: its Unix seconds and nanoseconds,
+// which span every instant RFC 3339 writes, where UnixNano spans only
+// 1678 to 2262.
+const instantBytes = 12
+
+func appendInstant(p []byte, t time.Time) []byte {
+	p = binary.BigEndian.AppendUint64(p, uint64(t.Unix()))          //nolint:gosec // read back as int64 by instantAt
+	return binary.BigEndian.AppendUint32(p, uint32(t.Nanosecond())) //nolint:gosec // 0 to 999999999
 }
 
-func afterHistory(p []byte) (store.EntryKey, time.Time, error) {
-	if len(p) != 32 {
-		return store.EntryKey{}, time.Time{}, errCursorInvalid
+func instantAt(p []byte) time.Time {
+	return time.Unix(int64(binary.BigEndian.Uint64(p)), int64(binary.BigEndian.Uint32(p[8:]))).UTC() //nolint:gosec // written by appendInstant
+}
+
+// historyKeyBytes is an entry key's position: its written instant, its
+// message and its seq.
+const historyKeyBytes = instantBytes + 16
+
+// historyPosition is the entry key a history page resumes before and the
+// lower bound page 1 read, which a whole read (nil) leaves out.
+func historyPosition(k store.EntryKey, since *time.Time) []byte {
+	p := appendInstant(nil, k.Written)
+	p = binary.BigEndian.AppendUint64(p, k.Message)
+	p = binary.BigEndian.AppendUint64(p, k.Seq)
+	if since != nil {
+		p = appendInstant(p, *since)
+	}
+	return p
+}
+
+func afterHistory(p []byte) (store.EntryKey, *time.Time, error) {
+	if len(p) != historyKeyBytes && len(p) != historyKeyBytes+instantBytes {
+		return store.EntryKey{}, nil, errCursorInvalid
 	}
 	k := store.EntryKey{
-		Written: time.Unix(0, int64(binary.BigEndian.Uint64(p))).UTC(), //nolint:gosec // sealed by historyPosition
-		Message: binary.BigEndian.Uint64(p[8:]), Seq: binary.BigEndian.Uint64(p[16:]),
+		Written: instantAt(p),
+		Message: binary.BigEndian.Uint64(p[instantBytes:]), Seq: binary.BigEndian.Uint64(p[instantBytes+8:]),
 	}
-	var since time.Time
-	if bound := int64(binary.BigEndian.Uint64(p[24:])); bound != 0 { //nolint:gosec // sealed by historyPosition
-		since = time.Unix(0, bound).UTC()
+	if len(p) == historyKeyBytes {
+		return k, nil, nil
 	}
-	return k, since, nil
+	return k, new(instantAt(p[historyKeyBytes:])), nil
 }
 
 // paging is a Paged row's page request, which the chain reads before the

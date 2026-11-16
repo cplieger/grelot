@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/wire"
 )
 
@@ -24,15 +25,15 @@ const (
 
 // longestPosition is each Paged row's longest position, from design 1.1:
 // a name or delegate handle of 97 bytes, a thread path of 1024, a
-// reservation id or a delivery seq of 8, and a history entry's key of 24
-// (its written time, message and seq; an own post carries no seq) with
-// the walk's 8-byte lower bound.
+// reservation id or a delivery seq of 8, and a history entry's key of 28
+// (its written instant of 12, message and seq; an own post carries no
+// seq) with the walk's 12-byte lower bound.
 var longestPosition = map[string][]byte{
 	"listIdentities":   bytes.Repeat([]byte("n"), 97),
 	"listThreads":      bytes.Repeat([]byte("p"), wantMaxPosition),
 	"listReservations": bytes.Repeat([]byte{0xff}, 8),
 	"readInbox":        bytes.Repeat([]byte{0xff}, 8),
-	"getHistory":       bytes.Repeat([]byte{0xff}, 32),
+	"getHistory":       bytes.Repeat([]byte{0xff}, 40),
 }
 
 func cursorCode(err error) string {
@@ -139,6 +140,38 @@ func TestCursor_refusals(t *testing.T) {
 	clock = now.Add(24 * time.Hour)
 	if _, err := c.open(scope, sealed); err != nil {
 		t.Errorf("a cursor 24 hours old: %v, want it opened", err)
+	}
+}
+
+func TestHistoryPosition_roundTripsEveryRFC3339InstantAndNoBound(t *testing.T) {
+	plusOne, err := time.Parse(time.RFC3339, "0001-01-01T00:00:00+01:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	instants := map[string]time.Time{
+		"the Unix epoch":        time.Unix(0, 0),
+		"before 1678":           time.Date(1600, 1, 1, 0, 0, 0, 0, time.UTC),
+		"year 1":                time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC),
+		"year 1 at +01:00":      plusOne,
+		"year 9999's last ns":   time.Date(9999, 12, 31, 23, 59, 59, 999999999, time.UTC),
+		"a written-now instant": time.Date(2026, 11, 16, 9, 0, 0, 123456789, time.UTC),
+	}
+	for name, at := range instants {
+		t.Run(name, func(t *testing.T) {
+			k := store.EntryKey{Written: at, Message: 7, Seq: 9}
+			for _, bound := range []*time.Time{nil, &at} {
+				gotKey, gotBound, err := afterHistory(historyPosition(k, bound))
+				if err != nil || !gotKey.Written.Equal(at) || gotKey.Message != 7 || gotKey.Seq != 9 {
+					t.Errorf("key = %+v, %v; want %+v back", gotKey, err, k)
+				}
+				switch {
+				case bound == nil && gotBound != nil:
+					t.Errorf("no bound came back as %v", *gotBound)
+				case bound != nil && (gotBound == nil || !gotBound.Equal(at)):
+					t.Errorf("bound %v came back as %v", at, gotBound)
+				}
+			}
+		})
 	}
 }
 

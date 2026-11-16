@@ -31,7 +31,8 @@ func bind[T any](get func(string) string) (T, error) {
 }
 
 // bindFields fills each field of the struct v from get, keyed by the
-// field's json tag name; an empty value leaves the field zero. It panics
+// field's json tag name; an empty value leaves the field zero, so an
+// optional instant is a pointer that stays nil. It panics
 // on a field kind setField cannot fill, so a wire type it misses fails
 // the server's tests rather than a request.
 func bindFields(v reflect.Value, get func(string) string) error {
@@ -52,15 +53,18 @@ func bindFields(v reflect.Value, get func(string) string) error {
 	return nil
 }
 
-// setField fills fv from s, the value sent under name: a time.Time from
+// setField fills fv from s, the value sent under name: a *time.Time from
 // an RFC 3339 instant, a ranged type from a whole number within its
 // bounds, another integer from a whole number. It reports false for a
 // kind it cannot fill.
 func setField(fv reflect.Value, name, s string) (bool, error) {
-	if fv.Type() == reflect.TypeFor[time.Time]() {
-		at, err := instantParam(s, name)
-		fv.Set(reflect.ValueOf(at))
-		return true, err
+	if fv.Type() == reflect.TypeFor[*time.Time]() {
+		at, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			return true, badRequest(name + " must be an RFC 3339 instant")
+		}
+		fv.Set(reflect.ValueOf(&at))
+		return true, nil
 	}
 	if rg, ok := reflect.TypeAssert[ranged](fv); ok && (fv.CanInt() || fv.CanUint()) {
 		return true, setRanged(fv, rg, name, s)

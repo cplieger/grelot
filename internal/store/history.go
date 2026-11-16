@@ -13,7 +13,7 @@ import (
 	"github.com/cplieger/bolttable"
 )
 
-// defaultHistoryWindow is a zero Since's window, except with LastRead or
+// defaultHistoryWindow is a nil Since's window, except with LastRead or
 // Path.
 const defaultHistoryWindow = 24 * time.Hour
 
@@ -21,13 +21,12 @@ const defaultHistoryWindow = 24 * time.Hour
 // thread id; Path keeps path threads at or under it; With is the direct
 // thread with the identity of that name; Announce the announcements. From
 // keeps that identity's posts to the caller and FromMe only the caller's
-// own posts. Since and Until bound the time, both inclusive. Grep is a
-// substring of the subject, body or event text, ignoring case. LastRead
-// keeps the deliveries of the last acked inbox page. Full keeps whole
-// bodies instead of their first line.
+// own posts. Since and Until bound the time, both inclusive; nil is open.
+// Grep is a substring of the subject, body or event text, ignoring case.
+// LastRead keeps the last acked inbox page; Full keeps whole bodies.
 type HistoryQuery struct {
-	Since time.Time
-	Until time.Time
+	Since *time.Time
+	Until *time.Time
 	Grep  string
 	Path  string
 	With  string
@@ -58,10 +57,10 @@ func (k EntryKey) compare(o EntryKey) int {
 }
 
 // HistoryPage is a history read: a page of entries, and Since, the lower
-// bound the read applied (zero when it read whole). A page after the first
+// bound the read applied (nil when it read whole). A page after the first
 // passes Since back as its query's Since, so the walk keeps one window.
 type HistoryPage struct {
-	Since time.Time
+	Since *time.Time
 	Listing[Entry]
 }
 
@@ -81,7 +80,7 @@ func (s *Store) History(ctx context.Context, c Caller, query *HistoryQuery) (His
 		return HistoryPage{}, err
 	}
 	var all []Entry
-	var since time.Time
+	var since *time.Time
 	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		me, err := s.liveFor(r, c, now)
@@ -125,7 +124,7 @@ func checkHistory(q *HistoryQuery) error {
 	if q.FromMe && q.From != "" {
 		return refuse(KindInvalid, "--from takes one identity: @me or another's name")
 	}
-	if !q.Until.IsZero() && q.Since.After(q.Until) {
+	if q.Since != nil && q.Until != nil && q.Since.After(*q.Until) {
 		return refuse(KindInvalid, "--since must not be after --until")
 	}
 	return nil
@@ -137,8 +136,8 @@ type walk struct {
 	me          *identityRow
 	threadPaths map[uint64]string
 	now         time.Time
-	since       time.Time
-	until       time.Time
+	since       *time.Time
+	until       *time.Time
 	grep        string
 	path        string
 	seqs        seqRange
@@ -189,16 +188,22 @@ func (s *Store) historyWalk(r *bolttable.ReadTx, me *identityRow, q *HistoryQuer
 // now unless q reads the last page or a path, whose threads a follower
 // reads whole. An Until before that default window is refused, as an
 // explicit inverted window is.
-func historySince(q *HistoryQuery, now time.Time) (time.Time, error) {
-	if !q.Since.IsZero() || q.LastRead || q.Path != "" {
+func historySince(q *HistoryQuery, now time.Time) (*time.Time, error) {
+	if q.Since != nil || q.LastRead || q.Path != "" {
 		return q.Since, nil
 	}
 	since := now.Add(-defaultHistoryWindow)
-	if !q.Until.IsZero() && since.After(q.Until) {
-		return since, refuse(KindInvalid, "--until is before the default 24 h window: pass --since too")
+	if q.Until != nil && since.After(*q.Until) {
+		return &since, refuse(KindInvalid, "--until is before the default 24 h window: pass --since too")
 	}
-	return since, nil
+	return &since, nil
 }
+
+// beforeSince reports whether t is older than w's lower bound.
+func (w *walk) beforeSince(t time.Time) bool { return w.since != nil && t.Before(*w.since) }
+
+// afterUntil reports whether t is newer than w's upper bound.
+func (w *walk) afterUntil(t time.Time) bool { return w.until != nil && t.After(*w.until) }
 
 // withThread narrows w to the direct thread with the identity named name.
 func (w *walk) withThread(r *bolttable.ReadTx, name string) (bool, error) {
@@ -273,7 +278,7 @@ func (w *walk) walkDeliveries(r *bolttable.ReadTx) ([]Entry, error) {
 		rg.To = pairKey(w.me.ID, w.seqs.To+1)
 	}
 	err := w.s.t.deliveries.table.Scan(r, rg, func(_ []byte, d *deliveryRow) (bool, error) {
-		if d.Seq < w.seqs.From || d.Written.Before(w.since) {
+		if d.Seq < w.seqs.From || w.beforeSince(d.Written) {
 			return false, nil
 		}
 		if d.Lease.due(w.now) {
@@ -300,7 +305,7 @@ func (w *walk) deliveryMatches(r *bolttable.ReadTx, d *deliveryRow) (bool, error
 	case w.thread != 0 && d.Thread != w.thread,
 		w.announce && d.Kind != kindAnnounce,
 		w.sender != 0 && (!isPost(d.Kind) || d.Sender != w.sender),
-		!w.until.IsZero() && d.Written.After(w.until):
+		w.afterUntil(d.Written):
 		return false, nil
 	case w.path == "":
 		return true, nil
@@ -335,10 +340,10 @@ func (w *walk) walkPosts(r *bolttable.ReadTx) ([]Entry, error) {
 	var out []Entry
 	err := w.s.t.bySender.Scan(r, bolttable.Range{Prefix: be64(w.me.ID), Reverse: true}, func(ikey, k, _ []byte) (bool, error) {
 		at, err := senderPostedAt(ikey)
-		if err != nil || at.Before(w.since) {
+		if err != nil || w.beforeSince(at) {
 			return false, err
 		}
-		if !w.until.IsZero() && at.After(w.until) {
+		if w.afterUntil(at) {
 			return true, nil
 		}
 		m, found, err := w.s.t.messages.table.Get(r, k)
@@ -392,11 +397,11 @@ func (w *walk) threadPosts(r *bolttable.ReadTx, thread uint64, seen map[uint64]b
 	}
 	var out []Entry
 	err := w.s.t.messages.table.Scan(r, bolttable.Range{Prefix: be64(thread), Reverse: true}, func(_ []byte, m *messageRow) (bool, error) {
-		if m.PostedAt.Before(w.since) {
+		if w.beforeSince(m.PostedAt) {
 			return false, nil
 		}
 		if seen[m.ID] || m.Lease.due(w.now) || !w.postMatches(m) || (author != 0 && m.Sender != author) ||
-			(!w.until.IsZero() && m.PostedAt.After(w.until)) {
+			w.afterUntil(m.PostedAt) {
 			return true, nil
 		}
 		e := Entry{Kind: m.Kind, Written: m.PostedAt, Message: m.ID, Thread: m.Thread}

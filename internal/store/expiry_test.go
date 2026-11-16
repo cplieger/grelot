@@ -27,7 +27,7 @@ func TestDelivery_outlivesTheReadAndExpiresWithItsMessage(t *testing.T) {
 	if len(ds) != 2 || ds[0].ReadAt.IsZero() || ds[1].ReadAt.IsZero() {
 		t.Fatalf("deliveries %+v, want both kept, read, until their message expires", ds)
 	}
-	wantSubjects(t, "history of read mail", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: testNow}), "first", "second")
+	wantSubjects(t, "history of read mail", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: new(testNow)}), "first", "second")
 
 	clk.set(testNow.Add(DefaultRetention))
 	mustSweep(t, s)
@@ -40,7 +40,7 @@ func TestDelivery_outlivesTheReadAndExpiresWithItsMessage(t *testing.T) {
 	if ds := deliveriesTo(t, s, b.ID); len(ds) != 1 || ds[0].Seq != 2 {
 		t.Errorf("deliveries %+v, want only seq 2: the first expires by its own index with its message", ds)
 	}
-	wantSubjects(t, "history after the first expiry", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: testNow}), "second")
+	wantSubjects(t, "history after the first expiry", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: new(testNow)}), "second")
 }
 
 // openRetentionStore opens a store on a test clock whose retention the
@@ -126,7 +126,7 @@ func TestThread_neverExpiresBeforeAnOlderMessage(t *testing.T) {
 	if got := subjects(mustInbox(t, s, sess("bravo"), 0).Items); len(got) != 1 || got[0] != "first" {
 		t.Errorf("inbox %q, want [first]: the second post expired, the first lives until its own expiry", got)
 	}
-	wantSubjects(t, "history --path", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: testNow, Path: shared}), "first")
+	wantSubjects(t, "history --path", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: new(testNow), Path: shared}), "first")
 
 	clk.set(testNow.Add(DefaultRetention - time.Nanosecond))
 	mustSweep(t, s)

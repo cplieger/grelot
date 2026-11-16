@@ -193,8 +193,8 @@ func TestHistory_pathFilterReadsPostsTheReaderNeverReceived(t *testing.T) {
 	wantSubjects(t, "from me", historySubjects(t, s, sess("charlie"), HistoryQuery{Path: lib, FromMe: true}), "sub news")
 	wantSubjects(t, "grep", historySubjects(t, s, sess("bravo"), HistoryQuery{Path: lib, Grep: "V1"}), "v1 released")
 	wantSubjects(t, "limit", historySubjects(t, s, sess("bravo"), HistoryQuery{Path: lib, Limit: 1}), "v2 released")
-	wantSubjects(t, "until", historySubjects(t, s, sess("bravo"), HistoryQuery{Path: lib, Until: testNow.Add(30 * time.Second)}), "v1 released")
-	wantSubjects(t, "since", historySubjects(t, s, sess("bravo"), HistoryQuery{Path: lib, Since: testNow.Add(90 * time.Second)}), "v2 released")
+	wantSubjects(t, "until", historySubjects(t, s, sess("bravo"), HistoryQuery{Path: lib, Until: new(testNow.Add(30 * time.Second))}), "v1 released")
+	wantSubjects(t, "since", historySubjects(t, s, sess("bravo"), HistoryQuery{Path: lib, Since: new(testNow.Add(90 * time.Second))}), "v2 released")
 
 	_, d := delegateOf(t, s, "subflux-dev", "review")
 	got, err := s.History(t.Context(), as(sess("subflux-dev"), d.Name), &HistoryQuery{Path: lib})
@@ -215,7 +215,7 @@ func TestHistory_pathFilterReadsTheWholeLiveThreadByDefault(t *testing.T) {
 	mustFollow(t, s, sess("bravo"), lib)
 
 	wantSubjects(t, "a follower past the default 24 h", historySubjects(t, s, sess("bravo"), HistoryQuery{Path: lib}), "v1 released")
-	wantSubjects(t, "an explicit since still bounds it", historySubjects(t, s, sess("bravo"), HistoryQuery{Path: lib, Since: clk.now().Add(-time.Hour)}))
+	wantSubjects(t, "an explicit since still bounds it", historySubjects(t, s, sess("bravo"), HistoryQuery{Path: lib, Since: new(clk.now().Add(-time.Hour))}))
 }
 
 func TestHistory_pathFilterOverManyThreadsKeepsTheNewestLimit(t *testing.T) {
@@ -319,16 +319,16 @@ func TestHistory_sinceAndUntil(t *testing.T) {
 	say(t, s, "bravo", Target{Agent: "alpha"}, "b2")
 
 	wantSubjects(t, "default: the last 24 h", historySubjects(t, s, sess("bravo"), HistoryQuery{}), "m2", "b2")
-	wantSubjects(t, "since the first post", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: testNow}), "m1", "b1", "m2", "b2")
+	wantSubjects(t, "since the first post", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: new(testNow)}), "m1", "b1", "m2", "b2")
 	wantSubjects(t, "since and until", historySubjects(t, s, sess("bravo"),
-		HistoryQuery{Since: testNow, Until: testNow.Add(time.Hour)}), "m1", "b1")
+		HistoryQuery{Since: new(testNow), Until: new(testNow.Add(time.Hour))}), "m1", "b1")
 	wantSubjects(t, "until the second own post's time", historySubjects(t, s, sess("bravo"),
-		HistoryQuery{Since: testNow.Add(time.Minute), Until: testNow.Add(25 * time.Hour)}), "b1", "m2")
-	_, err := s.History(t.Context(), Caller{Session: sess("bravo")}, &HistoryQuery{Since: testNow.Add(time.Hour), Until: testNow})
+		HistoryQuery{Since: new(testNow.Add(time.Minute)), Until: new(testNow.Add(25 * time.Hour))}), "b1", "m2")
+	_, err := s.History(t.Context(), Caller{Session: sess("bravo")}, &HistoryQuery{Since: new(testNow.Add(time.Hour)), Until: new(testNow)})
 	wantRefusal(t, err, KindInvalid, "", "since", "until")
 	wantSubjects(t, "until alone, inside the default window", historySubjects(t, s, sess("bravo"),
-		HistoryQuery{Until: testNow.Add(25 * time.Hour)}), "m2")
-	_, err = s.History(t.Context(), Caller{Session: sess("bravo")}, &HistoryQuery{Until: testNow.Add(time.Hour)})
+		HistoryQuery{Until: new(testNow.Add(25 * time.Hour))}), "m2")
+	_, err = s.History(t.Context(), Caller{Session: sess("bravo")}, &HistoryQuery{Until: new(testNow.Add(time.Hour))})
 	wantRefusal(t, err, KindInvalid, "", "--until", "default 24 h window", "--since")
 }
 
@@ -336,18 +336,21 @@ func TestHistory_reportsTheLowerBoundItRead(t *testing.T) {
 	s, clk := openClockStore(t)
 	regAt(t, s, "bravo", "/workspace/bravo")
 	since := testNow.Add(-time.Hour)
+	yearOne := time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)
 	for _, tc := range []struct {
 		name string
 		q    HistoryQuery
-		want time.Time
+		want *time.Time
 	}{
-		{"no since: the 24 h before now", HistoryQuery{}, clk.now().Add(-24 * time.Hour)},
-		{"an explicit since", HistoryQuery{Since: since}, since},
-		{"a path read is whole", HistoryQuery{Path: "/workspace/lib"}, time.Time{}},
-		{"the last read page is whole", HistoryQuery{LastRead: true}, time.Time{}},
+		{"no since: the 24 h before now", HistoryQuery{}, new(clk.now().Add(-24 * time.Hour))},
+		{"an explicit since", HistoryQuery{Since: &since}, &since},
+		{"a year-1 since is a bound", HistoryQuery{Since: &yearOne}, &yearOne},
+		{"a path read is whole", HistoryQuery{Path: "/workspace/lib"}, nil},
+		{"the last read page is whole", HistoryQuery{LastRead: true}, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := mustHistory(t, s, sess("bravo"), tc.q).Since; !got.Equal(tc.want) {
+			got := mustHistory(t, s, sess("bravo"), tc.q).Since
+			if (got == nil) != (tc.want == nil) || got != nil && !got.Equal(*tc.want) {
 				t.Errorf("Since = %v, want %v", got, tc.want)
 			}
 		})
@@ -474,7 +477,7 @@ func TestHistory_lastReadIsTheLastAckedInboxPage(t *testing.T) {
 	wantSubjects(t, "last read, past the default window", historySubjects(t, s, sess("bravo"), HistoryQuery{LastRead: true}), "2", "3")
 	wantSubjects(t, "last read with grep", historySubjects(t, s, sess("bravo"), HistoryQuery{LastRead: true, Grep: "3"}), "3")
 	wantSubjects(t, "last read with a later since", historySubjects(t, s, sess("bravo"),
-		HistoryQuery{LastRead: true, Since: testNow.Add(time.Hour)}))
+		HistoryQuery{LastRead: true, Since: new(testNow.Add(time.Hour))}))
 }
 
 func TestHistory_filtersCombine(t *testing.T) {
@@ -503,14 +506,14 @@ func TestHistory_filtersCombine(t *testing.T) {
 		q    HistoryQuery
 		want []string
 	}{
-		{"thread and from", HistoryQuery{Thread: p.Thread, From: "charlie", Since: since}, []string{"c-path notify"}},
-		{"with and from me", HistoryQuery{With: "alpha", FromMe: true, Since: since}, []string{"b-direct"}},
-		{"path and grep", HistoryQuery{Path: "/workspace/x", Grep: "NOTIFY", Since: since}, []string{"c-path notify"}},
+		{"thread and from", HistoryQuery{Thread: p.Thread, From: "charlie", Since: new(since)}, []string{"c-path notify"}},
+		{"with and from me", HistoryQuery{With: "alpha", FromMe: true, Since: new(since)}, []string{"b-direct"}},
+		{"path and grep", HistoryQuery{Path: "/workspace/x", Grep: "NOTIFY", Since: new(since)}, []string{"c-path notify"}},
 		{"announce in the default window", HistoryQuery{Announce: true}, []string{"c-ann"}},
-		{"announce since", HistoryQuery{Announce: true, Since: since}, []string{"a-ann", "c-ann"}},
-		{"thread and announce", HistoryQuery{Thread: d.Thread, Announce: true, Since: since}, nil},
-		{"thread and another with", HistoryQuery{Thread: d.Thread, With: "charlie", Since: since}, nil},
-		{"from and limit", HistoryQuery{From: "alpha", Since: since, Limit: 2}, []string{"a-path", "a-ann"}},
+		{"announce since", HistoryQuery{Announce: true, Since: new(since)}, []string{"a-ann", "c-ann"}},
+		{"thread and announce", HistoryQuery{Thread: d.Thread, Announce: true, Since: new(since)}, nil},
+		{"thread and another with", HistoryQuery{Thread: d.Thread, With: "charlie", Since: new(since)}, nil},
+		{"from and limit", HistoryQuery{From: "alpha", Since: new(since), Limit: 2}, []string{"a-path", "a-ann"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			wantSubjects(t, c.name, historySubjects(t, s, sess("bravo"), c.q), c.want...)
@@ -527,7 +530,7 @@ func TestHistory_skipsExpiredRowsTheSweepHasNotReached(t *testing.T) {
 	clk.advance(shortRetention)
 	say(t, s, "alpha", Target{Agent: "bravo"}, "new")
 
-	wantSubjects(t, "after the first two expired", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: testNow}), "new")
+	wantSubjects(t, "after the first two expired", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: new(testNow)}), "new")
 }
 
 func TestHistory_keepsARetiredSendersMessagesAndRelation(t *testing.T) {

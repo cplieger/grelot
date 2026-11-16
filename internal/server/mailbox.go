@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/wire"
@@ -79,6 +78,8 @@ func (s *Server) history(r *http.Request, c store.Caller, _ store.Keyed) (status
 	p := pagingOf(r)
 	hq.Limit = p.limit
 	if p.after != nil {
+		// The sealed bound is the one page 1 resolved; an explicit since is
+		// in the cursor's bound query, so it seals as itself.
 		if hq.Before, hq.Since, err = afterHistory(p.after); err != nil {
 			return 0, nil, err
 		}
@@ -119,18 +120,6 @@ func historyQuery(r *http.Request) (hq store.HistoryQuery, err error) {
 		}
 	}
 	return hq, nil
-}
-
-// instantParam reads a history bound, an RFC 3339 instant.
-func instantParam(v, name string) (time.Time, error) {
-	if v == "" {
-		return time.Time{}, nil
-	}
-	t, err := time.Parse(time.RFC3339, v)
-	if err != nil {
-		return time.Time{}, badRequest(name + " must be an RFC 3339 instant")
-	}
-	return t, nil
 }
 
 // threads is GET /v1/threads: the live path threads under path.

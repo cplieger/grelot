@@ -165,6 +165,74 @@ func TestHistory_aWalkWithNoSinceKeepsTheWindowOfItsFirstPage(t *testing.T) {
 	}
 }
 
+// oldAndTwoNew gives asker a mailbox of "old", written 24 h 10 min ago and
+// so outside the default window, and "new1" and "new2", written now.
+func oldAndTwoNew(t *testing.T) *harness {
+	t.Helper()
+	h := newHarness(t)
+	for _, a := range []struct{ session, name string }{{sessA, "asker"}, {sessB, "peer"}} {
+		if r := h.as(a.session, http.MethodPost, "/v1/register", registerBody(a.name, "24h", "/workspace/"+a.name)); r.status != http.StatusCreated {
+			t.Fatalf("register %s: %d %s", a.name, r.status, r.raw)
+		}
+	}
+	h.mustPost(sessB, map[string]any{"agent": "asker"}, "old")
+	h.clk.advance(23*time.Hour + 50*time.Minute)
+	for _, s := range []string{sessA, sessB} {
+		if r := h.as(s, http.MethodPatch, "/v1/me", map[string]any{"ttl_ms": durMS("24h"), "where": where("a")}); r.status != http.StatusOK {
+			t.Fatalf("renew: %d %s", r.status, r.raw)
+		}
+	}
+	h.clk.advance(20 * time.Minute)
+	h.mustPost(sessB, map[string]any{"agent": "asker"}, "new1")
+	h.mustPost(sessB, map[string]any{"agent": "asker"}, "new2")
+	return h
+}
+
+func TestHistory_aWalkKeepsAnExplicitSinceAtAnyInstant(t *testing.T) {
+	for _, tc := range []struct{ name, query string }{
+		{"the Unix epoch", "since=1970-01-01T00:00:00Z"},
+		{"before 1678", "since=1600-01-01T00:00:00Z"},
+		{"year 1", "since=0001-01-01T00:00:00Z"},
+		{"year 1 to year 9999", "since=0001-01-01T00:00:00Z&until=9999-12-31T23:59:59.999999999Z"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := oldAndTwoNew(t)
+			first := h.as(sessA, http.MethodGet, "/v1/history?limit=2&"+tc.query, nil)
+			if items := entriesOf(t, first); len(items) != 2 || first.body["total"] != float64(3) {
+				t.Fatalf("page 1 = %s, want new1 and new2 of 3", first.raw)
+			}
+			cursor, _ := first.body["next_cursor"].(string)
+			second := h.as(sessA, http.MethodGet, "/v1/history?limit=2&"+tc.query+"&cursor="+cursor, nil)
+			items := entriesOf(t, second)
+			if len(items) != 1 || items[0]["subject"] != "old" || second.body["total"] != float64(3) {
+				t.Errorf("page 2 = %s, want old and the total of page 1, 3", second.raw)
+			}
+		})
+	}
+}
+
+func TestHistory_aYearOneOrYear9999BoundIsAnInstant(t *testing.T) {
+	h := oldAndTwoNew(t)
+	for _, tc := range []struct {
+		name, query string
+		total       float64
+	}{
+		{"since year 9999 reads nothing", "since=9999-12-31T23:59:59Z", 0},
+		{"until year 1 after since year 1 reads nothing", "since=0001-01-01T00:00:00Z&until=0001-01-01T00:00:00Z", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := h.as(sessA, http.MethodGet, "/v1/history?"+tc.query, nil)
+			if items := entriesOf(t, r); len(items) != 0 || r.body["total"] != tc.total {
+				t.Errorf("history?%s = %s, want no entries of %v", tc.query, r.raw, tc.total)
+			}
+		})
+	}
+	r := h.as(sessA, http.MethodGet, "/v1/history?until=0001-01-01T00:00:00Z", nil)
+	if r.status != http.StatusBadRequest || r.str("code") != "invalid" {
+		t.Errorf("until year 1 with no since = %d %s, want 400 invalid: the default window starts after it", r.status, r.raw)
+	}
+}
+
 func TestHistory_lastReadIsTheLastAckedPage(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegisterAlone(sessA, "asker")

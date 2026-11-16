@@ -385,19 +385,19 @@ type HistoryQuery struct {
 	// Since is an RFC 3339 instant, the oldest entry's earliest time; when
 	// absent, the 24 hours before the first page, or every entry with path
 	// or last_read=1.
-	Since time.Time `json:"since,omitzero"`
+	Since *time.Time `json:"since,omitempty"`
 	// Until is an RFC 3339 instant, the newest entry's latest time.
-	Until    time.Time `json:"until,omitzero"`
-	Cursor   string    `json:"cursor,omitempty"`
-	Path     string    `json:"path,omitempty"`
-	With     string    `json:"with,omitempty"`
-	From     string    `json:"from,omitempty"`
-	Grep     string    `json:"grep,omitempty"`
-	Announce Flag      `json:"announce,omitempty"`
-	Full     Flag      `json:"full,omitempty"`
-	LastRead Flag      `json:"last_read,omitempty"`
-	Thread   ThreadID  `json:"thread,omitempty"`
-	Limit    PageLimit `json:"limit,omitempty"`
+	Until    *time.Time `json:"until,omitempty"`
+	Cursor   string     `json:"cursor,omitempty"`
+	Path     string     `json:"path,omitempty"`
+	With     string     `json:"with,omitempty"`
+	From     string     `json:"from,omitempty"`
+	Grep     string     `json:"grep,omitempty"`
+	Announce Flag       `json:"announce,omitempty"`
+	Full     Flag       `json:"full,omitempty"`
+	LastRead Flag       `json:"last_read,omitempty"`
+	Thread   ThreadID   `json:"thread,omitempty"`
+	Limit    PageLimit  `json:"limit,omitempty"`
 }
 
 // ThreadID names a thread; ids start at 1.
