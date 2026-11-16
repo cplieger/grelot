@@ -2615,6 +2615,19 @@
         ],
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "bearerKey": {
+        "description": "A machine key, minted by grelot key create or the web UI.",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "sessionCookie": {
+        "description": "A signed-in browser session.",
+        "in": "cookie",
+        "name": "auth_session",
+        "type": "apiKey"
+      }
     }
   },
   "info": {
@@ -2667,6 +2680,19 @@
               "auth_session_required": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -2678,6 +2704,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests: rate_limited",
+            "x-error-codes": {
+              "rate_limited": {}
             }
           },
           "500": {
@@ -2701,7 +2740,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -2709,7 +2748,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Every live and dormant agent, by name"
       }
     },
@@ -2774,8 +2817,9 @@
                 }
               }
             },
-            "description": "Not Found: not_found",
+            "description": "Not Found: not_found, auth_not_found",
             "x-error-codes": {
+              "auth_not_found": {},
               "not_found": {}
             }
           },
@@ -2790,6 +2834,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests: rate_limited",
+            "x-error-codes": {
+              "rate_limited": {}
             }
           },
           "500": {
@@ -2813,7 +2870,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -2821,7 +2878,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "An agent's card, reservations and delegates"
       }
     },
@@ -2908,8 +2969,9 @@
                 }
               }
             },
-            "description": "Not Found: not_found",
+            "description": "Not Found: not_found, auth_not_found",
             "x-error-codes": {
+              "auth_not_found": {},
               "not_found": {}
             }
           },
@@ -2924,6 +2986,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests: rate_limited",
+            "x-error-codes": {
+              "rate_limited": {}
             }
           },
           "500": {
@@ -2947,7 +3022,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -2955,7 +3030,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Every post an agent sent or received, newest first, 100 a page"
       }
     },
@@ -3043,6 +3122,19 @@
               "auth_session_required": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -3054,6 +3146,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests: rate_limited",
+            "x-error-codes": {
+              "rate_limited": {}
             }
           },
           "500": {
@@ -3077,7 +3182,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -3085,7 +3190,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Conversations newest activity first, 50 a page"
       }
     },
@@ -3173,8 +3282,9 @@
                 }
               }
             },
-            "description": "Not Found: not_found",
+            "description": "Not Found: not_found, auth_not_found",
             "x-error-codes": {
+              "auth_not_found": {},
               "not_found": {}
             }
           },
@@ -3189,6 +3299,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests: rate_limited",
+            "x-error-codes": {
+              "rate_limited": {}
             }
           },
           "500": {
@@ -3212,7 +3335,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -3220,7 +3343,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "A conversation's posts oldest first, 100 a page, and its context"
       }
     },
@@ -3296,7 +3423,7 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_cross_origin, auth_session_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_cross_origin",
             "x-error-codes": {
               "auth_cross_origin": {},
               "auth_session_required": {},
@@ -3311,8 +3438,9 @@
                 }
               }
             },
-            "description": "Not Found: not_found",
+            "description": "Not Found: not_found, auth_not_found",
             "x-error-codes": {
+              "auth_not_found": {},
               "not_found": {}
             }
           },
@@ -3327,6 +3455,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests: rate_limited",
+            "x-error-codes": {
+              "rate_limited": {}
             }
           },
           "500": {
@@ -3350,7 +3491,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -3358,7 +3499,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Mark the user's unread posts in a conversation read, up to the newest shown"
       }
     },
@@ -3410,6 +3555,19 @@
               "auth_session_required": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -3423,6 +3581,19 @@
               "auth_method_not_allowed": {}
             }
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests: rate_limited",
+            "x-error-codes": {
+              "rate_limited": {}
+            }
+          },
           "500": {
             "content": {
               "application/json": {
@@ -3431,8 +3602,9 @@
                 }
               }
             },
-            "description": "Internal Server Error: streaming_unsupported",
+            "description": "Internal Server Error: streaming_unsupported, internal_error",
             "x-error-codes": {
+              "internal_error": {},
               "streaming_unsupported": {}
             }
           },
@@ -3444,14 +3616,20 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, sse_unavailable",
+            "description": "Service Unavailable: sse_unavailable, timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
-              "sse_unavailable": {}
+              "shutting_down": {},
+              "sse_unavailable": {},
+              "timeout": {}
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "A changed event after each commit the web UI shows, resumed from Last-Event-ID, between the sse hub's hello and keepalive events"
       }
     },
@@ -3530,8 +3708,9 @@
                 }
               }
             },
-            "description": "Not Found: not_found",
+            "description": "Not Found: not_found, auth_not_found",
             "x-error-codes": {
+              "auth_not_found": {},
               "not_found": {}
             }
           },
@@ -3546,6 +3725,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests: rate_limited",
+            "x-error-codes": {
+              "rate_limited": {}
             }
           },
           "500": {
@@ -3569,7 +3761,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -3577,7 +3769,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Who has read a message"
       }
     },
@@ -3656,7 +3852,7 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_cross_origin, auth_session_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_cross_origin",
             "x-error-codes": {
               "auth_cross_origin": {},
               "auth_session_required": {},
@@ -3671,8 +3867,9 @@
                 }
               }
             },
-            "description": "Not Found: not_found",
+            "description": "Not Found: not_found, auth_not_found",
             "x-error-codes": {
+              "auth_not_found": {},
               "not_found": {}
             }
           },
@@ -3741,6 +3938,19 @@
               "key_reused": {}
             }
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests: rate_limited",
+            "x-error-codes": {
+              "rate_limited": {}
+            }
+          },
           "500": {
             "content": {
               "application/json": {
@@ -3762,7 +3972,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -3783,7 +3993,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Post as @user to announce, a path thread or an agent"
       }
     },
@@ -3830,6 +4044,19 @@
               "auth_session_required": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -3841,6 +4068,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests: rate_limited",
+            "x-error-codes": {
+              "rate_limited": {}
             }
           },
           "500": {
@@ -3864,7 +4104,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -3872,7 +4112,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "The history retention and sign-in methods"
       },
       "put": {
@@ -3935,12 +4179,25 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, recent_auth_required, auth_cross_origin, auth_session_required",
+            "description": "Forbidden: forbidden, recent_auth_required, auth_session_required, auth_cross_origin",
             "x-error-codes": {
               "auth_cross_origin": {},
               "auth_session_required": {},
               "forbidden": {},
               "recent_auth_required": {}
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
             }
           },
           "405": {
@@ -3969,6 +4226,19 @@
               "would_lock_out": {}
             }
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests: rate_limited",
+            "x-error-codes": {
+              "rate_limited": {}
+            }
+          },
           "500": {
             "content": {
               "application/json": {
@@ -3990,7 +4260,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -3998,7 +4268,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Replace the settings; a change of sign-in methods needs a recent sign-in"
       }
     },
@@ -4015,6 +4289,19 @@
               }
             },
             "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
           },
           "405": {
             "content": {
@@ -4040,6 +4327,20 @@
             "description": "Internal Server Error: internal_error",
             "x-error-codes": {
               "internal_error": {}
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable: timeout, shutting_down",
+            "x-error-codes": {
+              "shutting_down": {},
+              "timeout": {}
             }
           }
         },
@@ -4113,6 +4414,19 @@
               "auth_session_required": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -4124,6 +4438,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests: rate_limited",
+            "x-error-codes": {
+              "rate_limited": {}
             }
           },
           "500": {
@@ -4147,7 +4474,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -4155,7 +4482,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "The Statistics tab over a range"
       }
     },
@@ -4289,6 +4620,19 @@
               "forbidden": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -4404,7 +4748,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -4425,7 +4769,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "A single-use link a subagent registers with"
       }
     },
@@ -4565,8 +4913,9 @@
                 }
               }
             },
-            "description": "Not Found: not_found",
+            "description": "Not Found: not_found, auth_not_found",
             "x-error-codes": {
+              "auth_not_found": {},
               "not_found": {}
             }
           },
@@ -4671,7 +5020,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -4679,7 +5028,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "Revoke a label's unused link and end its delegate"
       }
     },
@@ -4801,6 +5154,19 @@
               "forbidden": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -4902,7 +5268,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -4910,7 +5276,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "The stop hook's hold: whether wake mail keeps the turn open"
       }
     },
@@ -5032,6 +5402,19 @@
               "forbidden": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -5136,7 +5519,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -5144,7 +5527,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "A standing wait, held up to 55s, that returns this identity's next nudge"
       }
     },
@@ -5276,6 +5663,19 @@
               "forbidden": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -5377,7 +5777,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -5398,7 +5798,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "Stop following a path's threads"
       },
       "put": {
@@ -5528,6 +5932,19 @@
               "forbidden": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -5629,7 +6046,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -5650,7 +6067,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "Follow a path's threads"
       }
     },
@@ -5861,6 +6282,19 @@
               "forbidden": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -5949,7 +6383,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -5957,7 +6391,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "This identity's mailbox, read and unread, moving nothing; pages go back in time, each oldest first"
       }
     },
@@ -6151,6 +6589,19 @@
               "forbidden": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -6211,7 +6662,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -6219,7 +6670,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "Every live identity, or with all=1 the dormant ones too, narrowed by the filters, by name"
       }
     },
@@ -6357,6 +6812,19 @@
               "forbidden": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -6446,7 +6914,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -6454,7 +6922,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "The unread entries oldest first, marking nothing; with wait_ms, held until wake mail arrives"
       }
     },
@@ -6588,6 +7060,19 @@
               "forbidden": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -6702,7 +7187,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -6710,7 +7195,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "Mark read every inbox entry up to one"
       }
     },
@@ -6832,6 +7321,19 @@
               "forbidden": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -6933,7 +7435,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -6941,7 +7443,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "A hook's report of a session's end, a turn's end or a subagent's stop"
       }
     },
@@ -7065,6 +7571,19 @@
               "forbidden": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -7166,7 +7685,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -7174,7 +7693,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "Retire this session's identity"
       },
       "get": {
@@ -7333,6 +7856,19 @@
               "forbidden": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -7421,7 +7957,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -7429,7 +7965,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "This session's identity and status; with turn=start, the prompt hook's opening of the turn"
       },
       "patch": {
@@ -7561,6 +8101,19 @@
               "forbidden": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -7677,7 +8230,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -7698,7 +8251,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "Change this session's identity, or renew its lease"
       }
     },
@@ -7827,8 +8384,9 @@
                 }
               }
             },
-            "description": "Not Found: not_found",
+            "description": "Not Found: not_found, auth_not_found",
             "x-error-codes": {
+              "auth_not_found": {},
               "not_found": {}
             }
           },
@@ -7920,7 +8478,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -7928,7 +8486,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "Who has read a message this identity sent or received"
       }
     },
@@ -8070,8 +8632,9 @@
                 }
               }
             },
-            "description": "Not Found: not_found",
+            "description": "Not Found: not_found, auth_not_found",
             "x-error-codes": {
+              "auth_not_found": {},
               "not_found": {}
             }
           },
@@ -8192,7 +8755,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -8213,7 +8776,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "Post to announce, a path thread or an agent"
       }
     },
@@ -8347,6 +8914,19 @@
               "forbidden": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -8467,7 +9047,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -8488,7 +9068,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "Register this session as a new identity, take one over, or register a delegate from its link"
       }
     },
@@ -8626,6 +9210,19 @@
               "forbidden": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -8714,7 +9311,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -8722,7 +9319,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "The grants and queue entries overlapping a path, every one when it is absent, by id"
       },
       "post": {
@@ -8854,6 +9455,19 @@
               "forbidden": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -8971,7 +9585,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -8992,7 +9606,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "Reserve a path, or queue for it when it is taken"
       }
     },
@@ -9133,8 +9751,9 @@
                 }
               }
             },
-            "description": "Not Found: not_found",
+            "description": "Not Found: not_found, auth_not_found",
             "x-error-codes": {
+              "auth_not_found": {},
               "not_found": {}
             }
           },
@@ -9239,7 +9858,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -9247,7 +9866,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "Free a grant or cancel a queue entry of this identity"
       },
       "patch": {
@@ -9396,8 +10019,9 @@
                 }
               }
             },
-            "description": "Not Found: not_found",
+            "description": "Not Found: not_found, auth_not_found",
             "x-error-codes": {
+              "auth_not_found": {},
               "not_found": {}
             }
           },
@@ -9515,7 +10139,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -9523,7 +10147,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "Renew one of this identity's reservations"
       }
     },
@@ -9665,8 +10293,9 @@
                 }
               }
             },
-            "description": "Not Found: not_found",
+            "description": "Not Found: not_found, auth_not_found",
             "x-error-codes": {
+              "auth_not_found": {},
               "not_found": {}
             }
           },
@@ -9788,7 +10417,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -9809,7 +10438,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "Make this session's dormant identity, or one of this environment by name, live again"
       }
     },
@@ -9947,6 +10580,19 @@
               "forbidden": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -10035,7 +10681,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -10043,7 +10689,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "The live path threads under a path, by path"
       }
     },
@@ -10155,6 +10805,19 @@
               "forbidden": {}
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
           "405": {
             "content": {
               "application/json": {
@@ -10215,7 +10878,7 @@
                 }
               }
             },
-            "description": "Service Unavailable: auth_unavailable, timeout, shutting_down",
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
             "x-error-codes": {
               "auth_unavailable": {},
               "shutting_down": {},
@@ -10223,7 +10886,11 @@
             }
           }
         },
-        "security": [],
+        "security": [
+          {
+            "bearerKey": []
+          }
+        ],
         "summary": "The server's version and path root"
       }
     }

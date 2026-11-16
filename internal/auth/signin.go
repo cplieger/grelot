@@ -21,15 +21,12 @@ import (
 	"github.com/cplieger/access/webauthn"
 	"github.com/cplieger/go/httpserver"
 	"github.com/cplieger/grelot/internal/accounts"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
-// The sign-in routes' paths, and the page the single sign-on callback
-// sends a browser to when it does not sign in.
-const (
-	Prefix     = "/api/auth"
-	oidcPrefix = Prefix + "/oidc"
-	signInPage = "/sign-in"
-)
+// signInPage is where the single sign-on callback sends a browser it does
+// not sign in.
+const signInPage = "/sign-in"
 
 // OIDC is a single sign-on provider's registration; Label names it on the
 // sign-in page, "single sign-on" when empty.
@@ -45,7 +42,7 @@ func (o *OIDC) configured() bool { return o.Issuer != "" }
 
 // CallbackURL is the single sign-on callback under public, which the
 // provider's registration must list.
-func CallbackURL(public *url.URL) string { return public.String() + oidcPrefix + "/callback" }
+func CallbackURL(public *url.URL) string { return public.String() + wire.OIDCPrefix + "/callback" }
 
 // Refusals of PutSettings.
 var (
@@ -60,7 +57,7 @@ var (
 func signInRoutes(svc *account.Service, errs access.ErrorWriter, pending *access.Sealer, logger *slog.Logger) ([]accesshttp.Route, error) {
 	h, err := accesshttp.New(accesshttp.Config{
 		Account: svc, Errors: errs, PendingSealer: pending, Logger: logger,
-		Prefix: Prefix, OIDCPrefix: oidcPrefix, SignInPath: signInPage,
+		Prefix: wire.AuthPrefix, OIDCPrefix: wire.OIDCPrefix, SignInPath: signInPage,
 	})
 	if err != nil {
 		return nil, err
@@ -68,7 +65,7 @@ func signInRoutes(svc *account.Service, errs access.ErrorWriter, pending *access
 	return h.Routes(), nil
 }
 
-// Routes are access's routes under Prefix (sign-in, account, sessions
+// Routes are access's routes under wire.AuthPrefix (sign-in, account, sessions
 // and API keys), for the server's mux.
 func (a *Auth) Routes() []accesshttp.Route { return slices.Clone(a.routes) }
 

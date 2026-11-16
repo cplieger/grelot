@@ -14,6 +14,7 @@ import (
 	"github.com/cplieger/go/httpserver"
 	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/wire"
+	"github.com/cplieger/grelot/internal/wiregate"
 )
 
 // identityFunc serves one identity row as c and returns the status and
@@ -122,18 +123,6 @@ func fits(r *wire.Route, b *binding) bool {
 	return false
 }
 
-// gateClass is the gate class of r's Access.
-func gateClass(r *wire.Route) gate.Class {
-	switch r.Access {
-	case wire.AccessAgent:
-		return gate.Key
-	case wire.AccessPublic:
-		return gate.Public
-	default:
-		return gate.Session
-	}
-}
-
 // chains adds every wire.Routes row to t behind its chain, outermost first:
 // the server's version, the key's bucket, the client's version on an
 // identity row, the route deadline and the handler kind. It panics when
@@ -159,7 +148,7 @@ func (s *Server) chains(t *table) {
 		default:
 			h = httpserver.RouteDeadline(s.ownerFor(got.owner, r), deadline)
 		}
-		t.add(r.Pattern(), gateClass(r), s.versionAnswer(s.keyBucket(h)))
+		t.add(wiregate.Route(r), s.versionAnswer(s.keyBucket(h)))
 	}
 }
 

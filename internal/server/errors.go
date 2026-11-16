@@ -15,7 +15,6 @@ import (
 
 	"github.com/cplieger/access"
 	"github.com/cplieger/go/httpserver"
-	"github.com/cplieger/grelot/internal/auth"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/wire"
@@ -136,7 +135,7 @@ func AuthErrors(logger *slog.Logger, m *obs.Metrics) access.ErrorWriter {
 			m.AuthFailures.Inc(obs.AuthRateLimited)
 		}
 		msg := e.Detail
-		if !strings.HasPrefix(r.URL.Path, auth.Prefix+"/") {
+		if !strings.HasPrefix(r.URL.Path, wire.AuthPrefix+"/") {
 			msg = cmp.Or(gateWords(r, e.Code), msg)
 		}
 		httpserver.WriteJSONStatus(w, e.Status, wire.Error{

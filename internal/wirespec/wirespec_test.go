@@ -1,11 +1,16 @@
 package wirespec
 
 import (
+	"maps"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/cplieger/access"
+	"github.com/cplieger/go/wiregen/v2"
 	"github.com/cplieger/grelot/internal/wire"
+	"github.com/cplieger/grelot/internal/wiregate"
 )
 
 // A route added to wire.Routes or to specs alone fails here, before the
@@ -74,4 +79,98 @@ func hasQueryField(q reflect.Type, name string) bool {
 		}
 	}
 	return false
+}
+
+// endpoint is the Registry endpoint of the row named name.
+func endpoint(t *testing.T, reg *wiregen.Registry, name string) *wiregen.Endpoint {
+	t.Helper()
+	i := slices.IndexFunc(reg.Endpoints, func(e wiregen.Endpoint) bool { return e.Name == name })
+	if i < 0 {
+		t.Fatalf("Registry has no endpoint %s", name)
+	}
+	return &reg.Endpoints[i]
+}
+
+// Every row's declared auth_ codes are exactly the gate's for that row,
+// each with access's status, so the generated union and the running gate
+// cannot drift (design 1.1).
+func TestRowsDeclareTheGatesCodes(t *testing.T) {
+	reg := Registry()
+	for i := range wire.Routes {
+		r := &wire.Routes[i]
+		t.Run(r.Name, func(t *testing.T) {
+			declared := map[string]int{}
+			for _, e := range endpoint(t, reg, r.Name).Errors {
+				if strings.HasPrefix(e.Code, "auth_") {
+					declared[e.Code] = e.Status
+				}
+			}
+			want := map[string]int{}
+			for _, c := range wiregate.Codes(r) {
+				want[string(c)] = access.NewError(c, "", nil).Status
+			}
+			if !maps.Equal(declared, want) {
+				t.Errorf("declared %v, want the gate's %v", declared, want)
+			}
+		})
+	}
+}
+
+// Every row's union holds grelot's common codes: a deadline passed, the
+// server stopping, a failure of its own, and on every row the gate
+// authenticates the key bucket's 429; a list row adds the cursor's two
+// refusals (design 1.1).
+func TestRowsDeclareTheCommonCodes(t *testing.T) {
+	reg := Registry()
+	for i := range wire.Routes {
+		r := &wire.Routes[i]
+		t.Run(r.Name, func(t *testing.T) {
+			declared := map[string]int{}
+			for _, e := range endpoint(t, reg, r.Name).Errors {
+				declared[e.Code] = e.Status
+			}
+			want := map[string]int{"timeout": 503, "shutting_down": 503, "internal_error": 500}
+			if r.Access != wire.AccessPublic {
+				want["rate_limited"] = 429
+			}
+			if r.Paged {
+				want["cursor_invalid"] = 400
+				want["cursor_mismatch"] = 400
+			}
+			for code, status := range want {
+				if got, ok := declared[code]; !ok || got != status {
+					t.Errorf("%s: declared %d (present %v), want %d", code, got, ok, status)
+				}
+			}
+			if _, ok := declared["rate_limited"]; ok && r.Access == wire.AccessPublic {
+				t.Error("a public row declares rate_limited, which takes no key's token")
+			}
+		})
+	}
+}
+
+// Each row names the credential its Access admits: an agent row a bearer
+// key, an owner row the session cookie, a public row none (design 2).
+func TestRowsDeclareTheirCredential(t *testing.T) {
+	reg := Registry()
+	if s := reg.OpenAPI.SecuritySchemes["bearerKey"]; s.Type != "http" || s.Scheme != "bearer" {
+		t.Errorf("bearerKey is %+v, want http bearer", s)
+	}
+	if s := reg.OpenAPI.SecuritySchemes["sessionCookie"]; s.Type != "apiKey" || s.In != "cookie" || s.Name != "auth_session" {
+		t.Errorf("sessionCookie is %+v, want the auth_session cookie", s)
+	}
+	for i := range wire.Routes {
+		r := &wire.Routes[i]
+		var want []wiregen.SecurityRequirement
+		switch r.Access {
+		case wire.AccessAgent:
+			want = []wiregen.SecurityRequirement{{"bearerKey": nil}}
+		case wire.AccessOwner:
+			want = []wiregen.SecurityRequirement{{"sessionCookie": nil}}
+		default:
+		}
+		if got := endpoint(t, reg, r.Name).Security; !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: security %v, want %v", r.Name, got, want)
+		}
+	}
 }

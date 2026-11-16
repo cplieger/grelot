@@ -218,7 +218,8 @@ func (s *Server) Handler() http.Handler {
 	s.chains(t)
 	routes := s.auth.Routes()
 	for i := range routes {
-		t.add(routes[i].Method+" "+routes[i].Path, gate.Public, routes[i].Handler)
+		pattern := routes[i].Method + " " + routes[i].Path
+		t.add(gate.Route{Name: pattern, Method: routes[i].Method, Path: routes[i].Path, Class: gate.Public}, routes[i].Handler)
 	}
 	s.mount(mux, t, "/v1/", "/api/")
 	mux.Handle("/", s.ui)

@@ -4,7 +4,6 @@ package server
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/cplieger/access"
 	"github.com/cplieger/access/gate"
@@ -19,12 +18,10 @@ type table struct {
 
 func newTable() *table { return &table{handlers: map[string]http.Handler{}} }
 
-// add is the row for pattern, a "METHOD /path" ServeMux pattern that also
-// names the row.
-func (t *table) add(pattern string, class gate.Class, h http.Handler) {
-	method, path, _ := strings.Cut(pattern, " ")
-	t.rows = append(t.rows, gate.Route{Name: pattern, Method: method, Path: path, Class: class})
-	t.handlers[pattern] = h
+// add serves row with h.
+func (t *table) add(row gate.Route, h http.Handler) { //nolint:gocritic // hugeParam: a gate row, added once at startup
+	t.rows = append(t.rows, row)
+	t.handlers[row.Name] = h
 }
 
 // mount serves t through one gate on mux, on each row's path with no

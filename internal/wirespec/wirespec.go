@@ -8,12 +8,14 @@ package wirespec
 
 import (
 	"fmt"
-	"net/http"
 	"reflect"
 	"slices"
 
+	"github.com/cplieger/access"
+	"github.com/cplieger/access/gate"
 	"github.com/cplieger/go/wiregen/v2"
 	"github.com/cplieger/grelot/internal/wire"
+	"github.com/cplieger/grelot/internal/wiregate"
 )
 
 // Spec documents one row. A nil type is none: no path parameters, no
@@ -24,7 +26,9 @@ type Spec struct {
 	Request  reflect.Type
 	Response reflect.Type
 	Summary  string
-	Errors   []wire.ErrorCode
+	// Errors are the row's own refusals; Registry adds the gate's, the
+	// common ones and a list row's cursor refusals.
+	Errors []wire.ErrorCode
 	// Headers are the row's request headers beside Idempotency-Key and the
 	// identity headers an agent row takes from its Access.
 	Headers []wiregen.Header
@@ -40,43 +44,7 @@ func Lookup(name string) (Spec, bool) {
 	return s, ok
 }
 
-// The access gate's refusals, access/gate's Codes for a Session row with
-// their statuses; the server's tests hold each route's list to it.
-var (
-	errMethodNotAllowed    = wire.ErrorCode{Code: "auth_method_not_allowed", Status: http.StatusMethodNotAllowed}
-	errAuthRequired        = wire.ErrorCode{Code: "auth_required", Status: http.StatusUnauthorized}
-	errSessionExpired      = wire.ErrorCode{Code: "auth_session_expired", Status: http.StatusUnauthorized}
-	errInvalidCredentials  = wire.ErrorCode{Code: "auth_invalid_credentials", Status: http.StatusUnauthorized}
-	errKeyInvalid          = wire.ErrorCode{Code: "auth_key_invalid", Status: http.StatusUnauthorized}
-	errAuthSessionRequired = wire.ErrorCode{Code: "auth_session_required", Status: http.StatusForbidden}
-	errAuthUnavailable     = wire.ErrorCode{Code: "auth_unavailable", Status: http.StatusServiceUnavailable}
-	// errCrossOrigin refuses a write from another site.
-	errCrossOrigin = wire.ErrorCode{Code: "auth_cross_origin", Status: http.StatusForbidden}
-	// errStreamingUnsupported is the event stream's hub on a writer that
-	// cannot flush.
-	errStreamingUnsupported = wire.ErrorCode{Code: "streaming_unsupported", Status: http.StatusInternalServerError}
-	// errKeyRequired refuses a session on a key's row.
-	errKeyRequired = wire.ErrorCode{Code: "auth_key_required", Status: http.StatusForbidden}
-)
-
 func typeOf[T any]() reflect.Type { return reflect.TypeFor[T]() }
-
-// sessionGate is what the gate answers on a session's route.
-var sessionGate = []wire.ErrorCode{
-	errMethodNotAllowed, errAuthRequired, errSessionExpired, errInvalidCredentials, errKeyInvalid,
-	errAuthSessionRequired, errAuthUnavailable,
-}
-
-// every route's refusals beyond its own: the gate's, a deadline passed,
-// the server stopping, a failure of its own.
-var common = append(slices.Clone(sessionGate), wire.ErrTimeout, wire.ErrShuttingDown, wire.ErrInternal)
-
-func errs(own ...wire.ErrorCode) []wire.ErrorCode { return append(own, common...) }
-
-// agentCommon is every agent row's refusals beyond its own: the key gate's,
-// the key's bucket, the client's version and the server's own.
-var agentCommon = append(slices.Clone(sessionGate), errKeyRequired, wire.ErrRateLimited, wire.ErrUpgradeRequired,
-	wire.ErrTimeout, wire.ErrShuttingDown, wire.ErrInternal)
 
 // asIdentity is what a request acting as its session's identity can be
 // refused: a bad identity header, another key's identity, no live
@@ -84,11 +52,11 @@ var agentCommon = append(slices.Clone(sessionGate), errKeyRequired, wire.ErrRate
 // delegates.
 var asIdentity = []wire.ErrorCode{wire.ErrInvalid, wire.ErrForbidden, wire.ErrNone, wire.ErrDormant, wire.ErrDelegateEnded, wire.ErrDelegateGate}
 
-// agent is an agent row's refusals: own, asIdentity and agentCommon, each
-// code once.
+// agent is an agent row's own refusals: own, asIdentity and the client's
+// version, each code once.
 func agent(own ...wire.ErrorCode) []wire.ErrorCode {
 	var out []wire.ErrorCode
-	for _, c := range slices.Concat(own, asIdentity, agentCommon) {
+	for _, c := range slices.Concat(own, asIdentity, []wire.ErrorCode{wire.ErrUpgradeRequired}) {
 		if !slices.Contains(out, c) {
 			out = append(out, c)
 		}
@@ -99,12 +67,8 @@ func agent(own ...wire.ErrorCode) []wire.ErrorCode {
 // anySession is agent's for a row taking a request with no session: only
 // a bad identity header and another key's identity of asIdentity.
 func anySession(own ...wire.ErrorCode) []wire.ErrorCode {
-	return append(append(own, wire.ErrInvalid, wire.ErrForbidden), agentCommon...)
+	return append(own, wire.ErrInvalid, wire.ErrForbidden, wire.ErrUpgradeRequired)
 }
-
-// writes is errs for a route that changes something, which the gate also
-// refuses from another site.
-func writes(own ...wire.ErrorCode) []wire.ErrorCode { return errs(append(own, errCrossOrigin)...) }
 
 // specs documents every wire.Routes row by its Name.
 var specs = map[string]Spec{
@@ -232,61 +196,63 @@ var specs = map[string]Spec{
 	},
 	"listConversations": {
 		Summary: "Conversations newest activity first, 50 a page",
-		Query:   typeOf[wire.ConversationsQuery](), Response: typeOf[wire.ConversationsPage](), Errors: errs(wire.ErrInvalid),
+		Query:   typeOf[wire.ConversationsQuery](), Response: typeOf[wire.ConversationsPage](), Errors: []wire.ErrorCode{wire.ErrInvalid},
 	},
 	"getConversation": {
 		Summary: "A conversation's posts oldest first, 100 a page, and its context",
 		Params:  typeOf[wire.ConversationParams](), Query: typeOf[wire.PageQuery](), Response: typeOf[wire.Conversation](),
-		Errors: errs(wire.ErrInvalid, wire.ErrNotFound),
+		Errors: []wire.ErrorCode{wire.ErrInvalid, wire.ErrNotFound},
 	},
 	"markConversationRead": {
 		Summary: "Mark the user's unread posts in a conversation read, up to the newest shown",
 		Params:  typeOf[wire.ConversationParams](), Request: typeOf[wire.MarkReadRequest](), Response: typeOf[wire.MarkedRead](),
-		Errors: writes(wire.ErrInvalid, wire.ErrForbidden, wire.ErrNotFound),
+		Errors: []wire.ErrorCode{wire.ErrInvalid, wire.ErrForbidden, wire.ErrNotFound},
 	},
 	"getUserReceipts": {
 		Summary: "Who has read a message",
-		Params:  typeOf[wire.MessageParams](), Response: typeOf[wire.UserReceipts](), Errors: errs(wire.ErrInvalid, wire.ErrNotFound),
+		Params:  typeOf[wire.MessageParams](), Response: typeOf[wire.UserReceipts](), Errors: []wire.ErrorCode{wire.ErrInvalid, wire.ErrNotFound},
 	},
 	"createUserPost": {
 		Summary: "Post as @user to announce, a path thread or an agent",
 		Request: typeOf[wire.UserPostRequest](), Response: typeOf[wire.UserPosted](),
-		Errors: writes(wire.ErrInvalid, wire.ErrForbidden, wire.ErrNotFound, wire.ErrConflict, wire.ErrGone, wire.ErrTooLarge,
-			wire.ErrKeyReused, wire.ErrStoreFull),
+		Errors: []wire.ErrorCode{
+			wire.ErrInvalid, wire.ErrForbidden, wire.ErrNotFound, wire.ErrConflict, wire.ErrGone, wire.ErrTooLarge,
+			wire.ErrKeyReused, wire.ErrStoreFull,
+		},
 	},
 	"listAgents": {
 		Summary:  "Every live and dormant agent, by name",
-		Response: typeOf[wire.AgentList](), Errors: errs(),
+		Response: typeOf[wire.AgentList](),
 	},
 	"getAgent": {
 		Summary: "An agent's card, reservations and delegates",
-		Params:  typeOf[wire.AgentParams](), Response: typeOf[wire.AgentPage](), Errors: errs(wire.ErrNotFound),
+		Params:  typeOf[wire.AgentParams](), Response: typeOf[wire.AgentPage](), Errors: []wire.ErrorCode{wire.ErrNotFound},
 	},
 	"getAgentHistory": {
 		Summary: "Every post an agent sent or received, newest first, 100 a page",
 		Params:  typeOf[wire.AgentParams](), Query: typeOf[wire.PageQuery](), Response: typeOf[wire.HistoryPage](),
-		Errors: errs(wire.ErrInvalid, wire.ErrNotFound),
+		Errors: []wire.ErrorCode{wire.ErrInvalid, wire.ErrNotFound},
 	},
 	"getStats": {
 		Summary: "The Statistics tab over a range",
-		Query:   typeOf[wire.StatsQuery](), Response: typeOf[wire.Stats](), Errors: errs(wire.ErrInvalid),
+		Query:   typeOf[wire.StatsQuery](), Response: typeOf[wire.Stats](), Errors: []wire.ErrorCode{wire.ErrInvalid},
 	},
 	"getSettings": {
 		Summary:  "The history retention and sign-in methods",
-		Response: typeOf[wire.Settings](), Errors: errs(),
+		Response: typeOf[wire.Settings](),
 	},
 	"putSettings": {
 		Summary: "Replace the settings; a change of sign-in methods needs a recent sign-in",
 		Request: typeOf[wire.SettingsRequest](), Response: typeOf[wire.Settings](),
-		Errors: writes(wire.ErrInvalid, wire.ErrForbidden, wire.ErrRecentAuthRequired, wire.ErrWouldLockOut),
+		Errors: []wire.ErrorCode{wire.ErrInvalid, wire.ErrForbidden, wire.ErrRecentAuthRequired, wire.ErrWouldLockOut},
 	},
 	"getSignIn": {
 		Summary:  "What the sign-in page shows beside the sign-in routes' state; needs no session",
-		Response: typeOf[wire.SignIn](), Errors: []wire.ErrorCode{errMethodNotAllowed, wire.ErrInternal},
+		Response: typeOf[wire.SignIn](),
 	},
 	"events": {
 		Summary: "A changed event after each commit the web UI shows, resumed from Last-Event-ID, between the sse hub's hello and keepalive events",
-		Errors:  append(slices.Clone(sessionGate), wire.ErrSSEUnavailable, errStreamingUnsupported),
+		Errors:  []wire.ErrorCode{wire.ErrSSEUnavailable, wire.ErrStreamingUnsupported},
 	},
 }
 
@@ -300,6 +266,13 @@ func Registry() *wiregen.Registry {
 			Title:       "grelot API",
 			Version:     "2",
 			Description: "The agents' routes under /v1, for a machine key, and the web UI's under /api, for a signed-in session.",
+			SecuritySchemes: map[string]wiregen.SecurityScheme{
+				bearerKey: {Type: "http", Scheme: "bearer", Description: "A machine key, minted by grelot key create or the web UI."},
+				sessionCookie: {
+					Type: "apiKey", In: "cookie", Name: access.DefaultCookieConfig().Name,
+					Description: "A signed-in browser session.",
+				},
+			},
 		},
 		Enums: []wiregen.EnumRef{
 			wiregen.StringEnum[wire.Show](),
@@ -390,14 +363,55 @@ func endpoints(routes []wire.Route) []wiregen.Endpoint {
 		if r.Keyed {
 			e.Headers = append(e.Headers, idempotencyKey)
 		}
-		codes := s.Errors
-		if r.Paged {
-			codes = append(slices.Clone(codes), wire.ErrCursorInvalid, wire.ErrCursorMismatch)
-		}
-		for _, c := range codes {
-			e.Errors = append(e.Errors, wiregen.ErrorRef{Code: c.Code, Status: c.Status})
-		}
+		gr := wiregate.Route(r)
+		e.Security = security(&gr)
+		e.Errors = errorRefs(r, &gr, s.Errors)
 		out = append(out, e)
+	}
+	return out
+}
+
+// The security schemes a row's credential is one of.
+const (
+	bearerKey     = "bearerKey"
+	sessionCookie = "sessionCookie"
+)
+
+// security is the credential g's class admits, with its scope as the
+// scheme's one role; a public row needs none.
+func security(g *gate.Route) []wiregen.SecurityRequirement {
+	var roles []string
+	if g.Scope != "" {
+		roles = []string{g.Scope}
+	}
+	switch g.Class {
+	case gate.Key:
+		return []wiregen.SecurityRequirement{{bearerKey: roles}}
+	case gate.Session:
+		return []wiregen.SecurityRequirement{{sessionCookie: nil}}
+	case gate.Public:
+		return nil
+	}
+	panic("wirespec: no security scheme for the gate class of " + g.Name)
+}
+
+// errorRefs is r's union: its own codes, wire.Common, a key bucket's 429
+// on a row the gate authenticates, the gate's codes for g and, on a list
+// row, the cursor's refusals.
+func errorRefs(r *wire.Route, g *gate.Route, own []wire.ErrorCode) []wiregen.ErrorRef {
+	codes := slices.Concat(own, wire.Common)
+	if g.Class != gate.Public {
+		codes = append(codes, wire.ErrRateLimited)
+	}
+	for _, c := range wiregate.Codes(r) {
+		codes = append(codes, wire.ErrorCode{Code: string(c), Status: access.NewError(c, "", nil).Status})
+	}
+	if r.Paged {
+		codes = append(codes, wire.ErrCursorInvalid, wire.ErrCursorMismatch)
+	}
+	out := make([]wiregen.ErrorRef, 0, len(codes))
+	for _, c := range codes {
+		out = append(out, wiregen.ErrorRef{Code: c.Code, Status: c.Status})
 	}
 	return out
 }

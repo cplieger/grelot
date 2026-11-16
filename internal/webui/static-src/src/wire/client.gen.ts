@@ -35,7 +35,7 @@ export interface RegisterArgs {
   readonly idempotencyKey: string;
 }
 
-const registerCodes = ["conflict", "other_environment", "other_provider", "no_environment", "other_repository", "link_gone", "key_reused", "store_full", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const registerCodes = ["conflict", "other_environment", "other_provider", "no_environment", "other_repository", "link_gone", "key_reused", "store_full", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type RegisterError = (typeof registerCodes)[number];
 
@@ -85,7 +85,7 @@ export interface ReviveArgs {
   readonly idempotencyKey: string;
 }
 
-const reviveCodes = ["not_found", "gone", "conflict", "other_provider", "no_environment", "key_reused", "store_full", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const reviveCodes = ["not_found", "gone", "conflict", "other_provider", "no_environment", "key_reused", "store_full", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type ReviveError = (typeof reviveCodes)[number];
 
@@ -139,7 +139,7 @@ export interface GetMeArgs {
   readonly grelotMachine?: string;
 }
 
-const getMeCodes = ["delegate_gate", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const getMeCodes = ["delegate_gate", "invalid", "forbidden", "none", "dormant", "delegate_ended", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type GetMeError = (typeof getMeCodes)[number];
 
@@ -193,7 +193,7 @@ export interface PatchMeArgs {
   readonly idempotencyKey: string;
 }
 
-const patchMeCodes = ["conflict", "other_repository", "key_reused", "store_full", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const patchMeCodes = ["conflict", "other_repository", "key_reused", "store_full", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type PatchMeError = (typeof patchMeCodes)[number];
 
@@ -242,7 +242,7 @@ export interface DeleteMeArgs {
   readonly idempotencyKey: string;
 }
 
-const deleteMeCodes = ["key_reused", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const deleteMeCodes = ["key_reused", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type DeleteMeError = (typeof deleteMeCodes)[number];
 
@@ -298,7 +298,7 @@ export interface ListIdentitiesArgs {
   readonly grelotSelf?: string;
 }
 
-const listIdentitiesCodes = ["invalid", "forbidden", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error", "cursor_invalid", "cursor_mismatch"] as const;
+const listIdentitiesCodes = ["invalid", "forbidden", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found", "cursor_invalid", "cursor_mismatch"] as const;
 
 export type ListIdentitiesError = (typeof listIdentitiesCodes)[number];
 
@@ -345,7 +345,7 @@ export interface GetVersionArgs {
   readonly grelotSelf?: string;
 }
 
-const getVersionCodes = ["invalid", "forbidden", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const getVersionCodes = ["invalid", "forbidden", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type GetVersionError = (typeof getVersionCodes)[number];
 
@@ -395,7 +395,7 @@ export interface CreatePostArgs {
   readonly idempotencyKey: string;
 }
 
-const createPostCodes = ["not_found", "conflict", "delegate_gate", "gone", "other_repository", "too_large", "key_reused", "store_full", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const createPostCodes = ["not_found", "conflict", "delegate_gate", "gone", "other_repository", "too_large", "key_reused", "store_full", "invalid", "forbidden", "none", "dormant", "delegate_ended", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type CreatePostError = (typeof createPostCodes)[number];
 
@@ -445,7 +445,7 @@ export interface ListThreadsArgs {
   readonly grelotSelf?: string;
 }
 
-const listThreadsCodes = ["invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error", "cursor_invalid", "cursor_mismatch"] as const;
+const listThreadsCodes = ["invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found", "cursor_invalid", "cursor_mismatch"] as const;
 
 export type ListThreadsError = (typeof listThreadsCodes)[number];
 
@@ -491,7 +491,7 @@ export interface GetReceiptsArgs {
   readonly grelotSelf?: string;
 }
 
-const getReceiptsCodes = ["not_found", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const getReceiptsCodes = ["not_found", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type GetReceiptsError = (typeof getReceiptsCodes)[number];
 
@@ -548,7 +548,7 @@ export interface GetHistoryArgs {
   readonly grelotSelf?: string;
 }
 
-const getHistoryCodes = ["invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error", "cursor_invalid", "cursor_mismatch"] as const;
+const getHistoryCodes = ["invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found", "cursor_invalid", "cursor_mismatch"] as const;
 
 export type GetHistoryError = (typeof getHistoryCodes)[number];
 
@@ -596,7 +596,7 @@ export interface FollowArgs {
   readonly idempotencyKey: string;
 }
 
-const followCodes = ["key_reused", "store_full", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const followCodes = ["key_reused", "store_full", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type FollowError = (typeof followCodes)[number];
 
@@ -645,7 +645,7 @@ export interface UnfollowArgs {
   readonly idempotencyKey: string;
 }
 
-const unfollowCodes = ["key_reused", "store_full", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const unfollowCodes = ["key_reused", "store_full", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type UnfollowError = (typeof unfollowCodes)[number];
 
@@ -694,7 +694,7 @@ export interface AckInboxArgs {
   readonly idempotencyKey: string;
 }
 
-const ackInboxCodes = ["key_reused", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const ackInboxCodes = ["key_reused", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type AckInboxError = (typeof ackInboxCodes)[number];
 
@@ -744,7 +744,7 @@ export interface ReserveArgs {
   readonly idempotencyKey: string;
 }
 
-const reserveCodes = ["conflict", "reserved", "queued", "key_reused", "store_full", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const reserveCodes = ["conflict", "reserved", "queued", "key_reused", "store_full", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type ReserveError = (typeof reserveCodes)[number];
 
@@ -794,7 +794,7 @@ export interface ListReservationsArgs {
   readonly grelotSelf?: string;
 }
 
-const listReservationsCodes = ["invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error", "cursor_invalid", "cursor_mismatch"] as const;
+const listReservationsCodes = ["invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found", "cursor_invalid", "cursor_mismatch"] as const;
 
 export type ListReservationsError = (typeof listReservationsCodes)[number];
 
@@ -843,7 +843,7 @@ export interface RenewReservationArgs {
   readonly idempotencyKey: string;
 }
 
-const renewReservationCodes = ["not_found", "key_reused", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const renewReservationCodes = ["not_found", "key_reused", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type RenewReservationError = (typeof renewReservationCodes)[number];
 
@@ -893,7 +893,7 @@ export interface ReleaseReservationArgs {
   readonly idempotencyKey: string;
 }
 
-const releaseReservationCodes = ["not_found", "key_reused", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const releaseReservationCodes = ["not_found", "key_reused", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type ReleaseReservationError = (typeof releaseReservationCodes)[number];
 
@@ -942,7 +942,7 @@ export interface GrantDelegateArgs {
   readonly idempotencyKey: string;
 }
 
-const grantDelegateCodes = ["conflict", "key_reused", "store_full", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const grantDelegateCodes = ["conflict", "key_reused", "store_full", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type GrantDelegateError = (typeof grantDelegateCodes)[number];
 
@@ -992,7 +992,7 @@ export interface RevokeDelegateArgs {
   readonly idempotencyKey: string;
 }
 
-const revokeDelegateCodes = ["not_found", "key_reused", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const revokeDelegateCodes = ["not_found", "key_reused", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type RevokeDelegateError = (typeof revokeDelegateCodes)[number];
 
@@ -1039,7 +1039,7 @@ export interface LifecycleArgs {
   readonly grelotSelf?: string;
 }
 
-const lifecycleCodes = ["too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const lifecycleCodes = ["too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type LifecycleError = (typeof lifecycleCodes)[number];
 
@@ -1086,7 +1086,7 @@ export interface HoldEventArgs {
   readonly grelotSelf?: string;
 }
 
-const holdEventCodes = ["too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const holdEventCodes = ["too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type HoldEventError = (typeof holdEventCodes)[number];
 
@@ -1133,7 +1133,7 @@ export interface WaitEventArgs {
   readonly grelotSelf?: string;
 }
 
-const waitEventCodes = ["too_many_waits", "ended", "replaced", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+const waitEventCodes = ["too_many_waits", "ended", "replaced", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type WaitEventError = (typeof waitEventCodes)[number];
 
@@ -1182,7 +1182,7 @@ export interface ReadInboxArgs {
   readonly grelotSelf?: string;
 }
 
-const readInboxCodes = ["too_many_waits", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error", "cursor_invalid", "cursor_mismatch"] as const;
+const readInboxCodes = ["too_many_waits", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found", "cursor_invalid", "cursor_mismatch"] as const;
 
 export type ReadInboxError = (typeof readInboxCodes)[number];
 
@@ -1226,7 +1226,7 @@ export interface ListConversationsArgs {
   readonly before_thread?: number;
 }
 
-const listConversationsCodes = ["invalid", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "timeout", "shutting_down", "internal_error"] as const;
+const listConversationsCodes = ["invalid", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type ListConversationsError = (typeof listConversationsCodes)[number];
 
@@ -1256,7 +1256,7 @@ export interface GetConversationArgs {
   readonly before?: number;
 }
 
-const getConversationCodes = ["invalid", "not_found", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "timeout", "shutting_down", "internal_error"] as const;
+const getConversationCodes = ["invalid", "not_found", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type GetConversationError = (typeof getConversationCodes)[number];
 
@@ -1285,7 +1285,7 @@ export interface MarkConversationReadArgs {
   readonly body: MarkReadRequest;
 }
 
-const markConversationReadCodes = ["invalid", "forbidden", "not_found", "auth_cross_origin", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "timeout", "shutting_down", "internal_error"] as const;
+const markConversationReadCodes = ["invalid", "forbidden", "not_found", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_cross_origin", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type MarkConversationReadError = (typeof markConversationReadCodes)[number];
 
@@ -1314,7 +1314,7 @@ export interface GetUserReceiptsArgs {
   readonly id: number;
 }
 
-const getUserReceiptsCodes = ["invalid", "not_found", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "timeout", "shutting_down", "internal_error"] as const;
+const getUserReceiptsCodes = ["invalid", "not_found", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type GetUserReceiptsError = (typeof getUserReceiptsCodes)[number];
 
@@ -1344,7 +1344,7 @@ export interface CreateUserPostArgs {
   readonly idempotencyKey: string;
 }
 
-const createUserPostCodes = ["invalid", "forbidden", "not_found", "conflict", "gone", "too_large", "key_reused", "store_full", "auth_cross_origin", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "timeout", "shutting_down", "internal_error"] as const;
+const createUserPostCodes = ["invalid", "forbidden", "not_found", "conflict", "gone", "too_large", "key_reused", "store_full", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_cross_origin", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type CreateUserPostError = (typeof createUserPostCodes)[number];
 
@@ -1372,7 +1372,7 @@ export function createUserPost(args: CreateUserPostArgs, opts?: ClientOpts): glo
   return clientRequest<UserPosted, CreateUserPostError>(createUserPostEndpoint.request(args), createUserPostEndpoint.decode, opts);
 }
 
-const listAgentsCodes = ["auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "timeout", "shutting_down", "internal_error"] as const;
+const listAgentsCodes = ["timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type ListAgentsError = (typeof listAgentsCodes)[number];
 
@@ -1400,7 +1400,7 @@ export interface GetAgentArgs {
   readonly name: string;
 }
 
-const getAgentCodes = ["not_found", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "timeout", "shutting_down", "internal_error"] as const;
+const getAgentCodes = ["not_found", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type GetAgentError = (typeof getAgentCodes)[number];
 
@@ -1430,7 +1430,7 @@ export interface GetAgentHistoryArgs {
   readonly before?: number;
 }
 
-const getAgentHistoryCodes = ["invalid", "not_found", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "timeout", "shutting_down", "internal_error"] as const;
+const getAgentHistoryCodes = ["invalid", "not_found", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type GetAgentHistoryError = (typeof getAgentHistoryCodes)[number];
 
@@ -1458,7 +1458,7 @@ export interface GetStatsArgs {
   readonly range: StatsRange;
 }
 
-const getStatsCodes = ["invalid", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "timeout", "shutting_down", "internal_error"] as const;
+const getStatsCodes = ["invalid", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type GetStatsError = (typeof getStatsCodes)[number];
 
@@ -1482,7 +1482,7 @@ export function getStats(args: GetStatsArgs, opts?: ClientOpts): globalThis.Prom
   return clientRequest<Stats, GetStatsError>(getStatsEndpoint.request(args), getStatsEndpoint.decode, opts);
 }
 
-const getSettingsCodes = ["auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "timeout", "shutting_down", "internal_error"] as const;
+const getSettingsCodes = ["timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type GetSettingsError = (typeof getSettingsCodes)[number];
 
@@ -1510,7 +1510,7 @@ export interface PutSettingsArgs {
   readonly body: SettingsRequest;
 }
 
-const putSettingsCodes = ["invalid", "forbidden", "recent_auth_required", "would_lock_out", "auth_cross_origin", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "timeout", "shutting_down", "internal_error"] as const;
+const putSettingsCodes = ["invalid", "forbidden", "recent_auth_required", "would_lock_out", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_cross_origin", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type PutSettingsError = (typeof putSettingsCodes)[number];
 
@@ -1535,7 +1535,7 @@ export function putSettings(args: PutSettingsArgs, opts?: ClientOpts): globalThi
   return clientRequest<Settings, PutSettingsError>(putSettingsEndpoint.request(args), putSettingsEndpoint.decode, opts);
 }
 
-const getSignInCodes = ["auth_method_not_allowed", "internal_error"] as const;
+const getSignInCodes = ["timeout", "shutting_down", "internal_error", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type GetSignInError = (typeof getSignInCodes)[number];
 
@@ -1559,7 +1559,7 @@ export function getSignIn(opts?: ClientOpts): globalThis.Promise<ApiResult<SignI
   return clientRequest<SignIn, GetSignInError>(getSignInEndpoint.request(), getSignInEndpoint.decode, opts);
 }
 
-const eventsCodes = ["auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "sse_unavailable", "streaming_unsupported"] as const;
+const eventsCodes = ["sse_unavailable", "streaming_unsupported", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type EventsError = (typeof eventsCodes)[number];
 

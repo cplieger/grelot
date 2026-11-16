@@ -43,7 +43,10 @@ var (
 	// ErrSSEUnavailable is the event stream's hub refusing a subscriber once
 	// it is shut down or at its client cap.
 	ErrSSEUnavailable = ErrorCode{"sse_unavailable", http.StatusServiceUnavailable}
-	ErrRateLimited    = ErrorCode{"rate_limited", http.StatusTooManyRequests}
+	// ErrStreamingUnsupported is the event stream's hub on a writer that
+	// cannot flush.
+	ErrStreamingUnsupported = ErrorCode{"streaming_unsupported", http.StatusInternalServerError}
+	ErrRateLimited          = ErrorCode{"rate_limited", http.StatusTooManyRequests}
 	// ErrUpgradeRequired refuses a client below the server's floor; its
 	// error is the install line.
 	ErrUpgradeRequired = ErrorCode{"upgrade_required", http.StatusUpgradeRequired}
@@ -54,6 +57,11 @@ var (
 	ErrCursorInvalid  = ErrorCode{"cursor_invalid", http.StatusBadRequest}
 	ErrCursorMismatch = ErrorCode{"cursor_mismatch", http.StatusBadRequest}
 )
+
+// Common is what every row can answer beyond its own codes and the gate's:
+// a deadline passed, the server stopping, a failure of its own. A row the
+// gate authenticates can also answer ErrRateLimited, from a key's bucket.
+var Common = []ErrorCode{ErrTimeout, ErrShuttingDown, ErrInternal}
 
 // The refusals of a request acting as an agent identity, named by the
 // store or the server.
@@ -142,6 +150,12 @@ func Path(name string, params map[string]string) string {
 	}
 	panic("wire: no row " + name)
 }
+
+// The paths access's sign-in, account and key routes are mounted under.
+const (
+	AuthPrefix = "/api/auth"
+	OIDCPrefix = AuthPrefix + "/oidc"
+)
 
 // mePath is the session's own identity.
 const mePath = "/v1/me"

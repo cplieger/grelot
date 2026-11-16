@@ -12,11 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cplieger/access/gate"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/wire"
-	"github.com/cplieger/grelot/internal/wirespec"
 )
 
 // noKey removes the key request adds to a write.
@@ -64,36 +62,6 @@ func TestWeb_everyRouteButThePublicOnesRefusesARequestWithNoSignIn(t *testing.T)
 			r := h.request(route.Method, p, map[string]any{}, nil)
 			if r.status != http.StatusUnauthorized || r.str("code") != "auth_required" || r.str("path_root") != "" {
 				t.Errorf("%s %s: %d %s, want 401 auth_required with no path root", route.Method, p, r.status, r.raw)
-			}
-		})
-	}
-}
-
-// The web API's declared refusals, which the browser's client and
-// docs/openapi.json are generated from, name exactly the gate's codes for
-// each route's row (access/gate Codes).
-func TestWeb_everyRouteDeclaresTheGatesCodes(t *testing.T) {
-	h := newHarnessWith(t, store.Options{}, withAuth(testAuth(t)))
-	tbl := newTable()
-	h.srv.chains(tbl)
-	for i := range tbl.rows {
-		row := tbl.rows[i]
-		route := &wire.Routes[slices.IndexFunc(wire.Routes, func(r wire.Route) bool { return r.Pattern() == row.Name })]
-		t.Run(route.Name, func(t *testing.T) {
-			var declared, want []string
-			spec, _ := wirespec.Lookup(route.Name)
-			for _, e := range spec.Errors {
-				if strings.HasPrefix(e.Code, "auth_") {
-					declared = append(declared, e.Code)
-				}
-			}
-			for _, c := range gate.Codes(row) {
-				want = append(want, string(c))
-			}
-			slices.Sort(declared)
-			slices.Sort(want)
-			if !slices.Equal(declared, want) {
-				t.Errorf("declared %v, want the gate's %v", declared, want)
 			}
 		})
 	}
