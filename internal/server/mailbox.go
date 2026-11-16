@@ -4,7 +4,6 @@ package server
 
 import (
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/cplieger/grelot/internal/store"
@@ -145,11 +144,11 @@ func (s *Server) threads(r *http.Request, c store.Caller, _ store.Keyed) (status
 
 // receipts is GET /v1/messages/{id}/receipts.
 func (s *Server) receipts(r *http.Request, c store.Caller, _ store.Keyed) (status int, body any, err error) {
-	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
-	if err != nil || id == 0 {
-		return 0, nil, badRequest("the message id must be a whole number")
+	p, err := pathParams[wire.MessageParams](r)
+	if err != nil {
+		return 0, nil, err
 	}
-	got, err := s.store.Receipts(r.Context(), c, id)
+	got, err := s.store.Receipts(r.Context(), c, uint64(p.ID))
 	if err != nil {
 		return 0, nil, err
 	}

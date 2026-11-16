@@ -132,7 +132,7 @@ export interface ConversationCounts {
   direct: number;
 }
 
-/** ConversationParams names a conversation. */
+/** ConversationParams names a conversation by its thread. */
 export interface ConversationParams {
   id: number;
 }

@@ -3218,7 +3218,8 @@
             "name": "id",
             "required": true,
             "schema": {
-              "minimum": 0,
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -3371,7 +3372,8 @@
             "name": "id",
             "required": true,
             "schema": {
-              "minimum": 0,
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "type": "integer"
             }
           }
@@ -3653,7 +3655,8 @@
             "name": "id",
             "required": true,
             "schema": {
-              "minimum": 0,
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "type": "integer"
             }
           }
@@ -8323,7 +8326,8 @@
             "name": "id",
             "required": true,
             "schema": {
-              "minimum": 0,
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -9690,7 +9694,8 @@
             "name": "id",
             "required": true,
             "schema": {
-              "minimum": 0,
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -9948,7 +9953,8 @@
             "name": "id",
             "required": true,
             "schema": {
-              "minimum": 0,
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "type": "integer"
             }
           },

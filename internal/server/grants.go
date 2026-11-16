@@ -4,7 +4,6 @@ package server
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/wire"
@@ -41,7 +40,7 @@ func (s *Server) reserve(r *http.Request, c store.Caller, k store.Keyed) (status
 
 // renewReservation is PATCH /v1/reservations/{id}.
 func (s *Server) renewReservation(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
-	id, err := reservationID(r)
+	p, err := pathParams[wire.ReservationParams](r)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -50,7 +49,7 @@ func (s *Server) renewReservation(r *http.Request, c store.Caller, k store.Keyed
 		return 0, nil, derr
 	}
 	ttl := durationMS(req.TTLMS)
-	got, err := s.store.RenewReservation(r.Context(), k, c, id, ttl)
+	got, err := s.store.RenewReservation(r.Context(), k, c, uint64(p.ID), ttl)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -60,11 +59,11 @@ func (s *Server) renewReservation(r *http.Request, c store.Caller, k store.Keyed
 // release is DELETE /v1/reservations/{id}: a grant freed or a queue entry
 // cancelled.
 func (s *Server) release(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
-	id, err := reservationID(r)
+	p, err := pathParams[wire.ReservationParams](r)
 	if err != nil {
 		return 0, nil, err
 	}
-	got, err := s.store.Release(r.Context(), k, c, id)
+	got, err := s.store.Release(r.Context(), k, c, uint64(p.ID))
 	if err != nil {
 		return 0, nil, err
 	}
@@ -99,14 +98,6 @@ func (s *Server) reservations(r *http.Request, c store.Caller, _ store.Keyed) (s
 	return http.StatusOK, out, err
 }
 
-func reservationID(r *http.Request) (uint64, error) {
-	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
-	if err != nil || id == 0 {
-		return 0, badRequest("the reservation id must be a whole number")
-	}
-	return id, nil
-}
-
 // grant is POST /v1/delegates: a single-use link a subagent registers
 // with.
 func (s *Server) grant(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
@@ -128,7 +119,11 @@ func (s *Server) grant(r *http.Request, c store.Caller, k store.Keyed) (status i
 // revoke is DELETE /v1/delegates/{label}: the label's unused link revoked
 // and its delegate ended.
 func (s *Server) revoke(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
-	got, err := s.store.Revoke(r.Context(), k, c, r.PathValue("label"))
+	p, err := pathParams[wire.DelegateParams](r)
+	if err != nil {
+		return 0, nil, err
+	}
+	got, err := s.store.Revoke(r.Context(), k, c, p.Label)
 	if err != nil {
 		return 0, nil, err
 	}

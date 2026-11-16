@@ -671,7 +671,8 @@ func TestOpenAPIErrorRequiresItsMembers(t *testing.T) {
 // TestOpenAPIDeclaresTheQueryBounds holds the document to the bounds the
 // server enforces: every paged row's limit, the inbox's wait_ms, a
 // standing wait's wait_ms, the history window's RFC 3339 since and until,
-// its thread id from 1 and the 0-or-1 flags of history and identities.
+// its thread id from 1, the 0-or-1 flags of history and identities, and
+// every integer path id from 1.
 func TestOpenAPIDeclaresTheQueryBounds(t *testing.T) {
 	raw, err := os.ReadFile(contractDoc)
 	if err != nil {
@@ -686,9 +687,12 @@ func TestOpenAPIDeclaresTheQueryBounds(t *testing.T) {
 	var doc struct {
 		Paths map[string]map[string]struct {
 			Parameters []struct {
-				Name   string  `json:"name"`
-				In     string  `json:"in"`
-				Schema bounded `json:"schema"`
+				Name   string `json:"name"`
+				In     string `json:"in"`
+				Schema struct {
+					bounded
+					Type string `json:"type"`
+				} `json:"schema"`
 			} `json:"parameters"`
 		} `json:"paths"`
 		Components struct {
@@ -711,7 +715,7 @@ func TestOpenAPIDeclaresTheQueryBounds(t *testing.T) {
 		t.Helper()
 		for _, p := range doc.Paths[r.Path][strings.ToLower(r.Method)].Parameters {
 			if p.In == "query" && p.Name == name {
-				return p.Schema
+				return p.Schema.bounded
 			}
 		}
 		t.Errorf("%s: %s has no query parameter %s", contractDoc, r.Name, name)
@@ -753,6 +757,23 @@ func TestOpenAPIDeclaresTheQueryBounds(t *testing.T) {
 	}
 	if paged == 0 {
 		t.Error("wire.Routes has no paged row")
+	}
+	ids := map[string]bool{}
+	for _, r := range wire.Routes {
+		for _, p := range doc.Paths[r.Path][strings.ToLower(r.Method)].Parameters {
+			if p.In != "path" || p.Schema.Type != "integer" {
+				continue
+			}
+			ids[r.Name] = true
+			if got := p.Schema.Minimum; got == nil || *got != 1 {
+				t.Errorf("%s: %s's path %s minimum %v, want 1", contractDoc, r.Name, p.Name, deref(got))
+			}
+		}
+	}
+	for _, name := range []string{"getReceipts", "renewReservation", "releaseReservation", "getConversation", "markConversationRead", "getUserReceipts"} {
+		if !ids[name] {
+			t.Errorf("%s: %s has no integer path id", contractDoc, name)
+		}
 	}
 	want("WaitRequest's wait_ms", doc.Components.Schemas["WaitRequest"].Properties["wait_ms"], 1, wire.MaxWaitMS)
 }

@@ -5,6 +5,8 @@
 // the Unix epoch. Durations are milliseconds, each named with _ms.
 package wire
 
+import "math"
+
 // Error is every error response, on /api and /v1 alike.
 type Error struct {
 	// Error is the server's sentence for a person reading a raw answer;
@@ -272,9 +274,9 @@ type Conversation struct {
 	Next uint64 `json:"next,omitempty"`
 }
 
-// ConversationParams names a conversation.
+// ConversationParams names a conversation by its thread.
 type ConversationParams struct {
-	ID uint64 `json:"id"`
+	ID ThreadID `json:"id"`
 }
 
 // PageQuery pages a list of posts.
@@ -285,8 +287,14 @@ type PageQuery struct {
 
 // MessageParams names a message.
 type MessageParams struct {
-	ID uint64 `json:"id"`
+	ID MessageID `json:"id"`
 }
+
+// MessageID names a message; ids start at 1.
+type MessageID uint64
+
+// Range is the limits the server takes, which the document states.
+func (MessageID) Range() (lo, hi int64) { return 1, math.MaxInt64 }
 
 // UserReceipt is one recipient of a message.
 type UserReceipt struct {

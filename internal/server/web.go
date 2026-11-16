@@ -45,19 +45,6 @@ func untilSessionEnds(next http.Handler) http.Handler {
 	})
 }
 
-// idParam reads the id path wildcard of a route whose Params is P.
-func idParam[P wire.ConversationParams | wire.MessageParams](r *http.Request) (uint64, error) {
-	p, err := pathParams[P](r)
-	if err != nil {
-		return 0, err
-	}
-	id := wire.ConversationParams(p).ID
-	if id == 0 {
-		return 0, badRequest("id must be a whole number above 0")
-	}
-	return id, nil
-}
-
 var showFilters = map[wire.Show]store.Show{
 	"": store.ShowAll, wire.ShowAll: store.ShowAll, wire.ShowThreads: store.ShowThreads, wire.ShowDirect: store.ShowDirect,
 }
@@ -96,7 +83,7 @@ func (s *Server) listConversations(r *http.Request, _ store.Keyed) (body any, er
 }
 
 func (s *Server) getConversation(r *http.Request, _ store.Keyed) (body any, err error) {
-	id, err := idParam[wire.ConversationParams](r)
+	p, err := pathParams[wire.ConversationParams](r)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +91,7 @@ func (s *Server) getConversation(r *http.Request, _ store.Keyed) (body any, err 
 	if err != nil {
 		return nil, err
 	}
-	c, err := s.store.Conversation(r.Context(), id, q.Before, 0)
+	c, err := s.store.Conversation(r.Context(), uint64(p.ID), q.Before, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +113,7 @@ func (s *Server) getConversation(r *http.Request, _ store.Keyed) (body any, err 
 }
 
 func (s *Server) markConversationRead(r *http.Request, _ store.Keyed) (body any, err error) {
-	id, err := idParam[wire.ConversationParams](r)
+	p, err := pathParams[wire.ConversationParams](r)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +125,7 @@ func (s *Server) markConversationRead(r *http.Request, _ store.Keyed) (body any,
 	if req.UpTo == 0 {
 		return nil, badRequest("up_to must name the newest post shown")
 	}
-	n, err := s.store.ReadThread(r.Context(), ownerUser, id, req.UpTo)
+	n, err := s.store.ReadThread(r.Context(), ownerUser, uint64(p.ID), req.UpTo)
 	if err != nil {
 		return nil, err
 	}
@@ -146,11 +133,11 @@ func (s *Server) markConversationRead(r *http.Request, _ store.Keyed) (body any,
 }
 
 func (s *Server) getUserReceipts(r *http.Request, _ store.Keyed) (body any, err error) {
-	id, err := idParam[wire.MessageParams](r)
+	p, err := pathParams[wire.MessageParams](r)
 	if err != nil {
 		return nil, err
 	}
-	rc, err := s.store.MessageReceipts(r.Context(), id)
+	rc, err := s.store.MessageReceipts(r.Context(), uint64(p.ID))
 	if err != nil {
 		return nil, err
 	}

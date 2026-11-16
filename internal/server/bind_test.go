@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
@@ -179,5 +180,39 @@ func TestRangeRefusal_namesItsBoundsOrOnlyTheLowestWithNoCeiling(t *testing.T) {
 		if got := rangeRefusal("limit", tc.lo, tc.hi).Error(); got != tc.want {
 			t.Errorf("rangeRefusal(%d, %d) = %q, want %q", tc.lo, tc.hi, got, tc.want)
 		}
+	}
+}
+
+func TestPathIDs_refuse0WithItsFieldError(t *testing.T) {
+	h := newSignedIn(t)
+	h.mustRegister(sessA, "alpha")
+	for _, c := range []struct {
+		method, path string
+		web          bool
+	}{
+		{http.MethodGet, "/v1/messages/0/receipts", false},
+		{http.MethodPatch, "/v1/reservations/0", false},
+		{http.MethodDelete, "/v1/reservations/0", false},
+		{http.MethodGet, "/api/conversations/0", true},
+		{http.MethodPost, "/api/conversations/0/read", true},
+		{http.MethodGet, "/api/messages/0/receipts", true},
+	} {
+		t.Run(c.method+strings.ReplaceAll(c.path, "/", "_"), func(t *testing.T) {
+			var r *response
+			if c.web {
+				r = h.request(c.method, c.path, map[string]any{}, noKey)
+			} else {
+				r = h.as(sessA, c.method, c.path, map[string]any{})
+			}
+			fields, _ := r.body["fields"].([]any)
+			var f map[string]any
+			if len(fields) == 1 {
+				f, _ = fields[0].(map[string]any)
+			}
+			if r.status != http.StatusBadRequest || r.str("code") != "invalid" || f["field"] != "id" ||
+				f["code"] != "out_of_range" || fmt.Sprint(f["min"]) != "1" {
+				t.Errorf("%d %s, want 400 invalid naming id out_of_range from 1", r.status, r.raw)
+			}
+		})
 	}
 }

@@ -160,7 +160,7 @@ export const decodeConversationCounts: Decoder<ConversationCounts> = (v) => {
 export const decodeConversationParams: Decoder<ConversationParams> = (v) => {
   const o = asObject(v, "$.conversation_params");
   const out: ConversationParams = {
-    id: reqNum(o, "id", "$.conversation_params"),
+    id: checkRange(reqNum(o, "id", "$.conversation_params"), 1, 9223372036854775807, "$.conversation_params.id"),
   };
   return out;
 };
@@ -892,7 +892,7 @@ export const decodeMeQuery: Decoder<MeQuery> = (v) => {
 export const decodeMessageParams: Decoder<MessageParams> = (v) => {
   const o = asObject(v, "$.message_params");
   const out: MessageParams = {
-    id: reqNum(o, "id", "$.message_params"),
+    id: checkRange(reqNum(o, "id", "$.message_params"), 1, 9223372036854775807, "$.message_params.id"),
   };
   return out;
 };
@@ -1244,7 +1244,7 @@ export const decodeReservationAnswer: Decoder<ReservationAnswer> = (v) => {
 export const decodeReservationParams: Decoder<ReservationParams> = (v) => {
   const o = asObject(v, "$.reservation_params");
   const out: ReservationParams = {
-    id: reqNum(o, "id", "$.reservation_params"),
+    id: checkRange(reqNum(o, "id", "$.reservation_params"), 1, 9223372036854775807, "$.reservation_params.id"),
   };
   return out;
 };

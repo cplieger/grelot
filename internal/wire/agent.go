@@ -494,8 +494,14 @@ type Reservations struct {
 
 // ReservationParams names a reservation.
 type ReservationParams struct {
-	ID uint64 `json:"id"`
+	ID ReservationID `json:"id"`
 }
+
+// ReservationID names a reservation; ids start at 1.
+type ReservationID uint64
+
+// Range is the limits the server takes, which the document states.
+func (ReservationID) Range() (lo, hi int64) { return 1, math.MaxInt64 }
 
 // RenewRequest renews a reservation.
 type RenewRequest struct {
