@@ -99,7 +99,7 @@ func (t turnStart) stale(id *store.Identity) bool {
 	return t.signal != 0 && id.Read >= t.signal
 }
 
-// inTurnWait is GET /v1/inbox?wait=: it holds until a wake delivery is
+// inTurnWait is GET /v1/inbox?wait_ms=: it holds until a wake delivery is
 // past read, whatever the nudge state, then answers the page; at wait's
 // end or on Release it answers the page as it stands; past a held-wait
 // cap it holds nothing and answers 429. The wait is counted open before

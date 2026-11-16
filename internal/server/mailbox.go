@@ -28,7 +28,7 @@ func entriesOut(es []store.Entry) []wire.Entry {
 }
 
 // inbox is GET /v1/inbox: the oldest unread entries, which it marks
-// nothing; the client acks what it printed. With wait it is the in-turn
+// nothing; the client acks what it printed. With wait_ms it is the in-turn
 // wait.
 func (s *Server) inbox(r *http.Request, c store.Caller, _ store.Keyed) (status int, body any, err error) {
 	p := pagingOf(r)

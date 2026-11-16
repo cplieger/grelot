@@ -221,7 +221,7 @@ func (s *Server) hint(r *http.Request, c store.Caller, proc string) (*wire.Hint,
 }
 
 // patchMe is PATCH /v1/me: new fields, with where when paths change, or
-// with ttl and where a renewal of the lease.
+// with ttl_ms and where a renewal of the lease.
 func (s *Server) patchMe(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
 	var req wire.PatchMeRequest
 	if derr := decode(r, &req); derr != nil {
