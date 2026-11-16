@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // watch holds a standing wait from session for d, as grelot watch sends
@@ -23,7 +24,7 @@ func (h *harness) watch(session string, d time.Duration) *response {
 // watchAsync starts a standing wait from session in its own goroutine.
 func (h *harness) watchAsync(session string, d time.Duration) *pending {
 	return h.async(http.MethodPost, "/v1/events/wait", map[string]any{"wait": d.String()},
-		map[string]string{headerSession: session, headerSelf: "1"})
+		map[string]string{wire.HeaderSession: session, wire.HeaderSelf: "1"})
 }
 
 // newestWake is the seq of the newest wake entry in session's inbox,
@@ -129,7 +130,7 @@ func TestWait_anotherSessionsWaitIsNotReplaced(t *testing.T) {
 
 // sendAsWait records id's due nudge as a standing wait's send would, and
 // returns it.
-func (h *harness) sendAsWait(id uint64) nudgeJSON {
+func (h *harness) sendAsWait(id uint64) wire.Nudge {
 	h.t.Helper()
 	st, _, err := h.store.Nudging(h.t.Context(), id)
 	if err != nil || st.Due == nil {
@@ -139,7 +140,7 @@ func (h *harness) sendAsWait(id uint64) nudgeJSON {
 	if err != nil || !ok {
 		h.t.Fatalf("RecordNudge: %v, %v", ok, err)
 	}
-	return nudgeJSON{Seq: got.Seq, Count: got.Count, Attempt: got.Attempt}
+	return wire.Nudge{Seq: got.Seq, Count: got.Count, Attempt: got.Attempt}
 }
 
 func TestWait_aNudgeTheReplacedWaitSentReachesTheNewest(t *testing.T) {
@@ -368,7 +369,7 @@ func TestWait_sessionEndedAnswersEndedAndLeavesItSet(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h := newBubbleHarness(t)
 		h.mustRegisterAlone(sessA, "reader")
-		self := map[string]string{headerSession: sessA, headerSelf: "1"}
+		self := map[string]string{wire.HeaderSession: sessA, wire.HeaderSelf: "1"}
 		wait := h.watchAsync(sessA, 55*time.Second)
 		synctest.Wait()
 		start := time.Now()
@@ -467,7 +468,7 @@ func TestWait_refusals(t *testing.T) {
 	handle := h.grantDelegate(sessA, "review")
 	t.Run("a delegate is 400", func(t *testing.T) {
 		r := h.request(http.MethodPost, "/v1/events/wait", map[string]any{"wait": "55s"},
-			map[string]string{headerSession: sessA, headerAs: handle})
+			map[string]string{wire.HeaderSession: sessA, wire.HeaderAs: handle})
 		if r.status != http.StatusBadRequest {
 			t.Errorf("got %d %s, want 400", r.status, r.raw)
 		}

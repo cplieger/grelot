@@ -12,6 +12,7 @@ import (
 
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 const (
@@ -103,8 +104,8 @@ func TestWho_listsEveryAgentWithItsDeclaredWork(t *testing.T) {
 		headers  map[string]string
 		relation string
 	}{
-		{"from the third agent", map[string]string{headerSession: sessOf("docs-writer")}, "same environment"},
-		{"from a session with no identity", map[string]string{headerSession: "kiro-cli:nobody"}, "unknown"},
+		{"from the third agent", map[string]string{wire.HeaderSession: sessOf("docs-writer")}, "same environment"},
+		{"from a session with no identity", map[string]string{wire.HeaderSession: "kiro-cli:nobody"}, "unknown"},
 		{"with no session at all", nil, "unknown"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -282,7 +283,7 @@ func TestWho_aPostToTheAgentWhoseDescriptionFitsReachesItAlone(t *testing.T) {
 	h.mustPost(sessOf("docs-writer"), map[string]any{"agent": pick}, "resize question")
 	for _, name := range []string{"wtk-server", "wtk-ui", "toolbelt-dev"} {
 		has := false
-		self := map[string]string{headerSession: sessOf(name), headerSelf: "1"}
+		self := map[string]string{wire.HeaderSession: sessOf(name), wire.HeaderSelf: "1"}
 		for _, e := range entriesOf(t, h.request(http.MethodGet, "/v1/inbox", nil, self)) {
 			if e["subject"] == "resize question" {
 				has = true

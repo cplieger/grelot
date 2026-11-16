@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 const (
@@ -42,7 +43,7 @@ func TestHandler_theOperationsRoutesAreOnTheirOwnListener(t *testing.T) {
 			if r := h.request(http.MethodGet, path, nil, nil); r.status != http.StatusNotFound {
 				t.Errorf("GET %s on the API = %d, want 404", path, r.status)
 			}
-			if r := h.request(http.MethodGet, path, nil, map[string]string{"Authorization": "", headerVersion: ""}); r.status != http.StatusNotFound {
+			if r := h.request(http.MethodGet, path, nil, map[string]string{"Authorization": "", wire.HeaderVersion: ""}); r.status != http.StatusNotFound {
 				t.Errorf("bare GET %s on the API = %d, want 404", path, r.status)
 			}
 		})
@@ -122,7 +123,7 @@ func TestGate_refusesARequestWithNoValidMachineKey(t *testing.T) {
 		name, header string
 	}{{"none", ""}, {"an unknown key", "Bearer grelot_unknown"}, {"another scheme", "Basic " + revoked}, {"a revoked key", "Bearer " + revoked}} {
 		t.Run(tc.name, func(t *testing.T) {
-			r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": tc.header, headerSession: sessA})
+			r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": tc.header, wire.HeaderSession: sessA})
 			if r.status != http.StatusUnauthorized {
 				t.Fatalf("status %d, want 401", r.status)
 			}
@@ -135,13 +136,13 @@ func TestGate_refusesARequestWithNoValidMachineKey(t *testing.T) {
 			if _, ok := r.body["path_root"]; ok {
 				t.Error("a 401 carries the path root")
 			}
-			if r.header.Get(headerVersion) != "" {
+			if r.header.Get(wire.HeaderVersion) != "" {
 				t.Error("a 401 names the server version")
 			}
 		})
 	}
 	t.Run("a browser session", func(t *testing.T) {
-		r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": "", "Cookie": h.browser.header(), headerSession: sessA})
+		r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": "", "Cookie": h.browser.header(), wire.HeaderSession: sessA})
 		if r.status != http.StatusForbidden || r.str("code") != "auth_key_required" {
 			t.Errorf("GET /v1/me with the signed-in session cookie: %d %s, want 403 auth_key_required", r.status, r.raw)
 		}
@@ -198,11 +199,11 @@ func TestAuthorize_version(t *testing.T) {
 		{"v3.0.0", http.StatusOK},
 	} {
 		t.Run("version "+tc.version, func(t *testing.T) {
-			r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{headerVersion: tc.version, headerSession: sessA})
+			r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{wire.HeaderVersion: tc.version, wire.HeaderSession: sessA})
 			if r.status != tc.want {
 				t.Fatalf("status %d, want %d: %s", r.status, tc.want, r.raw)
 			}
-			if got := r.header.Get(headerVersion); got != testVersion {
+			if got := r.header.Get(wire.HeaderVersion); got != testVersion {
 				t.Errorf("answer names server version %q, want %q", got, testVersion)
 			}
 			if want := testUpgradeLine(tc.version); tc.want == http.StatusUpgradeRequired && r.str("error") != want {
@@ -215,15 +216,15 @@ func TestAuthorize_version(t *testing.T) {
 func TestVersionRoute(t *testing.T) {
 	h := newHarness(t)
 	t.Run("any caller reads the server's version", func(t *testing.T) {
-		r := h.request(http.MethodGet, "/v1/version", nil, map[string]string{headerVersion: "v2.0.0"})
-		if r.status != http.StatusOK || r.str("version") != testVersion || r.header.Get(headerVersion) != testVersion {
-			t.Errorf("status %d, body %s, Grelot-Version %q; want 200 and %s in both", r.status, r.raw, r.header.Get(headerVersion), testVersion)
+		r := h.request(http.MethodGet, "/v1/version", nil, map[string]string{wire.HeaderVersion: "v2.0.0"})
+		if r.status != http.StatusOK || r.str("version") != testVersion || r.header.Get(wire.HeaderVersion) != testVersion {
+			t.Errorf("status %d, body %s, Grelot-Version %q; want 200 and %s in both", r.status, r.raw, r.header.Get(wire.HeaderVersion), testVersion)
 		}
 	})
 	t.Run("a v1 client gets the 426 naming grelot version", func(t *testing.T) {
-		r := h.request(http.MethodGet, "/v1/version", nil, map[string]string{headerVersion: "v1.1.2"})
-		if r.status != http.StatusUpgradeRequired || r.header.Get(headerVersion) != testVersion || r.str("error") != testUpgradeLine("v1.1.2") {
-			t.Errorf("status %d, error %q, Grelot-Version %q; want 426, %q and %s", r.status, r.str("error"), r.header.Get(headerVersion), testUpgradeLine("v1.1.2"), testVersion)
+		r := h.request(http.MethodGet, "/v1/version", nil, map[string]string{wire.HeaderVersion: "v1.1.2"})
+		if r.status != http.StatusUpgradeRequired || r.header.Get(wire.HeaderVersion) != testVersion || r.str("error") != testUpgradeLine("v1.1.2") {
+			t.Errorf("status %d, error %q, Grelot-Version %q; want 426, %q and %s", r.status, r.str("error"), r.header.Get(wire.HeaderVersion), testUpgradeLine("v1.1.2"), testVersion)
 		}
 	})
 }

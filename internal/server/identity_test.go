@@ -10,6 +10,7 @@ import (
 
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // reviveBody is a revive request for ttl, by name when name is set.
@@ -24,7 +25,7 @@ func reviveBody(name, ttl string) map[string]any {
 // self sends a request from session with Grelot-Self.
 func (h *harness) self(session, method, path string, body any) *response {
 	h.t.Helper()
-	return h.request(method, path, body, map[string]string{headerSession: session, headerSelf: "1"})
+	return h.request(method, path, body, map[string]string{wire.HeaderSession: session, wire.HeaderSelf: "1"})
 }
 
 func identityOf(r *response) map[string]any {

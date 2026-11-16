@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 func TestReservations_reserveQueueRenewAndHandOff(t *testing.T) {
@@ -83,7 +84,7 @@ func TestDelegates_grantGateAndRevoke(t *testing.T) {
 	if n := len(h.logs.lines(slog.LevelInfo, "request refused")); n != 1 {
 		t.Errorf("request refused lines = %d, want 1", n)
 	}
-	self := map[string]string{headerSession: sessA, headerSelf: "1"}
+	self := map[string]string{wire.HeaderSession: sessA, wire.HeaderSelf: "1"}
 	if r := h.request(http.MethodGet, "/v1/inbox", nil, self); r.status != http.StatusOK {
 		t.Errorf("the same request with Self: %d %s", r.status, r.raw)
 	}
@@ -100,7 +101,7 @@ func TestLifecycle_sessionEndSubagentStopAndTurnEnd(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegister(sessA, "parent")
 	handle := h.grantDelegate(sessA, "review")
-	self := map[string]string{headerSession: sessA, headerSelf: "1"}
+	self := map[string]string{wire.HeaderSession: sessA, wire.HeaderSelf: "1"}
 	life := func(headers map[string]string, event, agent string) *response {
 		return h.request(http.MethodPost, "/v1/lifecycle", map[string]any{"event": event, "agent_id": agent}, headers)
 	}
@@ -119,7 +120,7 @@ func TestLifecycle_sessionEndSubagentStopAndTurnEnd(t *testing.T) {
 		}
 		return st.Identity.Ended
 	}
-	if r := life(map[string]string{headerSession: sessA}, eventSubagentStop, "internal-agent"); r.status != http.StatusOK {
+	if r := life(map[string]string{wire.HeaderSession: sessA}, eventSubagentStop, "internal-agent"); r.status != http.StatusOK {
 		t.Errorf("subagent_stop for an unbound id: %d %s, want 200 past the gate", r.status, r.raw)
 	}
 	if n := len(h.logs.lines(slog.LevelInfo, "request refused")); n != 0 {
@@ -131,7 +132,7 @@ func TestLifecycle_sessionEndSubagentStopAndTurnEnd(t *testing.T) {
 	if r := life(self, eventTurnEnd, ""); r.status != http.StatusOK {
 		t.Errorf("turn_end: %d %s", r.status, r.raw)
 	}
-	if r := h.request(http.MethodGet, "/v1/inbox", nil, map[string]string{headerSession: sessA, headerAs: handle}); r.status != http.StatusOK {
+	if r := h.request(http.MethodGet, "/v1/inbox", nil, map[string]string{wire.HeaderSession: sessA, wire.HeaderAs: handle}); r.status != http.StatusOK {
 		t.Errorf("the parent's subagent_stop ended its delegate: %d %s, want it still acting", r.status, r.raw)
 	}
 
@@ -139,7 +140,7 @@ func TestLifecycle_sessionEndSubagentStopAndTurnEnd(t *testing.T) {
 	if r := life(self, eventSessionEnd, ""); r.status != http.StatusOK || !ended() {
 		t.Fatalf("session_end: %d %s, want the session marked ended", r.status, r.raw)
 	}
-	if r := h.request(http.MethodGet, "/v1/inbox", nil, map[string]string{headerSession: sessA, headerAs: second}); r.status/100 != 4 {
+	if r := h.request(http.MethodGet, "/v1/inbox", nil, map[string]string{wire.HeaderSession: sessA, wire.HeaderAs: second}); r.status/100 != 4 {
 		t.Errorf("a delegate outlived its parent's session end: %d %s", r.status, r.raw)
 	}
 	id := me()

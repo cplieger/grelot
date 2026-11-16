@@ -39,6 +39,46 @@ var (
 	// ErrSSEUnavailable is the event stream's hub refusing a subscriber once
 	// it is shut down or at its client cap.
 	ErrSSEUnavailable = ErrorCode{"sse_unavailable", http.StatusServiceUnavailable}
+	ErrRateLimited    = ErrorCode{"rate_limited", http.StatusTooManyRequests}
+	// ErrUpgradeRequired refuses a client below the server's floor; its
+	// error is the install line.
+	ErrUpgradeRequired = ErrorCode{"upgrade_required", http.StatusUpgradeRequired}
+	ErrTooManyWaits    = ErrorCode{"too_many_waits", http.StatusTooManyRequests}
+)
+
+// The refusals of a request acting as an agent identity, named by the
+// store or the server.
+var (
+	// ErrNone and ErrDormant refuse a session with no live identity.
+	ErrNone          = ErrorCode{"none", http.StatusGone}
+	ErrDormant       = ErrorCode{"dormant", http.StatusGone}
+	ErrDelegateEnded = ErrorCode{"delegate_ended", http.StatusGone}
+	ErrLinkGone      = ErrorCode{"link_gone", http.StatusGone}
+	ErrDelegateGate  = ErrorCode{"delegate_gate", http.StatusConflict}
+	ErrReserved      = ErrorCode{"reserved", http.StatusConflict}
+	ErrQueued        = ErrorCode{"queued", http.StatusConflict}
+	ErrOtherProvider = ErrorCode{"other_provider", http.StatusConflict}
+	ErrNoEnvironment = ErrorCode{"no_environment", http.StatusConflict}
+	ErrOtherRepo     = ErrorCode{"other_repository", http.StatusConflict}
+	ErrOtherEnv      = ErrorCode{"other_environment", http.StatusConflict}
+	// ErrEnded and ErrReplaced end a standing wait: its session's end was
+	// reported, or a newer wait of the session took over.
+	ErrEnded    = ErrorCode{"ended", http.StatusGone}
+	ErrReplaced = ErrorCode{"replaced", http.StatusGone}
+)
+
+// Access is who a row admits; the zero value admits no one, which the
+// server refuses to bind.
+type Access uint8
+
+// The access classes.
+const (
+	// AccessAgent is a machine key acting as its own identities.
+	AccessAgent Access = iota + 1
+	// AccessOwner is the person: a signed-in session.
+	AccessOwner
+	// AccessPublic needs no credential.
+	AccessPublic
 )
 
 // Route is one row the server binds: what it reads at run time. Each row's
@@ -52,10 +92,9 @@ type Route struct {
 	// Status is the success status; zero is 200.
 	Status int
 	Kind   Kind
+	Access Access
 	// Keyed routes require an Idempotency-Key, which a re-send repeats.
 	Keyed bool
-	// Public routes answer without a session.
-	Public bool
 }
 
 // The Idempotency-Key a keyed route requires is a quoted string of
@@ -68,19 +107,46 @@ const (
 // Pattern is the route's net/http ServeMux pattern.
 func (r *Route) Pattern() string { return r.Method + " " + r.Path }
 
+// mePath is the session's own identity.
+const mePath = "/v1/me"
+
 // Routes is every row the server binds, by Name.
 var Routes = []Route{
-	{Name: "listConversations", Method: http.MethodGet, Path: "/api/conversations"},
-	{Name: "getConversation", Method: http.MethodGet, Path: "/api/conversations/{id}"},
-	{Name: "markConversationRead", Method: http.MethodPost, Path: "/api/conversations/{id}/read"},
-	{Name: "getUserReceipts", Method: http.MethodGet, Path: "/api/messages/{id}/receipts"},
-	{Name: "createUserPost", Method: http.MethodPost, Path: "/api/posts", Status: http.StatusCreated, Keyed: true},
-	{Name: "listAgents", Method: http.MethodGet, Path: "/api/agents"},
-	{Name: "getAgent", Method: http.MethodGet, Path: "/api/agents/{name}"},
-	{Name: "getAgentHistory", Method: http.MethodGet, Path: "/api/agents/{name}/history"},
-	{Name: "getStats", Method: http.MethodGet, Path: "/api/stats"},
-	{Name: "getSettings", Method: http.MethodGet, Path: "/api/settings"},
-	{Name: "putSettings", Method: http.MethodPut, Path: "/api/settings"},
-	{Name: "getSignIn", Method: http.MethodGet, Path: "/api/sign-in", Public: true},
-	{Name: "events", Method: http.MethodGet, Path: "/api/events", Kind: KindEventStream},
+	{Name: "register", Method: http.MethodPost, Path: "/v1/register", Status: http.StatusCreated, Access: AccessAgent, Keyed: true},
+	{Name: "revive", Method: http.MethodPost, Path: "/v1/revive", Access: AccessAgent, Keyed: true},
+	{Name: "getMe", Method: http.MethodGet, Path: mePath, Access: AccessAgent},
+	{Name: "patchMe", Method: http.MethodPatch, Path: mePath, Access: AccessAgent, Keyed: true},
+	{Name: "deleteMe", Method: http.MethodDelete, Path: mePath, Access: AccessAgent, Keyed: true},
+	{Name: "listIdentities", Method: http.MethodGet, Path: "/v1/identities", Access: AccessAgent},
+	{Name: "getVersion", Method: http.MethodGet, Path: "/v1/version", Access: AccessAgent},
+	{Name: "createPost", Method: http.MethodPost, Path: "/v1/posts", Status: http.StatusCreated, Access: AccessAgent, Keyed: true},
+	{Name: "listThreads", Method: http.MethodGet, Path: "/v1/threads", Access: AccessAgent},
+	{Name: "getReceipts", Method: http.MethodGet, Path: "/v1/messages/{id}/receipts", Access: AccessAgent},
+	{Name: "getHistory", Method: http.MethodGet, Path: "/v1/history", Access: AccessAgent},
+	{Name: "follow", Method: http.MethodPut, Path: "/v1/follows", Access: AccessAgent, Keyed: true},
+	{Name: "unfollow", Method: http.MethodDelete, Path: "/v1/follows", Access: AccessAgent, Keyed: true},
+	{Name: "ackInbox", Method: http.MethodPost, Path: "/v1/inbox/ack", Access: AccessAgent, Keyed: true},
+	{Name: "reserve", Method: http.MethodPost, Path: "/v1/reservations", Status: http.StatusCreated, Access: AccessAgent, Keyed: true},
+	{Name: "listReservations", Method: http.MethodGet, Path: "/v1/reservations", Access: AccessAgent},
+	{Name: "renewReservation", Method: http.MethodPatch, Path: "/v1/reservations/{id}", Access: AccessAgent, Keyed: true},
+	{Name: "releaseReservation", Method: http.MethodDelete, Path: "/v1/reservations/{id}", Access: AccessAgent, Keyed: true},
+	{Name: "grantDelegate", Method: http.MethodPost, Path: "/v1/delegates", Status: http.StatusCreated, Access: AccessAgent, Keyed: true},
+	{Name: "revokeDelegate", Method: http.MethodDelete, Path: "/v1/delegates/{label}", Access: AccessAgent, Keyed: true},
+	{Name: "lifecycle", Method: http.MethodPost, Path: "/v1/lifecycle", Access: AccessAgent},
+	{Name: "holdEvent", Method: http.MethodPost, Path: "/v1/events/hold", Access: AccessAgent},
+	{Name: "waitEvent", Method: http.MethodPost, Path: "/v1/events/wait", Access: AccessAgent},
+	{Name: "readInbox", Method: http.MethodGet, Path: "/v1/inbox", Access: AccessAgent},
+	{Name: "listConversations", Method: http.MethodGet, Path: "/api/conversations", Access: AccessOwner},
+	{Name: "getConversation", Method: http.MethodGet, Path: "/api/conversations/{id}", Access: AccessOwner},
+	{Name: "markConversationRead", Method: http.MethodPost, Path: "/api/conversations/{id}/read", Access: AccessOwner},
+	{Name: "getUserReceipts", Method: http.MethodGet, Path: "/api/messages/{id}/receipts", Access: AccessOwner},
+	{Name: "createUserPost", Method: http.MethodPost, Path: "/api/posts", Status: http.StatusCreated, Access: AccessOwner, Keyed: true},
+	{Name: "listAgents", Method: http.MethodGet, Path: "/api/agents", Access: AccessOwner},
+	{Name: "getAgent", Method: http.MethodGet, Path: "/api/agents/{name}", Access: AccessOwner},
+	{Name: "getAgentHistory", Method: http.MethodGet, Path: "/api/agents/{name}/history", Access: AccessOwner},
+	{Name: "getStats", Method: http.MethodGet, Path: "/api/stats", Access: AccessOwner},
+	{Name: "getSettings", Method: http.MethodGet, Path: "/api/settings", Access: AccessOwner},
+	{Name: "putSettings", Method: http.MethodPut, Path: "/api/settings", Access: AccessOwner},
+	{Name: "getSignIn", Method: http.MethodGet, Path: "/api/sign-in", Access: AccessPublic},
+	{Name: "events", Method: http.MethodGet, Path: "/api/events", Kind: KindEventStream, Access: AccessOwner},
 }

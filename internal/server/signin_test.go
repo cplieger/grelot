@@ -109,7 +109,7 @@ func (h *harness) passwordSignIn() *response {
 // its ID and the options the browser hands the authenticator.
 func (h *harness) ceremony(path string, body any) (id string, options []byte) {
 	h.t.Helper()
-	r := h.request(http.MethodPost, path, body, map[string]string{headerKey: "", "Origin": testOrigin})
+	r := h.request(http.MethodPost, path, body, map[string]string{wire.HeaderIdempotencyKey: "", "Origin": testOrigin})
 	if r.status != http.StatusOK {
 		h.t.Fatalf("POST %s: %d %s", path, r.status, r.raw)
 	}
@@ -127,7 +127,7 @@ func (h *harness) ceremony(path string, body any) (id string, options []byte) {
 func (h *harness) finish(path, id string, body []byte) *response {
 	h.t.Helper()
 	return h.request(http.MethodPost, path, json.RawMessage(body),
-		map[string]string{headerKey: "", "Origin": testOrigin, "X-Auth-Ceremony": id})
+		map[string]string{wire.HeaderIdempotencyKey: "", "Origin": testOrigin, "X-Auth-Ceremony": id})
 }
 
 // registerPasskey enrols device on the signed-in account.
@@ -330,7 +330,7 @@ func TestSignIn_eachMethodIsRefusedOnceSwitchedOff(t *testing.T) {
 		if r := h.putMethods(wire.Methods{Password: true, OIDC: true}); r.status != http.StatusOK {
 			t.Fatalf("switching passkeys off: %d %s", r.status, r.raw)
 		}
-		r := h.request(http.MethodPost, "/api/auth/login/passkey/begin", nil, map[string]string{headerKey: "", "Origin": testOrigin})
+		r := h.request(http.MethodPost, "/api/auth/login/passkey/begin", nil, map[string]string{wire.HeaderIdempotencyKey: "", "Origin": testOrigin})
 		if r.status != http.StatusBadRequest || r.str("code") != "auth_passkeys_unavailable" {
 			t.Errorf("passkey sign-in start: %d %s, want 400 auth_passkeys_unavailable", r.status, r.raw)
 		}

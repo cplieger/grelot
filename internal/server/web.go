@@ -13,60 +13,12 @@ import (
 
 	"github.com/cplieger/access"
 	"github.com/cplieger/access/gate"
-	"github.com/cplieger/go/httpserver"
 	"github.com/cplieger/grelot/internal/accounts"
 	"github.com/cplieger/grelot/internal/auth"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/wire"
 )
-
-// webFunc serves one JSON route of the web API as @user; k is the
-// request's Idempotency-Key on a keyed route, zero otherwise.
-type webFunc func(r *http.Request, k store.Keyed) (any, error)
-
-// webUser is who every web API write acts as.
-var webUser = store.Caller{User: true}
-
-// webRoutes adds every wire.Routes route to t, each but the public ones
-// as a session's row.
-func (s *Server) webRoutes(t *table) {
-	handlers := map[string]webFunc{
-		"listConversations":    s.listConversations,
-		"getConversation":      s.getConversation,
-		"markConversationRead": s.markConversationRead,
-		"getUserReceipts":      s.getUserReceipts,
-		"createUserPost":       s.createUserPost,
-		"listAgents":           s.listAgents,
-		"getAgent":             s.getAgent,
-		"getAgentHistory":      s.getAgentHistory,
-		"getStats":             s.getStats,
-		"getSettings":          s.getSettings,
-		"putSettings":          s.putSettings,
-		"getSignIn":            s.getSignIn,
-	}
-	bound := 0
-	for i := range wire.Routes {
-		r := &wire.Routes[i]
-		class := gate.Session
-		if r.Public {
-			class = gate.Public
-		}
-		if r.Kind == wire.KindEventStream {
-			t.add(r.Pattern(), class, untilSessionEnds(http.HandlerFunc(s.events.serve)))
-			continue
-		}
-		fn, ok := handlers[r.Name]
-		if !ok {
-			panic("server: no handler for web route " + r.Name)
-		}
-		bound++
-		t.add(r.Pattern(), class, httpserver.RouteDeadline(s.webJSON(fn, r), routeDeadline))
-	}
-	if bound != len(handlers) {
-		panic("server: a web handler names no route in wire.Routes")
-	}
-}
 
 // principal is the session the gate admitted r with.
 func principal(r *http.Request) *access.Principal {
@@ -90,30 +42,6 @@ func untilSessionEnds(next http.Handler) http.Handler {
 		ctx, cancel := context.WithDeadline(r.Context(), end)
 		defer cancel()
 		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-func (s *Server) webJSON(fn webFunc, route *wire.Route) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		httpserver.LimitBody(w, r, maxBody)
-		var k store.Keyed
-		var err error
-		_, sent := r.Header[headerKey]
-		switch {
-		case route.Keyed:
-			k, err = keyOf(r, webUser)
-		case sent:
-			err = badRequest("this route takes no Idempotency-Key")
-		}
-		var body any
-		if err == nil {
-			body, err = fn(r, k)
-		}
-		if err != nil {
-			s.fail(w, r, err)
-			return
-		}
-		httpserver.WriteJSONStatus(w, cmp.Or(route.Status, http.StatusOK), body)
 	})
 }
 
@@ -210,7 +138,7 @@ func (s *Server) markConversationRead(r *http.Request, _ store.Keyed) (body any,
 	if req.UpTo == 0 {
 		return nil, badRequest("up_to must name the newest post shown")
 	}
-	n, err := s.store.ReadThread(r.Context(), webUser, id, req.UpTo)
+	n, err := s.store.ReadThread(r.Context(), ownerUser, id, req.UpTo)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +172,7 @@ func (s *Server) createUserPost(r *http.Request, k store.Keyed) (body any, err e
 		return nil, err
 	}
 	p, _, err := s.store.Post(r.Context(), k, &store.Posting{
-		Caller: webUser, Subject: req.Subject, Body: req.Body,
+		Caller: ownerUser, Subject: req.Subject, Body: req.Body,
 		To: store.Target{Announce: req.To.Announce, Path: req.To.Path, Agent: req.To.Agent},
 	})
 	if err != nil {

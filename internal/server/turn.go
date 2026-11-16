@@ -10,32 +10,16 @@ import (
 	"time"
 
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 const holdStop = "stop"
 
-type holdRequest struct {
-	For  string `json:"for"`
-	Last bool   `json:"last"`
-}
-
-// holdResponse is a stop hold's answer. Counts are the deliveries past
-// read and the shown cursor as it stood; Block says the hook holds the
-// turn for the wake mail counted; Down is set once per down episode, with
-// no wake mail to show.
-type holdResponse struct {
-	Wake   string     `json:"wake"`
-	Counts countsJSON `json:"counts"`
-	Shown  uint64     `json:"shown"`
-	Block  bool       `json:"block"`
-	Down   bool       `json:"down"`
-}
-
 // eventHold is POST /v1/events/hold {for: stop, last?}, the stop hook's
 // one request. A hold that blocks keeps the turn open, unless last says
 // the host runs no second stop hook this turn; any other hold ends it.
-func (s *Server) eventHold(r *http.Request, c store.Caller) (status int, body any, err error) {
-	var req holdRequest
+func (s *Server) eventHold(r *http.Request, c store.Caller, _ store.Keyed) (status int, body any, err error) {
+	var req wire.HoldRequest
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
@@ -55,7 +39,7 @@ func (s *Server) eventHold(r *http.Request, c store.Caller) (status int, body an
 	if err != nil {
 		return 0, nil, err
 	}
-	out := holdResponse{Counts: countsOut(held.Counts), Shown: held.Shown, Wake: s.wakeState(&st, s.now())}
+	out := wire.Held{Counts: countsOut(held.Counts), Shown: held.Shown, Wake: s.wakeState(&st, s.now())}
 	switch {
 	case held.Counts.Wake() > 0:
 		out.Block = true

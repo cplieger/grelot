@@ -10,10 +10,8 @@ import (
 	"time"
 
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
-
-// headerStatus carries the status line on every identity response.
-const headerStatus = "Grelot-Status"
 
 // The wake states a status line names.
 const (
@@ -65,6 +63,6 @@ func (s *Server) wakeState(st *store.Status, now time.Time) string {
 // the route deadline, which must not take the line off a committed write.
 func (s *Server) setStatus(w http.ResponseWriter, r *http.Request, c store.Caller) {
 	if line := s.statusLine(context.WithoutCancel(r.Context()), c); line != "" {
-		w.Header().Set(headerStatus, line)
+		w.Header().Set(wire.HeaderStatus, line)
 	}
 }

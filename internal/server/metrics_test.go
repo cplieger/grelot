@@ -17,6 +17,7 @@ import (
 	"github.com/cplieger/go/httpserver"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // page reads /metrics from the operations listener with no headers.
@@ -123,7 +124,7 @@ func TestMetrics_requestsAreCountedByTheirRoute(t *testing.T) {
 	h := newHarness(t)
 	h.as(sessA, http.MethodGet, "/v1/me", nil)
 	h.as(sessA, http.MethodGet, "/v1/me", nil)
-	h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": "", headerSession: sessA})
+	h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": "", wire.HeaderSession: sessA})
 	h.request(http.MethodGet, "/v1/no-such-route", nil, nil)
 	h.request(http.MethodGet, "/no-such-page", nil, nil)
 	got := h.scrape()
@@ -183,7 +184,7 @@ func TestMetrics_postsAreCountedByThreadKindAndRefusalsByReason(t *testing.T) {
 		h.mustRegister(sessA, "parent")
 		handle := h.grantDelegate(sessA, "review")
 		r := h.request(http.MethodPost, "/v1/posts", postBody(map[string]any{"path": repoGrelot}, "hello", "a body"),
-			map[string]string{headerSession: sessA, headerAs: handle})
+			map[string]string{wire.HeaderSession: sessA, wire.HeaderAs: handle})
 		if r.status != http.StatusForbidden {
 			t.Fatalf("post outside the scope: %d %s, want 403", r.status, r.raw)
 		}
@@ -315,7 +316,7 @@ func TestMetrics_noLabelValueNamesAnAgentPathSubjectOrSession(t *testing.T) {
 	}
 	handle := h.grantDelegate(sessQ, "tanglewood")
 	h.request(http.MethodPost, "/v1/posts", postBody(map[string]any{"path": "/workspace/elsewhere"}, subject, "a body"),
-		map[string]string{headerSession: sessQ, headerAs: handle})
+		map[string]string{wire.HeaderSession: sessQ, wire.HeaderAs: handle})
 	h.as(sessM, http.MethodGet, "/v1/inbox", nil)
 	h.as(sessM, http.MethodGet, "/v1/history?path="+repo, nil)
 	h.as(sessM, http.MethodGet, "/v1/identities/quillfeather", nil)

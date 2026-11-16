@@ -11,19 +11,8 @@ import (
 	"github.com/cplieger/go/httpserver"
 	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/transport"
+	"github.com/cplieger/grelot/internal/wire"
 )
-
-type watchRequest struct {
-	Wait duration `json:"wait"`
-}
-
-// nudgeJSON is a nudge as a standing wait returns it: the signal line's
-// seq, the wake deliveries past read, and which send it is, 1 to 4.
-type nudgeJSON struct {
-	Seq     uint64 `json:"seq"`
-	Count   int    `json:"count"`
-	Attempt int    `json:"attempt"`
-}
 
 // errSessionEnded answers a standing wait while the session's end is
 // reported; its code is the reason word the watcher's end line carries.
@@ -44,7 +33,7 @@ var errReplaced = &apiError{
 // works, and returns it; 204 when wait passes with none, 410 replaced
 // once a newer standing wait of the caller's session opens, and 429 past
 // a held-wait cap.
-func (s *Server) standingWait(r *http.Request, c store.Caller) (status int, body any, err error) {
+func (s *Server) standingWait(r *http.Request, c store.Caller, _ store.Keyed) (status int, body any, err error) {
 	ctx := r.Context()
 	id, wait, err := s.watchFor(r, c)
 	if err != nil {
@@ -104,11 +93,13 @@ func waitEnd(err error) error {
 // watchFor reads a standing wait's request: the identity it holds for and
 // how long. A refused wait holds nothing, so it never counts as held.
 func (s *Server) watchFor(r *http.Request, c store.Caller) (id uint64, wait time.Duration, err error) {
-	var req watchRequest
+	var req wire.WaitRequest
 	if derr := decode(r, &req); derr != nil {
 		return 0, 0, derr
 	}
-	wait = time.Duration(req.Wait)
+	if wait, err = durationOf(req.Wait); err != nil {
+		return 0, 0, err
+	}
 	if wait <= 0 || wait > maxWait {
 		return 0, 0, badRequest(`wait must be a duration above 0 and at most 55s, such as "55s"`)
 	}
@@ -127,7 +118,7 @@ func (s *Server) watchFor(r *http.Request, c store.Caller) (id uint64, wait time
 // of the hub's channel always brings the next look.
 type watchStep struct {
 	until time.Time
-	nudge *nudgeJSON
+	nudge *wire.Nudge
 	done  bool
 }
 
@@ -145,7 +136,7 @@ func (s *Server) look(ctx context.Context, c store.Caller, t waitTicket) (watchS
 			return watchStep{}, err
 		}
 		if recorded {
-			n := nudgeJSON{Seq: got.Seq, Count: got.Count, Attempt: got.Attempt}
+			n := wire.Nudge{Seq: got.Seq, Count: got.Count, Attempt: got.Attempt}
 			if s.handOff(t, n) {
 				return watchStep{}, errReplaced
 			}
@@ -193,7 +184,7 @@ func (s *Server) due(ctx context.Context, c store.Caller, t waitTicket) (watchSt
 // handOff reports whether t was replaced when it sent n, which its
 // session's newest wait then returns instead. The send's own commit woke
 // that wait before it could take n, so it is woken again to look.
-func (s *Server) handOff(t waitTicket, n nudgeJSON) (replaced bool) {
+func (s *Server) handOff(t waitTicket, n wire.Nudge) (replaced bool) {
 	handed, replaced := s.presence.handOff(t, n)
 	if handed {
 		s.hub.Woke([]uint64{t.id})

@@ -14,6 +14,7 @@ import (
 	"github.com/cplieger/go/textsafe"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // postsPerMinute is the post limit of one identity, a delegate's posts
@@ -26,43 +27,15 @@ const announce = "announce"
 // logTextCap caps each client text a log line carries.
 const logTextCap = 4 << 10
 
-type postRequest struct {
-	Where    *store.Where `json:"where"`
-	Identity struct {
-		Name        string   `json:"name"`
-		Description string   `json:"description"`
-		Paths       []string `json:"paths"`
-	} `json:"identity"`
-	Subject    string          `json:"subject"`
-	Body       string          `json:"body"`
-	To         json.RawMessage `json:"to"`
-	NotifyRead json.RawMessage `json:"notify_read"`
-	By         duration        `json:"by"`
-}
-
-// recipientsJSON counts a post's recipients; Woken and Quiet are set
-// only for a path post whose opening @names matched an identity.
-type recipientsJSON struct {
-	Woken           []string `json:"woken,omitempty"`
-	Total           int      `json:"total"`
-	SameEnvironment int      `json:"same_environment"`
-	Other           int      `json:"other"`
-	Quiet           int      `json:"quiet,omitempty"`
-}
-
-type postResponse struct {
-	Notices    []string       `json:"notices"`
-	Identity   identityJSON   `json:"identity"`
-	Recipients recipientsJSON `json:"recipients"`
-	Message    uint64         `json:"message"`
-	Thread     uint64         `json:"thread"`
-}
-
 // post is POST /v1/posts.
 func (s *Server) post(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
-	var req postRequest
+	var req wire.PostRequest
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
+	}
+	by, err := durationOf(req.By)
+	if err != nil {
+		return 0, nil, err
 	}
 	to, kind, err := postTarget(req.To)
 	if err != nil {
@@ -72,7 +45,7 @@ func (s *Server) post(r *http.Request, c store.Caller, k store.Keyed) (status in
 	if err != nil {
 		return 0, nil, err
 	}
-	notify.By = time.Duration(req.By)
+	notify.By = by
 	ctx := r.Context()
 	// A re-send answers its first result before the rate limit counts it,
 	// so an empty bucket never turns a committed post into a 429.
@@ -104,7 +77,7 @@ func (s *Server) post(r *http.Request, c store.Caller, k store.Keyed) (status in
 		}()
 	}
 	got, replayed, err := s.store.Post(ctx, k, &store.Posting{
-		Where: req.Where, Caller: c, Subject: req.Subject, Body: req.Body, To: to, NotifyRead: notify,
+		Where: whereOf(req.Where), Caller: c, Subject: req.Subject, Body: req.Body, To: to, NotifyRead: notify,
 		Fields: store.Fields{Name: req.Identity.Name, Description: req.Identity.Description, Paths: req.Identity.Paths},
 	})
 	switch {
@@ -120,10 +93,10 @@ func (s *Server) post(r *http.Request, c store.Caller, k store.Keyed) (status in
 	return http.StatusCreated, postOut(&got), nil
 }
 
-func postOut(got *store.Posted) postResponse {
-	return postResponse{
+func postOut(got *store.Posted) wire.Posted {
+	return wire.Posted{
 		Notices: nonNil(got.Notices), Identity: identityOut(&got.Identity), Message: got.Message, Thread: got.Thread,
-		Recipients: recipientsJSON{
+		Recipients: wire.Recipients{
 			Woken: got.Woken, Total: got.Delivered, SameEnvironment: got.SameEnvironment, Other: got.Other, Quiet: got.Quiet,
 		},
 	}

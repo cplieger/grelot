@@ -1,8 +1,9 @@
 // Package wire is grelot's wire contract: the JSON the server sends and
 // reads, and the route rows it binds. It imports the standard library only,
-// so the server, the clients and the generator share it. Instants are
-// milliseconds since the Unix epoch and durations milliseconds, each named
-// with _ms.
+// so the server, the clients and the generator share it. The agent rows'
+// instants are RFC 3339 and their durations strings such as "2h"; the other
+// rows' instants are milliseconds since the Unix epoch and their durations
+// milliseconds, each named with _ms.
 package wire
 
 // Error is every error response, on /api and /v1 alike.

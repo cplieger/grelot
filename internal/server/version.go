@@ -9,6 +9,7 @@ import (
 
 	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/version"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // minClient is the release base of the oldest client this server speaks.
@@ -41,13 +42,8 @@ func upgradeLine(client, server string) string {
 	return fmt.Sprintf("this grelot server (%s) does not speak client %s; %s", server, client, version.Install(server))
 }
 
-// versionResponse is GET /v1/version.
-type versionResponse struct {
-	Version string `json:"version"`
-}
-
 // serverVersion is GET /v1/version, which any caller may make; the answer's
 // Grelot-Version header names the same version.
-func (s *Server) serverVersion(_ *http.Request, _ store.Caller) (status int, body any, err error) {
-	return http.StatusOK, versionResponse{Version: s.version}, nil
+func (s *Server) serverVersion(_ *http.Request, _ store.Caller, _ store.Keyed) (status int, body any, err error) {
+	return http.StatusOK, wire.Version{Version: s.version}, nil
 }

@@ -25,6 +25,12 @@ type Spec struct {
 	Response reflect.Type
 	Summary  string
 	Errors   []wire.ErrorCode
+	// Headers are the row's request headers beside Idempotency-Key and the
+	// identity headers an agent row takes from its Access.
+	Headers []wiregen.Header
+	// AnySession is an agent row serving a request with no Grelot-Session
+	// as a session with no identity.
+	AnySession bool
 }
 
 // Lookup is the spec of the row named name, a copy the caller may change.
@@ -49,6 +55,8 @@ var (
 	// errStreamingUnsupported is the event stream's hub on a writer that
 	// cannot flush.
 	errStreamingUnsupported = wire.ErrorCode{Code: "streaming_unsupported", Status: http.StatusInternalServerError}
+	// errKeyRequired refuses a session on a key's row.
+	errKeyRequired = wire.ErrorCode{Code: "auth_key_required", Status: http.StatusForbidden}
 )
 
 func typeOf[T any]() reflect.Type { return reflect.TypeFor[T]() }
@@ -65,12 +73,162 @@ var common = append(slices.Clone(sessionGate), wire.ErrTimeout, wire.ErrShutting
 
 func errs(own ...wire.ErrorCode) []wire.ErrorCode { return append(own, common...) }
 
+// agentCommon is every agent row's refusals beyond its own: the key gate's,
+// the key's bucket, the client's version and the server's own.
+var agentCommon = append(slices.Clone(sessionGate), errKeyRequired, wire.ErrRateLimited, wire.ErrUpgradeRequired,
+	wire.ErrTimeout, wire.ErrShuttingDown, wire.ErrInternal)
+
+// asIdentity is what a request acting as its session's identity can be
+// refused: a bad identity header, another key's identity, no live
+// identity, an ended delegate.
+var asIdentity = []wire.ErrorCode{wire.ErrInvalid, wire.ErrForbidden, wire.ErrNone, wire.ErrDormant, wire.ErrDelegateEnded}
+
+// agent is an agent row's refusals: own, asIdentity and agentCommon, each
+// code once.
+func agent(own ...wire.ErrorCode) []wire.ErrorCode {
+	var out []wire.ErrorCode
+	for _, c := range slices.Concat(own, asIdentity, agentCommon) {
+		if !slices.Contains(out, c) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// anySession is agent's for a row taking a request with no session: only
+// a bad identity header and another key's identity of asIdentity.
+func anySession(own ...wire.ErrorCode) []wire.ErrorCode {
+	return append(append(own, wire.ErrInvalid, wire.ErrForbidden), agentCommon...)
+}
+
 // writes is errs for a route that changes something, which the gate also
 // refuses from another site.
 func writes(own ...wire.ErrorCode) []wire.ErrorCode { return errs(append(own, errCrossOrigin)...) }
 
 // specs documents every wire.Routes row by its Name.
 var specs = map[string]Spec{
+	"register": {
+		Summary: "Register this session as a new identity, take one over, or register a delegate from its link",
+		Request: typeOf[wire.RegisterRequest](), Response: typeOf[wire.Registered](),
+		Errors: agent(wire.ErrConflict, wire.ErrOtherEnv, wire.ErrOtherProvider, wire.ErrNoEnvironment, wire.ErrOtherRepo,
+			wire.ErrLinkGone, wire.ErrKeyReused, wire.ErrStoreFull, wire.ErrTooLarge),
+	},
+	"revive": {
+		Summary: "Make this session's dormant identity, or one of this environment by name, live again",
+		Request: typeOf[wire.ReviveRequest](), Response: typeOf[wire.Registered](),
+		Errors: agent(wire.ErrNotFound, wire.ErrConflict, wire.ErrOtherEnv, wire.ErrOtherProvider, wire.ErrNoEnvironment,
+			wire.ErrKeyReused, wire.ErrStoreFull, wire.ErrTooLarge),
+	},
+	"getMe": {
+		Summary: "This session's identity and status; with turn=start, the prompt hook's opening of the turn",
+		Query:   typeOf[wire.MeQuery](), Response: typeOf[wire.Me](), Errors: agent(wire.ErrDelegateGate),
+		Headers: []wiregen.Header{
+			{
+				Name: wire.HeaderEnvironment, Arg: "grelotEnvironment", MinBytes: 32, MaxBytes: 32,
+				Description: "The session's environment id, for the take-over hint.",
+			},
+			{
+				Name: wire.HeaderMachine, Arg: "grelotMachine", MinBytes: 1, MaxBytes: 43,
+				Description: "The session's machine id, for the take-over hint.",
+			},
+		},
+	},
+	"patchMe": {
+		Summary: "Change this session's identity, or renew its lease",
+		Request: typeOf[wire.PatchMeRequest](), Response: typeOf[wire.IdentityAnswer](),
+		Errors: agent(wire.ErrConflict, wire.ErrOtherRepo, wire.ErrKeyReused, wire.ErrStoreFull, wire.ErrTooLarge),
+	},
+	"deleteMe": {
+		Summary:  "Retire this session's identity",
+		Response: typeOf[wire.Retired](), Errors: agent(wire.ErrKeyReused),
+	},
+	"listIdentities": {
+		Summary: "Every live identity, or with all=1 the dormant ones too, narrowed by the filters",
+		Query:   typeOf[wire.IdentitiesQuery](), Response: typeOf[wire.Peers](), Errors: anySession(), AnySession: true,
+	},
+	"getVersion": {
+		Summary:  "The server's version",
+		Response: typeOf[wire.Version](), Errors: anySession(), AnySession: true,
+	},
+	"createPost": {
+		Summary: "Post to announce, a path thread or an agent",
+		Request: typeOf[wire.PostRequest](), Response: typeOf[wire.Posted](),
+		Errors: agent(wire.ErrNotFound, wire.ErrConflict, wire.ErrDelegateGate, wire.ErrGone, wire.ErrOtherRepo,
+			wire.ErrTooLarge, wire.ErrKeyReused, wire.ErrStoreFull),
+	},
+	"listThreads": {
+		Summary: "The live path threads under a path",
+		Query:   typeOf[wire.PathQuery](), Response: typeOf[wire.Threads](), Errors: agent(),
+	},
+	"getReceipts": {
+		Summary: "Who has read a message this identity sent or received",
+		Params:  typeOf[wire.MessageParams](), Response: typeOf[wire.Receipts](), Errors: agent(wire.ErrNotFound),
+	},
+	"getHistory": {
+		Summary: "This identity's mailbox, read and unread, moving nothing",
+		Query:   typeOf[wire.HistoryQuery](), Response: typeOf[wire.History](), Errors: agent(),
+	},
+	"follow": {
+		Summary: "Follow a path's threads",
+		Query:   typeOf[wire.PathQuery](), Response: typeOf[wire.IdentityAnswer](),
+		Errors: agent(wire.ErrKeyReused, wire.ErrStoreFull),
+	},
+	"unfollow": {
+		Summary: "Stop following a path's threads",
+		Query:   typeOf[wire.PathQuery](), Response: typeOf[wire.IdentityAnswer](),
+		Errors: agent(wire.ErrKeyReused, wire.ErrStoreFull),
+	},
+	"ackInbox": {
+		Summary: "Mark read every inbox entry up to one",
+		Request: typeOf[wire.AckRequest](), Response: typeOf[wire.Acked](),
+		Errors: agent(wire.ErrKeyReused, wire.ErrTooLarge),
+	},
+	"reserve": {
+		Summary: "Reserve a path, or queue for it when it is taken",
+		Request: typeOf[wire.ReserveRequest](), Response: typeOf[wire.Reserved](),
+		Errors: agent(wire.ErrConflict, wire.ErrReserved, wire.ErrQueued, wire.ErrKeyReused, wire.ErrStoreFull, wire.ErrTooLarge),
+	},
+	"listReservations": {
+		Summary: "The grants and queue entries overlapping a path, every one when it is absent",
+		Query:   typeOf[wire.PathQuery](), Response: typeOf[wire.Reservations](), Errors: agent(),
+	},
+	"renewReservation": {
+		Summary: "Renew one of this identity's reservations",
+		Params:  typeOf[wire.ReservationParams](), Request: typeOf[wire.RenewRequest](), Response: typeOf[wire.ReservationAnswer](),
+		Errors: agent(wire.ErrNotFound, wire.ErrKeyReused, wire.ErrTooLarge),
+	},
+	"releaseReservation": {
+		Summary: "Free a grant or cancel a queue entry of this identity",
+		Params:  typeOf[wire.ReservationParams](), Response: typeOf[wire.ReservationAnswer](),
+		Errors: agent(wire.ErrNotFound, wire.ErrKeyReused),
+	},
+	"grantDelegate": {
+		Summary: "A single-use link a subagent registers with",
+		Request: typeOf[wire.GrantRequest](), Response: typeOf[wire.Granted](),
+		Errors: agent(wire.ErrConflict, wire.ErrKeyReused, wire.ErrStoreFull, wire.ErrTooLarge),
+	},
+	"revokeDelegate": {
+		Summary: "Revoke a label's unused link and end its delegate",
+		Params:  typeOf[wire.DelegateParams](), Response: typeOf[wire.Revoked](),
+		Errors: agent(wire.ErrNotFound, wire.ErrKeyReused),
+	},
+	"lifecycle": {
+		Summary: "A hook's report of a session's end, a turn's end or a subagent's stop",
+		Request: typeOf[wire.LifecycleRequest](), Response: typeOf[wire.Lifecycle](), Errors: agent(wire.ErrTooLarge),
+	},
+	"holdEvent": {
+		Summary: "The stop hook's hold: whether wake mail keeps the turn open",
+		Request: typeOf[wire.HoldRequest](), Response: typeOf[wire.Held](), Errors: agent(wire.ErrTooLarge),
+	},
+	"waitEvent": {
+		Summary: "A standing wait, held up to 55s, that returns this identity's next nudge",
+		Request: typeOf[wire.WaitRequest](), Response: typeOf[wire.Nudge](),
+		Errors: agent(wire.ErrTooManyWaits, wire.ErrEnded, wire.ErrReplaced, wire.ErrTooLarge),
+	},
+	"readInbox": {
+		Summary: "The oldest unread entries, marking nothing; with wait, held until wake mail arrives",
+		Query:   typeOf[wire.InboxQuery](), Response: typeOf[wire.Inbox](), Errors: agent(wire.ErrTooManyWaits),
+	},
 	"listConversations": {
 		Summary: "Conversations newest activity first, 50 a page",
 		Query:   typeOf[wire.ConversationsQuery](), Response: typeOf[wire.ConversationsPage](), Errors: errs(wire.ErrInvalid),
@@ -138,9 +296,9 @@ func Registry() *wiregen.Registry {
 	return &wiregen.Registry{
 		ErrorEnvelope: wiregen.TypeRef[wire.Error](),
 		OpenAPI: wiregen.OpenAPIInfo{
-			Title:       "grelot web API",
+			Title:       "grelot API",
 			Version:     "2",
-			Description: "The routes the web UI calls, under /api, for a signed-in session.",
+			Description: "The agents' routes under /v1, for a machine key, and the web UI's under /api, for a signed-in session.",
 		},
 		Enums: []wiregen.EnumRef{
 			wiregen.StringEnum[wire.Show](),
@@ -162,6 +320,12 @@ func Registry() *wiregen.Registry {
 			wiregen.TypeRef[wire.ThreadStats](), wiregen.TypeRef[wire.DelayHistogram](), wiregen.TypeRef[wire.Sample](),
 			wiregen.TypeRef[wire.Event](), wiregen.TypeRef[wire.EventCounts](), wiregen.TypeRef[wire.HeldTurns](),
 			wiregen.TypeRef[wire.Methods](),
+			wiregen.TypeRef[wire.Where](), wiregen.TypeRef[wire.Checkout](), wiregen.TypeRef[wire.Identity](),
+			wiregen.TypeRef[wire.Counts](), wiregen.TypeRef[wire.Hint](), wiregen.TypeRef[wire.Reservation](),
+			wiregen.TypeRef[wire.Delegate](), wiregen.TypeRef[wire.Link](), wiregen.TypeRef[wire.Peer](),
+			wiregen.TypeRef[wire.PeerReservation](), wiregen.TypeRef[wire.PeerQueued](), wiregen.TypeRef[wire.PeerDelegate](),
+			wiregen.TypeRef[wire.IdentityFields](), wiregen.TypeRef[wire.Recipients](), wiregen.TypeRef[wire.Thread](),
+			wiregen.TypeRef[wire.Receipt](), wiregen.TypeRef[wire.Entry](),
 		},
 		Endpoints: endpoints(wire.Routes),
 		Events:    []wiregen.Event{{Name: wire.EventChanged, Data: wiregen.TypeRef[wire.Changed]()}},
@@ -171,10 +335,33 @@ func Registry() *wiregen.Registry {
 // idempotencyKey is a keyed route's header, whose byte bounds count the
 // key's two quotes.
 var idempotencyKey = wiregen.Header{
-	Name: "Idempotency-Key", Arg: "idempotencyKey", Required: true,
+	Name: wire.HeaderIdempotencyKey, Arg: "idempotencyKey", Required: true,
 	MinBytes: wire.IdempotencyKeyMin + 2, MaxBytes: wire.IdempotencyKeyMax + 2,
 	Description: fmt.Sprintf("A new quoted random key of %d to %d letters, digits, - or _ per post, the same key when it is sent again.",
 		wire.IdempotencyKeyMin, wire.IdempotencyKeyMax),
+}
+
+// identityHeaders are the headers an agent row reads to act as its
+// session's identity; sessionRequired is false on an AnySession row.
+func identityHeaders(sessionRequired bool) []wiregen.Header {
+	return []wiregen.Header{
+		{
+			Name: wire.HeaderVersion, Arg: "grelotVersion", Required: true, MinBytes: 1, MaxBytes: 64,
+			Description: "The client's version, which the server answers 426 below its floor.",
+		},
+		{
+			Name: wire.HeaderSession, Arg: "grelotSession", Required: sessionRequired, MinBytes: 3, MaxBytes: 305,
+			Description: "<provider>:<host session id>, the session the request acts as.",
+		},
+		{
+			Name: wire.HeaderAs, Arg: "grelotAs", MinBytes: 1, MaxBytes: 97,
+			Description: "A delegate's handle, to act as that delegate of the session's identity.",
+		},
+		{
+			Name: wire.HeaderSelf, Arg: "grelotSelf", MinBytes: 1, MaxBytes: 1,
+			Description: "1 when the agent's own command sent the request.",
+		},
+	}
 }
 
 func endpoints(routes []wire.Route) []wiregen.Endpoint {
@@ -194,8 +381,12 @@ func endpoints(routes []wire.Route) []wiregen.Endpoint {
 		if r.Kind == wire.KindEventStream {
 			e.Kind = wiregen.KindEventStream
 		}
+		if r.Access == wire.AccessAgent {
+			e.Headers = identityHeaders(!s.AnySession)
+		}
+		e.Headers = append(e.Headers, s.Headers...)
 		if r.Keyed {
-			e.Headers = []wiregen.Header{idempotencyKey}
+			e.Headers = append(e.Headers, idempotencyKey)
 		}
 		for _, c := range s.Errors {
 			e.Errors = append(e.Errors, wiregen.ErrorRef{Code: c.Code, Status: c.Status})

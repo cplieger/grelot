@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // slowCommits holds each write for delay once armed: as a store Woke hook
@@ -79,7 +80,7 @@ func newInProcessHarness(t *testing.T, o store.Options) *harness {
 
 // keyHeader is the Idempotency-Key header carrying key, quoted.
 func keyHeader(session, key string) map[string]string {
-	return map[string]string{headerSession: session, headerKey: `"` + key + `"`}
+	return map[string]string{wire.HeaderSession: session, wire.HeaderIdempotencyKey: `"` + key + `"`}
 }
 
 // postsTo counts the posts with subject that reached session's history.
@@ -109,7 +110,7 @@ func TestKeyedPost_pastItsDeadlineIs503TimeoutWithNothingStored(t *testing.T) {
 	defer cancel()
 
 	r := h.requestCtx(ctx, http.MethodPost, "/v1/posts", postBody(map[string]any{"agent": "reader"}, "late", "a body"),
-		map[string]string{headerSession: sessA})
+		map[string]string{wire.HeaderSession: sessA})
 
 	slow.armed.Store(false)
 	if r.status != http.StatusServiceUnavailable || r.str("code") != "timeout" || r.header.Get("Retry-After") != "1" {
@@ -133,7 +134,7 @@ func TestKeyedPost_committedAsItsDeadlinePassesIs201WithItsStatusLine(t *testing
 	defer cancel()
 
 	r := h.requestCtx(ctx, http.MethodPost, "/v1/posts", postBody(map[string]any{"agent": "reader"}, "slow", "a body"),
-		map[string]string{headerSession: sessA})
+		map[string]string{wire.HeaderSession: sessA})
 
 	slow.armed.Store(false)
 	if ctx.Err() == nil {
@@ -157,7 +158,7 @@ func TestEventHold_committedAsItsDeadlinePassesIs200(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), slowCommitDeadline)
 	defer cancel()
 
-	r := h.requestCtx(ctx, http.MethodPost, "/v1/events/hold", map[string]any{"for": "stop"}, map[string]string{headerSession: sessB})
+	r := h.requestCtx(ctx, http.MethodPost, "/v1/events/hold", map[string]any{"for": "stop"}, map[string]string{wire.HeaderSession: sessB})
 
 	slow.armed.Store(false)
 	if ctx.Err() == nil {
@@ -184,7 +185,7 @@ func TestKeyedPost_reSentAnswersItsFirstAnswerAndStoresOnce(t *testing.T) {
 		t.Errorf("re-send answered\n%s\nwant the first answer\n%s", again.raw, first.raw)
 	}
 	if again.line() == "" {
-		t.Errorf("no %s on the re-send's answer", headerStatus)
+		t.Errorf("no %s on the re-send's answer", wire.HeaderStatus)
 	}
 	if n := h.postsTo(sessB, "once"); n != 1 {
 		t.Errorf("reader's history holds %d of the post, want 1", n)
@@ -237,7 +238,7 @@ func TestKeyedWrite_aMissingOrMalformedKeyIs400(t *testing.T) {
 		{name: "a list of two", key: `"abcdefghijklmnop", "bcdefghijklmnopq"`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			r := h.request(http.MethodPost, "/v1/posts", body, map[string]string{headerSession: sessA, headerKey: c.key})
+			r := h.request(http.MethodPost, "/v1/posts", body, map[string]string{wire.HeaderSession: sessA, wire.HeaderIdempotencyKey: c.key})
 			if r.status != http.StatusBadRequest || !strings.Contains(r.str("error"), "Idempotency-Key") {
 				t.Errorf("post with key %q: %d %s, want 400 naming the Idempotency-Key", c.key, r.status, r.raw)
 			}
@@ -248,7 +249,7 @@ func TestKeyedWrite_aMissingOrMalformedKeyIs400(t *testing.T) {
 		{name: "64 characters of every kind", key: `"` + strings.Repeat("aZ0-_", 12) + `abcd"`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			if r := h.request(http.MethodPost, "/v1/posts", body, map[string]string{headerSession: sessA, headerKey: c.key}); r.status != http.StatusCreated {
+			if r := h.request(http.MethodPost, "/v1/posts", body, map[string]string{wire.HeaderSession: sessA, wire.HeaderIdempotencyKey: c.key}); r.status != http.StatusCreated {
 				t.Errorf("post with key %s: %d %s, want 201", c.key, r.status, r.raw)
 			}
 		})
@@ -424,7 +425,7 @@ func TestKeyedWrites_reSendAnswersTheFirstAnswerWhereARunWouldRefuse(t *testing.
 		h := newHarness(t)
 		h.mustRegister(sessA, "alpha")
 		headers := keyHeader(sessA, "grant-key-000001")
-		headers[headerSelf] = "1"
+		headers[wire.HeaderSelf] = "1"
 		first, _ := resend(t, h, http.MethodPost, "/v1/delegates", map[string]any{"label": "review", "ttl": "1h"}, headers)
 		if first.status != http.StatusCreated || first.str("link") == "" {
 			t.Errorf("grant: %d %s, want 201 with a link", first.status, first.raw)
@@ -432,39 +433,41 @@ func TestKeyedWrites_reSendAnswersTheFirstAnswerWhereARunWouldRefuse(t *testing.
 	})
 }
 
-// A renewal alone needs no key: a re-sent one only moves the expiry, so a
-// client older than the key rule still renews; every other change to the
-// identity still needs its key.
-func TestPatchMe_aRenewalAloneTakesNoKey(t *testing.T) {
+// A renewal alone is a keyed write like every other change to the
+// identity: with no key it is refused and moves nothing, keyed it renews,
+// and its key re-sent replays the first answer.
+func TestPatchMe_requiresAKey(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegister(sessA, "renewer")
-	noKey := map[string]string{headerSession: sessA, headerKey: ""}
-	for _, c := range []struct {
-		body any
-		name string
-		want int
-	}{
-		{name: "ttl and where", body: map[string]any{"ttl": "3h", "where": where("a")}, want: http.StatusOK},
-		{name: "sent again", body: map[string]any{"ttl": "4h", "where": where("a")}, want: http.StatusOK},
-		{name: "ttl and a description", body: map[string]any{"ttl": "4h", "description": "other work"}, want: http.StatusBadRequest},
-		{name: "a description", body: map[string]any{"description": "other work"}, want: http.StatusBadRequest},
-		{name: "not an object", body: []string{"ttl"}, want: http.StatusBadRequest},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			r := h.request(http.MethodPatch, "/v1/me", c.body, noKey)
-			if r.status != c.want {
-				t.Fatalf("%d %s, want %d", r.status, r.raw, c.want)
-			}
-			if c.want == http.StatusBadRequest && !strings.Contains(r.str("error"), "requires an Idempotency-Key") {
-				t.Errorf("refusal %q, want it to name the missing key", r.str("error"))
-			}
-		})
+	expires := func() string {
+		t.Helper()
+		me := h.as(sessA, http.MethodGet, "/v1/me", nil)
+		return me.body["identity"].(map[string]any)["expires_at"].(string)
 	}
-	me := h.as(sessA, http.MethodGet, "/v1/me", nil)
-	if got := me.body["identity"].(map[string]any)["description"]; got != "building the HTTP API" {
-		t.Errorf("description %v, want the unkeyed change refused", got)
+	registered := expires()
+	renewal := map[string]any{"ttl": "3h", "where": where("a")}
+
+	unkeyed := h.request(http.MethodPatch, "/v1/me", renewal, map[string]string{wire.HeaderSession: sessA, wire.HeaderIdempotencyKey: ""})
+	if unkeyed.status != http.StatusBadRequest || unkeyed.str("code") != "invalid" ||
+		!strings.Contains(unkeyed.str("error"), "requires an Idempotency-Key") {
+		t.Errorf("unkeyed renewal: %d %s, want 400 invalid naming the missing key", unkeyed.status, unkeyed.raw)
 	}
-	if got := me.body["identity"].(map[string]any)["ttl"]; got != "4h0m0s" {
-		t.Errorf("ttl %v, want the last renewal's 4h0m0s", got)
+	if got := expires(); got != registered {
+		t.Errorf("expires_at %s after the unkeyed renewal, want the registered %s", got, registered)
+	}
+
+	headers := keyHeader(sessA, "renew-key-0000001")
+	first := h.request(http.MethodPatch, "/v1/me", renewal, headers)
+	want := testNow.Add(3 * time.Hour).Format(time.RFC3339)
+	if got := first.body["identity"].(map[string]any)["expires_at"]; first.status != http.StatusOK || got != want {
+		t.Fatalf("keyed renewal: %d %s, want 200 expiring at %s", first.status, first.raw, want)
+	}
+	h.clk.advance(time.Minute)
+	again := h.request(http.MethodPatch, "/v1/me", renewal, headers)
+	if again.status != first.status || again.raw != first.raw {
+		t.Errorf("re-sent: %d %s, want the first answer %d %s", again.status, again.raw, first.status, first.raw)
+	}
+	if got := expires(); got != want {
+		t.Errorf("expires_at %s after the re-send, want the first renewal's %s", got, want)
 	}
 }

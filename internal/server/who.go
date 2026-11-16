@@ -11,47 +11,10 @@ import (
 	"time"
 
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
-// whoEntry is one identity in GET /v1/identities. It never carries a
-// where value, a session id or a delegate's scope.
-type whoEntry struct {
-	Expires      time.Time          `json:"expires_at"`
-	LastSeen     time.Time          `json:"last_seen,omitzero"`
-	Name         string             `json:"name"`
-	Description  string             `json:"description"`
-	State        string             `json:"state"`
-	Host         string             `json:"host"`
-	OS           string             `json:"os"`
-	Arch         string             `json:"arch"`
-	Relation     string             `json:"relation"`
-	Paths        []string           `json:"paths"`
-	Follows      []string           `json:"follows"`
-	Reservations []whoReservation   `json:"reservations"`
-	Queued       []whoQueued        `json:"queued"`
-	Delegates    []whoDelegateEntry `json:"delegates"`
-	Online       bool               `json:"online"`
-}
-
-type whoReservation struct {
-	Expires time.Time `json:"expires_at"`
-	Path    string    `json:"path"`
-	Queue   int       `json:"queue"`
-}
-
-type whoQueued struct {
-	Path  string `json:"path"`
-	Place int    `json:"place"`
-}
-
-type whoDelegateEntry struct {
-	LastSeen    time.Time `json:"last_seen,omitzero"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Online      bool      `json:"online"`
-}
-
-// whoFields are the names fields= takes, in whoEntry's JSON names.
+// whoFields are the names fields= takes, in wire.Peer's JSON names.
 var whoFields = []string{
 	"arch", "delegates", "description", "expires_at", "follows", "host", "last_seen",
 	"name", "online", "os", "paths", "queued", "relation", "reservations", "state",
@@ -61,7 +24,7 @@ var whoFields = []string{
 // ones too, narrowed by the filters, which combine with AND. A session
 // with no identity, or no Grelot-Session at all, sees every relation as
 // unknown.
-func (s *Server) who(r *http.Request, c store.Caller) (status int, body any, err error) {
+func (s *Server) who(r *http.Request, c store.Caller, _ store.Keyed) (status int, body any, err error) {
 	q := r.URL.Query()
 	fields, err := whoFieldSet(q.Get("fields"))
 	if err != nil {
@@ -104,23 +67,23 @@ func (s *Server) who(r *http.Request, c store.Caller) (status int, body any, err
 	return http.StatusOK, map[string]any{"identities": entries}, nil
 }
 
-func whoOut(p *store.Peer, online func(*store.Identity) bool, now time.Time) whoEntry {
-	e := whoEntry{
+func whoOut(p *store.Peer, online func(*store.Identity) bool, now time.Time) wire.Peer {
+	e := wire.Peer{
 		Expires: p.Expires.UTC(), LastSeen: p.LastSeen.UTC(), Name: p.Name, Description: p.Description,
 		State: p.State, Host: p.Host, OS: p.OS, Arch: p.Arch, Relation: p.Relation,
 		Paths: nonNil(p.Paths), Follows: nonNil(p.Follows),
-		Reservations: []whoReservation{}, Queued: []whoQueued{}, Delegates: []whoDelegateEntry{},
+		Reservations: []wire.PeerReservation{}, Queued: []wire.PeerQueued{}, Delegates: []wire.PeerDelegate{},
 		Online: p.State == stateLive && online(&p.Identity),
 	}
 	for _, v := range p.Reservations {
-		e.Reservations = append(e.Reservations, whoReservation{Expires: v.Expires.UTC(), Path: v.Path, Queue: v.Queue})
+		e.Reservations = append(e.Reservations, wire.PeerReservation{Expires: v.Expires.UTC(), Path: v.Path, Queue: v.Queue})
 	}
 	for _, v := range p.Queued {
-		e.Queued = append(e.Queued, whoQueued{Path: v.Path, Place: v.Place})
+		e.Queued = append(e.Queued, wire.PeerQueued{Path: v.Path, Place: v.Place})
 	}
 	for i := range p.Delegates {
 		d := &p.Delegates[i]
-		e.Delegates = append(e.Delegates, whoDelegateEntry{
+		e.Delegates = append(e.Delegates, wire.PeerDelegate{
 			LastSeen: d.LastSeen.UTC(), Name: d.Name, Description: d.Description, Online: delegateOnline(&d.Identity, now),
 		})
 	}
@@ -144,7 +107,7 @@ func whoFieldSet(v string) ([]string, error) {
 }
 
 // pick is e with only the named fields.
-func pick(e *whoEntry, fields []string) (map[string]json.RawMessage, error) {
+func pick(e *wire.Peer, fields []string) (map[string]json.RawMessage, error) {
 	b, err := json.Marshal(e)
 	if err != nil {
 		return nil, err

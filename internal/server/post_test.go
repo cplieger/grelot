@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // postBody is a post to to that changes no identity field.
@@ -52,7 +53,7 @@ func TestPost_countsRecipientsByRelation(t *testing.T) {
 		t.Errorf("message id missing: %s", r.raw)
 	}
 	if r.line() == "" {
-		t.Errorf("no %s on the post's answer", headerStatus)
+		t.Errorf("no %s on the post's answer", wire.HeaderStatus)
 	}
 }
 
@@ -156,7 +157,7 @@ func TestPost_aDirectPostToADormantIdentityNamesItsDormancy(t *testing.T) {
 func (h *harness) grantDelegate(session, label string) string {
 	h.t.Helper()
 	g := h.request(http.MethodPost, "/v1/delegates", map[string]any{"label": label, "ttl": "1h"},
-		map[string]string{headerSession: session, headerSelf: "1"})
+		map[string]string{wire.HeaderSession: session, wire.HeaderSelf: "1"})
 	if g.status != http.StatusCreated {
 		h.t.Fatalf("grant: %d %s", g.status, g.raw)
 	}
@@ -172,7 +173,7 @@ func TestPost_aDelegatesPostOutsideItsScopeIs403(t *testing.T) {
 	h.mustRegister(sessA, "parent")
 	handle := h.grantDelegate(sessA, "review")
 	r := h.request(http.MethodPost, "/v1/posts", postBody(map[string]any{"path": repoGrelot}, "hello", "a body"),
-		map[string]string{headerSession: sessA, headerAs: handle})
+		map[string]string{wire.HeaderSession: sessA, wire.HeaderAs: handle})
 	if r.status != http.StatusForbidden {
 		t.Fatalf("post outside the scope: %d %s, want 403", r.status, r.raw)
 	}
@@ -186,14 +187,14 @@ func TestPost_thirtyAMinuteADelegateCountingAsItsParent(t *testing.T) {
 	h.mustRegister(sessA, "parent")
 	h.mustRegister(sessB, "reader")
 	handle := h.grantDelegate(sessA, "review")
-	self := map[string]string{headerSession: sessA, headerSelf: "1"}
+	self := map[string]string{wire.HeaderSession: sessA, wire.HeaderSelf: "1"}
 	post := func(headers map[string]string, to, subject string) *response {
 		return h.request(http.MethodPost, "/v1/posts", postBody(map[string]any{"agent": to}, subject, "a body"), headers)
 	}
 	if r := post(self, "reader", strings.Repeat("s", 121)); r.status != http.StatusBadRequest {
 		t.Fatalf("over-long subject: %d %s, want 400", r.status, r.raw)
 	}
-	if r := post(map[string]string{headerSession: sessA, headerAs: handle}, "parent", "from the delegate"); r.status != http.StatusCreated {
+	if r := post(map[string]string{wire.HeaderSession: sessA, wire.HeaderAs: handle}, "parent", "from the delegate"); r.status != http.StatusCreated {
 		t.Fatalf("delegate post: %d %s", r.status, r.raw)
 	}
 	for i := range 29 {

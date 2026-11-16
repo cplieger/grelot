@@ -20,7 +20,7 @@ import (
 )
 
 // noKey removes the key request adds to a write.
-var noKey = map[string]string{headerKey: ""}
+var noKey = map[string]string{wire.HeaderIdempotencyKey: ""}
 
 // webGet sends a GET and decodes its 200 answer into T.
 func webGet[T any](h *harness, path string) T {
@@ -57,7 +57,7 @@ func TestWeb_everyRouteButThePublicOnesRefusesARequestWithNoSignIn(t *testing.T)
 	}
 	for i, p := range routePaths() {
 		route := &wire.Routes[i]
-		if route.Public {
+		if route.Access != wire.AccessOwner {
 			continue
 		}
 		t.Run(strings.ReplaceAll(route.Method+p, "/", "_"), func(t *testing.T) {
@@ -75,7 +75,7 @@ func TestWeb_everyRouteButThePublicOnesRefusesARequestWithNoSignIn(t *testing.T)
 func TestWeb_everyRouteDeclaresTheGatesCodes(t *testing.T) {
 	h := newHarnessWith(t, store.Options{}, withAuth(testAuth(t)))
 	tbl := newTable()
-	h.srv.webRoutes(tbl)
+	h.srv.chains(tbl)
 	for i := range tbl.rows {
 		row := tbl.rows[i]
 		route := &wire.Routes[slices.IndexFunc(wire.Routes, func(r wire.Route) bool { return r.Pattern() == row.Name })]
@@ -103,7 +103,7 @@ func TestWeb_everyRouteDeclaresTheGatesCodes(t *testing.T) {
 func routePaths() []string {
 	out := make([]string, 0, len(wire.Routes))
 	for i := range wire.Routes {
-		out = append(out, strings.NewReplacer("{id}", "1", "{name}", "alpha").Replace(wire.Routes[i].Path))
+		out = append(out, strings.NewReplacer("{id}", "1", "{name}", "alpha", "{label}", "review").Replace(wire.Routes[i].Path))
 	}
 	return out
 }
@@ -194,8 +194,8 @@ func TestWeb_createPostReplaysItsKey(t *testing.T) {
 	key := newTestKey()
 	body := wire.UserPostRequest{Subject: "once", Body: "sent twice", To: wire.PostTarget{Agent: "alpha"}}
 
-	first := h.request(http.MethodPost, "/api/posts", body, map[string]string{headerKey: key})
-	again := h.request(http.MethodPost, "/api/posts", body, map[string]string{headerKey: key})
+	first := h.request(http.MethodPost, "/api/posts", body, map[string]string{wire.HeaderIdempotencyKey: key})
+	again := h.request(http.MethodPost, "/api/posts", body, map[string]string{wire.HeaderIdempotencyKey: key})
 	if first.status != http.StatusCreated || again.status != http.StatusCreated || first.raw != again.raw {
 		t.Errorf("first %d %s, again %d %s, want the same 201 answer", first.status, first.raw, again.status, again.raw)
 	}
@@ -204,7 +204,7 @@ func TestWeb_createPostReplaysItsKey(t *testing.T) {
 	}
 
 	body.Body = "a different body"
-	if r := h.request(http.MethodPost, "/api/posts", body, map[string]string{headerKey: key}); r.status != http.StatusUnprocessableEntity || r.str("code") != "key_reused" {
+	if r := h.request(http.MethodPost, "/api/posts", body, map[string]string{wire.HeaderIdempotencyKey: key}); r.status != http.StatusUnprocessableEntity || r.str("code") != "key_reused" {
 		t.Errorf("used key on another body: %d %s, want 422 key_reused", r.status, r.raw)
 	}
 	if r := h.request(http.MethodPost, "/api/posts", body, noKey); r.status != http.StatusBadRequest || !strings.Contains(r.str("error"), "requires an Idempotency-Key") {

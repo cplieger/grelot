@@ -14,6 +14,7 @@ import (
 	"github.com/cplieger/grelot/internal/auth"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // withLimits runs the server on l, Limits{} for every default.
@@ -45,8 +46,8 @@ func TestLimits_aKeyPastItsBurstIs429UntilATokenIsBack(t *testing.T) {
 	if got := r.header.Get("Retry-After"); got != "1" {
 		t.Errorf("Retry-After %q, want 1: a token is back in 50 ms, rounded up to whole seconds", got)
 	}
-	if r.header.Get(headerVersion) != testVersion {
-		t.Errorf("the 429 names version %q, want %q", r.header.Get(headerVersion), testVersion)
+	if r.header.Get(wire.HeaderVersion) != testVersion {
+		t.Errorf("the 429 names version %q, want %q", r.header.Get(wire.HeaderVersion), testVersion)
 	}
 	if got := h.scrape()[`grelot_requests_limited_total{limit="rate"}`]; got != 1 {
 		t.Errorf(`grelot_requests_limited_total{limit="rate"} = %v, want 1`, got)
@@ -82,7 +83,7 @@ func registerUnder(h *harness, key, name string) {
 // standingWait sends name's standing wait of 55 s with key.
 func standingWait(h *harness, key, name string) *pending {
 	headers := withBearer(session(name), key)
-	headers[headerSelf] = "1"
+	headers[wire.HeaderSelf] = "1"
 	return h.async(http.MethodPost, "/v1/events/wait", map[string]any{"wait": "55s"}, headers)
 }
 
@@ -215,12 +216,12 @@ func TestAuthFailures_countACredentialPresentedAndRefused(t *testing.T) {
 
 	// The reasons are access's gate.failure reasons (access internal/failreason).
 	t.Run("an unknown key is key_unknown and no key counts nothing", func(t *testing.T) {
-		h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": "", headerSession: sessA})
-		h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": "Basic b3duZXI6cGFzcw==", headerSession: sessA})
+		h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": "", wire.HeaderSession: sessA})
+		h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": "Basic b3duZXI6cGFzcw==", wire.HeaderSession: sessA})
 		if got := failures("key_unknown"); got != 0 {
 			t.Fatalf("key_unknown %v after a request with no key and one with another scheme, want 0", got)
 		}
-		r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": "Bearer grelot_unknown", headerSession: sessA})
+		r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": "Bearer grelot_unknown", wire.HeaderSession: sessA})
 		if r.status != http.StatusUnauthorized || failures("key_unknown") != 1 {
 			t.Errorf("an unknown key: %d, key_unknown %v, want 401 and 1", r.status, failures("key_unknown"))
 		}
@@ -237,7 +238,7 @@ func TestAuthFailures_countACredentialPresentedAndRefused(t *testing.T) {
 	})
 	t.Run("a session on /v1 is key_required", func(t *testing.T) {
 		before := failures("key_required")
-		r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": "", "Cookie": h.browser.header(), headerSession: sessA})
+		r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": "", "Cookie": h.browser.header(), wire.HeaderSession: sessA})
 		if r.status != http.StatusForbidden || failures("key_required") != before+1 {
 			t.Errorf("a session on /v1: %d %s, key_required %v, want 403 and %v", r.status, r.raw, failures("key_required"), before+1)
 		}

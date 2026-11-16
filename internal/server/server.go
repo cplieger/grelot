@@ -208,8 +208,7 @@ func (s *Server) HTTPServer() *http.Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	t := newTable()
-	s.routes(t)
-	s.webRoutes(t)
+	s.chains(t)
 	routes := s.auth.Routes()
 	for i := range routes {
 		t.add(routes[i].Method+" "+routes[i].Path, gate.Public, routes[i].Handler)
@@ -246,38 +245,6 @@ func (s *Server) OpsHandler() http.Handler {
 func (s *Server) recordHTTP(rm httpserver.RequestMetric) {
 	s.metrics.RecordHTTP(rm)
 	s.sampler.request(rm)
-}
-
-// routes adds every /v1 route to t as a key's row.
-func (s *Server) routes(t *table) {
-	handleFor := func(pattern string, h http.Handler, d time.Duration) {
-		t.add(pattern, gate.Key, s.machine(httpserver.RouteDeadline(h, d)))
-	}
-	handle := func(pattern string, h http.Handler) { handleFor(pattern, h, routeDeadline) }
-	handle("POST /v1/register", s.keyed(s.register))
-	handle("POST /v1/revive", s.keyed(s.revive))
-	handle("GET /v1/me", s.identity(s.me))
-	handle("PATCH /v1/me", s.renewable(s.patchMe))
-	handle("DELETE /v1/me", s.keyed(s.deleteMe))
-	handle("GET /v1/identities", s.anyone(s.who))
-	handle("GET /v1/version", s.anyone(s.serverVersion))
-	handle("POST /v1/posts", s.keyed(s.post))
-	handle("GET /v1/threads", s.identity(s.threads))
-	handle("GET /v1/messages/{id}/receipts", s.identity(s.receipts))
-	handle("GET /v1/history", s.identity(s.history))
-	handle("PUT /v1/follows", s.keyed(s.follow))
-	handle("DELETE /v1/follows", s.keyed(s.unfollow))
-	handle("POST /v1/inbox/ack", s.keyed(s.ack))
-	handle("POST /v1/reservations", s.keyed(s.reserve))
-	handle("GET /v1/reservations", s.identity(s.reservations))
-	handle("PATCH /v1/reservations/{id}", s.keyed(s.renewReservation))
-	handle("DELETE /v1/reservations/{id}", s.keyed(s.release))
-	handle("POST /v1/delegates", s.keyed(s.grant))
-	handle("DELETE /v1/delegates/{label}", s.keyed(s.revoke))
-	handle("POST /v1/lifecycle", s.identity(s.lifecycle))
-	handle("POST /v1/events/hold", s.identity(s.eventHold))
-	handleFor("POST /v1/events/wait", s.identity(s.standingWait), waitRouteDeadline)
-	handleFor("GET /v1/inbox", s.identity(s.inbox), waitRouteDeadline)
 }
 
 // state is the census the /metrics gauges read; false when the store

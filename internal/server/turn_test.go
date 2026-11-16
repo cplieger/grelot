@@ -9,6 +9,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // stopHold sends the stop hook's hold from session, with last when set.
@@ -407,7 +409,7 @@ func TestInTurnWait_closingWithNoMailWakesAStandingWaitItDeferred(t *testing.T) 
 
 // inTurn holds GET /v1/inbox?wait= from session in its own goroutine.
 func (h *harness) inTurn(session string, wait time.Duration) *pending {
-	return h.async(http.MethodGet, "/v1/inbox?wait="+wait.String(), nil, map[string]string{headerSession: session})
+	return h.async(http.MethodGet, "/v1/inbox?wait="+wait.String(), nil, map[string]string{wire.HeaderSession: session})
 }
 
 func TestInTurnWait_returnsMailPastReadWhateverTheNudgeState(t *testing.T) {

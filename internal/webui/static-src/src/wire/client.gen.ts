@@ -2,8 +2,8 @@
 
 import { clientRequest } from "../transport.js";
 import type { ApiResult, EndpointSpec } from "../transport.js";
-import { decodeAgentList, decodeAgentPage, decodeConversation, decodeConversationsPage, decodeHistoryPage, decodeMarkedRead, decodeSettings, decodeSignIn, decodeStats, decodeUserPosted, decodeUserReceipts } from "./decoders.gen.js";
-import type { AgentList, AgentPage, Conversation, ConversationsPage, HistoryPage, MarkReadRequest, MarkedRead, Settings, SettingsRequest, Show, SignIn, Stats, StatsRange, UserPostRequest, UserPosted, UserReceipts } from "./types.gen.js";
+import { decodeAcked, decodeAgentList, decodeAgentPage, decodeConversation, decodeConversationsPage, decodeGranted, decodeHeld, decodeHistory, decodeHistoryPage, decodeIdentityAnswer, decodeInbox, decodeLifecycle, decodeMarkedRead, decodeMe, decodeNudge, decodePeers, decodePosted, decodeReceipts, decodeRegistered, decodeReservationAnswer, decodeReservations, decodeReserved, decodeRetired, decodeRevoked, decodeSettings, decodeSignIn, decodeStats, decodeThreads, decodeUserPosted, decodeUserReceipts, decodeVersion } from "./decoders.gen.js";
+import type { AckRequest, Acked, AgentList, AgentPage, Conversation, ConversationsPage, GrantRequest, Granted, Held, History, HistoryPage, HoldRequest, IdentityAnswer, Inbox, Lifecycle, LifecycleRequest, MarkReadRequest, MarkedRead, Me, Nudge, PatchMeRequest, Peers, PostRequest, Posted, Receipts, RegisterRequest, Registered, RenewRequest, ReservationAnswer, Reservations, ReserveRequest, Reserved, Retired, ReviveRequest, Revoked, Settings, SettingsRequest, Show, SignIn, Stats, StatsRange, Threads, UserPostRequest, UserPosted, UserReceipts, Version, WaitRequest } from "./types.gen.js";
 
 /** Options accepted by every generated client function. */
 export interface ClientOpts {
@@ -19,6 +19,1194 @@ function qs(entries: readonly (readonly [string, string | number | boolean | und
   }
   const s = p.toString();
   return s === "" ? "" : `?${s}`;
+}
+
+export interface RegisterArgs {
+  readonly body: RegisterRequest;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  readonly idempotencyKey: string;
+}
+
+const registerCodes = ["conflict", "other_environment", "other_provider", "no_environment", "other_repository", "link_gone", "key_reused", "store_full", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type RegisterError = (typeof registerCodes)[number];
+
+/** Register this session as a new identity, take one over, or register a delegate from its link */
+export const registerEndpoint = {
+  method: "POST",
+  path: "/v1/register",
+  codes: registerCodes,
+  request(args: RegisterArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    headers["Idempotency-Key"] = args.idempotencyKey;
+    return {
+      method: "POST",
+      path: "/v1/register",
+      body: args.body,
+      headers,
+      codes: registerCodes,
+    };
+  },
+  decode: decodeRegistered,
+} as const;
+
+/** Register this session as a new identity, take one over, or register a delegate from its link */
+export function register(args: RegisterArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Registered, RegisterError>> {
+  return clientRequest<Registered, RegisterError>(registerEndpoint.request(args), registerEndpoint.decode, opts);
+}
+
+export interface ReviveArgs {
+  readonly body: ReviveRequest;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  readonly idempotencyKey: string;
+}
+
+const reviveCodes = ["not_found", "conflict", "other_environment", "other_provider", "no_environment", "key_reused", "store_full", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type ReviveError = (typeof reviveCodes)[number];
+
+/** Make this session's dormant identity, or one of this environment by name, live again */
+export const reviveEndpoint = {
+  method: "POST",
+  path: "/v1/revive",
+  codes: reviveCodes,
+  request(args: ReviveArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    headers["Idempotency-Key"] = args.idempotencyKey;
+    return {
+      method: "POST",
+      path: "/v1/revive",
+      body: args.body,
+      headers,
+      codes: reviveCodes,
+    };
+  },
+  decode: decodeRegistered,
+} as const;
+
+/** Make this session's dormant identity, or one of this environment by name, live again */
+export function revive(args: ReviveArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Registered, ReviveError>> {
+  return clientRequest<Registered, ReviveError>(reviveEndpoint.request(args), reviveEndpoint.decode, opts);
+}
+
+export interface GetMeArgs {
+  readonly turn?: string;
+  readonly proc?: string;
+  readonly signal?: number;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+  /** The session's environment id, for the take-over hint. */
+  readonly grelotEnvironment?: string;
+  /** The session's machine id, for the take-over hint. */
+  readonly grelotMachine?: string;
+}
+
+const getMeCodes = ["delegate_gate", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type GetMeError = (typeof getMeCodes)[number];
+
+/** This session's identity and status; with turn=start, the prompt hook's opening of the turn */
+export const getMeEndpoint = {
+  method: "GET",
+  path: "/v1/me",
+  codes: getMeCodes,
+  request(args: GetMeArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    if (args.grelotEnvironment !== undefined) {
+      headers["Grelot-Environment"] = args.grelotEnvironment;
+    }
+    if (args.grelotMachine !== undefined) {
+      headers["Grelot-Machine"] = args.grelotMachine;
+    }
+    return {
+      method: "GET",
+      path: "/v1/me" + qs([["turn", args.turn], ["proc", args.proc], ["signal", args.signal]]),
+      headers,
+      codes: getMeCodes,
+    };
+  },
+  decode: decodeMe,
+} as const;
+
+/** This session's identity and status; with turn=start, the prompt hook's opening of the turn */
+export function getMe(args: GetMeArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Me, GetMeError>> {
+  return clientRequest<Me, GetMeError>(getMeEndpoint.request(args), getMeEndpoint.decode, opts);
+}
+
+export interface PatchMeArgs {
+  readonly body: PatchMeRequest;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  readonly idempotencyKey: string;
+}
+
+const patchMeCodes = ["conflict", "other_repository", "key_reused", "store_full", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type PatchMeError = (typeof patchMeCodes)[number];
+
+/** Change this session's identity, or renew its lease */
+export const patchMeEndpoint = {
+  method: "PATCH",
+  path: "/v1/me",
+  codes: patchMeCodes,
+  request(args: PatchMeArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    headers["Idempotency-Key"] = args.idempotencyKey;
+    return {
+      method: "PATCH",
+      path: "/v1/me",
+      body: args.body,
+      headers,
+      codes: patchMeCodes,
+    };
+  },
+  decode: decodeIdentityAnswer,
+} as const;
+
+/** Change this session's identity, or renew its lease */
+export function patchMe(args: PatchMeArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<IdentityAnswer, PatchMeError>> {
+  return clientRequest<IdentityAnswer, PatchMeError>(patchMeEndpoint.request(args), patchMeEndpoint.decode, opts);
+}
+
+export interface DeleteMeArgs {
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  readonly idempotencyKey: string;
+}
+
+const deleteMeCodes = ["key_reused", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type DeleteMeError = (typeof deleteMeCodes)[number];
+
+/** Retire this session's identity */
+export const deleteMeEndpoint = {
+  method: "DELETE",
+  path: "/v1/me",
+  codes: deleteMeCodes,
+  request(args: DeleteMeArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    headers["Idempotency-Key"] = args.idempotencyKey;
+    return {
+      method: "DELETE",
+      path: "/v1/me",
+      headers,
+      codes: deleteMeCodes,
+    };
+  },
+  decode: decodeRetired,
+} as const;
+
+/** Retire this session's identity */
+export function deleteMe(args: DeleteMeArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Retired, DeleteMeError>> {
+  return clientRequest<Retired, DeleteMeError>(deleteMeEndpoint.request(args), deleteMeEndpoint.decode, opts);
+}
+
+export interface ListIdentitiesArgs {
+  readonly fields?: string;
+  readonly path?: string;
+  readonly repo?: string;
+  readonly holds?: string;
+  readonly queued?: string;
+  readonly q?: string;
+  readonly online?: string;
+  readonly here?: string;
+  readonly all?: string;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession?: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+}
+
+const listIdentitiesCodes = ["invalid", "forbidden", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type ListIdentitiesError = (typeof listIdentitiesCodes)[number];
+
+/** Every live identity, or with all=1 the dormant ones too, narrowed by the filters */
+export const listIdentitiesEndpoint = {
+  method: "GET",
+  path: "/v1/identities",
+  codes: listIdentitiesCodes,
+  request(args: ListIdentitiesArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    if (args.grelotSession !== undefined) {
+      headers["Grelot-Session"] = args.grelotSession;
+    }
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    return {
+      method: "GET",
+      path: "/v1/identities" + qs([["fields", args.fields], ["path", args.path], ["repo", args.repo], ["holds", args.holds], ["queued", args.queued], ["q", args.q], ["online", args.online], ["here", args.here], ["all", args.all]]),
+      headers,
+      codes: listIdentitiesCodes,
+    };
+  },
+  decode: decodePeers,
+} as const;
+
+/** Every live identity, or with all=1 the dormant ones too, narrowed by the filters */
+export function listIdentities(args: ListIdentitiesArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Peers, ListIdentitiesError>> {
+  return clientRequest<Peers, ListIdentitiesError>(listIdentitiesEndpoint.request(args), listIdentitiesEndpoint.decode, opts);
+}
+
+export interface GetVersionArgs {
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession?: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+}
+
+const getVersionCodes = ["invalid", "forbidden", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type GetVersionError = (typeof getVersionCodes)[number];
+
+/** The server's version */
+export const getVersionEndpoint = {
+  method: "GET",
+  path: "/v1/version",
+  codes: getVersionCodes,
+  request(args: GetVersionArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    if (args.grelotSession !== undefined) {
+      headers["Grelot-Session"] = args.grelotSession;
+    }
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    return {
+      method: "GET",
+      path: "/v1/version",
+      headers,
+      codes: getVersionCodes,
+    };
+  },
+  decode: decodeVersion,
+} as const;
+
+/** The server's version */
+export function getVersion(args: GetVersionArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Version, GetVersionError>> {
+  return clientRequest<Version, GetVersionError>(getVersionEndpoint.request(args), getVersionEndpoint.decode, opts);
+}
+
+export interface CreatePostArgs {
+  readonly body: PostRequest;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  readonly idempotencyKey: string;
+}
+
+const createPostCodes = ["not_found", "conflict", "delegate_gate", "gone", "other_repository", "too_large", "key_reused", "store_full", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type CreatePostError = (typeof createPostCodes)[number];
+
+/** Post to announce, a path thread or an agent */
+export const createPostEndpoint = {
+  method: "POST",
+  path: "/v1/posts",
+  codes: createPostCodes,
+  request(args: CreatePostArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    headers["Idempotency-Key"] = args.idempotencyKey;
+    return {
+      method: "POST",
+      path: "/v1/posts",
+      body: args.body,
+      headers,
+      codes: createPostCodes,
+    };
+  },
+  decode: decodePosted,
+} as const;
+
+/** Post to announce, a path thread or an agent */
+export function createPost(args: CreatePostArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Posted, CreatePostError>> {
+  return clientRequest<Posted, CreatePostError>(createPostEndpoint.request(args), createPostEndpoint.decode, opts);
+}
+
+export interface ListThreadsArgs {
+  readonly path?: string;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+}
+
+const listThreadsCodes = ["invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type ListThreadsError = (typeof listThreadsCodes)[number];
+
+/** The live path threads under a path */
+export const listThreadsEndpoint = {
+  method: "GET",
+  path: "/v1/threads",
+  codes: listThreadsCodes,
+  request(args: ListThreadsArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    return {
+      method: "GET",
+      path: "/v1/threads" + qs([["path", args.path]]),
+      headers,
+      codes: listThreadsCodes,
+    };
+  },
+  decode: decodeThreads,
+} as const;
+
+/** The live path threads under a path */
+export function listThreads(args: ListThreadsArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Threads, ListThreadsError>> {
+  return clientRequest<Threads, ListThreadsError>(listThreadsEndpoint.request(args), listThreadsEndpoint.decode, opts);
+}
+
+export interface GetReceiptsArgs {
+  readonly id: number;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+}
+
+const getReceiptsCodes = ["not_found", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type GetReceiptsError = (typeof getReceiptsCodes)[number];
+
+/** Who has read a message this identity sent or received */
+export const getReceiptsEndpoint = {
+  method: "GET",
+  path: "/v1/messages/{id}/receipts",
+  codes: getReceiptsCodes,
+  request(args: GetReceiptsArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    return {
+      method: "GET",
+      path: `/v1/messages/${globalThis.encodeURIComponent(globalThis.String(args.id))}/receipts`,
+      headers,
+      codes: getReceiptsCodes,
+    };
+  },
+  decode: decodeReceipts,
+} as const;
+
+/** Who has read a message this identity sent or received */
+export function getReceipts(args: GetReceiptsArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Receipts, GetReceiptsError>> {
+  return clientRequest<Receipts, GetReceiptsError>(getReceiptsEndpoint.request(args), getReceiptsEndpoint.decode, opts);
+}
+
+export interface GetHistoryArgs {
+  readonly since?: string;
+  readonly until?: string;
+  readonly path?: string;
+  readonly with?: string;
+  readonly from?: string;
+  readonly grep?: string;
+  readonly announce?: string;
+  readonly full?: string;
+  readonly last_read?: string;
+  readonly thread?: number;
+  readonly limit?: number;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+}
+
+const getHistoryCodes = ["invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type GetHistoryError = (typeof getHistoryCodes)[number];
+
+/** This identity's mailbox, read and unread, moving nothing */
+export const getHistoryEndpoint = {
+  method: "GET",
+  path: "/v1/history",
+  codes: getHistoryCodes,
+  request(args: GetHistoryArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    return {
+      method: "GET",
+      path: "/v1/history" + qs([["since", args.since], ["until", args.until], ["path", args.path], ["with", args.with], ["from", args.from], ["grep", args.grep], ["announce", args.announce], ["full", args.full], ["last_read", args.last_read], ["thread", args.thread], ["limit", args.limit]]),
+      headers,
+      codes: getHistoryCodes,
+    };
+  },
+  decode: decodeHistory,
+} as const;
+
+/** This identity's mailbox, read and unread, moving nothing */
+export function getHistory(args: GetHistoryArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<History, GetHistoryError>> {
+  return clientRequest<History, GetHistoryError>(getHistoryEndpoint.request(args), getHistoryEndpoint.decode, opts);
+}
+
+export interface FollowArgs {
+  readonly path?: string;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  readonly idempotencyKey: string;
+}
+
+const followCodes = ["key_reused", "store_full", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type FollowError = (typeof followCodes)[number];
+
+/** Follow a path's threads */
+export const followEndpoint = {
+  method: "PUT",
+  path: "/v1/follows",
+  codes: followCodes,
+  request(args: FollowArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    headers["Idempotency-Key"] = args.idempotencyKey;
+    return {
+      method: "PUT",
+      path: "/v1/follows" + qs([["path", args.path]]),
+      headers,
+      codes: followCodes,
+    };
+  },
+  decode: decodeIdentityAnswer,
+} as const;
+
+/** Follow a path's threads */
+export function follow(args: FollowArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<IdentityAnswer, FollowError>> {
+  return clientRequest<IdentityAnswer, FollowError>(followEndpoint.request(args), followEndpoint.decode, opts);
+}
+
+export interface UnfollowArgs {
+  readonly path?: string;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  readonly idempotencyKey: string;
+}
+
+const unfollowCodes = ["key_reused", "store_full", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type UnfollowError = (typeof unfollowCodes)[number];
+
+/** Stop following a path's threads */
+export const unfollowEndpoint = {
+  method: "DELETE",
+  path: "/v1/follows",
+  codes: unfollowCodes,
+  request(args: UnfollowArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    headers["Idempotency-Key"] = args.idempotencyKey;
+    return {
+      method: "DELETE",
+      path: "/v1/follows" + qs([["path", args.path]]),
+      headers,
+      codes: unfollowCodes,
+    };
+  },
+  decode: decodeIdentityAnswer,
+} as const;
+
+/** Stop following a path's threads */
+export function unfollow(args: UnfollowArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<IdentityAnswer, UnfollowError>> {
+  return clientRequest<IdentityAnswer, UnfollowError>(unfollowEndpoint.request(args), unfollowEndpoint.decode, opts);
+}
+
+export interface AckInboxArgs {
+  readonly body: AckRequest;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  readonly idempotencyKey: string;
+}
+
+const ackInboxCodes = ["key_reused", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type AckInboxError = (typeof ackInboxCodes)[number];
+
+/** Mark read every inbox entry up to one */
+export const ackInboxEndpoint = {
+  method: "POST",
+  path: "/v1/inbox/ack",
+  codes: ackInboxCodes,
+  request(args: AckInboxArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    headers["Idempotency-Key"] = args.idempotencyKey;
+    return {
+      method: "POST",
+      path: "/v1/inbox/ack",
+      body: args.body,
+      headers,
+      codes: ackInboxCodes,
+    };
+  },
+  decode: decodeAcked,
+} as const;
+
+/** Mark read every inbox entry up to one */
+export function ackInbox(args: AckInboxArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Acked, AckInboxError>> {
+  return clientRequest<Acked, AckInboxError>(ackInboxEndpoint.request(args), ackInboxEndpoint.decode, opts);
+}
+
+export interface ReserveArgs {
+  readonly body: ReserveRequest;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  readonly idempotencyKey: string;
+}
+
+const reserveCodes = ["conflict", "reserved", "queued", "key_reused", "store_full", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type ReserveError = (typeof reserveCodes)[number];
+
+/** Reserve a path, or queue for it when it is taken */
+export const reserveEndpoint = {
+  method: "POST",
+  path: "/v1/reservations",
+  codes: reserveCodes,
+  request(args: ReserveArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    headers["Idempotency-Key"] = args.idempotencyKey;
+    return {
+      method: "POST",
+      path: "/v1/reservations",
+      body: args.body,
+      headers,
+      codes: reserveCodes,
+    };
+  },
+  decode: decodeReserved,
+} as const;
+
+/** Reserve a path, or queue for it when it is taken */
+export function reserve(args: ReserveArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Reserved, ReserveError>> {
+  return clientRequest<Reserved, ReserveError>(reserveEndpoint.request(args), reserveEndpoint.decode, opts);
+}
+
+export interface ListReservationsArgs {
+  readonly path?: string;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+}
+
+const listReservationsCodes = ["invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type ListReservationsError = (typeof listReservationsCodes)[number];
+
+/** The grants and queue entries overlapping a path, every one when it is absent */
+export const listReservationsEndpoint = {
+  method: "GET",
+  path: "/v1/reservations",
+  codes: listReservationsCodes,
+  request(args: ListReservationsArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    return {
+      method: "GET",
+      path: "/v1/reservations" + qs([["path", args.path]]),
+      headers,
+      codes: listReservationsCodes,
+    };
+  },
+  decode: decodeReservations,
+} as const;
+
+/** The grants and queue entries overlapping a path, every one when it is absent */
+export function listReservations(args: ListReservationsArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Reservations, ListReservationsError>> {
+  return clientRequest<Reservations, ListReservationsError>(listReservationsEndpoint.request(args), listReservationsEndpoint.decode, opts);
+}
+
+export interface RenewReservationArgs {
+  readonly id: number;
+  readonly body: RenewRequest;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  readonly idempotencyKey: string;
+}
+
+const renewReservationCodes = ["not_found", "key_reused", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type RenewReservationError = (typeof renewReservationCodes)[number];
+
+/** Renew one of this identity's reservations */
+export const renewReservationEndpoint = {
+  method: "PATCH",
+  path: "/v1/reservations/{id}",
+  codes: renewReservationCodes,
+  request(args: RenewReservationArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    headers["Idempotency-Key"] = args.idempotencyKey;
+    return {
+      method: "PATCH",
+      path: `/v1/reservations/${globalThis.encodeURIComponent(globalThis.String(args.id))}`,
+      body: args.body,
+      headers,
+      codes: renewReservationCodes,
+    };
+  },
+  decode: decodeReservationAnswer,
+} as const;
+
+/** Renew one of this identity's reservations */
+export function renewReservation(args: RenewReservationArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<ReservationAnswer, RenewReservationError>> {
+  return clientRequest<ReservationAnswer, RenewReservationError>(renewReservationEndpoint.request(args), renewReservationEndpoint.decode, opts);
+}
+
+export interface ReleaseReservationArgs {
+  readonly id: number;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  readonly idempotencyKey: string;
+}
+
+const releaseReservationCodes = ["not_found", "key_reused", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type ReleaseReservationError = (typeof releaseReservationCodes)[number];
+
+/** Free a grant or cancel a queue entry of this identity */
+export const releaseReservationEndpoint = {
+  method: "DELETE",
+  path: "/v1/reservations/{id}",
+  codes: releaseReservationCodes,
+  request(args: ReleaseReservationArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    headers["Idempotency-Key"] = args.idempotencyKey;
+    return {
+      method: "DELETE",
+      path: `/v1/reservations/${globalThis.encodeURIComponent(globalThis.String(args.id))}`,
+      headers,
+      codes: releaseReservationCodes,
+    };
+  },
+  decode: decodeReservationAnswer,
+} as const;
+
+/** Free a grant or cancel a queue entry of this identity */
+export function releaseReservation(args: ReleaseReservationArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<ReservationAnswer, ReleaseReservationError>> {
+  return clientRequest<ReservationAnswer, ReleaseReservationError>(releaseReservationEndpoint.request(args), releaseReservationEndpoint.decode, opts);
+}
+
+export interface GrantDelegateArgs {
+  readonly body: GrantRequest;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  readonly idempotencyKey: string;
+}
+
+const grantDelegateCodes = ["conflict", "key_reused", "store_full", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type GrantDelegateError = (typeof grantDelegateCodes)[number];
+
+/** A single-use link a subagent registers with */
+export const grantDelegateEndpoint = {
+  method: "POST",
+  path: "/v1/delegates",
+  codes: grantDelegateCodes,
+  request(args: GrantDelegateArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    headers["Idempotency-Key"] = args.idempotencyKey;
+    return {
+      method: "POST",
+      path: "/v1/delegates",
+      body: args.body,
+      headers,
+      codes: grantDelegateCodes,
+    };
+  },
+  decode: decodeGranted,
+} as const;
+
+/** A single-use link a subagent registers with */
+export function grantDelegate(args: GrantDelegateArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Granted, GrantDelegateError>> {
+  return clientRequest<Granted, GrantDelegateError>(grantDelegateEndpoint.request(args), grantDelegateEndpoint.decode, opts);
+}
+
+export interface RevokeDelegateArgs {
+  readonly label: string;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  readonly idempotencyKey: string;
+}
+
+const revokeDelegateCodes = ["not_found", "key_reused", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type RevokeDelegateError = (typeof revokeDelegateCodes)[number];
+
+/** Revoke a label's unused link and end its delegate */
+export const revokeDelegateEndpoint = {
+  method: "DELETE",
+  path: "/v1/delegates/{label}",
+  codes: revokeDelegateCodes,
+  request(args: RevokeDelegateArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    headers["Idempotency-Key"] = args.idempotencyKey;
+    return {
+      method: "DELETE",
+      path: `/v1/delegates/${globalThis.encodeURIComponent(globalThis.String(args.label))}`,
+      headers,
+      codes: revokeDelegateCodes,
+    };
+  },
+  decode: decodeRevoked,
+} as const;
+
+/** Revoke a label's unused link and end its delegate */
+export function revokeDelegate(args: RevokeDelegateArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Revoked, RevokeDelegateError>> {
+  return clientRequest<Revoked, RevokeDelegateError>(revokeDelegateEndpoint.request(args), revokeDelegateEndpoint.decode, opts);
+}
+
+export interface LifecycleArgs {
+  readonly body: LifecycleRequest;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+}
+
+const lifecycleCodes = ["too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type LifecycleError = (typeof lifecycleCodes)[number];
+
+/** A hook's report of a session's end, a turn's end or a subagent's stop */
+export const lifecycleEndpoint = {
+  method: "POST",
+  path: "/v1/lifecycle",
+  codes: lifecycleCodes,
+  request(args: LifecycleArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    return {
+      method: "POST",
+      path: "/v1/lifecycle",
+      body: args.body,
+      headers,
+      codes: lifecycleCodes,
+    };
+  },
+  decode: decodeLifecycle,
+} as const;
+
+/** A hook's report of a session's end, a turn's end or a subagent's stop */
+export function lifecycle(args: LifecycleArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Lifecycle, LifecycleError>> {
+  return clientRequest<Lifecycle, LifecycleError>(lifecycleEndpoint.request(args), lifecycleEndpoint.decode, opts);
+}
+
+export interface HoldEventArgs {
+  readonly body: HoldRequest;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+}
+
+const holdEventCodes = ["too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type HoldEventError = (typeof holdEventCodes)[number];
+
+/** The stop hook's hold: whether wake mail keeps the turn open */
+export const holdEventEndpoint = {
+  method: "POST",
+  path: "/v1/events/hold",
+  codes: holdEventCodes,
+  request(args: HoldEventArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    return {
+      method: "POST",
+      path: "/v1/events/hold",
+      body: args.body,
+      headers,
+      codes: holdEventCodes,
+    };
+  },
+  decode: decodeHeld,
+} as const;
+
+/** The stop hook's hold: whether wake mail keeps the turn open */
+export function holdEvent(args: HoldEventArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Held, HoldEventError>> {
+  return clientRequest<Held, HoldEventError>(holdEventEndpoint.request(args), holdEventEndpoint.decode, opts);
+}
+
+export interface WaitEventArgs {
+  readonly body: WaitRequest;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+}
+
+const waitEventCodes = ["too_many_waits", "ended", "replaced", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type WaitEventError = (typeof waitEventCodes)[number];
+
+/** A standing wait, held up to 55s, that returns this identity's next nudge */
+export const waitEventEndpoint = {
+  method: "POST",
+  path: "/v1/events/wait",
+  codes: waitEventCodes,
+  request(args: WaitEventArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    return {
+      method: "POST",
+      path: "/v1/events/wait",
+      body: args.body,
+      headers,
+      codes: waitEventCodes,
+    };
+  },
+  decode: decodeNudge,
+} as const;
+
+/** A standing wait, held up to 55s, that returns this identity's next nudge */
+export function waitEvent(args: WaitEventArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Nudge, WaitEventError>> {
+  return clientRequest<Nudge, WaitEventError>(waitEventEndpoint.request(args), waitEventEndpoint.decode, opts);
+}
+
+export interface ReadInboxArgs {
+  readonly wait?: string;
+  readonly limit?: number;
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+}
+
+const readInboxCodes = ["too_many_waits", "invalid", "forbidden", "none", "dormant", "delegate_ended", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_key_required", "rate_limited", "upgrade_required", "timeout", "shutting_down", "internal_error"] as const;
+
+export type ReadInboxError = (typeof readInboxCodes)[number];
+
+/** The oldest unread entries, marking nothing; with wait, held until wake mail arrives */
+export const readInboxEndpoint = {
+  method: "GET",
+  path: "/v1/inbox",
+  codes: readInboxCodes,
+  request(args: ReadInboxArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    return {
+      method: "GET",
+      path: "/v1/inbox" + qs([["wait", args.wait], ["limit", args.limit]]),
+      headers,
+      codes: readInboxCodes,
+    };
+  },
+  decode: decodeInbox,
+} as const;
+
+/** The oldest unread entries, marking nothing; with wait, held until wake mail arrives */
+export function readInbox(args: ReadInboxArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Inbox, ReadInboxError>> {
+  return clientRequest<Inbox, ReadInboxError>(readInboxEndpoint.request(args), readInboxEndpoint.decode, opts);
 }
 
 export interface ListConversationsArgs {

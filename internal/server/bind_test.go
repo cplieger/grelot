@@ -58,7 +58,7 @@ func TestBind_everyRouteInputIsFilledByItsJSONTags(t *testing.T) {
 func TestBind_aNumberThatIsNotWholeIsRefusedByItsJSONName(t *testing.T) {
 	for name, typ := range routeInputs() {
 		for f := range typ.Fields() {
-			if f.Type.Kind() != reflect.Uint64 {
+			if k := f.Type.Kind(); k != reflect.Uint64 && k != reflect.Int {
 				continue
 			}
 			tag := jsonName(&f)

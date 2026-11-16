@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 func TestStatus_onEveryIdentityResponse(t *testing.T) {
@@ -80,11 +81,11 @@ func TestStatus_aDelegateIsPullOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := h.request(http.MethodPost, "/v1/register", map[string]any{"delegate": g.Link, "description": "writing the tests"},
-		map[string]string{headerSession: sessA})
+		map[string]string{wire.HeaderSession: sessA})
 	if r.status != http.StatusCreated {
 		t.Fatalf("register --delegate: %d %s", r.status, r.raw)
 	}
-	me := h.request(http.MethodGet, "/v1/me", nil, map[string]string{headerSession: sessA, headerAs: g.Handle})
+	me := h.request(http.MethodGet, "/v1/me", nil, map[string]string{wire.HeaderSession: sessA, wire.HeaderAs: g.Handle})
 	if got, want := me.line(), "grelot: @grelot-dev/tests · 0 unread · wake: pull only"; got != want {
 		t.Errorf("status %q, want %q", got, want)
 	}
@@ -136,18 +137,18 @@ func TestCaller_headers(t *testing.T) {
 		}
 	})
 	t.Run("Grelot-As with Grelot-Self is 400", func(t *testing.T) {
-		r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{headerSession: sessA, headerAs: "grelot-dev/tests", headerSelf: "1"})
+		r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{wire.HeaderSession: sessA, wire.HeaderAs: "grelot-dev/tests", wire.HeaderSelf: "1"})
 		if r.status != http.StatusBadRequest {
 			t.Errorf("got %d %s, want 400", r.status, r.raw)
 		}
 	})
 	t.Run("Grelot-Self other than 1 is 400", func(t *testing.T) {
-		if r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{headerSession: sessA, headerSelf: "yes"}); r.status != http.StatusBadRequest {
+		if r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{wire.HeaderSession: sessA, wire.HeaderSelf: "yes"}); r.status != http.StatusBadRequest {
 			t.Errorf("got %d %s, want 400", r.status, r.raw)
 		}
 	})
 	t.Run("Grelot-Self from a session with no delegates acts as its identity", func(t *testing.T) {
-		r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{headerSession: sessA, headerSelf: "1"})
+		r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{wire.HeaderSession: sessA, wire.HeaderSelf: "1"})
 		id, _ := r.body["identity"].(map[string]any)
 		if r.status != http.StatusOK || id["name"] != "grelot-dev" {
 			t.Errorf("got %d %s, want 200 as grelot-dev", r.status, r.raw)

@@ -14,6 +14,17 @@ export type StatsRange = "6h" | "24h" | "72h";
 
 export type ThreadKind = "announce" | "path" | "direct";
 
+/** AckRequest marks read every entry up to Upto. */
+export interface AckRequest {
+  upto: number;
+}
+
+/** Acked is what an ack left unread. */
+export interface Acked {
+  left: Counts;
+  read: number;
+}
+
 /** Agent is an agent's card. */
 export interface Agent {
   name: string;
@@ -79,6 +90,16 @@ export interface Changed {
   conversations: number[];
   /** Agents is set when an agent or a reservation changed. */
   agents: boolean;
+}
+
+/**
+ * Checkout is one working tree of the repo whose canonical root is Repo;
+ * Remote is a keyed hash of the clone's normalized remote.
+ */
+export interface Checkout {
+  repo: string;
+  id: string;
+  remote: string;
 }
 
 /** Conversation is one conversation's posts, oldest first, and its context. */
@@ -177,6 +198,21 @@ export interface ConversationsQuery {
   before_thread?: number;
 }
 
+/** Counts is deliveries by kind. */
+export interface Counts {
+  direct: number;
+  path: number;
+  announce: number;
+  identity: number;
+  reservation: number;
+  receipts: number;
+  cards: number;
+  copies: number;
+  quiet_path: number;
+  wake: number;
+  total: number;
+}
+
 /**
  * DelayHistogram bins the post-to-read delays of the deliveries read in
  * the range: bin i is [edges_ms[i], edges_ms[i+1]), the last closed.
@@ -189,6 +225,47 @@ export interface DelayHistogram {
   read: number;
   /** Unread counts the deliveries still unread, as the unread figure does. */
   unread: number;
+}
+
+/** Delegate is one of the caller's live delegates. */
+export interface Delegate {
+  expires_at: string;
+  last_seen?: string;
+  handle: string;
+  description: string;
+  bound: boolean;
+}
+
+/** DelegateParams names a delegate by its label. */
+export interface DelegateParams {
+  label: string;
+}
+
+/**
+ * Entry is one inbox or history entry. Subject, body, text and the paths
+ * are other agents' text, which the client labels as data.
+ */
+export interface Entry {
+  posted_at?: string;
+  written: string;
+  read_at?: string;
+  kind: string;
+  subject?: string;
+  body?: string;
+  text?: string;
+  thread_path?: string;
+  matched?: string;
+  from?: string;
+  host?: string;
+  os?: string;
+  arch?: string;
+  relation?: string;
+  via?: string;
+  seq?: number;
+  message?: number;
+  thread?: number;
+  wake: boolean;
+  truncated?: boolean;
 }
 
 /** Error is every error response, on /api and /v1 alike. */
@@ -226,10 +303,61 @@ export interface EventCounts {
   nudge_repeat: number;
 }
 
+/**
+ * GrantRequest is POST /v1/delegates: a single-use link a subagent
+ * registers with, scoped by the allow and deny lists.
+ */
+export interface GrantRequest {
+  label: string;
+  ttl: string;
+  allow_threads: string[];
+  allow_agents: string[];
+  deny_threads: string[];
+  deny_agents: string[];
+}
+
+/** Granted is a new delegate link. */
+export interface Granted {
+  expires_at: string;
+  link: string;
+  handle: string;
+}
+
+/**
+ * Held is a stop hold's answer. Counts are the deliveries past read and
+ * Shown the shown cursor as it stood; Block holds the turn for the wake
+ * mail counted; Down is set once per down episode.
+ */
+export interface Held {
+  wake: string;
+  counts: Counts;
+  shown: number;
+  block: boolean;
+  down: boolean;
+}
+
 /** HeldTurns counts the turns the stop hook held for one agent. */
 export interface HeldTurns {
   name: string;
   turns: number;
+}
+
+/**
+ * Hint is the take-over hint: the identity a new session may go on as,
+ * and the command that does it, which only the agent runs.
+ */
+export interface Hint {
+  name: string;
+  state: string;
+  line: string;
+}
+
+/**
+ * History is GET /v1/history: the caller's mailbox, which it moves
+ * nothing in.
+ */
+export interface History {
+  entries: Entry[];
 }
 
 /** HistoryPage is one page of an agent's posts, newest first. */
@@ -259,6 +387,113 @@ export interface HistoryPost {
   unread?: boolean;
 }
 
+/**
+ * HistoryQuery is GET /v1/history's query. since and until are a duration
+ * back from now or an RFC 3339 time; from is @me or a name; the flags are
+ * 1 or 0.
+ */
+export interface HistoryQuery {
+  since?: string;
+  until?: string;
+  path?: string;
+  with?: string;
+  from?: string;
+  grep?: string;
+  announce?: string;
+  full?: string;
+  last_read?: string;
+  thread?: number;
+  limit?: number;
+}
+
+/**
+ * HoldRequest is the stop hook's hold; For is "stop", and Last says the
+ * host runs no second stop hook this turn.
+ */
+export interface HoldRequest {
+  for: string;
+  last: boolean;
+}
+
+/**
+ * IdentitiesQuery is GET /v1/identities' query. fields keeps only the named
+ * members of each identity, name always; online, here and all are 1 or 0.
+ */
+export interface IdentitiesQuery {
+  fields?: string;
+  path?: string;
+  repo?: string;
+  holds?: string;
+  queued?: string;
+  q?: string;
+  online?: string;
+  here?: string;
+  all?: string;
+}
+
+/**
+ * Identity is an identity as its own session sees it. It never carries a
+ * machine, environment or checkout value, only whether each is known.
+ */
+export interface Identity {
+  expires_at: string;
+  registered_at: string;
+  last_seen?: string;
+  dormant_since?: string;
+  name: string;
+  description: string;
+  state: string;
+  host: string;
+  os: string;
+  arch: string;
+  provider: string;
+  machine_kind?: string;
+  ttl: string;
+  notice?: string;
+  paths: string[];
+  follows: string[];
+  environment_known: boolean;
+  ended?: boolean;
+  threaded: boolean;
+}
+
+/**
+ * IdentityAnswer is the caller's identity after a change, with the
+ * change's notices.
+ */
+export interface IdentityAnswer {
+  notices: string[];
+  identity: Identity;
+}
+
+/**
+ * IdentityFields are the identity block every post fills, each a new
+ * value or "no change".
+ */
+export interface IdentityFields {
+  name: string;
+  description: string;
+  paths: string[];
+}
+
+/**
+ * Inbox is GET /v1/inbox: the oldest unread entries, which it marks
+ * nothing read.
+ */
+export interface Inbox {
+  entries: Entry[];
+  unread: Counts;
+}
+
+/**
+ * InboxQuery is GET /v1/inbox's query; wait, a duration up to 55s, holds
+ * the read until wake mail arrives.
+ */
+export interface InboxQuery {
+  wait?: string;
+  limit?: number;
+}
+
 /** LastPost is a conversation's newest post. */
 export interface LastPost {
   from: string;
@@ -267,6 +502,26 @@ export interface LastPost {
   preview: string;
   id: number;
   at_ms: number;
+}
+
+/** Lifecycle is the event a lifecycle report recorded. */
+export interface Lifecycle {
+  event: string;
+}
+
+/**
+ * LifecycleRequest is a hook's report: Event is session_end, subagent_stop
+ * or turn_end, AgentID set when it came from inside a subagent.
+ */
+export interface LifecycleRequest {
+  event: string;
+  agent_id: string;
+}
+
+/** Link is one of the caller's unused delegate links. */
+export interface Link {
+  expires_at: string;
+  handle: string;
 }
 
 /** MarkReadRequest bounds a mark-read to the posts the reader was shown. */
@@ -278,6 +533,36 @@ export interface MarkReadRequest {
 /** MarkedRead is how many posts a mark-read stamped. */
 export interface MarkedRead {
   read: number;
+}
+
+/**
+ * Me is GET /v1/me. State is live, dormant or none; a session with no
+ * identity gets State, the hint when one applies, and its status line.
+ */
+export interface Me {
+  identity?: Identity;
+  unread?: Counts;
+  hint?: Hint;
+  state: string;
+  wake?: string;
+  push?: string;
+  version: string;
+  path_root: string;
+  reservations?: Reservation[];
+  delegates?: Delegate[];
+  links?: Link[];
+  online: boolean;
+  signal_read?: boolean;
+}
+
+/**
+ * MeQuery is GET /v1/me's query: turn=start opens the turn unless signal
+ * names a signal line already read; proc asks for the take-over hint.
+ */
+export interface MeQuery {
+  turn?: string;
+  proc?: string;
+  signal?: number;
 }
 
 /** MessageParams names a message. */
@@ -293,10 +578,85 @@ export interface Methods {
   oidc: boolean;
 }
 
+/**
+ * Nudge is a nudge as a standing wait returns it: the signal line's seq,
+ * the wake deliveries past read, and which send it is, 1 to 4.
+ */
+export interface Nudge {
+  seq: number;
+  count: number;
+  attempt: number;
+}
+
 /** PageQuery pages a list of posts. */
 export interface PageQuery {
   /** Before is the Next of the newer page; absent for the newest. */
   before?: number;
+}
+
+/**
+ * PatchMeRequest is PATCH /v1/me: new fields, with Where when the paths
+ * change, or TTL and Where to renew the lease.
+ */
+export interface PatchMeRequest {
+  where?: Where;
+  name: string;
+  description: string;
+  ttl: string;
+  paths: string[];
+}
+
+/** PathQuery is a query naming one path. */
+export interface PathQuery {
+  path?: string;
+}
+
+/**
+ * Peer is one identity as another sees it. It never carries a where
+ * value, a session id or a delegate's scope.
+ */
+export interface Peer {
+  expires_at: string;
+  last_seen?: string;
+  name: string;
+  description: string;
+  state: string;
+  host: string;
+  os: string;
+  arch: string;
+  relation: string;
+  paths: string[];
+  follows: string[];
+  reservations: PeerReservation[];
+  queued: PeerQueued[];
+  delegates: PeerDelegate[];
+  online: boolean;
+}
+
+/** PeerDelegate is one of a peer's live delegates. */
+export interface PeerDelegate {
+  last_seen?: string;
+  name: string;
+  description: string;
+  online: boolean;
+}
+
+/** PeerQueued is a path a peer waits for, at its place in the queue. */
+export interface PeerQueued {
+  path: string;
+  place: number;
+}
+
+/** PeerReservation is a path a peer holds, with its queue's length. */
+export interface PeerReservation {
+  expires_at: string;
+  path: string;
+  queue: number;
+}
+
+/** Peers is GET /v1/identities. */
+export interface Peers {
+  identities: Peer[];
 }
 
 /** Post is one message. */
@@ -328,6 +688,21 @@ export interface PostBucket {
   open?: boolean;
 }
 
+/**
+ * PostRequest is POST /v1/posts. To is "announce", {"path": p} or
+ * {"agent": name}; NotifyRead is absent, "all" or a list of recipient
+ * names; By is the duration a read receipt is asked within.
+ */
+export interface PostRequest {
+  where?: Where;
+  subject: string;
+  body: string;
+  by: string;
+  to: unknown;
+  notify_read: unknown;
+  identity: IdentityFields;
+}
+
 /** PostTarget is where the user posts: exactly one of its fields. */
 export interface PostTarget {
   path?: string;
@@ -335,10 +710,166 @@ export interface PostTarget {
   announce?: boolean;
 }
 
+/** Posted is a post the server stored. */
+export interface Posted {
+  notices: string[];
+  identity: Identity;
+  recipients: Recipients;
+  message: number;
+  thread: number;
+}
+
 /** ReadCount is how many of a post's recipients have read it. */
 export interface ReadCount {
   read: number;
   total: number;
+}
+
+/** Receipt is one recipient's receipt. */
+export interface Receipt {
+  read_at?: string;
+  name: string;
+  host: string;
+  relation: string;
+  state: string;
+}
+
+/** Receipts is one message's read receipts. */
+export interface Receipts {
+  posted_at: string;
+  subject: string;
+  kind: string;
+  recipients: Receipt[];
+  message: number;
+  registered_since?: number;
+}
+
+/**
+ * Recipients counts a post's recipients; Woken and Quiet are set only for
+ * a path post whose opening @names matched an identity.
+ */
+export interface Recipients {
+  woken?: string[];
+  total: number;
+  same_environment: number;
+  other: number;
+  quiet?: number;
+}
+
+/**
+ * RegisterRequest is POST /v1/register; Delegate is a delegate link to
+ * register from.
+ */
+export interface RegisterRequest {
+  where?: Where;
+  name: string;
+  description: string;
+  host: string;
+  os: string;
+  arch: string;
+  proc: string;
+  delegate: string;
+  ttl: string;
+  paths: string[];
+  take_over: boolean;
+}
+
+/**
+ * Registered is a register's or a revive's identity. NoEnvironment is set
+ * when the session sent no environment id; Unread counts a revived
+ * identity's deliveries past its read cursor.
+ */
+export interface Registered {
+  no_environment?: string;
+  identity: Identity;
+  unread?: number;
+  existing?: boolean;
+  moved?: boolean;
+}
+
+/** RenewRequest renews a reservation. */
+export interface RenewRequest {
+  ttl: string;
+}
+
+/**
+ * Reservation is a grant or queue entry; Relation is its holder's relation
+ * to the caller at Path.
+ */
+export interface Reservation {
+  expires_at?: string;
+  since: string;
+  path: string;
+  reason: string;
+  state: string;
+  holder: string;
+  host: string;
+  relation: string;
+  ttl: string;
+  id: number;
+}
+
+/** ReservationAnswer is a reservation after a renewal or a release. */
+export interface ReservationAnswer {
+  reservation: Reservation;
+}
+
+/** ReservationParams names a reservation. */
+export interface ReservationParams {
+  id: number;
+}
+
+/** Reservations is GET /v1/reservations. */
+export interface Reservations {
+  reservations: Reservation[];
+}
+
+/**
+ * ReserveRequest is POST /v1/reservations: a grant, or with Queue a queue
+ * entry when the path is taken.
+ */
+export interface ReserveRequest {
+  path: string;
+  reason: string;
+  ttl: string;
+  queue: boolean;
+}
+
+/**
+ * Reserved is a new reservation; Behind is the grant a queue entry waits
+ * on.
+ */
+export interface Reserved {
+  behind?: Reservation;
+  reservation: Reservation;
+}
+
+/** Retired is DELETE /v1/me's answer. */
+export interface Retired {
+  retired: boolean;
+}
+
+/**
+ * ReviveRequest is POST /v1/revive: this session's dormant identity, or a
+ * dormant one of this environment named by Name.
+ */
+export interface ReviveRequest {
+  where?: Where;
+  name: string;
+  host: string;
+  os: string;
+  arch: string;
+  proc: string;
+  ttl: string;
+}
+
+/**
+ * Revoked is the delegates a revoke ended, and whether it revoked an
+ * unused link.
+ */
+export interface Revoked {
+  ended: string[];
+  link: boolean;
 }
 
 /** Sample is one minute of the server. */
@@ -446,12 +977,24 @@ export interface StatsQuery {
   range: StatsRange;
 }
 
+/** Thread is one live path thread. */
+export interface Thread {
+  expires_at: string;
+  path: string;
+  id: number;
+}
+
 /** ThreadStats is one conversation's activity in the range. */
 export interface ThreadStats {
   thread: ConversationThread;
   posts: number;
   participants: number;
   deliveries: number;
+}
+
+/** Threads is GET /v1/threads: the live path threads under the path. */
+export interface Threads {
+  threads: Thread[];
 }
 
 /** UserPostRequest is a post the user sends. */
@@ -490,5 +1033,22 @@ export interface UserReceipts {
    * after it, which never received it.
    */
   registered_since: number;
+}
+
+/** Version is GET /v1/version. */
+export interface Version {
+  version: string;
+}
+
+/** WaitRequest is a standing wait of up to 55s. */
+export interface WaitRequest {
+  wait: string;
+}
+
+/** Where is the machine, environment and checkouts a session reports. */
+export interface Where {
+  machine: string;
+  environment: string;
+  checkouts: Checkout[];
 }
 

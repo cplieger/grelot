@@ -16,6 +16,7 @@ import (
 	"github.com/cplieger/grelot/internal/auth"
 	"github.com/cplieger/grelot/internal/auth/authtest"
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // apiKeys is access's own key list route, which the web UI's API keys
@@ -51,7 +52,7 @@ func (h *harness) listKeys() []listedKey {
 
 // withBearer is a /v1 request's headers for session sending key.
 func withBearer(session, key string) map[string]string {
-	return map[string]string{headerSession: session, "Authorization": "Bearer " + key}
+	return map[string]string{wire.HeaderSession: session, "Authorization": "Bearer " + key}
 }
 
 func TestKeys_aKeyMintedInTheWebUIOpensTheAgentAPIUntilItIsRevoked(t *testing.T) {
@@ -134,7 +135,7 @@ func TestKeys_anAPIKeyCannotMintAnother(t *testing.T) {
 	}
 
 	r := h.request(http.MethodPost, apiKeys, map[string]any{"label": "stolen", "scopes": []string{}},
-		map[string]string{headerKey: "", "Authorization": "Bearer " + key, "Cookie": ""})
+		map[string]string{wire.HeaderIdempotencyKey: "", "Authorization": "Bearer " + key, "Cookie": ""})
 
 	if r.status != http.StatusForbidden || r.str("code") != "auth_session_required" {
 		t.Errorf("POST %s with a machine key: %d %s, want 403 auth_session_required", apiKeys, r.status, r.raw)

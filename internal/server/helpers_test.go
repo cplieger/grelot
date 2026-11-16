@@ -24,6 +24,7 @@ import (
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // testKeepalive spaces the event stream's keepalives, so a test sees one
@@ -361,7 +362,7 @@ type response struct {
 	status int
 }
 
-func (r *response) line() string { return r.header.Get(headerStatus) }
+func (r *response) line() string { return r.header.Get(wire.HeaderStatus) }
 
 func (r *response) str(key string) string {
 	v, _ := r.body[key].(string)
@@ -447,12 +448,12 @@ func (h *harness) send(ctx context.Context, method, path string, body any, heade
 		}
 		req.Header.Set("Authorization", "Bearer "+key)
 	}
-	req.Header.Set(headerVersion, testVersion)
+	req.Header.Set(wire.HeaderVersion, testVersion)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if route, _, _ := strings.Cut(path, "?"); method != http.MethodGet && !sentOnce[route] {
-		req.Header.Set(headerKey, newTestKey())
+		req.Header.Set(wire.HeaderIdempotencyKey, newTestKey())
 	}
 	if strings.HasPrefix(path, "/api/") {
 		h.browser.add(req)
@@ -574,7 +575,7 @@ func (h *harness) opsCall(method, path string) *http.Response {
 // as sends a request from session.
 func (h *harness) as(session, method, path string, body any) *response {
 	h.t.Helper()
-	return h.request(method, path, body, map[string]string{headerSession: session})
+	return h.request(method, path, body, map[string]string{wire.HeaderSession: session})
 }
 
 // where is a valid where report: one machine, one environment, no
