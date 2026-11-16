@@ -1,0 +1,127 @@
+# HELP grelot_store_started_empty_total Store opens that started with no rows: a corrupt file moved aside, or a namespace of another format reset.
+# TYPE grelot_store_started_empty_total counter
+grelot_store_started_empty_total{reason="corrupt"} 1
+grelot_store_started_empty_total{reason="format"} 0
+# HELP grelot_posts_total Posts stored, by thread kind.
+# TYPE grelot_posts_total counter
+grelot_posts_total{thread_kind="announce"} 1
+grelot_posts_total{thread_kind="path"} 2
+# HELP grelot_posts_refused_total Posts refused, by reason.
+# TYPE grelot_posts_refused_total counter
+grelot_posts_refused_total{reason="rate_limited"} 0
+grelot_posts_refused_total{reason="scope"} 1
+grelot_posts_refused_total{reason="store_full"} 0
+# HELP grelot_push_sends_total Push tries, by door and outcome.
+# TYPE grelot_push_sends_total counter
+grelot_push_sends_total{door="provider/door",outcome="accepted"} 1
+grelot_push_sends_total{door="provider/door",outcome="retry"} 0
+# HELP grelot_nudges_total Nudges recorded, by layer and attempt.
+# TYPE grelot_nudges_total counter
+grelot_nudges_total{attempt="repeat",via="push"} 1
+grelot_nudges_total{attempt="first",via="watcher"} 1
+# HELP grelot_http_requests_total HTTP requests, by route and status code.
+# TYPE grelot_http_requests_total counter
+grelot_http_requests_total{code="200",route="/v1/me"} 1
+grelot_http_requests_total{code="507",route="/v1/posts"} 1
+# HELP grelot_sweep_failures_total Store sweeps that failed.
+# TYPE grelot_sweep_failures_total counter
+grelot_sweep_failures_total 1
+# HELP grelot_writes_replayed_total Writes sent again with their Idempotency-Key and answered their first result, changing nothing.
+# TYPE grelot_writes_replayed_total counter
+grelot_writes_replayed_total 1
+# HELP grelot_push_door_up 1 while a push door sends, 0 once a refused credential turned it off.
+# TYPE grelot_push_door_up gauge
+grelot_push_door_up{door="provider/door"} 1
+grelot_push_door_up{door="provider/off"} 0
+# HELP grelot_build_info Always 1, labelled with the running version.
+# TYPE grelot_build_info gauge
+grelot_build_info{version="v1.2.3"} 1
+# HELP grelot_sweep_last_success_timestamp_seconds Unix time of the last store sweep that committed.
+# TYPE grelot_sweep_last_success_timestamp_seconds gauge
+grelot_sweep_last_success_timestamp_seconds 1793869200
+# HELP grelot_providers_invalid Provider files skipped at load; 1 for a folder that cannot be read.
+# TYPE grelot_providers_invalid gauge
+grelot_providers_invalid 2
+# HELP grelot_nudge_delay_seconds Delay from the oldest post in a batch to its nudge, by layer.
+# TYPE grelot_nudge_delay_seconds histogram
+grelot_nudge_delay_seconds_bucket{via="push",le="0.1"} 0
+grelot_nudge_delay_seconds_bucket{via="push",le="0.25"} 0
+grelot_nudge_delay_seconds_bucket{via="push",le="0.5"} 0
+grelot_nudge_delay_seconds_bucket{via="push",le="1"} 0
+grelot_nudge_delay_seconds_bucket{via="push",le="2.5"} 0
+grelot_nudge_delay_seconds_bucket{via="push",le="5"} 0
+grelot_nudge_delay_seconds_bucket{via="push",le="10"} 0
+grelot_nudge_delay_seconds_bucket{via="push",le="30"} 0
+grelot_nudge_delay_seconds_bucket{via="push",le="+Inf"} 1
+grelot_nudge_delay_seconds_sum{via="push"} 42
+grelot_nudge_delay_seconds_count{via="push"} 1
+grelot_nudge_delay_seconds_bucket{via="watcher",le="0.1"} 0
+grelot_nudge_delay_seconds_bucket{via="watcher",le="0.25"} 1
+grelot_nudge_delay_seconds_bucket{via="watcher",le="0.5"} 1
+grelot_nudge_delay_seconds_bucket{via="watcher",le="1"} 1
+grelot_nudge_delay_seconds_bucket{via="watcher",le="2.5"} 1
+grelot_nudge_delay_seconds_bucket{via="watcher",le="5"} 1
+grelot_nudge_delay_seconds_bucket{via="watcher",le="10"} 1
+grelot_nudge_delay_seconds_bucket{via="watcher",le="30"} 1
+grelot_nudge_delay_seconds_bucket{via="watcher",le="+Inf"} 1
+grelot_nudge_delay_seconds_sum{via="watcher"} 0.2
+grelot_nudge_delay_seconds_count{via="watcher"} 1
+# HELP grelot_http_request_duration_seconds HTTP request latency, by route.
+# TYPE grelot_http_request_duration_seconds histogram
+grelot_http_request_duration_seconds_bucket{route="/v1/me",le="0.005"} 0
+grelot_http_request_duration_seconds_bucket{route="/v1/me",le="0.01"} 0
+grelot_http_request_duration_seconds_bucket{route="/v1/me",le="0.025"} 0
+grelot_http_request_duration_seconds_bucket{route="/v1/me",le="0.05"} 1
+grelot_http_request_duration_seconds_bucket{route="/v1/me",le="0.1"} 1
+grelot_http_request_duration_seconds_bucket{route="/v1/me",le="0.25"} 1
+grelot_http_request_duration_seconds_bucket{route="/v1/me",le="0.5"} 1
+grelot_http_request_duration_seconds_bucket{route="/v1/me",le="1"} 1
+grelot_http_request_duration_seconds_bucket{route="/v1/me",le="+Inf"} 1
+grelot_http_request_duration_seconds_sum{route="/v1/me"} 0.03
+grelot_http_request_duration_seconds_count{route="/v1/me"} 1
+grelot_http_request_duration_seconds_bucket{route="/v1/posts",le="0.005"} 0
+grelot_http_request_duration_seconds_bucket{route="/v1/posts",le="0.01"} 0
+grelot_http_request_duration_seconds_bucket{route="/v1/posts",le="0.025"} 0
+grelot_http_request_duration_seconds_bucket{route="/v1/posts",le="0.05"} 0
+grelot_http_request_duration_seconds_bucket{route="/v1/posts",le="0.1"} 0
+grelot_http_request_duration_seconds_bucket{route="/v1/posts",le="0.25"} 0
+grelot_http_request_duration_seconds_bucket{route="/v1/posts",le="0.5"} 0
+grelot_http_request_duration_seconds_bucket{route="/v1/posts",le="1"} 0
+grelot_http_request_duration_seconds_bucket{route="/v1/posts",le="+Inf"} 1
+grelot_http_request_duration_seconds_sum{route="/v1/posts"} 2.5
+grelot_http_request_duration_seconds_count{route="/v1/posts"} 1
+# HELP grelot_identities Identities, live or dormant.
+# TYPE grelot_identities gauge
+grelot_identities{state="dormant"} 2
+grelot_identities{state="live"} 3
+# HELP grelot_identities_online Live identities online now.
+# TYPE grelot_identities_online gauge
+grelot_identities_online 1
+# HELP grelot_threads Live threads, by kind.
+# TYPE grelot_threads gauge
+grelot_threads{kind="announce"} 1
+grelot_threads{kind="cards"} 6
+grelot_threads{kind="direct"} 5
+grelot_threads{kind="path"} 4
+# HELP grelot_reservations Reservations held, and queue entries waiting.
+# TYPE grelot_reservations gauge
+grelot_reservations{state="held"} 7
+grelot_reservations{state="queued"} 8
+# HELP grelot_unread_backlog Unread wake deliveries of live identities.
+# TYPE grelot_unread_backlog gauge
+grelot_unread_backlog 9
+# HELP grelot_unread_oldest_seconds Age of the oldest unread wake delivery, 0 with none.
+# TYPE grelot_unread_oldest_seconds gauge
+grelot_unread_oldest_seconds 90
+# HELP grelot_store_in_use_bytes Store bytes holding data: the pages written, less the free ones.
+# TYPE grelot_store_in_use_bytes gauge
+grelot_store_in_use_bytes 3072
+# HELP grelot_store_file_bytes Store file size, which stays near its high-water mark.
+# TYPE grelot_store_file_bytes gauge
+grelot_store_file_bytes 4096
+# HELP grelot_store_free_bytes Store bytes in free and pending pages.
+# TYPE grelot_store_free_bytes gauge
+grelot_store_free_bytes 1024
+# HELP grelot_store_max_bytes STORE_MAX_BYTES, the ceiling on bytes in use; new posts, identities, follows, work paths, reservations and delegate links are refused past 90 % of it.
+# TYPE grelot_store_max_bytes gauge
+grelot_store_max_bytes 536870912

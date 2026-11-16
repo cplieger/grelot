@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/cplieger/go/httpserver"
-	"github.com/cplieger/go/measure"
+	"github.com/cplieger/go/measure/v2"
 )
 
 var testNow = time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC)
@@ -29,17 +29,11 @@ func gather(t *testing.T, m *Metrics) map[string]measure.Family {
 // value is the sample of f whose label values are vals, in declared order.
 func value(t *testing.T, f measure.Family, vals ...string) float64 {
 	t.Helper()
-	for _, s := range f.Samples {
-		got := make([]string, 0, len(s.Labels))
-		for _, l := range s.Labels {
-			got = append(got, l.Value)
-		}
-		if slices.Equal(got, vals) {
-			return s.Value
-		}
+	s, ok := f.Sample(vals...)
+	if !ok {
+		t.Fatalf("%s has no sample %v", f.Name, vals)
 	}
-	t.Fatalf("%s has no sample %v", f.Name, vals)
-	return 0
+	return s.Value
 }
 
 func TestNew_servesEverySeriesOfTheSeriesList(t *testing.T) {
