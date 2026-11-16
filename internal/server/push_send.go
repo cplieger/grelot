@@ -122,10 +122,9 @@ func (p *hostPush) Reading(id uint64) pushReading {
 // Retry-After nor restarts the run's grace.
 func (p *hostPush) registered(id uint64, prov, host string) {
 	d, ok := p.doors.For(prov, host)
-	now := p.s.now()
 	p.mu.Lock()
 	if ok {
-		fresh := &pushee{door: d, healthy: now}
+		fresh := &pushee{door: d, unproven: true}
 		if e := p.ids[id]; e != nil && e.door.Door == d.Door {
 			fresh.retryAt, fresh.key, fresh.at = e.retryAt, e.key, e.at
 			if !e.off {
@@ -397,8 +396,8 @@ func doorAttrs(d provider.ServerDoor, status int) []any {
 	return []any{"provider", d.File, "door", d.Door.Name, attrStatus, status}
 }
 
-// accepted ends id's failing run and proves push again after a failure,
-// so a standing wait's hand-back is measured from now.
+// accepted ends id's failing run and proves push while it is unproven, so
+// a standing wait's hand-back is measured from now.
 func (p *hostPush) accepted(id uint64) {
 	now := p.s.now()
 	p.edit(id, func(e *pushee) {

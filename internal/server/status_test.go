@@ -128,6 +128,18 @@ func TestStatus_wakeState(t *testing.T) {
 			t.Errorf("wake %q, want watcher", got)
 		}
 	})
+	h.push.setReading(id, pushReading{state: pushOK, failing: h.clk.now().Add(-pushGrace + time.Second), unproven: true})
+	t.Run("host push while a retry under the grace is in flight", func(t *testing.T) {
+		if got := wake(); got != "host push" {
+			t.Errorf("wake %q, want host push", got)
+		}
+	})
+	h.push.setReading(id, pushReading{state: pushOK, failing: h.clk.now().Add(-pushGrace), unproven: true})
+	t.Run("watcher while a retry past the grace is in flight", func(t *testing.T) {
+		if got := wake(); got != "watcher" {
+			t.Errorf("wake %q, want watcher", got)
+		}
+	})
 	h.push.set(id, pushOff)
 	t.Run("watcher while push is off", func(t *testing.T) {
 		if got := wake(); got != "watcher" {

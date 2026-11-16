@@ -35,24 +35,25 @@ type pushReading struct {
 	// none. The run ends at an accepted send, and at a retry a read or a
 	// standing wait made obsolete, so the next failure gets its own grace.
 	failing time.Time
-	// healthy is when push last turned healthy: the entry's start or the
-	// accepted send that followed a failure.
+	// healthy is the accepted send that ended unproven, zero before one.
 	healthy time.Time
 	state   pushState
-	// unproven is a failed send with no accepted send since. An obsoleted
-	// retry leaves it set: a door that never accepts must not end the
-	// watcher that is the only wake that works.
+	// unproven is no accepted send since the entry began or since its last
+	// failed send. Entries live in memory only, so a restart or a new
+	// door proves nothing, and an obsoleted retry leaves it set: a door
+	// that never accepts must not end the watcher that is the only wake.
 	unproven bool
 }
 
 // wakes reports whether host push counts as the identity's wake at now.
 func (r pushReading) wakes(now time.Time) bool {
-	return r.state == pushOK || r.state == pushFailing && now.Sub(r.failing) < pushGrace
+	served := r.state == pushOK || r.state == pushFailing
+	return served && (r.failing.IsZero() || now.Sub(r.failing) < pushGrace)
 }
 
 // restoredAt is when push takes over from a watcher whose online stretch
 // began at watched: pushGrace after the later of that and healthy. ok is
-// false while push is not ok or unproven.
+// false while push is not ok or no accepted send has proven it.
 func (r pushReading) restoredAt(watched time.Time) (at time.Time, ok bool) {
 	if r.state != pushOK || r.unproven {
 		return time.Time{}, false

@@ -3,8 +3,12 @@
 package server
 
 import (
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -219,6 +223,69 @@ func TestPush_aGoneOrRefusedDoorIsNotGraced(t *testing.T) {
 	}
 }
 
+// mustAcceptOnePush posts from writer to name, whose session is to, has
+// rcv accept its one push, and acks it, so push is proven and nothing is
+// left to re-nudge.
+func (h *harness) mustAcceptOnePush(t *testing.T, writer, to, name string, rcv *pushReceiver) {
+	t.Helper()
+	before := len(rcv.requests())
+	h.mustPost(writer, map[string]any{"agent": name}, "first")
+	synctest.Wait()
+	if n := len(rcv.requests()) - before; n != 1 {
+		t.Fatalf("%d pushes for the first mail, want 1", n)
+	}
+	h.ack(to, h.newestWake(to))
+	synctest.Wait()
+}
+
+// heldPushes is a notify endpoint answering 503 with a 20 s Retry-After,
+// which holds its nth request until release is called, after signalling
+// arrived. Like pushReceiver it lives outside the bubble.
+func heldPushes(t *testing.T, n int32) (srv *httptest.Server, arrived <-chan struct{}, release func()) {
+	t.Helper()
+	got, held := make(chan struct{}, 1), make(chan struct{})
+	var seen atomic.Int32
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		_, _ = io.Copy(io.Discard, req.Body)
+		if seen.Add(1) == n {
+			got <- struct{}{}
+			<-held
+		}
+		w.Header().Set("Connection", "close")
+		w.Header().Set("Retry-After", "20")
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(srv.Close)
+	var once sync.Once
+	release = func() { once.Do(func() { close(held) }) }
+	t.Cleanup(release)
+	return srv, got, release
+}
+
+func TestPush_aRetryInFlightPastTheGraceReadsDown(t *testing.T) {
+	t.Setenv(doorTokenEnv, doorSecret)
+	// The first send fails at 0 s and its retries at 20 s steps, so the
+	// seventh send is the retry at the grace.
+	srv, arrived, release := heldPushes(t, 7)
+	door := []string{"testhost", doorFileAt(srv.URL, "testhost", "door_token", "    match: {provider: kiro-cli}\n")}
+	synctest.Test(t, func(t *testing.T) {
+		h := newPushHarness(t, door...)
+		h.mustRegisterAlone(sessA, "reader")
+		h.mustRegisterAlone(sessB, "writer")
+		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
+		synctest.Wait()
+		time.Sleep(grace)
+		<-arrived
+		h.mustWake(t, "while the retry at the grace is in flight", sessA, wakeDown)
+		release()
+		synctest.Wait()
+		if got := h.pushState(sessA); got != string(pushFailing) {
+			t.Errorf("push once the held retry failed = %q, want failing", got)
+		}
+		h.mustWake(t, "once the held retry failed", sessA, wakeDown)
+	})
+}
+
 // watchUntilEnd takes session's standing waits back to back, as a watcher
 // does, for at most n waits or until one answers 410, and answers that
 // one with the instant it came, or nil.
@@ -246,6 +313,7 @@ func TestWait_aPushIdentitysWatcherEndsOnceHostPushHasWorkedForTwoMinutes(t *tes
 			h := newPushHarness(t, rcv.kiroDoor()...)
 			h.mustRegisterAlone(sessA, "reader")
 			h.mustRegisterAlone(sessB, "writer")
+			h.mustAcceptOnePush(t, sessB, sessA, "reader", rcv)
 			start := time.Now()
 			end, at := h.watchUntilEnd(t, sessA, 5)
 			if end == nil {
@@ -259,13 +327,71 @@ func TestWait_aPushIdentitysWatcherEndsOnceHostPushHasWorkedForTwoMinutes(t *tes
 			}
 			h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
 			synctest.Wait()
-			if n := len(rcv.requests()); n != 1 {
-				t.Errorf("%d pushes after the watcher ended, want its mail pushed once", n)
+			if n := len(rcv.requests()); n != 2 {
+				t.Errorf("%d pushes after the watcher ended, want its mail pushed once more", n)
 			}
-			if n := h.nudgesVia("push"); n != 1 {
-				t.Errorf("%d nudges via push, want 1", n)
+			if n := h.nudgesVia("push"); n != 2 {
+				t.Errorf("%d nudges via push, want 2", n)
 			}
 			h.mustWakeAll(t, "after the watcher ended", sessA, wakePush, true)
+		})
+	})
+
+	t.Run("a fresh entry, one grace after its first accepted send", func(t *testing.T) {
+		rcv := newPushReceiver(t)
+		synctest.Test(t, func(t *testing.T) {
+			h := newPushHarness(t, rcv.kiroDoor()...)
+			h.mustRegisterAlone(sessA, "reader")
+			h.mustRegisterAlone(sessB, "writer")
+			first := h.watchAsync(sessA, 55*time.Second)
+			time.Sleep(30 * time.Second)
+			h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
+			synctest.Wait()
+			posted := time.Now()
+			if n := len(rcv.requests()); n != 1 {
+				t.Fatalf("%d pushes, want the mail's", n)
+			}
+			if r := first.answer(); r.status != http.StatusNoContent {
+				t.Fatalf("the first wait = %d %s, want 204 while push sends", r.status, r.raw)
+			}
+			end, at := h.watchUntilEnd(t, sessA, 5)
+			if end == nil || end.str("code") != "restored" {
+				t.Fatalf("end = %v, want a 410 restored", end)
+			}
+			if d := at.Sub(posted); d != grace {
+				t.Errorf("the watcher ended %v after the first accepted send, want %v", d, grace)
+			}
+		})
+	})
+
+	t.Run("after a register that cleared push off, from the next accepted send", func(t *testing.T) {
+		rcv := newPushReceiver(t, pushReply{status: http.StatusNotFound}, pushReply{status: http.StatusAccepted})
+		synctest.Test(t, func(t *testing.T) {
+			h := newPushHarness(t, rcv.kiroDoor()...)
+			h.mustRegisterAlone(sessA, "reader")
+			h.mustRegisterAlone(sessB, "writer")
+			first := h.watchAsync(sessA, 55*time.Second)
+			synctest.Wait()
+			h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
+			synctest.Wait()
+			mustReturnNow(t, first)
+			nudged := time.Now()
+			h.reRegister(sessA, "reader")
+			synctest.Wait()
+			if got := h.pushState(sessA); got != string(pushOK) {
+				t.Fatalf("push after the register = %q, want ok", got)
+			}
+			end, at := h.watchUntilEnd(t, sessA, 9)
+			if end == nil || end.str("code") != "restored" {
+				t.Fatalf("end = %v, want a 410 restored", end)
+			}
+			if n := len(rcv.requests()); n != 2 {
+				t.Fatalf("%d pushes, want the gone one and the accepted re-nudge", n)
+			}
+			// The re-nudge goes out 3 minutes after the nudge the watcher sent.
+			if d := at.Sub(nudged); d != 3*time.Minute+grace {
+				t.Errorf("the watcher ended %v after its nudge, want the re-nudge's 3m plus %v", d, grace)
+			}
 		})
 	})
 
@@ -275,6 +401,7 @@ func TestWait_aPushIdentitysWatcherEndsOnceHostPushHasWorkedForTwoMinutes(t *tes
 			h := newPushHarness(t, rcv.kiroDoor()...)
 			h.mustRegisterAlone(sessA, "reader")
 			h.mustRegisterAlone(sessB, "writer")
+			h.mustAcceptOnePush(t, sessB, sessA, "reader", rcv)
 			for range 2 {
 				if r := h.watchAsync(sessA, 55*time.Second).answer(); r.status != http.StatusNoContent {
 					t.Fatalf("standing wait = %d %s, want 204", r.status, r.raw)
@@ -294,8 +421,8 @@ func TestWait_aPushIdentitysWatcherEndsOnceHostPushHasWorkedForTwoMinutes(t *tes
 			}
 			time.Sleep(3 * time.Minute)
 			synctest.Wait()
-			if n, w := h.nudgesVia("push"), h.sentByWatcher(); n != 2 || w != 0 {
-				t.Errorf("%d nudges via push and %d via watcher, want the nudge and its re-nudge by push", n, w)
+			if n, w := h.nudgesVia("push"), h.sentByWatcher(); n != 3 || w != 0 {
+				t.Errorf("%d nudges via push and %d via watcher, want the first mail's, then the nudge and its re-nudge, by push", n, w)
 			}
 		})
 	})
@@ -361,6 +488,34 @@ func TestWait_aWatcherNeverEndsAsRestoredWithoutWorkingPush(t *testing.T) {
 			})
 		})
 	}
+	t.Run("a restart while the door never accepts", func(t *testing.T) {
+		rcv := newPushReceiver(t, pushReply{status: http.StatusServiceUnavailable, header: map[string]string{"Retry-After": "20"}})
+		synctest.Test(t, func(t *testing.T) {
+			h := newPushHarness(t, rcv.kiroDoor()...)
+			h.mustRegisterAlone(sessA, "reader")
+			h.mustRegisterAlone(sessB, "writer")
+			h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
+			synctest.Wait()
+			wait := h.watchAsync(sessA, 55*time.Second)
+			synctest.Wait()
+			mustReturnNow(t, wait)
+			h.restart()
+			synctest.Wait()
+			if end, _ := h.watchUntilEnd(t, sessA, 8); end != nil {
+				t.Errorf("the watcher ended with %s after the restart, want it to run on", end.raw)
+			}
+		})
+	})
+	t.Run("a door no push has reached yet", func(t *testing.T) {
+		rcv := newPushReceiver(t)
+		synctest.Test(t, func(t *testing.T) {
+			h := newPushHarness(t, rcv.kiroDoor()...)
+			h.mustRegisterAlone(sessA, "reader")
+			if end, _ := h.watchUntilEnd(t, sessA, 8); end != nil {
+				t.Errorf("the watcher ended with %s, want it to run on", end.raw)
+			}
+		})
+	})
 	t.Run("no door serves the identity", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			h := newBubbleHarness(t)

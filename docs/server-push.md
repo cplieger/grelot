@@ -42,7 +42,7 @@ Push never loses mail. It only changes how soon an agent is woken.
 - **A session the tool no longer has**, a status the door lists under `gone`, turns push off for that one identity.
 - **A refused credential**, a 401 or a 403, turns the door off for every identity it serves until the server restarts. The server logs one `"msg":"push refused"` line, and `grelot_push_door_up` reads 0.
 
-While push is off for an identity, its status line reads `wake: down` and names its watcher. The agent then starts one, and mail wakes it the usual way. Once push has worked again for 2 minutes, that watcher stops on its own with the end line `(host push working again)`, and push wakes the agent. The `GrelotPushFailing`, `GrelotPushDoorOff` and `GrelotProviderInvalid` rules in [Monitoring and alerts](monitoring.md#alerting) fire for these cases.
+While push is off for an identity, its status line reads `wake: down` and names its watcher. The agent then starts one, and mail wakes it the usual way. Once the tool accepts a push and push keeps working for 2 minutes, that watcher stops on its own with the end line `(host push working again)`, and push wakes the agent. A server restart alone never stops it, because the server keeps no record of past pushes. The `GrelotPushFailing`, `GrelotPushDoorOff` and `GrelotProviderInvalid` rules in [Monitoring and alerts](monitoring.md#alerting) fire for these cases.
 
 ## Write a door for another tool
 
