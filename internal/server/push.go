@@ -45,8 +45,7 @@ type pushReading struct {
 	unproven bool
 }
 
-// wakes reports whether host push counts as the identity's wake at now:
-// push is ok, or its failing run began less than pushGrace ago.
+// wakes reports whether host push counts as the identity's wake at now.
 func (r pushReading) wakes(now time.Time) bool {
 	return r.state == pushOK || r.state == pushFailing && now.Sub(r.failing) < pushGrace
 }
@@ -64,11 +63,11 @@ func (r pushReading) restoredAt(watched time.Time) (at time.Time, ok bool) {
 	return r.healthy.Add(pushGrace), true
 }
 
-// Pusher is how the server reaches an identity's host push. Only pushOK
-// sends: an identity in any other state is woken by its standing waits,
-// as one with no door is. An implementation calls Hub.Woke for an
-// identity whose state leaves pushOK, or a standing wait already holding
-// sends its due nudge only at its next wake.
+// Pusher is how the server reaches an identity's host push. Standing waits
+// send an identity's due nudge whenever its state is not pushOK, as for one
+// with no door. An implementation calls Hub.Woke for an identity whose
+// state leaves pushOK, or a standing wait already holding sends its due
+// nudge only at its next wake.
 type Pusher interface {
 	// Reading is id's push state now.
 	Reading(id uint64) pushReading
