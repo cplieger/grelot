@@ -32,8 +32,8 @@ const pushGrace = 2 * time.Minute
 // pushReading is an identity's push state and the instants its runs began.
 type pushReading struct {
 	// failing is the first failed send with no accepted send since, zero
-	// for none. A failing run outlives a retry a read or a standing wait
-	// ended, since nothing reached the door since.
+	// for none. A retry that a read or a standing wait made obsolete
+	// leaves the run open: only an accepted send ends it.
 	failing time.Time
 	// healthy is when push last turned healthy: the entry's start or the
 	// accepted send that ended a failing run.

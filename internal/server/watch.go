@@ -39,9 +39,8 @@ var errReplaced = &apiError{
 	msg: "replaced: another watcher of this session took over, so this one stops",
 }
 
-// errRestored answers a standing wait once host push has worked for
-// pushGrace through the watcher's whole stretch, so push alone wakes the
-// session; a push failing past its grace asks for a watcher again.
+// errRestored answers a standing wait once host push takes over from the
+// watcher (pushReading.restoredAt).
 var errRestored = &apiError{
 	status: http.StatusGone, code: transport.EndRestored,
 	msg: "host push works again, so this watcher stops",
