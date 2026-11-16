@@ -30,7 +30,8 @@ type Spec struct {
 	// Successes are the row's success statuses besides its Status.
 	Successes []wiregen.Success
 	// Errors are the row's own refusals; Registry adds the gate's, the
-	// common ones and a list row's cursor refusals.
+	// common ones, a keyed row's and a body's (bodyCodes) and a list
+	// row's cursor refusals.
 	Errors []wire.ErrorCode
 	// Headers are the row's request headers beside Idempotency-Key and the
 	// identity headers an agent row takes from its Access.
@@ -56,22 +57,29 @@ func typeOf[T any]() reflect.Type { return reflect.TypeFor[T]() }
 // delegates.
 var asIdentity = []wire.ErrorCode{wire.ErrInvalid, wire.ErrForbidden, wire.ErrNone, wire.ErrDormant, wire.ErrDelegateEnded, wire.ErrDelegateGate}
 
-// agent is an agent row's own refusals: own, asIdentity and the client's
-// version, each code once.
-func agent(own ...wire.ErrorCode) []wire.ErrorCode {
+// asCaller is what a request reading as its session's identity, or as
+// none when it has none, can be refused: asIdentity's but no identity.
+var asCaller = []wire.ErrorCode{wire.ErrInvalid, wire.ErrForbidden, wire.ErrDelegateEnded, wire.ErrDelegateGate}
+
+// asSession is what a request acting on its session rather than an
+// identity can be refused: a bad identity header, another key's session.
+var asSession = []wire.ErrorCode{wire.ErrInvalid, wire.ErrForbidden}
+
+// agent is an agent row's own refusals: own, those of the caller as names
+// and the client's version, each code once.
+func agent(as []wire.ErrorCode, own ...wire.ErrorCode) []wire.ErrorCode {
+	return unique(own, as, []wire.ErrorCode{wire.ErrUpgradeRequired})
+}
+
+// unique is the codes of groups in order, each once.
+func unique(groups ...[]wire.ErrorCode) []wire.ErrorCode {
 	var out []wire.ErrorCode
-	for _, c := range slices.Concat(own, asIdentity, []wire.ErrorCode{wire.ErrUpgradeRequired}) {
+	for _, c := range slices.Concat(groups...) {
 		if !slices.Contains(out, c) {
 			out = append(out, c)
 		}
 	}
 	return out
-}
-
-// anySession is agent's for a row that also answers with no session: own,
-// a bad identity header, another key's identity and the client's version.
-func anySession(own ...wire.ErrorCode) []wire.ErrorCode {
-	return append(own, wire.ErrInvalid, wire.ErrForbidden, wire.ErrUpgradeRequired)
 }
 
 // specs documents every wire.Routes row by its Name.
@@ -80,18 +88,17 @@ var specs = map[string]Spec{
 		Summary: "Register this session as a new identity, take one over, or register a delegate from its link",
 		Request: typeOf[wire.RegisterRequest](), Response: typeOf[wire.Registered](),
 		Successes: []wiregen.Success{{Status: http.StatusOK, Response: wiregen.TypeRef[wire.Registered]()}},
-		Errors: agent(wire.ErrConflict, wire.ErrOtherEnv, wire.ErrOtherProvider, wire.ErrNoEnvironment, wire.ErrOtherRepo,
-			wire.ErrLinkGone, wire.ErrKeyReused, wire.ErrStoreFull, wire.ErrTooLarge),
+		Errors: agent(asSession, wire.ErrConflict, wire.ErrOtherEnv, wire.ErrOtherProvider, wire.ErrNoEnvironment, wire.ErrOtherRepo,
+			wire.ErrLinkGone, wire.ErrStoreFull, wire.ErrDelegateGate),
 	},
 	"revive": {
 		Summary: "Make this session's dormant identity, or one of this environment by name, live again",
 		Request: typeOf[wire.ReviveRequest](), Response: typeOf[wire.Registered](),
-		Errors: agent(wire.ErrNotFound, wire.ErrGone, wire.ErrConflict, wire.ErrOtherProvider, wire.ErrNoEnvironment,
-			wire.ErrKeyReused, wire.ErrStoreFull, wire.ErrTooLarge),
+		Errors: agent(asSession, wire.ErrNotFound, wire.ErrConflict, wire.ErrOtherProvider, wire.ErrNoEnvironment, wire.ErrOtherRepo),
 	},
 	"getMe": {
 		Summary: "This session's identity and status; with turn=start, the prompt hook's opening of the turn",
-		Query:   typeOf[wire.MeQuery](), Response: typeOf[wire.Me](), Errors: agent(wire.ErrDelegateGate),
+		Query:   typeOf[wire.MeQuery](), Response: typeOf[wire.Me](), Errors: agent(asIdentity),
 		Headers: []wiregen.Header{
 			{
 				Name: wire.HeaderEnvironment, Arg: "grelotEnvironment", MinBytes: 32, MaxBytes: 32,
@@ -106,100 +113,99 @@ var specs = map[string]Spec{
 	"patchMe": {
 		Summary: "Change this session's identity, or renew its lease",
 		Request: typeOf[wire.PatchMeRequest](), Response: typeOf[wire.IdentityAnswer](),
-		Errors: agent(wire.ErrConflict, wire.ErrOtherRepo, wire.ErrKeyReused, wire.ErrStoreFull, wire.ErrTooLarge),
+		Errors: agent(asIdentity, wire.ErrConflict, wire.ErrOtherRepo, wire.ErrStoreFull),
 	},
 	"deleteMe": {
 		Summary:  "Retire this session's identity",
-		Response: typeOf[wire.Retired](), Errors: agent(wire.ErrKeyReused),
+		Response: typeOf[wire.Retired](), Errors: agent(asIdentity),
 	},
 	"listIdentities": {
 		Summary: "Every live identity, or with all=1 the dormant ones too, narrowed by the filters, by name",
 		Query:   typeOf[wire.IdentitiesQuery](), Response: typeOf[wire.Peers](),
-		Errors: anySession(wire.ErrDelegateGate, wire.ErrDelegateEnded), AnySession: true,
+		Errors: agent(asCaller), AnySession: true,
 	},
 	"getVersion": {
 		Summary:  "The server's version and path root",
-		Response: typeOf[wire.Version](), Errors: anySession(), AnySession: true,
+		Response: typeOf[wire.Version](), Errors: []wire.ErrorCode{wire.ErrInvalid, wire.ErrUpgradeRequired}, AnySession: true,
 	},
 	"createPost": {
 		Summary: "Post to announce, a path thread or an agent",
 		Request: typeOf[wire.PostRequest](), Response: typeOf[wire.Posted](),
-		Errors: agent(wire.ErrNotFound, wire.ErrConflict, wire.ErrDelegateGate, wire.ErrGone, wire.ErrOtherRepo,
-			wire.ErrTooLarge, wire.ErrKeyReused, wire.ErrStoreFull),
+		Errors: agent(asIdentity, wire.ErrNotFound, wire.ErrConflict, wire.ErrOtherRepo, wire.ErrStoreFull),
 	},
 	"listThreads": {
 		Summary: "The live path threads under a path, by path",
-		Query:   typeOf[wire.ThreadsQuery](), Response: typeOf[wire.Threads](), Errors: agent(),
+		Query:   typeOf[wire.ThreadsQuery](), Response: typeOf[wire.Threads](), Errors: agent(asIdentity),
 	},
 	"getReceipts": {
 		Summary: "Who has read a message this identity sent or received",
-		Params:  typeOf[wire.MessageParams](), Response: typeOf[wire.Receipts](), Errors: agent(wire.ErrNotFound),
+		Params:  typeOf[wire.MessageParams](), Response: typeOf[wire.Receipts](), Errors: agent(asIdentity, wire.ErrNotFound),
 	},
 	"getHistory": {
 		Summary: "This identity's mailbox, read and unread, moving nothing; pages go back in time, each oldest first",
-		Query:   typeOf[wire.HistoryQuery](), Response: typeOf[wire.History](), Errors: agent(wire.ErrNotFound),
+		Query:   typeOf[wire.HistoryQuery](), Response: typeOf[wire.History](), Errors: agent(asIdentity, wire.ErrNotFound),
 	},
 	"follow": {
 		Summary: "Follow a path's threads",
 		Query:   typeOf[wire.PathQuery](), Response: typeOf[wire.IdentityAnswer](),
-		Errors: agent(wire.ErrKeyReused, wire.ErrStoreFull),
+		Errors: agent(asIdentity, wire.ErrStoreFull),
 	},
 	"unfollow": {
 		Summary: "Stop following a path's threads",
 		Query:   typeOf[wire.PathQuery](), Response: typeOf[wire.IdentityAnswer](),
-		Errors: agent(wire.ErrConflict, wire.ErrKeyReused, wire.ErrStoreFull),
+		Errors: agent(asIdentity, wire.ErrConflict),
 	},
 	"ackInbox": {
 		Summary: "Mark read every inbox entry up to one",
 		Request: typeOf[wire.AckRequest](), Response: typeOf[wire.Acked](),
-		Errors: agent(wire.ErrKeyReused, wire.ErrTooLarge),
+		Errors: agent(asIdentity),
 	},
 	"reserve": {
 		Summary: "Reserve a path, or queue for it when it is taken",
 		Request: typeOf[wire.ReserveRequest](), Response: typeOf[wire.Reserved](),
-		Errors: agent(wire.ErrConflict, wire.ErrReserved, wire.ErrQueued, wire.ErrKeyReused, wire.ErrStoreFull, wire.ErrTooLarge),
+		Errors: agent(asIdentity, wire.ErrReserved, wire.ErrQueued, wire.ErrStoreFull),
 	},
 	"listReservations": {
 		Summary: "The grants and queue entries overlapping a path, every one when it is absent, by id",
-		Query:   typeOf[wire.ReservationsQuery](), Response: typeOf[wire.Reservations](), Errors: agent(),
+		Query:   typeOf[wire.ReservationsQuery](), Response: typeOf[wire.Reservations](), Errors: agent(asCaller),
 	},
 	"renewReservation": {
 		Summary: "Renew one of this identity's reservations",
 		Params:  typeOf[wire.ReservationParams](), Request: typeOf[wire.RenewRequest](), Response: typeOf[wire.ReservationAnswer](),
-		Errors: agent(wire.ErrNotFound, wire.ErrKeyReused, wire.ErrTooLarge),
+		Errors: agent(asIdentity, wire.ErrNotFound),
 	},
 	"releaseReservation": {
 		Summary: "Free a grant or cancel a queue entry of this identity",
 		Params:  typeOf[wire.ReservationParams](), Response: typeOf[wire.ReservationAnswer](),
-		Errors: agent(wire.ErrNotFound, wire.ErrKeyReused),
+		Errors: agent(asIdentity, wire.ErrNotFound),
 	},
 	"grantDelegate": {
 		Summary: "A single-use link a subagent registers with",
 		Request: typeOf[wire.GrantRequest](), Response: typeOf[wire.Granted](),
-		Errors: agent(wire.ErrNotFound, wire.ErrConflict, wire.ErrKeyReused, wire.ErrStoreFull, wire.ErrTooLarge),
+		Errors: agent(asIdentity, wire.ErrNotFound, wire.ErrConflict, wire.ErrStoreFull),
 	},
 	"revokeDelegate": {
 		Summary: "Revoke a label's unused link and end its delegate",
 		Params:  typeOf[wire.DelegateParams](), Response: typeOf[wire.Revoked](),
-		Errors: agent(wire.ErrNotFound, wire.ErrKeyReused),
+		Errors: agent(asIdentity, wire.ErrNotFound),
 	},
 	"lifecycle": {
 		Summary: "A hook's report of a session's end, a turn's end or a subagent's stop",
-		Request: typeOf[wire.LifecycleRequest](), Response: typeOf[wire.Lifecycle](), Errors: agent(wire.ErrTooLarge),
+		Request: typeOf[wire.LifecycleRequest](), Response: typeOf[wire.Lifecycle](), Errors: agent(asIdentity),
 	},
 	"holdEvent": {
 		Summary: "The stop hook's hold: whether wake mail keeps the turn open",
-		Request: typeOf[wire.HoldRequest](), Response: typeOf[wire.Held](), Errors: agent(wire.ErrTooLarge),
+		Request: typeOf[wire.HoldRequest](), Response: typeOf[wire.Held](), Errors: agent(asIdentity),
 	},
 	"waitEvent": {
 		Summary: "A standing wait, held up to 55s, that returns this identity's next nudge",
 		Request: typeOf[wire.WaitRequest](), Response: typeOf[wire.Nudge](),
 		Successes: []wiregen.Success{{Status: http.StatusNoContent}},
-		Errors:    agent(wire.ErrTooManyWaits, wire.ErrEnded, wire.ErrReplaced, wire.ErrTooLarge),
+		Errors:    agent(asIdentity, wire.ErrTooManyWaits, wire.ErrEnded, wire.ErrReplaced),
 	},
 	"readInbox": {
 		Summary: "The unread entries oldest first, marking nothing; with wait_ms, held until wake mail arrives",
-		Query:   typeOf[wire.InboxQuery](), Response: typeOf[wire.Inbox](), Errors: agent(wire.ErrTooManyWaits),
+		Query:   typeOf[wire.InboxQuery](), Response: typeOf[wire.Inbox](), Errors: agent(asIdentity, wire.ErrTooManyWaits),
 	},
 	"listConversations": {
 		Summary: "Conversations newest activity first, 50 a page",
@@ -223,8 +229,7 @@ var specs = map[string]Spec{
 		Summary: "Post as @user to announce, a path thread or an agent",
 		Request: typeOf[wire.UserPostRequest](), Response: typeOf[wire.UserPosted](),
 		Errors: []wire.ErrorCode{
-			wire.ErrInvalid, wire.ErrForbidden, wire.ErrNotFound, wire.ErrConflict, wire.ErrGone, wire.ErrTooLarge,
-			wire.ErrKeyReused, wire.ErrStoreFull,
+			wire.ErrInvalid, wire.ErrForbidden, wire.ErrNotFound, wire.ErrConflict, wire.ErrGone, wire.ErrStoreFull,
 		},
 	},
 	"listAgents": {
@@ -374,7 +379,7 @@ func endpoints(routes []wire.Route) []wiregen.Endpoint {
 		}
 		gr := wiregate.Route(r)
 		e.Security = security(&gr)
-		e.Errors = errorRefs(r, &gr, s.Errors)
+		e.Errors = errorRefs(r, &gr, &s)
 		out = append(out, e)
 	}
 	return out
@@ -405,22 +410,37 @@ func security(g *gate.Route) []wiregen.SecurityRequirement {
 }
 
 // errorRefs is r's union: its own codes, wire.Common, a key bucket's 429
-// on a row the gate authenticates, the gate's codes for g and, on a list
-// row, the cursor's refusals.
-func errorRefs(r *wire.Route, g *gate.Route, own []wire.ErrorCode) []wiregen.ErrorRef {
-	codes := slices.Concat(own, wire.Common)
+// on a row the gate authenticates, the gate's codes for g, bodyCodes and,
+// on a list row, the cursor's refusals, each code once.
+func errorRefs(r *wire.Route, g *gate.Route, s *Spec) []wiregen.ErrorRef {
+	codes := slices.Concat(s.Errors, wire.Common)
 	if g.Class != gate.Public {
 		codes = append(codes, wire.ErrRateLimited)
 	}
 	for _, c := range wiregate.Codes(r) {
 		codes = append(codes, wire.ErrorCode{Code: string(c), Status: access.NewError(c, "", nil).Status})
 	}
+	codes = append(codes, bodyCodes(r, s)...)
 	if r.Paged {
 		codes = append(codes, wire.ErrCursorInvalid, wire.ErrCursorMismatch)
 	}
+	codes = unique(codes)
 	out := make([]wiregen.ErrorRef, 0, len(codes))
 	for _, c := range codes {
 		out = append(out, wiregen.ErrorRef{Code: c.Code, Status: c.Status})
 	}
 	return out
+}
+
+// bodyCodes are the refusals of reading r's body: a keyed row's key sent
+// with another request, and past the body cap on a keyed row, whose key
+// binds the body it reads, or a row with a request.
+func bodyCodes(r *wire.Route, s *Spec) []wire.ErrorCode {
+	switch {
+	case r.Keyed:
+		return []wire.ErrorCode{wire.ErrKeyReused, wire.ErrTooLarge}
+	case s.Request != nil:
+		return []wire.ErrorCode{wire.ErrTooLarge}
+	}
+	return nil
 }

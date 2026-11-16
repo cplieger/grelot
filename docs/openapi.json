@@ -3476,6 +3476,19 @@
               "auth_method_not_allowed": {}
             }
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request Entity Too Large: too_large",
+            "x-error-codes": {
+              "too_large": {}
+            }
+          },
           "429": {
             "content": {
               "application/json": {
@@ -4246,6 +4259,19 @@
               "would_lock_out": {}
             }
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request Entity Too Large: too_large",
+            "x-error-codes": {
+              "too_large": {}
+            }
+          },
           "429": {
             "content": {
               "application/json": {
@@ -4979,6 +5005,19 @@
               "delegate_ended": {},
               "dormant": {},
               "none": {}
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request Entity Too Large: too_large",
+            "x-error-codes": {
+              "too_large": {}
             }
           },
           "422": {
@@ -5742,6 +5781,19 @@
               "none": {}
             }
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request Entity Too Large: too_large",
+            "x-error-codes": {
+              "too_large": {}
+            }
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5807,19 +5859,6 @@
               "auth_unavailable": {},
               "shutting_down": {},
               "timeout": {}
-            }
-          },
-          "507": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Insufficient Storage: store_full",
-            "x-error-codes": {
-              "store_full": {}
             }
           }
         },
@@ -6009,6 +6048,19 @@
               "delegate_ended": {},
               "dormant": {},
               "none": {}
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request Entity Too Large: too_large",
+            "x-error-codes": {
+              "too_large": {}
             }
           },
           "422": {
@@ -7688,6 +7740,19 @@
               "none": {}
             }
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request Entity Too Large: too_large",
+            "x-error-codes": {
+              "too_large": {}
+            }
+          },
           "422": {
             "content": {
               "application/json": {
@@ -8724,7 +8789,7 @@
                 }
               }
             },
-            "description": "Conflict: conflict, delegate_gate, other_repository",
+            "description": "Conflict: conflict, other_repository, delegate_gate",
             "x-error-codes": {
               "conflict": {},
               "delegate_gate": {},
@@ -8739,11 +8804,10 @@
                 }
               }
             },
-            "description": "Gone: gone, none, dormant, delegate_ended",
+            "description": "Gone: none, dormant, delegate_ended",
             "x-error-codes": {
               "delegate_ended": {},
               "dormant": {},
-              "gone": {},
               "none": {}
             }
           },
@@ -9041,12 +9105,9 @@
                 }
               }
             },
-            "description": "Gone: link_gone, none, dormant, delegate_ended",
+            "description": "Gone: link_gone",
             "x-error-codes": {
-              "delegate_ended": {},
-              "dormant": {},
-              "link_gone": {},
-              "none": {}
+              "link_gone": {}
             }
           },
           "413": {
@@ -9334,11 +9395,9 @@
                 }
               }
             },
-            "description": "Gone: none, dormant, delegate_ended",
+            "description": "Gone: delegate_ended",
             "x-error-codes": {
-              "delegate_ended": {},
-              "dormant": {},
-              "none": {}
+              "delegate_ended": {}
             }
           },
           "426": {
@@ -9566,9 +9625,8 @@
                 }
               }
             },
-            "description": "Conflict: conflict, reserved, queued, delegate_gate",
+            "description": "Conflict: reserved, queued, delegate_gate",
             "x-error-codes": {
-              "conflict": {},
               "delegate_gate": {},
               "queued": {},
               "reserved": {}
@@ -9874,6 +9932,19 @@
               "delegate_ended": {},
               "dormant": {},
               "none": {}
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request Entity Too Large: too_large",
+            "x-error-codes": {
+              "too_large": {}
             }
           },
           "422": {
@@ -10399,28 +10470,12 @@
                 }
               }
             },
-            "description": "Conflict: conflict, other_provider, no_environment, delegate_gate",
+            "description": "Conflict: conflict, other_provider, no_environment, other_repository",
             "x-error-codes": {
               "conflict": {},
-              "delegate_gate": {},
               "no_environment": {},
-              "other_provider": {}
-            }
-          },
-          "410": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Gone: gone, none, dormant, delegate_ended",
-            "x-error-codes": {
-              "delegate_ended": {},
-              "dormant": {},
-              "gone": {},
-              "none": {}
+              "other_provider": {},
+              "other_repository": {}
             }
           },
           "413": {
@@ -10501,19 +10556,6 @@
               "auth_unavailable": {},
               "shutting_down": {},
               "timeout": {}
-            }
-          },
-          "507": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Insufficient Storage: store_full",
-            "x-error-codes": {
-              "store_full": {}
             }
           }
         },
@@ -10879,11 +10921,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: auth_session_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
-              "auth_session_required": {},
-              "forbidden": {}
+              "auth_session_required": {}
             }
           },
           "404": {

@@ -40,8 +40,9 @@ type Revived struct {
 // its id, follows, cursors and mail, and resetting its nudge state.
 // Refusals: KindInvalid for a bad ttl, label or where; KindConflict for a
 // session with a live identity, an empty environment on a revive by name,
-// or another provider; KindNotFound for no dormant identity to revive, in
-// this environment or at all.
+// another provider, or a checkout another live identity gives another
+// remote (Why other_repository); KindNotFound for no dormant identity to
+// revive, in this environment or at all.
 func (s *Store) Revive(ctx context.Context, k Keyed, r *Revival) (Revived, bool, error) {
 	provider, err := checkSession(r.Session)
 	if err == nil && r.Name != "" {

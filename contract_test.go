@@ -263,7 +263,12 @@ func hasField(r *answer, field, code string) bool {
 }
 
 func TestContract_agentRowsMatchTheDocument(t *testing.T) {
-	c := newContract(t)
+	runScenario(newContract(t))
+}
+
+// runScenario runs agentScenario on c, two keys acting as its identities,
+// failing a step that never calls its row.
+func runScenario(c *contract) {
 	k1, k2 := c.mintKey("machine-1"), c.mintKey("machine-2")
 	hits := map[string]bool{}
 	c.hits = hits
@@ -276,7 +281,7 @@ func TestContract_agentRowsMatchTheDocument(t *testing.T) {
 		clear(hits)
 		step.run(s)
 		if !hits[step.row] {
-			t.Errorf("the %s step (%s) never called its row", step.row, step.what)
+			c.t.Errorf("the %s step (%s) never called its row", step.row, step.what)
 		}
 	}
 }
@@ -542,41 +547,11 @@ func TestV1ClientUpgradeRequired(t *testing.T) {
 	observer.call(http.StatusCreated, "register", "/v1/register", observer.registerBody("observer", hourMS, repoPath))
 	sender.call(http.StatusCreated, "register", "/v1/register", sender.registerBody("sender", hourMS, repoPath))
 	newcomer := c.agent(k, "kiro-cli:newcomer", "a")
-	requests := map[string]struct {
-		body any
-		path string
-	}{
-		"register":           {newcomer.registerBody("newcomer", hourMS, repoPath), "/v1/register"},
-		"revive":             {map[string]any{"name": "sender", "where": sender.where(), "ttl_ms": hourMS}, "/v1/revive"},
-		"getMe":              {nil, "/v1/me"},
-		"patchMe":            {map[string]any{"description": "patched", "ttl_ms": hourMS}, "/v1/me"},
-		"deleteMe":           {nil, "/v1/me"},
-		"listIdentities":     {nil, "/v1/identities"},
-		"getVersion":         {nil, "/v1/version"},
-		"createPost":         {postBody(map[string]any{"agent": "observer"}, "hello", "a body"), "/v1/posts"},
-		"listThreads":        {nil, "/v1/threads"},
-		"getReceipts":        {nil, "/v1/messages/1/receipts"},
-		"getHistory":         {nil, "/v1/history"},
-		"follow":             {nil, "/v1/follows?path=" + url.QueryEscape(otherPath)},
-		"unfollow":           {nil, "/v1/follows?path=" + url.QueryEscape(otherPath)},
-		"ackInbox":           {map[string]any{"upto": 1}, "/v1/inbox/ack"},
-		"reserve":            {map[string]any{"path": repoPath, "reason": "a change", "ttl_ms": hourMS}, "/v1/reservations"},
-		"listReservations":   {nil, "/v1/reservations"},
-		"renewReservation":   {map[string]any{"ttl_ms": hourMS}, "/v1/reservations/1"},
-		"releaseReservation": {nil, "/v1/reservations/1"},
-		"grantDelegate":      {map[string]any{"label": "helper", "ttl_ms": hourMS}, "/v1/delegates"},
-		"revokeDelegate":     {nil, "/v1/delegates/helper"},
-		"lifecycle":          {map[string]any{"event": "turn_end"}, "/v1/lifecycle"},
-		"holdEvent":          {map[string]any{"for": "stop"}, "/v1/events/hold"},
-		"waitEvent":          {map[string]any{"wait_ms": int64(1000)}, "/v1/events/wait"},
-		"readInbox":          {nil, "/v1/inbox"},
-	}
+	requests := agentRequests(sender, "sender", "observer")
+	requests["register"] = agentRequests(newcomer, "newcomer", "observer")["register"]
 	for _, sent := range []string{"v1.1.0", "v1.1.1", "v1.1.2", "v1.2.0-dev.9", ""} {
 		for _, row := range agentRows {
-			req, ok := requests[row.name]
-			if !ok {
-				t.Fatalf("no request for agent row %s", row.name)
-			}
+			req := requests[row.name]
 			t.Run(fmt.Sprintf("%s under %q", row.name, sent), func(t *testing.T) {
 				c.t = t
 				a := sender

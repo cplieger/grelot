@@ -51,6 +51,8 @@ type contractOptions struct {
 	// limits are the server's; zero lifts every limit, so a scenario sends
 	// as many requests as it needs.
 	limits server.Limits
+	// maxBytes is the store's ceiling; zero is the store's default.
+	maxBytes int64
 	// frozen stops the server's clock, so a bucket refills by nothing.
 	frozen bool
 }
@@ -60,7 +62,10 @@ type contractOptions struct {
 type contract struct {
 	t *testing.T
 	// hits, when set, records each row an agent of this contract calls.
-	hits   map[string]bool
+	hits map[string]bool
+	// codes, when set, records each refusal code an answer of a row
+	// carries, by row.
+	codes  map[string]map[string]bool
 	doc    *wiretest.Doc
 	au     *auth.Auth
 	clk    *contractClock
@@ -137,7 +142,7 @@ func newContractWith(t *testing.T, o contractOptions) *contract {
 	hub, events := server.NewHub(), server.NewEvents(logger)
 	st, err := store.Open(cfg.StorePath, &store.Options{
 		Logger: logger, Metrics: metrics, Now: clk.now, Retention: acc.Retention, PathRoot: cfg.PathRoot,
-		Woke: hub.Woke, Changed: events.Changed, KeyLive: au.KeyLive,
+		Woke: hub.Woke, Changed: events.Changed, KeyLive: au.KeyLive, MaxBytes: o.maxBytes,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -417,6 +422,12 @@ func (c *contract) check(method, path, row string, ans *answer) {
 	checkForms(t, method+" "+path, "$", ans.body)
 	if ans.status >= http.StatusBadRequest {
 		checkEnvelope(t, method+" "+path, ans)
+		if c.codes != nil {
+			if c.codes[row] == nil {
+				c.codes[row] = map[string]bool{}
+			}
+			c.codes[row][ans.str("code")] = true
+		}
 	}
 }
 
@@ -488,6 +499,9 @@ var codeMembers = map[string]members{
 	"none":              {},
 	"dormant":           {},
 	"delegate_ended":    {},
+	"link_gone":         {},
+	"ended":             {},
+	"replaced":          {},
 	"conflict":          {},
 	"reserved":          {},
 	"queued":            {},
