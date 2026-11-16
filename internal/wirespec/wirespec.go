@@ -137,7 +137,7 @@ var specs = map[string]Spec{
 	},
 	"getHistory": {
 		Summary: "This identity's mailbox, read and unread, moving nothing; pages go back in time, each oldest first",
-		Query:   typeOf[wire.HistoryQuery](), Response: typeOf[wire.History](), Errors: agent(),
+		Query:   typeOf[wire.HistoryQuery](), Response: typeOf[wire.History](), Errors: agent(wire.ErrNotFound),
 	},
 	"follow": {
 		Summary: "Follow a path's threads",
@@ -147,7 +147,7 @@ var specs = map[string]Spec{
 	"unfollow": {
 		Summary: "Stop following a path's threads",
 		Query:   typeOf[wire.PathQuery](), Response: typeOf[wire.IdentityAnswer](),
-		Errors: agent(wire.ErrKeyReused, wire.ErrStoreFull),
+		Errors: agent(wire.ErrConflict, wire.ErrKeyReused, wire.ErrStoreFull),
 	},
 	"ackInbox": {
 		Summary: "Mark read every inbox entry up to one",
@@ -176,7 +176,7 @@ var specs = map[string]Spec{
 	"grantDelegate": {
 		Summary: "A single-use link a subagent registers with",
 		Request: typeOf[wire.GrantRequest](), Response: typeOf[wire.Granted](),
-		Errors: agent(wire.ErrConflict, wire.ErrKeyReused, wire.ErrStoreFull, wire.ErrTooLarge),
+		Errors: agent(wire.ErrNotFound, wire.ErrConflict, wire.ErrKeyReused, wire.ErrStoreFull, wire.ErrTooLarge),
 	},
 	"revokeDelegate": {
 		Summary: "Revoke a label's unused link and end its delegate",

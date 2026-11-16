@@ -559,7 +559,7 @@ export interface GetHistoryArgs {
   readonly grelotSelf?: string;
 }
 
-const getHistoryCodes = ["invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found", "cursor_invalid", "cursor_mismatch"] as const;
+const getHistoryCodes = ["not_found", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found", "cursor_invalid", "cursor_mismatch"] as const;
 
 export type GetHistoryError = (typeof getHistoryCodes)[number];
 
@@ -656,7 +656,7 @@ export interface UnfollowArgs {
   readonly idempotencyKey: string;
 }
 
-const unfollowCodes = ["key_reused", "store_full", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
+const unfollowCodes = ["conflict", "key_reused", "store_full", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type UnfollowError = (typeof unfollowCodes)[number];
 
@@ -953,7 +953,7 @@ export interface GrantDelegateArgs {
   readonly idempotencyKey: string;
 }
 
-const grantDelegateCodes = ["conflict", "key_reused", "store_full", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
+const grantDelegateCodes = ["not_found", "conflict", "key_reused", "store_full", "too_large", "invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type GrantDelegateError = (typeof grantDelegateCodes)[number];
 

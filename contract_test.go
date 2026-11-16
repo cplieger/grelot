@@ -130,16 +130,26 @@ var agentScenario = []scenarioStep{
 			t.Errorf("receipts with no Grelot-Session: code %q, want invalid", r.str("code"))
 		}
 	}},
-	{row: "getHistory", what: "alpha reads its history", run: func(s *scenario) {
+	{row: "getHistory", what: "alpha reads its history, and a history from or with nobody", run: func(s *scenario) {
 		if r := s.alpha.call(http.StatusOK, "getHistory", "/v1/history", nil); len(r.items()) == 0 {
 			s.c.t.Errorf("GET /v1/history: %s, want alpha's posts", r.raw)
+		}
+		for _, q := range []string{"from", "with"} {
+			r := s.alpha.call(http.StatusNotFound, "getHistory", "/v1/history?"+q+"=nobody", nil)
+			if r.str("code") != "not_found" || r.str("reason") != "identity" {
+				s.c.t.Errorf("a history %s nobody: %s, want not_found with reason identity", q, r.raw)
+			}
 		}
 	}},
 	{row: "follow", what: "alpha follows a path", run: func(s *scenario) {
 		s.alpha.call(http.StatusOK, "follow", "/v1/follows?path="+url.QueryEscape(otherPath), nil)
 	}},
-	{row: "unfollow", what: "alpha unfollows it", run: func(s *scenario) {
+	{row: "unfollow", what: "alpha unfollows it, and cannot mute a path its work path delivers", run: func(s *scenario) {
 		s.alpha.call(http.StatusOK, "unfollow", "/v1/follows?path="+url.QueryEscape(otherPath), nil)
+		r := s.alpha.call(http.StatusConflict, "unfollow", "/v1/follows?path="+url.QueryEscape(repoPath+"/file.go"), nil)
+		if r.str("code") != "conflict" {
+			s.c.t.Errorf("an unfollow of a path the work path delivers: code %q, want conflict", r.str("code"))
+		}
 	}},
 	{row: "waitEvent", what: "beta's standing wait returns the direct post's nudge; gamma's passes with none", run: func(s *scenario) {
 		if r := s.beta.call(http.StatusOK, "waitEvent", "/v1/events/wait", map[string]any{"wait_ms": int64(5000)}); num(r.body, "seq") < 1 {
@@ -196,7 +206,11 @@ var agentScenario = []scenarioStep{
 	{row: "releaseReservation", what: "alpha releases it", run: func(s *scenario) {
 		s.alpha.call(http.StatusOK, "releaseReservation", fmt.Sprintf("/v1/reservations/%d", s.held), nil)
 	}},
-	{row: "grantDelegate", what: "alpha grants a delegate link", run: func(s *scenario) {
+	{row: "grantDelegate", what: "a grant allowing nobody, then alpha grants a delegate link", run: func(s *scenario) {
+		stray := map[string]any{"label": "stray", "ttl_ms": hourMS, "allow_agents": []string{"nobody"}}
+		if r := s.alpha.call(http.StatusNotFound, "grantDelegate", "/v1/delegates", stray); r.str("code") != "not_found" {
+			s.c.t.Errorf("a grant allowing an agent nobody is: code %q, want not_found", r.str("code"))
+		}
 		s.alpha.call(http.StatusCreated, "grantDelegate", "/v1/delegates", map[string]any{"label": "helper", "ttl_ms": hourMS})
 	}},
 	{row: "listIdentities", what: "alpha's list meets its delegate gate, and a handle naming no delegate has ended", run: func(s *scenario) {

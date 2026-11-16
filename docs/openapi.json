@@ -4632,9 +4632,10 @@
                 }
               }
             },
-            "description": "Not Found: auth_not_found",
+            "description": "Not Found: not_found, auth_not_found",
             "x-error-codes": {
-              "auth_not_found": {}
+              "auth_not_found": {},
+              "not_found": {}
             }
           },
           "405": {
@@ -5704,8 +5705,9 @@
                 }
               }
             },
-            "description": "Conflict: delegate_gate",
+            "description": "Conflict: conflict, delegate_gate",
             "x-error-codes": {
+              "conflict": {},
               "delegate_gate": {}
             }
           },
@@ -6301,9 +6303,10 @@
                 }
               }
             },
-            "description": "Not Found: auth_not_found",
+            "description": "Not Found: not_found, auth_not_found",
             "x-error-codes": {
-              "auth_not_found": {}
+              "auth_not_found": {},
+              "not_found": {}
             }
           },
           "405": {
