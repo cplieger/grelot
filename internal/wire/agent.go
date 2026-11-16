@@ -378,9 +378,9 @@ type Receipt struct {
 // flags are 1 or 0.
 type HistoryQuery struct {
 	// Since is an RFC 3339 instant, the oldest entry's earliest time.
-	Since string `json:"since,omitempty"`
+	Since time.Time `json:"since,omitzero"`
 	// Until is an RFC 3339 instant, the newest entry's latest time.
-	Until    string    `json:"until,omitempty"`
+	Until    time.Time `json:"until,omitzero"`
 	Cursor   string    `json:"cursor,omitempty"`
 	Path     string    `json:"path,omitempty"`
 	With     string    `json:"with,omitempty"`

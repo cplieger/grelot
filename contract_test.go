@@ -655,8 +655,8 @@ func TestOpenAPIErrorRequiresItsMembers(t *testing.T) {
 }
 
 // TestOpenAPIDeclaresTheQueryBounds holds the document to the bounds the
-// server enforces: every paged row's limit, the inbox's wait_ms and a
-// standing wait's wait_ms.
+// server enforces: every paged row's limit, the inbox's wait_ms, a
+// standing wait's wait_ms and the history window's RFC 3339 since and until.
 func TestOpenAPIDeclaresTheQueryBounds(t *testing.T) {
 	raw, err := os.ReadFile(contractDoc)
 	if err != nil {
@@ -665,6 +665,7 @@ func TestOpenAPIDeclaresTheQueryBounds(t *testing.T) {
 	type bounded struct {
 		Minimum *int64 `json:"minimum"`
 		Maximum *int64 `json:"maximum"`
+		Format  string `json:"format"`
 	}
 	var doc struct {
 		Paths map[string]map[string]struct {
@@ -707,6 +708,13 @@ func TestOpenAPIDeclaresTheQueryBounds(t *testing.T) {
 		}
 		if r.Name == "readInbox" {
 			want("readInbox's wait_ms", query(r, "wait_ms"), 0, wire.MaxWaitMS)
+		}
+		if r.Name == "getHistory" {
+			for _, name := range []string{"since", "until"} {
+				if got := query(r, name).Format; got != "date-time" {
+					t.Errorf("%s: getHistory's %s has format %q, want date-time", contractDoc, name, got)
+				}
+			}
 		}
 	}
 	if paged == 0 {

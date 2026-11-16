@@ -6091,6 +6091,7 @@
             "name": "since",
             "required": false,
             "schema": {
+              "format": "date-time",
               "type": "string"
             }
           },
@@ -6099,6 +6100,7 @@
             "name": "until",
             "required": false,
             "schema": {
+              "format": "date-time",
               "type": "string"
             }
           },
