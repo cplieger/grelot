@@ -67,6 +67,12 @@ const (
 	PageLimitMax     = 200
 )
 
+// PageLimit is a list read's limit.
+type PageLimit int
+
+// Range is the limits the server takes, which the document states.
+func (PageLimit) Range() (lo, hi int64) { return 1, PageLimitMax }
+
 // The query parameters a list read pages with.
 const (
 	QueryCursor = "cursor"

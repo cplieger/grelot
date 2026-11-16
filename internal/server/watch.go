@@ -97,7 +97,7 @@ func (s *Server) watchFor(r *http.Request, c store.Caller) (id uint64, wait time
 	if derr := decode(r, &req); derr != nil {
 		return 0, 0, derr
 	}
-	if wait = durationMS(req.WaitMS); wait <= 0 || wait > maxWait {
+	if wait = durationMS(int64(req.WaitMS)); wait <= 0 || wait > maxWait {
 		return 0, 0, fieldRefusal("wait_ms must be 1 to 55000", waitRange("wait_ms", 1))
 	}
 	me, err := s.store.Watcher(r.Context(), c)

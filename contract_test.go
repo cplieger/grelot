@@ -654,6 +654,75 @@ func TestOpenAPIErrorRequiresItsMembers(t *testing.T) {
 	}
 }
 
+// TestOpenAPIDeclaresTheQueryBounds holds the document to the bounds the
+// server enforces: every paged row's limit, the inbox's wait_ms and a
+// standing wait's wait_ms.
+func TestOpenAPIDeclaresTheQueryBounds(t *testing.T) {
+	raw, err := os.ReadFile(contractDoc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type bounded struct {
+		Minimum *int64 `json:"minimum"`
+		Maximum *int64 `json:"maximum"`
+	}
+	var doc struct {
+		Paths map[string]map[string]struct {
+			Parameters []struct {
+				Name   string  `json:"name"`
+				In     string  `json:"in"`
+				Schema bounded `json:"schema"`
+			} `json:"parameters"`
+		} `json:"paths"`
+		Components struct {
+			Schemas map[string]struct {
+				Properties map[string]bounded `json:"properties"`
+			} `json:"schemas"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	want := func(where string, got bounded, lo, hi int64) {
+		t.Helper()
+		if got.Minimum == nil || got.Maximum == nil || *got.Minimum != lo || *got.Maximum != hi {
+			t.Errorf("%s: %s bounds %v to %v, want %d to %d", contractDoc, where, deref(got.Minimum), deref(got.Maximum), lo, hi)
+		}
+	}
+	query := func(r wire.Route, name string) bounded {
+		t.Helper()
+		for _, p := range doc.Paths[r.Path][strings.ToLower(r.Method)].Parameters {
+			if p.In == "query" && p.Name == name {
+				return p.Schema
+			}
+		}
+		t.Errorf("%s: %s has no query parameter %s", contractDoc, r.Name, name)
+		return bounded{}
+	}
+	paged := 0
+	for _, r := range wire.Routes {
+		if r.Paged {
+			paged++
+			want(r.Name+"'s limit", query(r, wire.QueryLimit), 1, wire.PageLimitMax)
+		}
+		if r.Name == "readInbox" {
+			want("readInbox's wait_ms", query(r, "wait_ms"), 0, wire.MaxWaitMS)
+		}
+	}
+	if paged == 0 {
+		t.Error("wire.Routes has no paged row")
+	}
+	want("WaitRequest's wait_ms", doc.Components.Schemas["WaitRequest"].Properties["wait_ms"], 1, wire.MaxWaitMS)
+}
+
+// deref prints a bound the document may leave out.
+func deref(p *int64) any {
+	if p == nil {
+		return "none"
+	}
+	return *p
+}
+
 // notYetCovered are the wire.Routes rows the suite has no case for yet:
 // the owner rows (B3) and the stream (B4).
 var notYetCovered = []string{

@@ -535,7 +535,9 @@ export function getReceipts(args: GetReceiptsArgs, opts?: ClientOpts): globalThi
 }
 
 export interface GetHistoryArgs {
+  /** Since is an RFC 3339 instant, the oldest entry's earliest time. */
   readonly since?: string;
+  /** Until is an RFC 3339 instant, the newest entry's latest time. */
   readonly until?: string;
   readonly cursor?: string;
   readonly path?: string;

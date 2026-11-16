@@ -409,11 +409,13 @@ export interface HistoryPost {
 }
 
 /**
- * HistoryQuery is GET /v1/history's query. since and until are RFC 3339
- * instants; from is @me or a name; the flags are 1 or 0.
+ * HistoryQuery is GET /v1/history's query; from is @me or a name; the
+ * flags are 1 or 0.
  */
 export interface HistoryQuery {
+  /** Since is an RFC 3339 instant, the oldest entry's earliest time. */
   since?: string;
+  /** Until is an RFC 3339 instant, the newest entry's latest time. */
   until?: string;
   cursor?: string;
   path?: string;

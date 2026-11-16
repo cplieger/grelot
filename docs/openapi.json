@@ -2584,6 +2584,8 @@
       "WaitRequest": {
         "properties": {
           "wait_ms": {
+            "maximum": 55000,
+            "minimum": 1,
             "type": "integer"
           }
         },
@@ -6178,6 +6180,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -6485,6 +6489,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -6726,6 +6732,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -6734,6 +6742,8 @@
             "name": "wait_ms",
             "required": false,
             "schema": {
+              "maximum": 55000,
+              "minimum": 0,
               "type": "integer"
             }
           },
@@ -9142,6 +9152,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -10512,6 +10524,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "type": "integer"
             }
           },

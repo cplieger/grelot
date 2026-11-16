@@ -226,16 +226,16 @@ type Retired struct {
 // IdentitiesQuery is GET /v1/identities' query; online, here and all are
 // 1 or 0.
 type IdentitiesQuery struct {
-	Cursor string `json:"cursor,omitempty"`
-	Path   string `json:"path,omitempty"`
-	Repo   string `json:"repo,omitempty"`
-	Holds  string `json:"holds,omitempty"`
-	Queued string `json:"queued,omitempty"`
-	Q      string `json:"q,omitempty"`
-	Online string `json:"online,omitempty"`
-	Here   string `json:"here,omitempty"`
-	All    string `json:"all,omitempty"`
-	Limit  int    `json:"limit,omitempty"`
+	Cursor string    `json:"cursor,omitempty"`
+	Path   string    `json:"path,omitempty"`
+	Repo   string    `json:"repo,omitempty"`
+	Holds  string    `json:"holds,omitempty"`
+	Queued string    `json:"queued,omitempty"`
+	Q      string    `json:"q,omitempty"`
+	Online string    `json:"online,omitempty"`
+	Here   string    `json:"here,omitempty"`
+	All    string    `json:"all,omitempty"`
+	Limit  PageLimit `json:"limit,omitempty"`
 }
 
 // Peers is GET /v1/identities: the identities by name.
@@ -337,9 +337,9 @@ type PathQuery struct {
 
 // ThreadsQuery is GET /v1/threads' query.
 type ThreadsQuery struct {
-	Path   string `json:"path,omitempty"`
-	Cursor string `json:"cursor,omitempty"`
-	Limit  int    `json:"limit,omitempty"`
+	Path   string    `json:"path,omitempty"`
+	Cursor string    `json:"cursor,omitempty"`
+	Limit  PageLimit `json:"limit,omitempty"`
 }
 
 // Threads is GET /v1/threads: the live path threads under the path, by
@@ -374,21 +374,23 @@ type Receipt struct {
 	State    string    `json:"state"`
 }
 
-// HistoryQuery is GET /v1/history's query. since and until are RFC 3339
-// instants; from is @me or a name; the flags are 1 or 0.
+// HistoryQuery is GET /v1/history's query; from is @me or a name; the
+// flags are 1 or 0.
 type HistoryQuery struct {
-	Since    string `json:"since,omitempty"`
-	Until    string `json:"until,omitempty"`
-	Cursor   string `json:"cursor,omitempty"`
-	Path     string `json:"path,omitempty"`
-	With     string `json:"with,omitempty"`
-	From     string `json:"from,omitempty"`
-	Grep     string `json:"grep,omitempty"`
-	Announce string `json:"announce,omitempty"`
-	Full     string `json:"full,omitempty"`
-	LastRead string `json:"last_read,omitempty"`
-	Thread   uint64 `json:"thread,omitempty"`
-	Limit    int    `json:"limit,omitempty"`
+	// Since is an RFC 3339 instant, the oldest entry's earliest time.
+	Since string `json:"since,omitempty"`
+	// Until is an RFC 3339 instant, the newest entry's latest time.
+	Until    string    `json:"until,omitempty"`
+	Cursor   string    `json:"cursor,omitempty"`
+	Path     string    `json:"path,omitempty"`
+	With     string    `json:"with,omitempty"`
+	From     string    `json:"from,omitempty"`
+	Grep     string    `json:"grep,omitempty"`
+	Announce string    `json:"announce,omitempty"`
+	Full     string    `json:"full,omitempty"`
+	LastRead string    `json:"last_read,omitempty"`
+	Thread   uint64    `json:"thread,omitempty"`
+	Limit    PageLimit `json:"limit,omitempty"`
 }
 
 // History is GET /v1/history: the caller's mailbox, which it moves
@@ -425,9 +427,9 @@ type Entry struct {
 // InboxQuery is GET /v1/inbox's query; WaitMS, up to MaxWaitMS, holds the
 // read until wake mail arrives.
 type InboxQuery struct {
-	Cursor string `json:"cursor,omitempty"`
-	Limit  int    `json:"limit,omitempty"`
-	WaitMS int64  `json:"wait_ms,omitempty"`
+	Cursor string      `json:"cursor,omitempty"`
+	Limit  PageLimit   `json:"limit,omitempty"`
+	WaitMS InboxWaitMS `json:"wait_ms,omitempty"`
 }
 
 // Inbox is GET /v1/inbox: the unread entries oldest first, which it marks
@@ -466,9 +468,9 @@ type Reserved struct {
 
 // ReservationsQuery is GET /v1/reservations' query.
 type ReservationsQuery struct {
-	Path   string `json:"path,omitempty"`
-	Cursor string `json:"cursor,omitempty"`
-	Limit  int    `json:"limit,omitempty"`
+	Path   string    `json:"path,omitempty"`
+	Cursor string    `json:"cursor,omitempty"`
+	Limit  PageLimit `json:"limit,omitempty"`
 }
 
 // Reservations is GET /v1/reservations: the grants and queue entries by
@@ -554,11 +556,24 @@ type Held struct {
 
 // WaitRequest is a standing wait of up to MaxWaitMS.
 type WaitRequest struct {
-	WaitMS int64 `json:"wait_ms"`
+	WaitMS StandingWaitMS `json:"wait_ms"`
 }
 
 // MaxWaitMS bounds a held wait.
 const MaxWaitMS = 55_000
+
+// InboxWaitMS is how long an inbox read holds for wake mail; 0 holds
+// nothing.
+type InboxWaitMS int64
+
+// Range is the limits the server takes, which the document states.
+func (InboxWaitMS) Range() (lo, hi int64) { return 0, MaxWaitMS }
+
+// StandingWaitMS is how long a standing wait holds.
+type StandingWaitMS int64
+
+// Range is the limits the server takes, which the document states.
+func (StandingWaitMS) Range() (lo, hi int64) { return 1, MaxWaitMS }
 
 // Nudge is a nudge as a standing wait returns it: the signal line's seq,
 // the wake deliveries past read, and which send it is, 1 to 4.

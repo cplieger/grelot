@@ -244,7 +244,7 @@ func holdUntil(until time.Time) time.Duration {
 func (ws *watcher) once(ctx context.Context, hold time.Duration) (got polled, done bool, err error) {
 	req := &client.Request{
 		Method: http.MethodPost, Path: wire.Path("waitEvent", nil),
-		Body: wire.WaitRequest{WaitMS: hold.Milliseconds()}, Timeout: hold + waitMargin, Once: true,
+		Body: wire.WaitRequest{WaitMS: wire.StandingWaitMS(hold.Milliseconds())}, Timeout: hold + waitMargin, Once: true,
 	}
 	resp, err := ws.api.Do(ctx, req, nil)
 	if ae, ok := errors.AsType[*client.APIError](err); ok && ae.HTTP == http.StatusGone {
