@@ -306,10 +306,24 @@ func (r *run) history(ctx context.Context, args []string) error {
 		writeEntry(r.Stdout, &got.Items[i])
 	}
 	if got.NextCursor != "" {
-		fmt.Fprintf(r.Stdout, "grelot: %d of %d shown; for the older ones, run grelot history again with the same flags and --cursor=%s\n",
-			len(got.Items), got.Total, safe(got.NextCursor))
+		fmt.Fprintf(r.Stdout, "grelot: %d of %d shown; for the older ones, run grelot history again with the same flags and %s\n",
+			len(got.Items), got.Total, nextPage(q, got.NextCursor))
 	}
 	return nil
+}
+
+// nextPage is the flags that, after a history command's own, read the page
+// after q's: q's --since and --until as the instants sent, since the cursor
+// binds them and a relative one moves with the clock, then --cursor. A
+// later flag replaces an earlier one.
+func nextPage(q url.Values, cursor string) string {
+	var flags []string
+	for _, name := range []string{"since", "until"} {
+		if v := q.Get(name); v != "" {
+			flags = append(flags, "--"+name+"="+safe(v))
+		}
+	}
+	return strings.Join(append(flags, "--"+wire.QueryCursor+"="+safe(cursor)), " ")
 }
 
 // printLimit is how many entries grelot inbox and grelot history print at

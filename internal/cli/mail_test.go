@@ -731,3 +731,35 @@ func TestHistory_namesTheNextPage(t *testing.T) {
 		t.Errorf("the next page %q, want only the oldest post and no next-page line", out)
 	}
 }
+
+// A relative --since or --until is a different instant on each run, and the
+// cursor binds the query sent, so the next-page line names the instants the
+// first page was read with.
+func TestHistory_namesTheNextPageWithARelativeSince(t *testing.T) {
+	ts := newServer(t)
+	a, _ := registerAt(t, ts, "s-1", "ant-dev")
+	b, _ := registerAt(t, ts, "s-2", "bee-dev")
+	for _, subject := range []string{"first", "second", "third"} {
+		b.postTo("@ant-dev", subject)
+		ts.clock.advance(time.Minute)
+	}
+	args := []string{"history", "--from", "@bee-dev", "--since=2h", "--until=0s", "--limit", "2"}
+	out := a.must(args...)
+	line := strings.TrimSuffix(out[strings.LastIndex(strings.TrimSuffix(out, "\n"), "\n")+1:], "\n")
+	prefix := "grelot: 2 of 3 shown; for the older ones, run grelot history again with the same flags and "
+	tail, ok := strings.CutPrefix(line, prefix)
+	if !ok {
+		t.Fatalf("last line %q, want it to start %q", line, prefix)
+	}
+	since := ts.clock.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339)
+	until := ts.clock.Now().UTC().Format(time.RFC3339)
+	words := strings.Fields(tail)
+	if len(words) != 3 || words[0] != "--since="+since || words[1] != "--until="+until || !strings.HasPrefix(words[2], "--cursor=") {
+		t.Fatalf("next-page flags %q, want --since=%s --until=%s --cursor=<c>", words, since, until)
+	}
+	ts.clock.advance(time.Second)
+	out = a.must(append(args, words...)...)
+	if !strings.Contains(out, "| first") || strings.Contains(out, "| second") || strings.Contains(out, "--cursor=") {
+		t.Errorf("the next page %q, want only the oldest post and no next-page line", out)
+	}
+}
