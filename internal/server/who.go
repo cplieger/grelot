@@ -27,7 +27,7 @@ func (s *Server) who(r *http.Request, c store.Caller, _ store.Keyed) (status int
 	var online bool
 	for _, f := range []struct {
 		dst  *bool
-		v    string
+		v    wire.Flag
 		name string
 	}{{&online, q.Online, "online"}, {&wq.Here, q.Here, "here"}, {&wq.All, q.All, "all"}} {
 		if *f.dst, err = flag(f.v, f.name); err != nil {
@@ -76,13 +76,14 @@ func whoOut(p *store.Peer, online func(*store.Identity) bool, now time.Time) wir
 	return e
 }
 
-// flag reads a 0-or-1 query parameter.
-func flag(v, name string) (bool, error) {
+// flag reads the query parameter name, a wire.Flag.
+func flag(v wire.Flag, name string) (bool, error) {
 	switch v {
-	case "", "0":
+	case "", wire.FlagOff:
 		return false, nil
-	case "1":
+	case wire.FlagOn:
 		return true, nil
 	}
-	return false, badRequest(name + " must be 1 or 0")
+	return false, fieldRefusal(name+" must be 1 or 0",
+		wire.FieldError{Field: name, Code: wire.FieldOneOf, Allowed: []string{string(wire.FlagOff), string(wire.FlagOn)}})
 }

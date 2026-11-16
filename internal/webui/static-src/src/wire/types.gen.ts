@@ -6,6 +6,8 @@ export type EventKind = "post_refused" | "push_retry" | "push_gave_up" | "nudge_
 
 export type FieldCode = "required" | "one_of" | "out_of_range" | "too_long" | "not_text" | "not_whole_minutes" | "person_reserved";
 
+export type Flag = "0" | "1";
+
 export type ReservationState = "held" | "queued";
 
 export type SenderKind = "agent" | "user";
@@ -408,10 +410,7 @@ export interface HistoryPost {
   unread?: boolean;
 }
 
-/**
- * HistoryQuery is GET /v1/history's query; from is @me or a name; the
- * flags are 1 or 0.
- */
+/** HistoryQuery is GET /v1/history's query; from is @me or a name. */
 export interface HistoryQuery {
   /**
    * Since is an RFC 3339 instant, the oldest entry's earliest time; when
@@ -426,9 +425,9 @@ export interface HistoryQuery {
   with?: string;
   from?: string;
   grep?: string;
-  announce?: string;
-  full?: string;
-  last_read?: string;
+  announce?: Flag;
+  full?: Flag;
+  last_read?: Flag;
   thread?: number;
   limit?: number;
 }
@@ -442,10 +441,7 @@ export interface HoldRequest {
   last: boolean;
 }
 
-/**
- * IdentitiesQuery is GET /v1/identities' query; online, here and all are
- * 1 or 0.
- */
+/** IdentitiesQuery is GET /v1/identities' query. */
 export interface IdentitiesQuery {
   cursor?: string;
   path?: string;
@@ -453,9 +449,9 @@ export interface IdentitiesQuery {
   holds?: string;
   queued?: string;
   q?: string;
-  online?: string;
-  here?: string;
-  all?: string;
+  online?: Flag;
+  here?: Flag;
+  all?: Flag;
   limit?: number;
 }
 

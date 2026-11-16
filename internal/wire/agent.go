@@ -230,8 +230,7 @@ type Retired struct {
 	Retired bool `json:"retired"`
 }
 
-// IdentitiesQuery is GET /v1/identities' query; online, here and all are
-// 1 or 0.
+// IdentitiesQuery is GET /v1/identities' query.
 type IdentitiesQuery struct {
 	Cursor string    `json:"cursor,omitempty"`
 	Path   string    `json:"path,omitempty"`
@@ -239,9 +238,9 @@ type IdentitiesQuery struct {
 	Holds  string    `json:"holds,omitempty"`
 	Queued string    `json:"queued,omitempty"`
 	Q      string    `json:"q,omitempty"`
-	Online string    `json:"online,omitempty"`
-	Here   string    `json:"here,omitempty"`
-	All    string    `json:"all,omitempty"`
+	Online Flag      `json:"online,omitempty"`
+	Here   Flag      `json:"here,omitempty"`
+	All    Flag      `json:"all,omitempty"`
 	Limit  PageLimit `json:"limit,omitempty"`
 }
 
@@ -381,8 +380,7 @@ type Receipt struct {
 	State    string    `json:"state"`
 }
 
-// HistoryQuery is GET /v1/history's query; from is @me or a name; the
-// flags are 1 or 0.
+// HistoryQuery is GET /v1/history's query; from is @me or a name.
 type HistoryQuery struct {
 	// Since is an RFC 3339 instant, the oldest entry's earliest time; when
 	// absent, the 24 hours before the first page, or every entry with path
@@ -395,9 +393,9 @@ type HistoryQuery struct {
 	With     string    `json:"with,omitempty"`
 	From     string    `json:"from,omitempty"`
 	Grep     string    `json:"grep,omitempty"`
-	Announce string    `json:"announce,omitempty"`
-	Full     string    `json:"full,omitempty"`
-	LastRead string    `json:"last_read,omitempty"`
+	Announce Flag      `json:"announce,omitempty"`
+	Full     Flag      `json:"full,omitempty"`
+	LastRead Flag      `json:"last_read,omitempty"`
 	Thread   ThreadID  `json:"thread,omitempty"`
 	Limit    PageLimit `json:"limit,omitempty"`
 }

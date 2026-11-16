@@ -3,6 +3,7 @@
 package server
 
 import (
+	"fmt"
 	"maps"
 	"net/http"
 	"slices"
@@ -208,6 +209,26 @@ func TestWho_refusals(t *testing.T) {
 				t.Errorf("%s: the refusal carries path_root, which left the envelope for GET /v1/version", tc.query)
 			}
 		})
+	}
+}
+
+func TestFlags_refuseAValueOtherThan0Or1WithItsFieldError(t *testing.T) {
+	h := whoHarness(t)
+	for _, q := range []string{
+		"/v1/identities?online=yes", "/v1/identities?here=2", "/v1/identities?all=true",
+		"/v1/history?announce=yes", "/v1/history?full=2", "/v1/history?last_read=true",
+	} {
+		r := h.as(sessOf("docs-writer"), http.MethodGet, q, nil)
+		name, _, _ := strings.Cut(q[strings.IndexByte(q, '?')+1:], "=")
+		fields, _ := r.body["fields"].([]any)
+		var f map[string]any
+		if len(fields) == 1 {
+			f, _ = fields[0].(map[string]any)
+		}
+		if r.status != http.StatusBadRequest || r.str("code") != "invalid" || f["field"] != name || f["code"] != "one_of" ||
+			fmt.Sprint(f["allowed"]) != "[0 1]" {
+			t.Errorf("%s: %d %s, want 400 invalid naming %s one_of [0 1]", q, r.status, r.raw, name)
+		}
 	}
 }
 

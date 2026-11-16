@@ -3,7 +3,7 @@
 import { clientRequest } from "../transport.js";
 import type { ApiResult, EndpointSpec } from "../transport.js";
 import { decodeAcked, decodeAgentList, decodeAgentPage, decodeConversation, decodeConversationsPage, decodeGranted, decodeHeld, decodeHistory, decodeHistoryPage, decodeIdentityAnswer, decodeInbox, decodeLifecycle, decodeMarkedRead, decodeMe, decodeNudge, decodePeers, decodePosted, decodeReceipts, decodeRegistered, decodeReservationAnswer, decodeReservations, decodeReserved, decodeRetired, decodeRevoked, decodeSettings, decodeSignIn, decodeStats, decodeThreads, decodeUserPosted, decodeUserReceipts, decodeVersion } from "./decoders.gen.js";
-import type { AckRequest, Acked, AgentList, AgentPage, Conversation, ConversationsPage, GrantRequest, Granted, Held, History, HistoryPage, HoldRequest, IdentityAnswer, Inbox, Lifecycle, LifecycleRequest, MarkReadRequest, MarkedRead, Me, Nudge, PatchMeRequest, Peers, PostRequest, Posted, Receipts, RegisterRequest, Registered, RenewRequest, ReservationAnswer, Reservations, ReserveRequest, Reserved, Retired, ReviveRequest, Revoked, Settings, SettingsRequest, Show, SignIn, Stats, StatsRange, Threads, UserPostRequest, UserPosted, UserReceipts, Version, WaitRequest } from "./types.gen.js";
+import type { AckRequest, Acked, AgentList, AgentPage, Conversation, ConversationsPage, Flag, GrantRequest, Granted, Held, History, HistoryPage, HoldRequest, IdentityAnswer, Inbox, Lifecycle, LifecycleRequest, MarkReadRequest, MarkedRead, Me, Nudge, PatchMeRequest, Peers, PostRequest, Posted, Receipts, RegisterRequest, Registered, RenewRequest, ReservationAnswer, Reservations, ReserveRequest, Reserved, Retired, ReviveRequest, Revoked, Settings, SettingsRequest, Show, SignIn, Stats, StatsRange, Threads, UserPostRequest, UserPosted, UserReceipts, Version, WaitRequest } from "./types.gen.js";
 
 /** Options accepted by every generated client function. */
 export interface ClientOpts {
@@ -293,9 +293,9 @@ export interface ListIdentitiesArgs {
   readonly holds?: string;
   readonly queued?: string;
   readonly q?: string;
-  readonly online?: string;
-  readonly here?: string;
-  readonly all?: string;
+  readonly online?: Flag;
+  readonly here?: Flag;
+  readonly all?: Flag;
   readonly limit?: number;
   /** The client's version, which the server answers 426 below its floor. */
   readonly grelotVersion: string;
@@ -548,9 +548,9 @@ export interface GetHistoryArgs {
   readonly with?: string;
   readonly from?: string;
   readonly grep?: string;
-  readonly announce?: string;
-  readonly full?: string;
-  readonly last_read?: string;
+  readonly announce?: Flag;
+  readonly full?: Flag;
+  readonly last_read?: Flag;
   readonly thread?: number;
   readonly limit?: number;
   /** The client's version, which the server answers 426 below its floor. */

@@ -89,6 +89,15 @@ const (
 	ShowDirect  Show = "direct"
 )
 
+// Flag is a 0-or-1 query parameter; absent reads as FlagOff.
+type Flag string
+
+// The flag values.
+const (
+	FlagOff Flag = "0"
+	FlagOn  Flag = "1"
+)
+
 // ThreadKind is a conversation's kind.
 type ThreadKind string
 

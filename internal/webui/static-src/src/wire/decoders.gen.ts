@@ -6,6 +6,7 @@ import type { AckRequest, Acked, Agent, AgentList, AgentPage, AgentParams, Agent
 const AGENT_STATES = ["live", "dormant"] as const;
 const EVENT_KINDS = ["post_refused", "push_retry", "push_gave_up", "nudge_repeat"] as const;
 const FIELD_CODES = ["required", "one_of", "out_of_range", "too_long", "not_text", "not_whole_minutes", "person_reserved"] as const;
+const FLAGS = ["0", "1"] as const;
 const RESERVATION_STATES = ["held", "queued"] as const;
 const SENDER_KINDS = ["agent", "user"] as const;
 const SHOWS = ["all", "threads", "direct"] as const;
@@ -598,15 +599,15 @@ export const decodeHistoryQuery: Decoder<HistoryQuery> = (v) => {
   }
   {
     const $v = own(o, "announce");
-    if ($v !== undefined && $v !== null) out.announce = reqStr(o, "announce", "$.history_query");
+    if ($v !== undefined && $v !== null) out.announce = reqOneOf(o, "announce", FLAGS, "$.history_query");
   }
   {
     const $v = own(o, "full");
-    if ($v !== undefined && $v !== null) out.full = reqStr(o, "full", "$.history_query");
+    if ($v !== undefined && $v !== null) out.full = reqOneOf(o, "full", FLAGS, "$.history_query");
   }
   {
     const $v = own(o, "last_read");
-    if ($v !== undefined && $v !== null) out.last_read = reqStr(o, "last_read", "$.history_query");
+    if ($v !== undefined && $v !== null) out.last_read = reqOneOf(o, "last_read", FLAGS, "$.history_query");
   }
   {
     const $v = own(o, "thread");
@@ -658,15 +659,15 @@ export const decodeIdentitiesQuery: Decoder<IdentitiesQuery> = (v) => {
   }
   {
     const $v = own(o, "online");
-    if ($v !== undefined && $v !== null) out.online = reqStr(o, "online", "$.identities_query");
+    if ($v !== undefined && $v !== null) out.online = reqOneOf(o, "online", FLAGS, "$.identities_query");
   }
   {
     const $v = own(o, "here");
-    if ($v !== undefined && $v !== null) out.here = reqStr(o, "here", "$.identities_query");
+    if ($v !== undefined && $v !== null) out.here = reqOneOf(o, "here", FLAGS, "$.identities_query");
   }
   {
     const $v = own(o, "all");
-    if ($v !== undefined && $v !== null) out.all = reqStr(o, "all", "$.identities_query");
+    if ($v !== undefined && $v !== null) out.all = reqOneOf(o, "all", FLAGS, "$.identities_query");
   }
   {
     const $v = own(o, "limit");

@@ -111,7 +111,7 @@ func historyQuery(r *http.Request) (hq store.HistoryQuery, err error) {
 	}
 	for _, f := range []struct {
 		dst  *bool
-		v    string
+		v    wire.Flag
 		name string
 	}{{&hq.Announce, q.Announce, "announce"}, {&hq.Full, q.Full, "full"}, {&hq.LastRead, q.LastRead, "last_read"}} {
 		if *f.dst, err = flag(f.v, f.name); err != nil {

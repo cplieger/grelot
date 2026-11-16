@@ -758,6 +758,13 @@
         ],
         "type": "object"
       },
+      "Flag": {
+        "enum": [
+          "0",
+          "1"
+        ],
+        "type": "string"
+      },
       "GrantRequest": {
         "properties": {
           "allow_agents": {
@@ -6151,7 +6158,7 @@
             "name": "announce",
             "required": false,
             "schema": {
-              "type": "string"
+              "$ref": "#/components/schemas/Flag"
             }
           },
           {
@@ -6159,7 +6166,7 @@
             "name": "full",
             "required": false,
             "schema": {
-              "type": "string"
+              "$ref": "#/components/schemas/Flag"
             }
           },
           {
@@ -6167,7 +6174,7 @@
             "name": "last_read",
             "required": false,
             "schema": {
-              "type": "string"
+              "$ref": "#/components/schemas/Flag"
             }
           },
           {
@@ -6471,7 +6478,7 @@
             "name": "online",
             "required": false,
             "schema": {
-              "type": "string"
+              "$ref": "#/components/schemas/Flag"
             }
           },
           {
@@ -6479,7 +6486,7 @@
             "name": "here",
             "required": false,
             "schema": {
-              "type": "string"
+              "$ref": "#/components/schemas/Flag"
             }
           },
           {
@@ -6487,7 +6494,7 @@
             "name": "all",
             "required": false,
             "schema": {
-              "type": "string"
+              "$ref": "#/components/schemas/Flag"
             }
           },
           {

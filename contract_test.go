@@ -670,7 +670,8 @@ func TestOpenAPIErrorRequiresItsMembers(t *testing.T) {
 
 // TestOpenAPIDeclaresTheQueryBounds holds the document to the bounds the
 // server enforces: every paged row's limit, the inbox's wait_ms, a
-// standing wait's wait_ms and the history window's RFC 3339 since and until.
+// standing wait's wait_ms, the history window's RFC 3339 since and until,
+// its thread id from 1 and the 0-or-1 flags of history and identities.
 func TestOpenAPIDeclaresTheQueryBounds(t *testing.T) {
 	raw, err := os.ReadFile(contractDoc)
 	if err != nil {
@@ -680,6 +681,7 @@ func TestOpenAPIDeclaresTheQueryBounds(t *testing.T) {
 		Minimum *int64 `json:"minimum"`
 		Maximum *int64 `json:"maximum"`
 		Format  string `json:"format"`
+		Ref     string `json:"$ref"`
 	}
 	var doc struct {
 		Paths map[string]map[string]struct {
@@ -692,6 +694,7 @@ func TestOpenAPIDeclaresTheQueryBounds(t *testing.T) {
 		Components struct {
 			Schemas map[string]struct {
 				Properties map[string]bounded `json:"properties"`
+				Enum       []string           `json:"enum"`
 			} `json:"schemas"`
 		} `json:"components"`
 	}
@@ -714,6 +717,16 @@ func TestOpenAPIDeclaresTheQueryBounds(t *testing.T) {
 		t.Errorf("%s: %s has no query parameter %s", contractDoc, r.Name, name)
 		return bounded{}
 	}
+	flags := func(r wire.Route, names ...string) {
+		t.Helper()
+		for _, name := range names {
+			ref := query(r, name).Ref
+			got := doc.Components.Schemas[strings.TrimPrefix(ref, "#/components/schemas/")].Enum
+			if ref == "" || !slices.Equal(slices.Sorted(slices.Values(got)), []string{"0", "1"}) {
+				t.Errorf("%s: %s's %s is %q with members %v, want an enum of 0 and 1", contractDoc, r.Name, name, ref, got)
+			}
+		}
+	}
 	paged := 0
 	for _, r := range wire.Routes {
 		if r.Paged {
@@ -729,6 +742,13 @@ func TestOpenAPIDeclaresTheQueryBounds(t *testing.T) {
 					t.Errorf("%s: getHistory's %s has format %q, want date-time", contractDoc, name, got)
 				}
 			}
+			if got := query(r, "thread").Minimum; got == nil || *got != 1 {
+				t.Errorf("%s: getHistory's thread minimum %v, want 1", contractDoc, deref(got))
+			}
+			flags(r, "announce", "full", "last_read")
+		}
+		if r.Name == "listIdentities" {
+			flags(r, "online", "here", "all")
 		}
 	}
 	if paged == 0 {
