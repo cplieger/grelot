@@ -11,11 +11,11 @@ type Error struct {
 	// a client words Code instead.
 	Error string `json:"error"`
 	// Code names the refusal, such as not_found.
-	Code string `json:"code,omitempty"`
+	Code string `json:"code"`
 	// Reason refines Code, such as label_too_long or the resource a
 	// not_found names.
 	Reason    string `json:"reason,omitempty"`
-	RequestID string `json:"request_id,omitempty"`
+	RequestID string `json:"request_id"`
 	// Fields are the refused request fields of an invalid or too_large.
 	Fields []FieldError `json:"fields,omitempty"`
 	// RetryAfterMS is set, with Retry-After, when a wait fixes the refusal.

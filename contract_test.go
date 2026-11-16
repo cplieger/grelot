@@ -621,6 +621,30 @@ func TestOpenAPICoversAgentRoutes(t *testing.T) {
 	}
 }
 
+// TestOpenAPIErrorRequiresItsMembers holds the document's envelope to
+// design 1.1: error, code and request_id are on every refusal, the rest
+// only when they carry something.
+func TestOpenAPIErrorRequiresItsMembers(t *testing.T) {
+	raw, err := os.ReadFile(contractDoc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Components struct {
+			Schemas map[string]struct {
+				Required []string `json:"required"`
+			} `json:"schemas"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	got := slices.Sorted(slices.Values(doc.Components.Schemas["Error"].Required))
+	if want := []string{"code", "error", "request_id"}; !slices.Equal(got, want) {
+		t.Errorf("%s's Error requires %v, want %v", contractDoc, got, want)
+	}
+}
+
 // notYetCovered are the wire.Routes rows the suite has no case for yet:
 // the owner rows (B3) and the stream (B4).
 var notYetCovered = []string{

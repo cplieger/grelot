@@ -125,7 +125,8 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 // in the API's error envelope, logging to logger each one of status 500 or
 // more and counting on m each attempt the failure limiter refused. A gate
 // refusal says what grelot wants instead (gateWords); a sign-in route's keeps
-// access's words.
+// access's words. A refusal access gives a Retry-After carries it as
+// retry_after_ms too.
 func AuthErrors(logger *slog.Logger, m *obs.Metrics) access.ErrorWriter {
 	return func(w http.ResponseWriter, r *http.Request, e access.Error) {
 		if e.Status >= http.StatusInternalServerError {
@@ -138,9 +139,11 @@ func AuthErrors(logger *slog.Logger, m *obs.Metrics) access.ErrorWriter {
 		if !strings.HasPrefix(r.URL.Path, wire.AuthPrefix+"/") {
 			msg = cmp.Or(gateWords(r, e.Code), msg)
 		}
-		httpserver.WriteJSONStatus(w, e.Status, wire.Error{
-			Error: msg, Code: string(e.Code), Reason: e.Reason, RequestID: httpserver.RequestIDFromContext(r.Context()),
-		})
+		body := wire.Error{Error: msg, Code: string(e.Code), Reason: e.Reason, RequestID: httpserver.RequestIDFromContext(r.Context())}
+		if e.RetryAfter > 0 {
+			body.RetryAfterMS = int64(retryAfter(e.RetryAfter) / time.Millisecond)
+		}
+		httpserver.WriteJSONStatus(w, e.Status, body)
 	}
 }
 

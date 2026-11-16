@@ -278,13 +278,13 @@ export interface Error {
    */
   error: string;
   /** Code names the refusal, such as not_found. */
-  code?: string;
+  code: string;
   /**
    * Reason refines Code, such as label_too_long or the resource a
    * not_found names.
    */
   reason?: string;
-  request_id?: string;
+  request_id: string;
   /** Fields are the refused request fields of an invalid or too_large. */
   fields?: FieldError[];
   /** RetryAfterMS is set, with Retry-After, when a wait fixes the refusal. */

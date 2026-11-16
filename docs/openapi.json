@@ -658,7 +658,9 @@
           }
         },
         "required": [
-          "error"
+          "error",
+          "code",
+          "request_id"
         ],
         "type": "object"
       },

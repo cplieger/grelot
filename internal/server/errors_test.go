@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -13,6 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cplieger/access"
+	"github.com/cplieger/go/httpserver"
+	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/wire"
 )
@@ -85,7 +89,8 @@ func TestErrorMembers(t *testing.T) {
 		t.Run(tc.code, func(t *testing.T) {
 			seen[tc.code] = true
 			rec := httptest.NewRecorder()
-			r := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/me", http.NoBody)
+			ctx := httpserver.WithRequestID(context.Background(), "req-1")
+			r := httptest.NewRequestWithContext(ctx, http.MethodGet, "/v1/me", http.NoBody)
 			s.fail(rec, r, tc.err())
 			var body map[string]any
 			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
@@ -93,6 +98,9 @@ func TestErrorMembers(t *testing.T) {
 			}
 			if body["code"] != tc.code {
 				t.Fatalf("code %v, want %s: %s", body["code"], tc.code, rec.Body)
+			}
+			if body["request_id"] != "req-1" {
+				t.Errorf("request_id %v, want the request's req-1: %s", body["request_id"], rec.Body)
 			}
 			m := errorMembers[tc.code]
 			for _, k := range m.required {
@@ -130,5 +138,42 @@ func TestFail_aRateLimitRoundsItsWaitUp(t *testing.T) {
 	}
 	if got := rec.Header().Get("Retry-After"); got != "2" || body.RetryAfterMS != 2000 {
 		t.Errorf("Retry-After %q and retry_after_ms %d for a 1.5 s wait, want 2 and 2000", got, body.RetryAfterMS)
+	}
+}
+
+// TestAuthErrors_carriesTheEnvelope holds access's refusals to design 1.1's
+// envelope: the code and request id always, and retry_after_ms, the
+// whole seconds of the Retry-After access sets, only when a wait helps.
+func TestAuthErrors_carriesTheEnvelope(t *testing.T) {
+	write := AuthErrors(slog.New(slog.DiscardHandler), obs.New())
+	cases := []struct {
+		name    string
+		e       access.Error
+		retryMS float64
+	}{
+		{"rateLimited", access.Error{Code: access.CodeRateLimited, Status: http.StatusTooManyRequests, RetryAfter: 1500 * time.Millisecond}, 2000},
+		{"unavailable", access.Error{Code: access.CodeUnavailable, Status: http.StatusServiceUnavailable, RetryAfter: 5 * time.Second}, 5000},
+		{"authRequired", access.Error{Code: access.CodeAuthRequired, Status: http.StatusUnauthorized}, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			ctx := httpserver.WithRequestID(context.Background(), "req-1")
+			write(rec, httptest.NewRequestWithContext(ctx, http.MethodGet, "/v1/me", http.NoBody), tc.e)
+			var body map[string]any
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if body["code"] != string(tc.e.Code) || body["request_id"] != "req-1" {
+				t.Errorf("code %v, request_id %v, want %s and req-1: %s", body["code"], body["request_id"], tc.e.Code, rec.Body)
+			}
+			ms, carried := body["retry_after_ms"].(float64)
+			if tc.retryMS == 0 && carried {
+				t.Errorf("retry_after_ms %v on a refusal no wait fixes: %s", ms, rec.Body)
+			}
+			if tc.retryMS != 0 && ms != tc.retryMS {
+				t.Errorf("retry_after_ms %v, want %v: %s", body["retry_after_ms"], tc.retryMS, rec.Body)
+			}
+		})
 	}
 }

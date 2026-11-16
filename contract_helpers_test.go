@@ -519,7 +519,7 @@ func checkEnvelope(t *testing.T, where string, ans *answer) {
 	}
 	m, known := codeMembers[code]
 	if strings.HasPrefix(code, "auth_") {
-		m, known = members{optional: []string{"reason"}}, true
+		m, known = members{optional: []string{"reason", "retry_after_ms"}}, true
 	}
 	if !known {
 		t.Errorf("%s: code %q is not one design 1.4 gives an agent row", where, code)

@@ -400,18 +400,12 @@ export const decodeError: Decoder<Error> = (v) => {
   const o = asObject(v, "$.error");
   const out: Error = {
     error: reqStr(o, "error", "$.error"),
+    code: reqStr(o, "code", "$.error"),
+    request_id: reqStr(o, "request_id", "$.error"),
   };
-  {
-    const $v = own(o, "code");
-    if ($v !== undefined && $v !== null) out.code = reqStr(o, "code", "$.error");
-  }
   {
     const $v = own(o, "reason");
     if ($v !== undefined && $v !== null) out.reason = reqStr(o, "reason", "$.error");
-  }
-  {
-    const $v = own(o, "request_id");
-    if ($v !== undefined && $v !== null) out.request_id = reqStr(o, "request_id", "$.error");
   }
   {
     const $v = own(o, "fields");
