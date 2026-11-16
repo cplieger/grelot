@@ -5,7 +5,7 @@ import { installDialogs } from "@cplieger/ui/dialog";
 import { createTheme } from "@cplieger/ui/theme";
 import { http, HttpResponse } from "msw";
 import { setupWorker } from "msw/browser";
-import { afterAll, afterEach, beforeAll, beforeEach, expect } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect } from "vitest";
 
 import { meAnswer } from "../../__test-helpers__/me.js";
 import { until } from "../../__test-helpers__/until.js";
@@ -41,8 +41,6 @@ export const h = {
   /** Each listed row's thread, which /api/conversations/{id} answers by default. */
   threads: new Map<number, ConversationThread>(),
 };
-
-const originalHref = location.href;
 
 const live: Live = {
   connection: signal<Connection>({ kind: "live" }),
@@ -239,10 +237,5 @@ export function useMessagesHarness(): void {
     h.page.abort();
     h.page = new AbortController();
     document.body.replaceChildren();
-    history.replaceState(null, "", originalHref);
-  });
-
-  afterAll(() => {
-    void worker.stop();
   });
 }

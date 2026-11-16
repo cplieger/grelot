@@ -43,8 +43,9 @@ function posts(...answers: Answer[]): { bodies: unknown[]; keys: (string | null)
   const seen = { bodies: [] as unknown[], keys: [] as (string | null)[] };
   worker.use(
     http.post("/api/posts", async ({ request }) => {
+      const body: unknown = await request.json();
       seen.keys.push(request.headers.get("Idempotency-Key"));
-      seen.bodies.push(await request.json());
+      seen.bodies.push(body);
       const next = answers.length > 1 ? answers.shift() : answers[0];
       return next === undefined ? HttpResponse.json({}) : next(request);
     }),
@@ -56,6 +57,17 @@ function posts(...answers: Answer[]): { bodies: unknown[]; keys: (string | null)
  *  test can still reach a later test's handler. */
 const keysTo = (seen: ReturnType<typeof posts>, name: string): (string | null)[] =>
   seen.keys.filter((_, i) => JSON.stringify(seen.bodies[i]).includes(`"agent":"${name}"`));
+
+/** Holds the first POST to name until held's release and answers each later
+ *  one at once, by name: a POST an earlier test aborted can come first. */
+function holdingFirst(name: string, held: ReturnType<typeof heldSend>): ReturnType<typeof posts> {
+  const sent = posts((request) =>
+    keysTo(sent, name).length === 1
+      ? held.answer(request)
+      : HttpResponse.json({ message: 70, thread: 7, delivered: 1 }),
+  );
+  return sent;
+}
 
 /**
  * A POST answer held until release, then 200. signals holds each POST fetch's
@@ -376,16 +388,14 @@ describe("the New message dialog", () => {
 
   it("sends the same post again after a Cancel with the cancelled send's key", async () => {
     const held = heldSend();
-    const sent = posts(held.answer, () =>
-      HttpResponse.json({ message: 70, thread: 7, delivered: 1 }),
-    );
+    const sent = holdingFirst("echo", held);
     start("/messages");
     await rowsShown([]);
     await opened();
     await filled("echo");
     button("Send", dialog()).click();
     await until(() => {
-      expect(held.signals.length).toBe(1);
+      expect(keysTo(sent, "echo").length).toBe(1);
     });
     button("Cancel", dialog()).click();
     await closed();
@@ -427,16 +437,14 @@ describe("the New message dialog", () => {
     async ({ name, leave }) => {
       scriptedExit();
       const held = heldSend();
-      const sent = posts(held.answer, () =>
-        HttpResponse.json({ message: 70, thread: 7, delivered: 1 }),
-      );
+      const sent = holdingFirst(name, held);
       start("/messages");
       await rowsShown([]);
       await opened();
       await filled(name);
       button("Send", dialog()).click();
       await until(() => {
-        expect(held.signals.length).toBe(1);
+        expect(keysTo(sent, name).length).toBe(1);
       });
       await leave();
       const exits = await pausedExit();

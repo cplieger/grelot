@@ -1,6 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { setupWorker } from "msw/browser";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { leaveTo } from "./location.js";
 import { clientRequest, newIdempotencyKey, type EndpointSpec } from "./transport.js";
@@ -17,10 +17,6 @@ beforeAll(async () => {
 afterEach(() => {
   worker.resetHandlers();
   history.replaceState(null, "", originalHref);
-});
-
-afterAll(() => {
-  worker.stop();
 });
 
 const codes = ["not_found", "too_large"] as const;

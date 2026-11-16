@@ -1,7 +1,7 @@
 import { subscribe, type ReadonlySignal } from "@cplieger/reactive/signal";
 import { http, HttpResponse } from "msw";
 import { setupWorker } from "msw/browser";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { until } from "./__test-helpers__/until.js";
 import { connectionOf, startLive, type Connection, type Live } from "./live.js";
@@ -20,10 +20,6 @@ afterEach(() => {
   stop.abort();
   stop = new AbortController();
   worker.resetHandlers();
-});
-
-afterAll(() => {
-  worker.stop();
 });
 
 // The Go hub's wire (github.com/cplieger/go/sse/v2 docs/wire.md): a hello

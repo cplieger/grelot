@@ -322,6 +322,34 @@ describe("the conversation's composer", () => {
     expect(message().value).toBe("");
   });
 
+  it("sends on a Retry pressed while Send still shows it was busy", async () => {
+    answer(pageOf([row(1)]));
+    serve(
+      1,
+      conversationOf(1, { posts: [post(4)] }),
+      conversationOf(1, { posts: [post(4), mine(5, "Merge order", "Now.")] }),
+    );
+    const { seen, release } = heldPosts(storeFull);
+    start("/messages/1");
+    await shown(1);
+    await write("Merge order", "Now.");
+    button("Send", detail()).click();
+    await until(() => {
+      expect(button("Sending…", detail()).getAttribute("aria-busy")).toBe("true");
+    });
+    release();
+    await until(() => {
+      expect(entries()[1]?.getAttribute("data-state")).toBe("failed");
+    });
+
+    button("Retry", entries()[1]).click();
+    await until(() => {
+      expect(entries()[1]?.querySelector("footer")?.textContent).toBe("Read by 1 of 2");
+    });
+    expect(seen.keys.length).toBe(2);
+    expect(seen.keys[1]).toBe(seen.keys[0]);
+  });
+
   it("sends the text of a failed post again as that post, under its key", async () => {
     answer(pageOf([row(1)]));
     serve(1, conversationOf(1, { posts: [post(4)] }));

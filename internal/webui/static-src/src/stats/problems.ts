@@ -169,8 +169,9 @@ export function needsAttention(opts: {
       },
       { signal },
     );
-    // Focusable, so showModal puts focus on it: the dialog holds content to read.
-    const heading = el("h2", { id: `${id}-title`, tabIndex: -1 }, kind.label);
+    // showModal focuses it, since the dialog holds content to read: autofocus,
+    // because Firefox's showModal skips a tabindex -1 element without it.
+    const heading = el("h2", { id: `${id}-title`, tabIndex: -1, autofocus: true }, kind.label);
     const body = el("div", { className: "cp-dialog-body" });
     const close = el("button", { className: "cp-button", type: "button" }, "Close");
     const dialog = el(

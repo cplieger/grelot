@@ -1,8 +1,15 @@
-// A file runs in headless Chromium unless it is named `.node.test.ts`, which
-// runs in Node. `channel: "chromium"` is the full browser, not headless-shell.
+// A file runs in the headless browsers below unless it is named
+// `.node.test.ts`, which runs in Node. `channel: "chromium"` is the full
+// browser, not headless-shell.
 import { configDefaults, defineConfig } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
 import { msw } from "msw/vite";
+
+// CI sets the engines from package.json's cplieger.browsers; a local run
+// gets Chromium alone.
+const engines = (process.env["CPLIEGER_BROWSERS"] ?? "chromium").split(",") as (
+  "chromium" | "firefox" | "webkit"
+)[];
 
 export default defineConfig({
   // Serves the MSW worker script for the browser tests that fake the
@@ -29,6 +36,7 @@ export default defineConfig({
         test: {
           name: "browser",
           include: ["src/**/*.test.ts"],
+          setupFiles: ["./src/__test-helpers__/history-quota.ts"],
           exclude: [...configDefaults.exclude, "src/**/*.node.test.ts"],
           browser: {
             enabled: true,
@@ -41,7 +49,11 @@ export default defineConfig({
                 args: ["--disable-frame-rate-limit"],
               },
             }),
-            instances: [{ browser: "chromium" }],
+            instances: engines.map((browser) =>
+              browser === "chromium"
+                ? { browser }
+                : { browser, provider: playwright({ launchOptions: {} }) },
+            ),
             viewport: { width: 1280, height: 720 },
             screenshotFailures: false,
           },

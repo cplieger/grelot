@@ -246,7 +246,9 @@ export function conversationComposer(opts: ComposerOptions): Composer {
     retry(n) {
       // The Retry button leaves with the failed state, so focus goes to the message.
       fields.body.focus();
-      void fields.send.run(() => deliver(n));
+      // Sent before run, which drops work while Send still holds its busy state.
+      const flight = deliver(n);
+      void fields.send.run(() => flight);
     },
     settle(posts, seen) {
       const ids = new Set(posts.map((p) => p.id));

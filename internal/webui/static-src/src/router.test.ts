@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { until } from "./__test-helpers__/until.js";
 import { parseRoute, routeHref, signInHref, startRouter, type Route } from "./router.js";
@@ -155,6 +155,7 @@ describe("startRouter", () => {
   let filler: HTMLElement | null = null;
 
   afterEach(() => {
+    vi.useRealTimers();
     stop.abort();
     stop = new AbortController();
     filler?.remove();
@@ -267,6 +268,67 @@ describe("startRouter", () => {
       scroll: 600,
       focus: "/agents/kiro",
     });
+  });
+
+  it.each([
+    {
+      moved: "scroll",
+      move: async () => {
+        const scrolled = new Promise((done) => {
+          window.addEventListener("scroll", done, { once: true });
+        });
+        window.scrollTo(0, 300);
+        await scrolled;
+      },
+      left: { scroll: 300, focus: null },
+    },
+    {
+      moved: "focus",
+      move: (a: HTMLAnchorElement) => {
+        a.focus({ preventScroll: true });
+        return Promise.resolve();
+      },
+      left: { scroll: 0, focus: "/agents/kiro" },
+    },
+  ])("gives Forward the $moved the reader left by Back", async ({ move, left }) => {
+    // The cleanup's scrollTo reaches listeners at the next frame, not here.
+    await new Promise((done) => requestAnimationFrame(done));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    filler = document.createElement("div");
+    filler.style.blockSize = "4000px";
+    document.body.append(filler);
+    const agent = link("/agents/kiro");
+    history.replaceState(null, "", "/messages");
+    const router = startRouter(stop.signal);
+    router.go({ screen: "statistics", range: "24h", problems: null });
+    await move(agent);
+    await vi.advanceTimersByTimeAsync(250);
+
+    const back = popped();
+    history.back();
+    await back;
+    const forward = popped();
+    history.forward();
+    await forward;
+    expect(router.current.value).toMatchObject({
+      route: { screen: "statistics" },
+      cause: "pop",
+      ...left,
+    });
+  });
+
+  // An engine refuses a page's state writes past a rate (WebKit: 100 in
+  // 10 s), and a held Tab key moves focus faster than that.
+  it("still follows a link after the reader moved focus 250 times in a row", () => {
+    history.replaceState(null, "", "/messages");
+    const router = startRouter(stop.signal);
+    const links = Array.from({ length: 250 }, (_, i) => link(`/agents/a${String(i)}`));
+    for (const a of links) {
+      a.focus({ preventScroll: true });
+    }
+    link("/statistics").click();
+    expect(location.pathname).toBe("/statistics");
+    expect(router.current.value.route.screen).toBe("statistics");
   });
 
   it("asks a hold before a move it holds, and moves only on yes", async () => {

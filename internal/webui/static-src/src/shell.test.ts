@@ -3,7 +3,7 @@ import { installAnnouncer } from "@cplieger/ui/announce";
 import { createTheme } from "@cplieger/ui/theme";
 import { http, HttpResponse } from "msw";
 import { setupWorker } from "msw/browser";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { meAnswer } from "./__test-helpers__/me.js";
 import { until } from "./__test-helpers__/until.js";
@@ -15,7 +15,6 @@ import { startShell, statusWords, type ScreenMount, type Screens } from "./shell
 vi.mock("./location.js", () => ({ leaveTo: vi.fn() }));
 
 const worker = setupWorker();
-const originalHref = location.href;
 let page = new AbortController();
 let root: HTMLElement;
 let connection = signal<Connection>({ kind: "live" });
@@ -97,11 +96,6 @@ afterEach(() => {
   page.abort();
   page = new AbortController();
   document.body.replaceChildren();
-  history.replaceState(null, "", originalHref);
-});
-
-afterAll(() => {
-  worker.stop();
 });
 
 describe("startShell", () => {

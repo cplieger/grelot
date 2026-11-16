@@ -38,5 +38,12 @@
   "overrides": {
     "qs": "^6.15.2",
     "minimatch": "^11.0.1"
+  },
+  "cplieger": {
+    "browsers": [
+      "chromium",
+      "firefox",
+      "webkit"
+    ]
   }
 }
