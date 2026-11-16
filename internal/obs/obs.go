@@ -68,37 +68,31 @@ type Metrics struct {
 func New() *Metrics {
 	m := &Metrics{
 		reg:               measure.NewRegistry("grelot"),
-		SweepLastSuccess:  measure.NewGauge("sweep_last_success_timestamp_seconds", "Unix time of the last store sweep that committed."),
-		SweepFailures:     measure.NewCounter("sweep_failures_total", "Store sweeps that failed."),
-		StoreStartedEmpty: measure.NewLabeledCounter("store_started_empty_total", "Store opens that started with no rows: a corrupt file moved aside, or a namespace of another format reset.", []string{"reason"}),
-		Posts:             measure.NewLabeledCounter("posts_total", "Posts stored, by thread kind.", []string{"thread_kind"}),
-		PostsRefused:      measure.NewLabeledCounter("posts_refused_total", "Posts refused, by reason.", []string{"reason"}),
-		WritesReplayed:    measure.NewCounter("writes_replayed_total", "Writes sent again with their Idempotency-Key and answered their first result, changing nothing."),
-		PushDoorUp:        measure.NewLabeledGauge("push_door_up", "1 while a push door sends, 0 once a refused credential turned it off.", []string{"door"}),
-		PushSends:         measure.NewLabeledCounter("push_sends_total", "Push tries, by door and outcome.", []string{"door", "outcome"}),
-		ProvidersInvalid:  measure.NewGauge("providers_invalid", "Provider files skipped at load; 1 for a folder that cannot be read."),
-		Nudges:            measure.NewLabeledCounter("nudges_total", "Nudges recorded, by layer and attempt.", []string{"via", "attempt"}),
-		NudgeDelay:        measure.NewLabeledHistogram("nudge_delay_seconds", "Delay from the oldest post in a batch to its nudge, by layer.", []string{"via"}, measure.WithBuckets(measure.APIBuckets())),
-		httpRequests:      measure.NewLabeledCounter("http_requests_total", "HTTP requests, by route and status code.", []string{"route", "code"}),
-		httpDuration:      measure.NewLabeledHistogram("http_request_duration_seconds", "HTTP request latency, by route.", []string{"route"}),
+		SweepLastSuccess:  measure.NewGauge("sweep_last_success_timestamp_seconds", "Unix time of the last store sweep that committed.", measure.UnitSeconds),
+		SweepFailures:     measure.NewCounter("sweep_failures_total", "Store sweeps that failed.", measure.UnitCount),
+		StoreStartedEmpty: measure.NewLabeledCounter("store_started_empty_total", "Store opens that started with no rows: a corrupt file moved aside, or a namespace of another format reset.", measure.UnitCount, []string{"reason"}, measure.WithSeed([]string{StartedEmptyCorrupt}, []string{StartedEmptyFormat})),
+		Posts:             measure.NewLabeledCounter("posts_total", "Posts stored, by thread kind.", measure.UnitCount, []string{"thread_kind"}),
+		PostsRefused:      measure.NewLabeledCounter("posts_refused_total", "Posts refused, by reason.", measure.UnitCount, []string{"reason"}, measure.WithSeed([]string{RefusedStoreFull}, []string{RefusedRateLimited}, []string{RefusedScope})),
+		WritesReplayed:    measure.NewCounter("writes_replayed_total", "Writes sent again with their Idempotency-Key and answered their first result, changing nothing.", measure.UnitCount),
+		PushDoorUp:        measure.NewLabeledGauge("push_door_up", "1 while a push door sends, 0 once a refused credential turned it off.", measure.UnitNone, []string{"door"}),
+		PushSends:         measure.NewLabeledCounter("push_sends_total", "Push tries, by door and outcome.", measure.UnitCount, []string{"door", "outcome"}),
+		ProvidersInvalid:  measure.NewGauge("providers_invalid", "Provider files skipped at load; 1 for a folder that cannot be read.", measure.UnitCount),
+		Nudges:            measure.NewLabeledCounter("nudges_total", "Nudges recorded, by layer and attempt.", measure.UnitCount, []string{"via", "attempt"}),
+		NudgeDelay:        measure.NewLabeledHistogram("nudge_delay_seconds", "Delay from the oldest post in a batch to its nudge, by layer.", measure.UnitSeconds, []string{"via"}, measure.WithBuckets(measure.APIBuckets())),
+		httpRequests:      measure.NewLabeledCounter("http_requests_total", "HTTP requests, by route and status code.", measure.UnitCount, []string{"route", "code"}),
+		httpDuration:      measure.NewLabeledHistogram("http_request_duration_seconds", "HTTP request latency, by route.", measure.UnitSeconds, []string{"route"}),
 	}
 	m.reg.MustRegister(m.SweepLastSuccess, m.SweepFailures, m.StoreStartedEmpty, m.Posts, m.PostsRefused, m.WritesReplayed,
 		m.PushDoorUp, m.PushSends, m.ProvidersInvalid, m.Nudges, m.NudgeDelay, m.httpRequests, m.httpDuration)
-	for _, r := range []string{StartedEmptyCorrupt, StartedEmptyFormat} {
-		m.StoreStartedEmpty.Add(0, r)
-	}
-	for _, r := range []string{RefusedStoreFull, RefusedRateLimited, RefusedScope} {
-		m.PostsRefused.Add(0, r)
-	}
 	return m
 }
 
 // ServeBuildInfo registers grelot_build_info, 1 with the running version as
 // its label. Call it once.
 func (m *Metrics) ServeBuildInfo(version string) {
-	info := measure.NewLabeledGauge("build_info", "Always 1, labelled with the running version.", []string{"version"})
+	info := measure.NewInfo("build_info", "Always 1, labelled with the running version.", []string{"version"})
 	m.reg.MustRegister(info)
-	info.Set(1, version)
+	info.Set(version)
 }
 
 // Handler serves the page, with the Go runtime and process families.
@@ -125,16 +119,16 @@ type State struct {
 // reports false when it cannot count; the page then leaves them out. now
 // is the clock the oldest unread age is taken against. Call it once.
 func (m *Metrics) ServeState(read func(context.Context) (State, bool), now func() time.Time) {
-	identities := measure.NewGaugeDesc("identities", "Identities, live or dormant.", []string{"state"})
-	online := measure.NewGaugeDesc("identities_online", "Live identities online now.", nil)
-	threads := measure.NewGaugeDesc("threads", "Live threads, by kind.", []string{"kind"})
-	reservations := measure.NewGaugeDesc("reservations", "Reservations held, and queue entries waiting.", []string{"state"})
-	unread := measure.NewGaugeDesc("unread_backlog", "Unread wake deliveries of live identities.", nil)
-	oldest := measure.NewGaugeDesc("unread_oldest_seconds", "Age of the oldest unread wake delivery, 0 with none.", nil)
-	inUse := measure.NewGaugeDesc("store_in_use_bytes", "Store bytes holding data: the pages written, less the free ones.", nil)
-	file := measure.NewGaugeDesc("store_file_bytes", "Store file size, which stays near its high-water mark.", nil)
-	free := measure.NewGaugeDesc("store_free_bytes", "Store bytes in free and pending pages.", nil)
-	maxBytes := measure.NewGaugeDesc("store_max_bytes", "STORE_MAX_BYTES, the ceiling on bytes in use; new posts, identities, follows, work paths, reservations and delegate links are refused past 90 % of it.", nil)
+	identities := measure.NewGaugeDesc("identities", "Identities, live or dormant.", measure.UnitCount, []string{"state"})
+	online := measure.NewGaugeDesc("identities_online", "Live identities online now.", measure.UnitCount, nil)
+	threads := measure.NewGaugeDesc("threads", "Live threads, by kind.", measure.UnitCount, []string{"kind"})
+	reservations := measure.NewGaugeDesc("reservations", "Reservations held, and queue entries waiting.", measure.UnitCount, []string{"state"})
+	unread := measure.NewGaugeDesc("unread_backlog", "Unread wake deliveries of live identities.", measure.UnitCount, nil)
+	oldest := measure.NewGaugeDesc("unread_oldest_seconds", "Age of the oldest unread wake delivery, 0 with none.", measure.UnitSeconds, nil)
+	inUse := measure.NewGaugeDesc("store_in_use_bytes", "Store bytes holding data: the pages written, less the free ones.", measure.UnitBytes, nil)
+	file := measure.NewGaugeDesc("store_file_bytes", "Store file size, which stays near its high-water mark.", measure.UnitBytes, nil)
+	free := measure.NewGaugeDesc("store_free_bytes", "Store bytes in free and pending pages.", measure.UnitBytes, nil)
+	maxBytes := measure.NewGaugeDesc("store_max_bytes", "STORE_MAX_BYTES, the ceiling on bytes in use; new posts, identities, follows, work paths, reservations and delegate links are refused past 90 % of it.", measure.UnitBytes, nil)
 	m.reg.MustRegister(measure.NewCollector(func(ctx context.Context, e *measure.Emitter) {
 		st, ok := read(ctx)
 		if !ok {
