@@ -31,7 +31,7 @@ import (
 const testKeepalive = 200 * time.Millisecond
 
 const (
-	testVersion = "v1.1.0-dev.4"
+	testVersion = "v2.0.0-dev.1"
 	sessA       = "kiro-cli:session-a"
 	sessB       = "kiro-cli:session-b"
 	sessC       = "kiro-cli:session-c"

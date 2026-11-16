@@ -165,6 +165,18 @@ func TestGate_aFailingAccountsFileAnswers503(t *testing.T) {
 	}
 }
 
+// testUpgradeLine is design 1.6's 426 line from the harness's server, a
+// development build of v2.0.0, to a client sending client.
+func testUpgradeLine(client string) string {
+	if client == "" {
+		client = "with no Grelot-Version"
+	}
+	return "this grelot server (" + testVersion + ") does not speak client " + client +
+		"; install grelot v2.0.0 from https://github.com/cplieger/grelot/releases/tag/v2.0.0," +
+		" or, if that page does not exist yet, a development build with go install github.com/cplieger/grelot@dev," +
+		" then check both with grelot version"
+}
+
 func TestAuthorize_version(t *testing.T) {
 	h := newHarness(t)
 	for _, tc := range []struct {
@@ -173,14 +185,17 @@ func TestAuthorize_version(t *testing.T) {
 	}{
 		{"", http.StatusUpgradeRequired},
 		{"v1.0.9", http.StatusUpgradeRequired},
-		{"v1.1.0-rc.1", http.StatusUpgradeRequired},
-		{"1.1.0", http.StatusUpgradeRequired},
-		{"v1.1", http.StatusUpgradeRequired},
+		{"v1.1.0", http.StatusUpgradeRequired},
+		{"v1.1.0-dev.3", http.StatusUpgradeRequired},
+		{"v1.2.0", http.StatusUpgradeRequired},
+		{"v2.0.0-rc.1", http.StatusUpgradeRequired},
+		{"2.0.0", http.StatusUpgradeRequired},
+		{"v2.0", http.StatusUpgradeRequired},
 		{"dev", http.StatusOK},
-		{"v1.1.0", http.StatusOK},
-		{"v1.1.0-dev.3", http.StatusOK},
-		{"v1.2.0", http.StatusOK},
 		{"v2.0.0", http.StatusOK},
+		{"v2.0.0-dev.3", http.StatusOK},
+		{"v2.1.0", http.StatusOK},
+		{"v3.0.0", http.StatusOK},
 	} {
 		t.Run("version "+tc.version, func(t *testing.T) {
 			r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{headerVersion: tc.version, headerSession: sessA})
@@ -190,9 +205,8 @@ func TestAuthorize_version(t *testing.T) {
 			if got := r.header.Get(headerVersion); got != testVersion {
 				t.Errorf("answer names server version %q, want %q", got, testVersion)
 			}
-			if tc.want == http.StatusUpgradeRequired && !strings.Contains(r.str("error"),
-				"install grelot v1.1.0-dev.4 with go install github.com/cplieger/grelot@v1.1.0-dev.4") {
-				t.Errorf("426 %q does not name the server's go install", r.str("error"))
+			if want := testUpgradeLine(tc.version); tc.want == http.StatusUpgradeRequired && r.str("error") != want {
+				t.Errorf("426 error %q, want %q", r.str("error"), want)
 			}
 		})
 	}
@@ -201,16 +215,15 @@ func TestAuthorize_version(t *testing.T) {
 func TestVersionRoute(t *testing.T) {
 	h := newHarness(t)
 	t.Run("any caller reads the server's version", func(t *testing.T) {
-		r := h.request(http.MethodGet, "/v1/version", nil, map[string]string{headerVersion: "v1.1.0"})
+		r := h.request(http.MethodGet, "/v1/version", nil, map[string]string{headerVersion: "v2.0.0"})
 		if r.status != http.StatusOK || r.str("version") != testVersion || r.header.Get(headerVersion) != testVersion {
 			t.Errorf("status %d, body %s, Grelot-Version %q; want 200 and %s in both", r.status, r.raw, r.header.Get(headerVersion), testVersion)
 		}
 	})
-	t.Run("a client it does not speak gets the 426 naming grelot version", func(t *testing.T) {
-		r := h.request(http.MethodGet, "/v1/version", nil, map[string]string{headerVersion: "v1.0.0"})
-		if r.status != http.StatusUpgradeRequired || r.header.Get(headerVersion) != testVersion ||
-			!strings.HasSuffix(r.str("error"), "go install github.com/cplieger/grelot@"+testVersion+", then check both with grelot version") {
-			t.Errorf("status %d, error %q, Grelot-Version %q; want the 426 naming grelot version and the server's version", r.status, r.str("error"), r.header.Get(headerVersion))
+	t.Run("a v1 client gets the 426 naming grelot version", func(t *testing.T) {
+		r := h.request(http.MethodGet, "/v1/version", nil, map[string]string{headerVersion: "v1.1.2"})
+		if r.status != http.StatusUpgradeRequired || r.header.Get(headerVersion) != testVersion || r.str("error") != testUpgradeLine("v1.1.2") {
+			t.Errorf("status %d, error %q, Grelot-Version %q; want 426, %q and %s", r.status, r.str("error"), r.header.Get(headerVersion), testUpgradeLine("v1.1.2"), testVersion)
 		}
 	})
 }
