@@ -1,0 +1,135 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "wiretest fixture", "version": "1"},
+  "paths": {
+    "/v1/items": {
+      "get": {
+        "operationId": "listItems",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Items"}}}
+          },
+          "429": {
+            "description": "Too Many Requests: rate_limited",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}},
+            "x-error-codes": {"rate_limited": {}}
+          }
+        }
+      },
+      "post": {
+        "operationId": "createItem",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "headers": {"Location": {"required": true, "schema": {"type": "string", "format": "uri-reference"}}},
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Item"}}}
+          }
+        }
+      }
+    },
+    "/v1/items/{id}": {
+      "get": {
+        "operationId": "getItem",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Item"}}}
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteItem",
+        "responses": {"204": {"description": "No Content"}}
+      }
+    },
+    "/v1/items/mine": {
+      "get": {
+        "operationId": "listMyItems",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Items"}}}
+          }
+        }
+      }
+    },
+    "/v1/events": {
+      "get": {
+        "operationId": "events",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {"text/event-stream": {"schema": {"type": "string"}}}
+          }
+        }
+      }
+    },
+    "/v1/shapes": {
+      "get": {
+        "operationId": "getShape",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Shape"}}}
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {"type": "string"},
+          "code": {"type": "string"},
+          "request_id": {"type": "string"}
+        },
+        "required": ["error"]
+      },
+      "Kind": {"type": "string", "enum": ["plain", "fancy"]},
+      "Item": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer", "minimum": 0},
+          "kind": {"$ref": "#/components/schemas/Kind"},
+          "name": {"type": "string", "minLength": 1, "maxLength": 3, "x-max-bytes": 4},
+          "slug": {"type": "string", "pattern": "^[a-z]+$"},
+          "at": {"type": "string", "format": "date-time"},
+          "score": {"type": "integer", "minimum": 1, "maximum": 5},
+          "tags": {"type": ["array", "null"], "items": {"type": "string"}, "minItems": 1, "maxItems": 2},
+          "labels": {"type": "object", "additionalProperties": {"type": "integer"}, "propertyNames": {"pattern": "^[a-z]+$"}},
+          "note": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "ok": {"type": "boolean"}
+        },
+        "required": ["id", "kind"]
+      },
+      "Items": {
+        "type": "object",
+        "properties": {
+          "items": {"type": "array", "items": {"$ref": "#/components/schemas/Item"}},
+          "next_cursor": {"type": "string"},
+          "total": {"type": "integer", "minimum": 0}
+        },
+        "required": ["items", "total"]
+      },
+      "Circle": {
+        "type": "object",
+        "properties": {"shape": {"const": "circle"}, "r": {"type": "integer"}},
+        "required": ["shape", "r"],
+        "additionalProperties": false
+      },
+      "Square": {
+        "type": "object",
+        "properties": {"shape": {"const": "square"}, "side": {"type": "integer"}},
+        "required": ["shape", "side"],
+        "additionalProperties": false
+      },
+      "Shape": {
+        "oneOf": [{"$ref": "#/components/schemas/Circle"}, {"$ref": "#/components/schemas/Square"}],
+        "discriminator": {"propertyName": "shape", "mapping": {"circle": "#/components/schemas/Circle", "square": "#/components/schemas/Square"}}
+      }
+    }
+  }
+}
