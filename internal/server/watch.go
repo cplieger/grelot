@@ -98,7 +98,8 @@ func (s *Server) watchFor(r *http.Request, c store.Caller) (id uint64, wait time
 		return 0, 0, derr
 	}
 	if wait = durationMS(int64(req.WaitMS)); wait <= 0 || wait > maxWait {
-		return 0, 0, fieldRefusal("wait_ms must be 1 to 55000", waitRange("wait_ms", 1))
+		lo, hi := wire.StandingWaitMS(0).Range()
+		return 0, 0, rangeRefusal("wait_ms", lo, hi)
 	}
 	me, err := s.store.Watcher(r.Context(), c)
 	switch {

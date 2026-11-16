@@ -74,8 +74,12 @@ func (s *Server) release(r *http.Request, c store.Caller, k store.Keyed) (status
 // reservations is GET /v1/reservations?path=: the grants and queue
 // entries overlapping path, every one when it is absent, by id.
 func (s *Server) reservations(r *http.Request, c store.Caller, _ store.Keyed) (status int, body any, err error) {
+	rq, err := queryParams[wire.ReservationsQuery](r)
+	if err != nil {
+		return 0, nil, err
+	}
 	p := pagingOf(r)
-	q := store.ReservationQuery{Path: r.URL.Query().Get("path"), Limit: p.limit}
+	q := store.ReservationQuery{Path: rq.Path, Limit: p.limit}
 	if p.after != nil {
 		if q.After, err = afterSeq(p.after); err != nil {
 			return 0, nil, err

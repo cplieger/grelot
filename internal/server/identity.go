@@ -111,7 +111,11 @@ const (
 // me is GET /v1/me, which every session may call, a dormant one included;
 // with turn=start it is the prompt hook's, which opens the turn.
 func (s *Server) me(r *http.Request, c store.Caller, _ store.Keyed) (status int, body any, err error) {
-	turn, err := turnStartOf(r)
+	q, err := queryParams[wire.MeQuery](r)
+	if err != nil {
+		return 0, nil, err
+	}
+	turn, err := turnStartOf(&q)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -123,7 +127,7 @@ func (s *Server) me(r *http.Request, c store.Caller, _ store.Keyed) (status int,
 	var se *store.Error
 	switch {
 	case errors.As(err, &se) && se.Kind == store.KindGone && se.Why == stateNone:
-		out.Hint, err = s.hint(r, c)
+		out.Hint, err = s.hint(r, c, q.Proc)
 		return http.StatusOK, out, err
 	case err != nil:
 		return 0, nil, err
@@ -197,8 +201,7 @@ func (s *Server) meLive(r *http.Request, c store.Caller, out *wire.Me, id uint64
 
 // hint is the take-over hint for a session with no identity that names
 // its CLI process in proc.
-func (s *Server) hint(r *http.Request, c store.Caller) (*wire.Hint, error) {
-	proc := r.URL.Query().Get("proc")
+func (s *Server) hint(r *http.Request, c store.Caller, proc string) (*wire.Hint, error) {
 	if proc == "" {
 		return nil, nil
 	}

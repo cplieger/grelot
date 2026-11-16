@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/cplieger/grelot/internal/store"
@@ -70,23 +69,19 @@ type turnStart struct {
 	start  bool
 }
 
-func turnStartOf(r *http.Request) (turnStart, error) {
-	q := r.URL.Query()
+func turnStartOf(q *wire.MeQuery) (turnStart, error) {
 	var out turnStart
-	switch q.Get("turn") {
+	switch q.Turn {
 	case "":
 	case "start":
 		out.start = true
 	default:
 		return out, badRequest(`turn must be "start" when sent`)
 	}
-	if v := q.Get("signal"); v != "" {
-		n, err := strconv.ParseUint(v, 10, 64)
-		if err != nil || n == 0 || !out.start {
-			return out, badRequest("signal must be the seq of a signal line, sent with turn=start")
-		}
-		out.signal = n
+	if q.Signal != 0 && !out.start {
+		return out, badRequest("signal must be the seq of a signal line, sent with turn=start")
 	}
+	out.signal = uint64(q.Signal)
 	return out, nil
 }
 
@@ -164,22 +159,4 @@ func newestWake(es []store.Entry) uint64 {
 		}
 	}
 	return seq
-}
-
-// waitParam reads the in-turn wait's wait parameter: 0 when absent.
-func waitParam(r *http.Request) (time.Duration, error) {
-	v := r.URL.Query().Get("wait_ms")
-	if v == "" {
-		return 0, nil
-	}
-	ms, err := strconv.ParseInt(v, 10, 64)
-	if err != nil || ms < 0 || durationMS(ms) > maxWait {
-		return 0, fieldRefusal("wait_ms must be 0 to 55000", waitRange("wait_ms", 0))
-	}
-	return durationMS(ms), nil
-}
-
-// waitRange is a held wait's refused field, from lo to wire.MaxWaitMS.
-func waitRange(field string, lo int64) wire.FieldError {
-	return wire.FieldError{Field: field, Code: wire.FieldOutOfRange, Min: new(lo), Max: new(int64(wire.MaxWaitMS))}
 }

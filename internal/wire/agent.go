@@ -2,6 +2,7 @@ package wire
 
 import (
 	"encoding/json"
+	"math"
 	"time"
 )
 
@@ -127,8 +128,14 @@ type Registered struct {
 type MeQuery struct {
 	Turn   string `json:"turn,omitempty"`
 	Proc   string `json:"proc,omitempty"`
-	Signal uint64 `json:"signal,omitempty"`
+	Signal Seq    `json:"signal,omitempty"`
 }
+
+// Seq is a mailbox entry's seq; seqs start at 1.
+type Seq uint64
+
+// Range is the limits the server takes, which the document states.
+func (Seq) Range() (lo, hi int64) { return 1, math.MaxInt64 }
 
 // Me is GET /v1/me. State is live, dormant or none; a session with no
 // identity gets State, the hint when one applies, and its status line.
@@ -391,9 +398,15 @@ type HistoryQuery struct {
 	Announce string    `json:"announce,omitempty"`
 	Full     string    `json:"full,omitempty"`
 	LastRead string    `json:"last_read,omitempty"`
-	Thread   uint64    `json:"thread,omitempty"`
+	Thread   ThreadID  `json:"thread,omitempty"`
 	Limit    PageLimit `json:"limit,omitempty"`
 }
+
+// ThreadID names a thread; ids start at 1.
+type ThreadID uint64
+
+// Range is the limits the server takes, which the document states.
+func (ThreadID) Range() (lo, hi int64) { return 1, math.MaxInt64 }
 
 // History is GET /v1/history: the caller's mailbox, which it moves
 // nothing in; pages go back in time, each oldest first.

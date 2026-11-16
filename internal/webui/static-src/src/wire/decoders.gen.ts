@@ -610,7 +610,7 @@ export const decodeHistoryQuery: Decoder<HistoryQuery> = (v) => {
   }
   {
     const $v = own(o, "thread");
-    if ($v !== undefined && $v !== null) out.thread = reqNum(o, "thread", "$.history_query");
+    if ($v !== undefined && $v !== null) out.thread = checkRange(reqNum(o, "thread", "$.history_query"), 1, 9223372036854775807, "$.history_query.thread");
   }
   {
     const $v = own(o, "limit");
@@ -883,7 +883,7 @@ export const decodeMeQuery: Decoder<MeQuery> = (v) => {
   }
   {
     const $v = own(o, "signal");
-    if ($v !== undefined && $v !== null) out.signal = reqNum(o, "signal", "$.me_query");
+    if ($v !== undefined && $v !== null) out.signal = checkRange(reqNum(o, "signal", "$.me_query"), 1, 9223372036854775807, "$.me_query.signal");
   }
   return out;
 };

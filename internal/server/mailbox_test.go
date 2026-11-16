@@ -131,7 +131,7 @@ func TestHistory_routeMapsEveryFilterAndMovesNothing(t *testing.T) {
 	if unread := entriesOf(t, h.as(sessA, http.MethodGet, "/v1/inbox", nil)); len(unread) != 2 {
 		t.Errorf("inbox after history = %d entries, want both still unread", len(unread))
 	}
-	for _, q := range []string{"?since=soon", "?since=30m", "?thread=x", "?limit=-1", "?full=yes", "?from=@me&with=nobody"} {
+	for _, q := range []string{"?since=soon", "?since=30m", "?thread=x", "?thread=0", "?limit=-1", "?full=yes", "?from=@me&with=nobody"} {
 		if r := h.as(sessA, http.MethodGet, "/v1/history"+q, nil); r.status/100 != 4 {
 			t.Errorf("history%s: %d, want a refusal", q, r.status)
 		}

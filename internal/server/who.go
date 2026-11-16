@@ -15,18 +15,22 @@ import (
 // session with no identity, or no Grelot-Session at all, sees every
 // relation as unknown.
 func (s *Server) who(r *http.Request, c store.Caller, _ store.Keyed) (status int, body any, err error) {
-	q := r.URL.Query()
+	q, err := queryParams[wire.IdentitiesQuery](r)
+	if err != nil {
+		return 0, nil, err
+	}
 	p := pagingOf(r)
 	wq := store.WhoQuery{
-		Path: q.Get("path"), Repo: q.Get("repo"), Holds: q.Get("holds"), Queued: q.Get("queued"), Text: q.Get("q"),
+		Path: q.Path, Repo: q.Repo, Holds: q.Holds, Queued: q.Queued, Text: q.Q,
 		After: string(p.after), Limit: p.limit,
 	}
 	var online bool
 	for _, f := range []struct {
 		dst  *bool
+		v    string
 		name string
-	}{{&online, "online"}, {&wq.Here, "here"}, {&wq.All, "all"}} {
-		if *f.dst, err = flag(q.Get(f.name), f.name); err != nil {
+	}{{&online, q.Online, "online"}, {&wq.Here, q.Here, "here"}, {&wq.All, q.All, "all"}} {
+		if *f.dst, err = flag(f.v, f.name); err != nil {
 			return 0, nil, err
 		}
 	}

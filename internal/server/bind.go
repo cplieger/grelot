@@ -3,19 +3,25 @@
 package server
 
 import (
+	"math"
 	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cplieger/grelot/internal/wire"
 )
 
-// pathParams reads a web route's Params struct from r's path wildcards,
-// each field by its json tag, the name the generated client fills.
+// ranged is a wire integer type that publishes its bounds.
+type ranged interface{ Range() (lo, hi int64) }
+
+// pathParams reads a route's Params struct from r's path wildcards, each
+// field by its json tag, the name the document publishes.
 func pathParams[T any](r *http.Request) (T, error) { return bind[T](r.PathValue) }
 
-// queryParams reads a web route's Query struct from r's query string,
-// each field by its json tag, the name the generated client sends.
+// queryParams reads a route's Query struct from r's query string, each
+// field by its json tag, the name the document publishes.
 func queryParams[T any](r *http.Request) (T, error) { return bind[T](r.URL.Query().Get) }
 
 func bind[T any](get func(string) string) (T, error) {
@@ -47,13 +53,17 @@ func bindFields(v reflect.Value, get func(string) string) error {
 }
 
 // setField fills fv from s, the value sent under name: a time.Time from
-// an RFC 3339 instant, an integer from a whole number. It reports false
-// for a kind it cannot fill.
+// an RFC 3339 instant, a ranged type from a whole number within its
+// bounds, another integer from a whole number. It reports false for a
+// kind it cannot fill.
 func setField(fv reflect.Value, name, s string) (bool, error) {
 	if fv.Type() == reflect.TypeFor[time.Time]() {
 		at, err := instantParam(s, name)
 		fv.Set(reflect.ValueOf(at))
 		return true, err
+	}
+	if rg, ok := reflect.TypeAssert[ranged](fv); ok && (fv.CanInt() || fv.CanUint()) {
+		return true, setRanged(fv, rg, name, s)
 	}
 	switch fv.Kind() {
 	case reflect.String:
@@ -74,4 +84,28 @@ func setField(fv reflect.Value, name, s string) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+// setRanged fills fv, of a ranged type, from s, a whole number within
+// the type's bounds. Convert, rather than SetUint, fills an unsigned type,
+// whose bounds start at 1, so n is never negative there.
+func setRanged(fv reflect.Value, rg ranged, name, s string) error {
+	lo, hi := rg.Range()
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || n < lo || n > hi {
+		return rangeRefusal(name, lo, hi)
+	}
+	fv.Set(reflect.ValueOf(n).Convert(fv.Type()))
+	return nil
+}
+
+// rangeRefusal refuses name's value outside lo to hi, the bounds the
+// document publishes for it; an id's hi is math.MaxInt64, which the text
+// leaves out.
+func rangeRefusal(name string, lo, hi int64) *apiError {
+	msg := name + " must be " + strconv.FormatInt(lo, 10) + " to " + strconv.FormatInt(hi, 10)
+	if hi == math.MaxInt64 {
+		msg = name + " must be at least " + strconv.FormatInt(lo, 10)
+	}
+	return fieldRefusal(msg, wire.FieldError{Field: name, Code: wire.FieldOutOfRange, Min: new(lo), Max: new(hi)})
 }

@@ -38,11 +38,11 @@ func (s *Server) inbox(r *http.Request, c store.Caller, _ store.Keyed) (status i
 			return 0, nil, err
 		}
 	}
-	wait, err := waitParam(r)
+	iq, err := queryParams[wire.InboxQuery](r)
 	if err != nil {
 		return 0, nil, err
 	}
-	page, err := s.inTurnWait(r.Context(), c, q, wait)
+	page, err := s.inTurnWait(r.Context(), c, q, durationMS(int64(iq.WaitMS)))
 	if err != nil {
 		return 0, nil, err
 	}
@@ -96,29 +96,25 @@ func (s *Server) history(r *http.Request, c store.Caller, _ store.Keyed) (status
 
 // historyQuery reads GET /v1/history's filters.
 func historyQuery(r *http.Request) (hq store.HistoryQuery, err error) {
-	q := r.URL.Query()
-	hq = store.HistoryQuery{Path: q.Get("path"), With: strings.TrimPrefix(q.Get("with"), "@"), Grep: q.Get("grep")}
-	if from := q.Get("from"); from == "@me" {
+	q, err := queryParams[wire.HistoryQuery](r)
+	if err != nil {
+		return hq, err
+	}
+	hq = store.HistoryQuery{
+		Path: q.Path, With: strings.TrimPrefix(q.With, "@"), Grep: q.Grep,
+		Since: q.Since, Until: q.Until, Thread: uint64(q.Thread),
+	}
+	if q.From == "@me" {
 		hq.FromMe = true
 	} else {
-		hq.From = strings.TrimPrefix(from, "@")
-	}
-	if v := q.Get("thread"); v != "" {
-		if hq.Thread, err = strconv.ParseUint(v, 10, 64); err != nil || hq.Thread == 0 {
-			return hq, badRequest("thread must be a thread id")
-		}
-	}
-	if hq.Since, err = instantParam(q.Get("since"), "since"); err != nil {
-		return hq, err
-	}
-	if hq.Until, err = instantParam(q.Get("until"), "until"); err != nil {
-		return hq, err
+		hq.From = strings.TrimPrefix(q.From, "@")
 	}
 	for _, f := range []struct {
 		dst  *bool
+		v    string
 		name string
-	}{{&hq.Announce, "announce"}, {&hq.Full, "full"}, {&hq.LastRead, "last_read"}} {
-		if *f.dst, err = flag(q.Get(f.name), f.name); err != nil {
+	}{{&hq.Announce, q.Announce, "announce"}, {&hq.Full, q.Full, "full"}, {&hq.LastRead, q.LastRead, "last_read"}} {
+		if *f.dst, err = flag(f.v, f.name); err != nil {
 			return hq, err
 		}
 	}
@@ -139,8 +135,12 @@ func instantParam(v, name string) (time.Time, error) {
 
 // threads is GET /v1/threads: the live path threads under path.
 func (s *Server) threads(r *http.Request, c store.Caller, _ store.Keyed) (status int, body any, err error) {
+	q, err := queryParams[wire.ThreadsQuery](r)
+	if err != nil {
+		return 0, nil, err
+	}
 	p := pagingOf(r)
-	got, err := s.store.Threads(r.Context(), c, store.ThreadQuery{Root: r.URL.Query().Get("path"), After: string(p.after), Limit: p.limit})
+	got, err := s.store.Threads(r.Context(), c, store.ThreadQuery{Root: q.Path, After: string(p.after), Limit: p.limit})
 	if err != nil {
 		return 0, nil, err
 	}
@@ -178,7 +178,11 @@ func (s *Server) receipts(r *http.Request, c store.Caller, _ store.Keyed) (statu
 
 // follow is PUT /v1/follows?path=.
 func (s *Server) follow(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
-	got, err := s.store.Follow(r.Context(), k, c, r.URL.Query().Get("path"))
+	q, err := queryParams[wire.PathQuery](r)
+	if err != nil {
+		return 0, nil, err
+	}
+	got, err := s.store.Follow(r.Context(), k, c, q.Path)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -187,7 +191,11 @@ func (s *Server) follow(r *http.Request, c store.Caller, k store.Keyed) (status 
 
 // unfollow is DELETE /v1/follows?path=.
 func (s *Server) unfollow(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {
-	got, err := s.store.Unfollow(r.Context(), k, c, r.URL.Query().Get("path"))
+	q, err := queryParams[wire.PathQuery](r)
+	if err != nil {
+		return 0, nil, err
+	}
+	got, err := s.store.Unfollow(r.Context(), k, c, q.Path)
 	if err != nil {
 		return 0, nil, err
 	}

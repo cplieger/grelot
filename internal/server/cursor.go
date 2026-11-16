@@ -194,13 +194,12 @@ func (s *Server) readPaging(r *http.Request, route *wire.Route) (*paging, error)
 	q := r.URL.Query()
 	p := &paging{limit: wire.PageLimitDefault, scope: cursorScope{row: route.Name, credential: credentialOf(r)}}
 	if v := q.Get(wire.QueryLimit); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n < 1 || n > wire.PageLimitMax {
-			return nil, fieldRefusal("limit must be 1 to 200", wire.FieldError{
-				Field: wire.QueryLimit, Code: wire.FieldOutOfRange, Min: new(int64(1)), Max: new(int64(wire.PageLimitMax)),
-			})
+		lo, hi := wire.PageLimit(0).Range()
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < lo || n > hi {
+			return nil, rangeRefusal(wire.QueryLimit, lo, hi)
 		}
-		p.limit = n
+		p.limit = int(n)
 	}
 	cursor := q.Get(wire.QueryCursor)
 	q.Del(wire.QueryCursor)
