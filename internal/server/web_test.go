@@ -400,7 +400,7 @@ func TestWeb_reservationStatesAreTheWireMembers(t *testing.T) {
 	h := newSignedIn(t)
 	h.mustRegister(sessA, "alpha")
 	h.mustRegister(sessB, "bravo")
-	body := map[string]any{"path": repoGrelot, "reason": "editing", "ttl": "1h"}
+	body := map[string]any{"path": repoGrelot, "reason": "editing", "ttl_ms": durMS("1h")}
 	if r := h.as(sessA, http.MethodPost, "/v1/reservations", body); r.status != http.StatusCreated {
 		t.Fatalf("reserve: %d %s", r.status, r.raw)
 	}

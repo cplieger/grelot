@@ -94,20 +94,29 @@ type PathThread struct {
 	ID      uint64
 }
 
-// Threads lists, by path, the live path threads at or under root, every
-// one when root is "". Like any request it clears ended (Seen).
-// Refusals: KindInvalid for a path that is not canonical; KindGone for a
-// session with no live identity.
-func (s *Store) Threads(ctx context.Context, c Caller, root string) ([]PathThread, error) {
+// ThreadQuery is a Threads read: the threads at or under Root, every one
+// when it is "", paged past the path After, at most Limit of them (every
+// one at 0).
+type ThreadQuery struct {
+	Root  string
+	After string
+	Limit int
+}
+
+// Threads lists, by path, the live path threads q names. Like any request
+// it clears ended (Seen). Refusals: KindInvalid for a path that is not
+// canonical; KindGone for a session with no live identity.
+func (s *Store) Threads(ctx context.Context, c Caller, q ThreadQuery) (Listing[PathThread], error) {
+	root := q.Root
 	prefix := "/"
 	if root != "" {
 		if _, err := checkPaths([]string{root}); err != nil {
-			return nil, err
+			return Listing[PathThread]{}, err
 		}
 		prefix = root
 	}
 	if _, err := s.Seen(ctx, c); err != nil {
-		return nil, err
+		return Listing[PathThread]{}, err
 	}
 	out := []PathThread{}
 	err := s.read(ctx, func(r *bolttable.ReadTx) error {
@@ -126,5 +135,5 @@ func (s *Store) Threads(ctx context.Context, c Caller, root string) ([]PathThrea
 			return true, nil
 		})
 	})
-	return out, err
+	return listing(out, pastKey(q.After, func(t *PathThread) string { return t.Path }), q.Limit), err
 }

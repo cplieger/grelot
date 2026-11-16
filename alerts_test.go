@@ -97,7 +97,7 @@ func TestAlerts_aShippedAlertLeavesOnlyByARecordedDecision(t *testing.T) {
 func servedSeries(t *testing.T) map[string]bool {
 	t.Helper()
 	m := obs.New()
-	st, srv, err := build(testConfig(t), nil, authtest.New(t, nil), slog.New(slog.DiscardHandler), m)
+	st, srv, err := build(testConfig(t), nil, testCursorKey, authtest.New(t, nil), slog.New(slog.DiscardHandler), m)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -51,9 +51,9 @@ func wantStates(t *testing.T, rs Receipts, want ...string) {
 // readAll reads and acks every unread delivery of name.
 func readAll(t *testing.T, s *Store, name string) {
 	t.Helper()
-	page := mustInbox(t, s, sess(name), maxInboxLimit)
-	if len(page.Entries) > 0 {
-		mustAck(t, s, sess(name), page.Entries[len(page.Entries)-1].Seq)
+	page := mustInbox(t, s, sess(name), 0)
+	if len(page.Items) > 0 {
+		mustAck(t, s, sess(name), page.Items[len(page.Items)-1].Seq)
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 
 	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/where"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // toolbeltRemoteHash is the first 16 bytes of HMAC-SHA256 keyed "grelot
@@ -40,15 +41,15 @@ func registerAgent(t *testing.T, ts *testServer, session string) (*agent, string
 }
 
 type sentRegister struct {
-	Where    client.Where `json:"where"`
-	Name     string       `json:"name"`
-	Host     string       `json:"host"`
-	OS       string       `json:"os"`
-	Arch     string       `json:"arch"`
-	Proc     string       `json:"proc"`
-	TTL      string       `json:"ttl"`
-	Paths    []string     `json:"paths"`
-	TakeOver *bool        `json:"take_over"`
+	Where    wire.Where `json:"where"`
+	Name     string     `json:"name"`
+	Host     string     `json:"host"`
+	OS       string     `json:"os"`
+	Arch     string     `json:"arch"`
+	Proc     string     `json:"proc"`
+	Paths    []string   `json:"paths"`
+	TTLMS    int64      `json:"ttl_ms"`
+	TakeOver bool       `json:"take_over"`
 }
 
 func TestRegister_printsTheStatusLineTheCardThenThePointerToTheManual(t *testing.T) {
@@ -91,7 +92,7 @@ func TestRegister_sendsTheIdentityAndWhereItRuns(t *testing.T) {
 	if err := json.Unmarshal([]byte(req.Body), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Name != "toolbelt-dev" || body.Host != "box" || body.OS != runtime.GOOS || body.Arch != runtime.GOARCH || body.TTL != "2h" {
+	if body.Name != "toolbelt-dev" || body.Host != "box" || body.OS != runtime.GOOS || body.Arch != runtime.GOARCH || body.TTLMS != (2*time.Hour).Milliseconds() {
 		t.Errorf("body = %+v, want the name, host label box, this OS and arch, and ttl 2h", body)
 	}
 	if len(body.Paths) != 1 || body.Paths[0] != "/workspace/toolbelt" {
@@ -100,8 +101,8 @@ func TestRegister_sendsTheIdentityAndWhereItRuns(t *testing.T) {
 	if body.Proc != "200:20" {
 		t.Errorf("proc = %q, want the alphacli ancestor's pid and start, 200:20", body.Proc)
 	}
-	if body.TakeOver != nil {
-		t.Errorf("take_over = %v, want it absent without --take-over", *body.TakeOver)
+	if body.TakeOver {
+		t.Error("take_over sent true without --take-over")
 	}
 	if body.Where.Machine != testMachine || !hex32.MatchString(body.Where.Environment) {
 		t.Errorf("where = %+v, want the machine id and a 32-hex environment id", body.Where)
@@ -128,8 +129,8 @@ func TestRegister_takesTheParseSafeForms(t *testing.T) {
 	if err := json.Unmarshal([]byte(ts.last(t, http.MethodPost, "/v1/register").Body), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.TTL != "2h" || !slices.Equal(body.Paths, []string{"/workspace/toolbelt", "/workspace/toolbelt/internal"}) {
-		t.Errorf("ttl %q, paths %q; want 2h and both paths", body.TTL, body.Paths)
+	if body.TTLMS != (2*time.Hour).Milliseconds() || !slices.Equal(body.Paths, []string{"/workspace/toolbelt", "/workspace/toolbelt/internal"}) {
+		t.Errorf("ttl_ms %d, paths %q; want 2h and both paths", body.TTLMS, body.Paths)
 	}
 }
 
@@ -243,7 +244,7 @@ func TestRegister_aDelegate(t *testing.T) {
 	}
 	ts.call(t, "alpha:s-1", false, &client.Request{
 		Method: http.MethodPost, Path: "/v1/delegates",
-		Body: map[string]any{"label": "review", "ttl": "1h"},
+		Body: map[string]any{"label": "review", "ttl_ms": 3600000},
 	}, &grant)
 
 	out := a.must("register", "--delegate", grant.Link, "--desc", "reviewing the diff")
@@ -259,7 +260,7 @@ func TestRegister_aDelegate(t *testing.T) {
 	if err := json.Unmarshal([]byte(ts.last(t, http.MethodPost, "/v1/register").Body), &body); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := body["where"]; ok || body["delegate"] != grant.Link {
+	if body["where"] != nil || body["delegate"] != grant.Link {
 		t.Errorf("body = %v, want the link and no where, which a delegate takes from its parent", body)
 	}
 
@@ -326,9 +327,9 @@ func TestRevive(t *testing.T) {
 			t.Errorf("output = %q, want the card with the new lease, then the pointer to the manual and not the manual", out)
 		}
 		var body struct {
-			Where client.Where `json:"where"`
-			Name  string       `json:"name"`
-			Proc  string       `json:"proc"`
+			Where wire.Where `json:"where"`
+			Name  string     `json:"name"`
+			Proc  string     `json:"proc"`
 		}
 		if err := json.Unmarshal([]byte(ts.last(t, http.MethodPost, "/v1/revive").Body), &body); err != nil {
 			t.Fatal(err)
@@ -412,8 +413,9 @@ func TestSet(t *testing.T) {
 		if !strings.Contains(out, "description: now reviewing") {
 			t.Errorf("output = %q, want the new description on the card", out)
 		}
-		if strings.Contains(ts.last(t, http.MethodPatch, "/v1/me").Body, `"where"`) {
-			t.Error("a description change sent where; only new paths or a renewal carry it")
+		var body wire.PatchMeRequest
+		if err := json.Unmarshal([]byte(ts.last(t, http.MethodPatch, "/v1/me").Body), &body); err != nil || body.Where != nil {
+			t.Errorf("a description change sent where %+v (%v); only new paths or a renewal carry it", body.Where, err)
 		}
 	})
 	t.Run("new paths carry their checkouts", func(t *testing.T) {
@@ -421,7 +423,7 @@ func TestSet(t *testing.T) {
 		if !strings.Contains(out, "paths: /workspace/toolbelt/internal, /workspace/toolbelt/cmd") {
 			t.Errorf("output = %q, want both canonical paths", out)
 		}
-		var body patchBody
+		var body wire.PatchMeRequest
 		if err := json.Unmarshal([]byte(ts.last(t, http.MethodPatch, "/v1/me").Body), &body); err != nil {
 			t.Fatal(err)
 		}
@@ -434,7 +436,7 @@ func TestSet(t *testing.T) {
 		if !strings.Contains(out, "lease: 5h0m0s, until 2026-11-05 14:00 UTC") {
 			t.Errorf("output = %q, want the renewed lease", out)
 		}
-		var body patchBody
+		var body wire.PatchMeRequest
 		if err := json.Unmarshal([]byte(ts.last(t, http.MethodPatch, "/v1/me").Body), &body); err != nil {
 			t.Fatal(err)
 		}
@@ -460,19 +462,19 @@ func TestRenew(t *testing.T) {
 		if !strings.Contains(out, "grelot: @toolbelt-dev renewed for 4h0m0s, until 2026-11-05 14:00 UTC") {
 			t.Errorf("output = %q, want the lease from now", out)
 		}
-		var body patchBody
+		var body wire.PatchMeRequest
 		if err := json.Unmarshal([]byte(ts.last(t, http.MethodPatch, "/v1/me").Body), &body); err != nil {
 			t.Fatal(err)
 		}
-		if body.TTL != "4h" || body.Where == nil || len(body.Where.Checkouts) != 1 || body.Where.Checkouts[0].Repo != "/workspace/toolbelt" {
-			t.Errorf("body = %+v, want ttl 4h and the working directory's checkout", body)
+		if body.TTLMS != (4*time.Hour).Milliseconds() || body.Where == nil || len(body.Where.Checkouts) != 1 || body.Where.Checkouts[0].Repo != "/workspace/toolbelt" {
+			t.Errorf("body = %+v, want ttl_ms of 4h and the working directory's checkout", body)
 		}
 	})
 	t.Run("a reservation", func(t *testing.T) {
-		var got client.ReservationAnswer
+		var got wire.ReservationAnswer
 		ts.call(t, "alpha:s-1", false, &client.Request{
 			Method: http.MethodPost, Path: "/v1/reservations",
-			Body: map[string]any{"path": "/workspace/toolbelt/engine.go", "reason": "editing", "ttl": "30m"},
+			Body: map[string]any{"path": "/workspace/toolbelt/engine.go", "reason": "editing", "ttl_ms": 1800000},
 		}, &got)
 		out := a.must("renew", strings.TrimSpace(jsonNumber(got.Reservation.ID)), "--ttl", "45m")
 		if !strings.Contains(out, "on /workspace/toolbelt/engine.go renewed for 45m0s, until 2026-11-05 10:45 UTC") {

@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/wire"
 )
@@ -80,7 +79,7 @@ func entries(t *testing.T, r *response) map[string]map[string]any {
 	if r.status != http.StatusOK {
 		t.Fatalf("GET /v1/identities: %d %s", r.status, r.raw)
 	}
-	list, _ := r.body["identities"].([]any)
+	list, _ := r.body["items"].([]any)
 	out := map[string]map[string]any{}
 	for _, e := range list {
 		m, _ := e.(map[string]any)
@@ -184,26 +183,12 @@ func TestWho_filtersCombineWithAnd(t *testing.T) {
 	}
 }
 
-func TestWho_fieldsKeepsTheNamedOnesAndName(t *testing.T) {
-	h := whoHarness(t)
-	got := entries(t, h.as(sessOf("docs-writer"), http.MethodGet, "/v1/identities?fields=description", nil))
-	if len(got) != 4 {
-		t.Fatalf("%d identities, want 4", len(got))
-	}
-	for name, e := range got {
-		if keys := sortedKeys(e); !slices.Equal(keys, []string{"description", "name"}) {
-			t.Errorf("%s has %v, want name and description alone", name, keys)
-		}
-	}
-}
-
 func TestWho_refusals(t *testing.T) {
 	h := whoHarness(t)
 	for _, tc := range []struct {
 		name, query string
 		parts       []string
 	}{
-		{"an unknown field", "fields=description,bogus", []string{`"bogus"`, "valid fields are", "reservations", "queued", "delegates"}},
 		{"a non-canonical holds", "holds=" + repoToolbelt + "/../docs", []string{"holds", "/workspace/<repo>"}},
 		{"a relative path", "path=toolbelt", []string{"path", "/workspace/<repo>"}},
 		{"a repo with a slash", "repo=cplieger/docs", []string{"repo", "/workspace/<repo>"}},
@@ -219,8 +204,8 @@ func TestWho_refusals(t *testing.T) {
 					t.Errorf("%s: error %q lacks %q", tc.query, r.str("error"), p)
 				}
 			}
-			if r.str("path_root") != protopath.DefaultRoot {
-				t.Errorf("%s: path_root %q, want %s", tc.query, r.str("path_root"), protopath.DefaultRoot)
+			if _, ok := r.body["path_root"]; ok {
+				t.Errorf("%s: the refusal carries path_root, which left the envelope for GET /v1/version", tc.query)
 			}
 		})
 	}
@@ -243,8 +228,8 @@ func TestRegister_twoRemotesNamedDocsAre409(t *testing.T) {
 	if r.status != http.StatusConflict || r.str("error") != want || r.str("code") != "other_repository" {
 		t.Errorf("got %d %s, want 409 %q", r.status, r.raw, want)
 	}
-	if r.str("path_root") != protopath.DefaultRoot {
-		t.Errorf("path_root %q, want %s", r.str("path_root"), protopath.DefaultRoot)
+	if _, ok := r.body["path_root"]; ok {
+		t.Errorf("the refusal carries path_root, which left the envelope for GET /v1/version")
 	}
 }
 

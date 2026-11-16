@@ -287,7 +287,7 @@ func TestOpen_compactsAFileMostlyFreeAndKeepsItsRows(t *testing.T) {
 	if fi.Size()*2 > before.FileBytes {
 		t.Errorf("file %d bytes after the restart, want at most half of %d", fi.Size(), before.FileBytes)
 	}
-	if n := len(mustInbox(t, s, sess("bravo"), 0).Entries); n != 0 {
+	if n := len(mustInbox(t, s, sess("bravo"), 0).Items); n != 0 {
 		t.Errorf("bravo has %d messages after the compaction, want 0: they expired", n)
 	}
 	if _, err := s.Status(t.Context(), Caller{Session: sess("alpha")}); err != nil {

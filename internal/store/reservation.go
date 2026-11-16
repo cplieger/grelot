@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/cplieger/bolttable"
 )
@@ -51,10 +49,13 @@ type Reserved struct {
 }
 
 // ReservationQuery filters Reservations. Path keeps the rows at, above or
-// under it; Mine keeps the caller's own.
+// under it; Mine keeps the caller's own. After and Limit page the list:
+// the ids past After, at most Limit of them (every one at 0).
 type ReservationQuery struct {
-	Path string
-	Mine bool
+	Path  string
+	After uint64
+	Limit int
+	Mine  bool
 }
 
 // Reserve grants r.Path to r.Caller's identity for r.TTL, or queues the
@@ -79,10 +80,8 @@ func checkReserving(r *Reserving) error {
 	if _, err := checkPaths([]string{r.Path}); err != nil {
 		return err
 	}
-	if n := utf8.RuneCountInString(r.Reason); n == 0 || n > maxReason || !utf8.ValidString(r.Reason) || strings.ContainsFunc(r.Reason, isControl) {
-		return refuse(KindInvalid, fmt.Sprintf("a reason is required: pass --reason <text>, 1 to %d characters on one line", maxReason))
-	}
-	return nil
+	return fieldRefusal(textFault("reason", r.Reason, maxReason, true),
+		fmt.Sprintf("a reason is required: pass --reason <text>, 1 to %d characters on one line", maxReason))
 }
 
 // reserve answers a conflict as a refusal the transaction still commits:
@@ -253,7 +252,7 @@ func (w *wtx) ownReservation(c Caller, id uint64) (identityRow, reservationRow, 
 		return identityRow{}, reservationRow{}, err
 	}
 	if !found || row.Holder != me.ID {
-		return identityRow{}, reservationRow{}, refuse(KindNotFound, fmt.Sprintf(
+		return identityRow{}, reservationRow{}, notFound(ReasonReservation, fmt.Sprintf(
 			"no reservation %d of yours: it expired or was released; grelot reservations --mine lists yours", id,
 		))
 	}
@@ -266,14 +265,14 @@ func (w *wtx) ownReservation(c Caller, id uint64) (identityRow, reservationRow, 
 // order, as c's identity sees them; a session with no live
 // identity sees every relation as unknown. Refusals: KindInvalid for a bad
 // path.
-func (s *Store) Reservations(ctx context.Context, c Caller, q ReservationQuery) ([]Reservation, error) {
+func (s *Store) Reservations(ctx context.Context, c Caller, q ReservationQuery) (Listing[Reservation], error) {
 	if q.Path != "" {
 		if _, err := checkPaths([]string{q.Path}); err != nil {
-			return nil, err
+			return Listing[Reservation]{}, err
 		}
 	}
 	if _, err := s.Seen(ctx, c); err != nil && !isKind(err, KindGone) {
-		return nil, err
+		return Listing[Reservation]{}, err
 	}
 	var out []Reservation
 	err := s.read(ctx, func(r *bolttable.ReadTx) error {
@@ -293,7 +292,7 @@ func (s *Store) Reservations(ctx context.Context, c Caller, q ReservationQuery) 
 			}
 		})
 	})
-	return out, err
+	return listing(out, pastKey(q.After, func(v *Reservation) uint64 { return v.ID }), q.Limit), err
 }
 
 func (s *Store) scanReservations(r *bolttable.ReadTx, q ReservationQuery, holder uint64, fn func(*reservationRow)) error {

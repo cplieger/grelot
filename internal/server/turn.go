@@ -111,27 +111,27 @@ func (t turnStart) stale(id *store.Identity) bool {
 // its first Inbox, whose Seen wakes an ended session's identity at its
 // commit: a first nudge that wake finds uncovered goes out for the mail
 // this wait returns.
-func (s *Server) inTurnWait(ctx context.Context, c store.Caller, limit int, wait time.Duration) (page store.Page, err error) {
+func (s *Server) inTurnWait(ctx context.Context, c store.Caller, q store.InboxQuery, wait time.Duration) (page store.InboxPage, err error) {
 	if wait == 0 {
-		return s.store.Inbox(ctx, c, limit)
+		return s.store.Inbox(ctx, c, q)
 	}
 	me, err := s.store.Acting(ctx, c)
 	if err != nil {
 		// Inbox answers the refusal, so it reads as it does with no wait.
-		return s.store.Inbox(ctx, c, limit)
+		return s.store.Inbox(ctx, c, q)
 	}
 	free, err := s.holdWait(c.Key)
 	if err != nil {
-		return store.Page{}, err
+		return store.InboxPage{}, err
 	}
 	defer free()
 	id := me.ID
 	s.presence.inTurnOpened(id)
-	defer func() { s.inTurnEnded(id, newestWake(page.Entries)) }()
+	defer func() { s.inTurnEnded(id, newestWake(page.Items)) }()
 	deadline := s.now().Add(wait)
 	for {
 		wake, release := s.hub.take(id)
-		page, err = s.store.Inbox(ctx, c, limit)
+		page, err = s.store.Inbox(ctx, c, q)
 		if err != nil || page.Unread.Wake() > 0 || !s.now().Before(deadline) {
 			release()
 			return page, err
@@ -168,13 +168,18 @@ func newestWake(es []store.Entry) uint64 {
 
 // waitParam reads the in-turn wait's wait parameter: 0 when absent.
 func waitParam(r *http.Request) (time.Duration, error) {
-	v := r.URL.Query().Get("wait")
+	v := r.URL.Query().Get("wait_ms")
 	if v == "" {
 		return 0, nil
 	}
-	d, err := time.ParseDuration(v)
-	if err != nil || d < 0 || d > maxWait {
-		return 0, badRequest("wait must be a duration from 0 to 55s, such as wait=55s")
+	ms, err := strconv.ParseInt(v, 10, 64)
+	if err != nil || ms < 0 || durationMS(ms) > maxWait {
+		return 0, fieldRefusal("wait_ms must be 0 to 55000", waitRange("wait_ms", 0))
 	}
-	return d, nil
+	return durationMS(ms), nil
+}
+
+// waitRange is a held wait's refused field, from lo to wire.MaxWaitMS.
+func waitRange(field string, lo int64) wire.FieldError {
+	return wire.FieldError{Field: field, Code: wire.FieldOutOfRange, Min: new(lo), Max: new(int64(wire.MaxWaitMS))}
 }

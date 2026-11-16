@@ -316,7 +316,7 @@ func TestKiroCLISessionEnd(t *testing.T) {
 				}
 				return
 			}
-			if len(got.Requests) != 1 || got.Requests[0].Path != "/v1/lifecycle" || got.Requests[0].Body != `{"event":"session_end"}` ||
+			if len(got.Requests) != 1 || got.Requests[0].Path != "/v1/lifecycle" || got.Requests[0].Body != `{"event":"session_end","agent_id":""}` ||
 				got.Requests[0].Header.Get("Grelot-Session") != "kiro-cli:"+payload.Session {
 				t.Errorf("requests %v, want one session_end report as the deleted chat", got.Requests)
 			}

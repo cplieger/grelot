@@ -41,7 +41,7 @@ func TestPost_refusedOnlyPastNinetyPercentOfTheDefaultCeiling(t *testing.T) {
 	p := posting(sess("alpha"), Target{Agent: "bravo"})
 	_, _, err := s.Post(t.Context(), Keyed{}, &p)
 	wantRefusal(t, err, KindFull, "", "store nearly full")
-	if n := len(mustInbox(t, s, sess("bravo"), 0).Entries); n != 1 {
+	if n := len(mustInbox(t, s, sess("bravo"), 0).Items); n != 1 {
 		t.Errorf("bravo has %d messages, want 1: a refused post stores nothing", n)
 	}
 
@@ -229,7 +229,7 @@ func TestStoreFull_takesEveryWriteThatAddsNothing(t *testing.T) {
 	mustFollow(t, s, sess("bravo"), "/workspace/bolttable")
 	held := mustReserve(t, s, reserving("alpha", repoGrelot+"/a.go", time.Hour))
 	mustGrant(t, s, grantFrom("alpha", "rev"))
-	seq := mustInbox(t, s, sess("bravo"), 0).Entries[0].Seq
+	seq := mustInbox(t, s, sess("bravo"), 0).Items[0].Seq
 	s.space = inUse(DefaultMaxBytes)
 	ctx, alpha, bravo, w := t.Context(), Caller{Session: sess("alpha"), Self: true}, Caller{Session: sess("bravo")}, envA()
 	for _, c := range []struct {

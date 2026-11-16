@@ -4,7 +4,9 @@ package accounts_test
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -38,22 +40,78 @@ func TestOpen_generatesSecretsOnceAndKeepsThem(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "accounts.db")
 	db := open(t, path)
 	first := db.Secrets()
-	keys := map[string][]byte{"FailureKey": first.FailureKey, "DeviceKey": first.DeviceKey, "PendingKey": first.PendingKey}
+	keys := map[string][]byte{
+		"FailureKey": first.FailureKey, "DeviceKey": first.DeviceKey, "PendingKey": first.PendingKey, "CursorKey": first.CursorKey,
+	}
+	seen := map[string]string{}
 	for name, k := range keys {
 		if len(k) != 32 || bytes.Equal(k, make([]byte, 32)) {
 			t.Errorf("%s = %x, want 32 random bytes", name, k)
 		}
-	}
-	if bytes.Equal(first.FailureKey, first.DeviceKey) || bytes.Equal(first.DeviceKey, first.PendingKey) ||
-		bytes.Equal(first.FailureKey, first.PendingKey) {
-		t.Errorf("secrets %x, want three different keys", keys)
+		if other, dup := seen[string(k)]; dup {
+			t.Errorf("%s and %s are the same key, want four different keys", name, other)
+		}
+		seen[string(k)] = name
 	}
 	closeDB(t, db)
 
 	again := open(t, path).Secrets()
 	if !bytes.Equal(again.FailureKey, first.FailureKey) || !bytes.Equal(again.DeviceKey, first.DeviceKey) ||
-		!bytes.Equal(again.PendingKey, first.PendingKey) {
+		!bytes.Equal(again.PendingKey, first.PendingKey) || !bytes.Equal(again.CursorKey, first.CursorKey) {
 		t.Errorf("secrets after reopen %+v, want the first open's %+v", again, first)
+	}
+}
+
+// TestOpen_aPreB1FileIsAFormatFile opens a copy of testdata/accounts-pre-b1.db,
+// written at e1b8499 by a main that calls accounts.Open on the path and
+// closes it, then cut to its meta pages' high-water page (10 pages of 4096
+// bytes), which bbolt reads unchanged.
+func TestOpen_aPreB1FileIsAFormatFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "accounts.db")
+	if err := os.WriteFile(path, readFile(t, filepath.Join("testdata", "accounts-pre-b1.db")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before := sha256.Sum256(readFile(t, path))
+
+	_, err := accounts.Open(path)
+
+	if !errors.Is(err, bolttable.ErrFormat) {
+		t.Errorf("Open of a pre-B1 file = %v, want bolttable.ErrFormat", err)
+	}
+	if sha256.Sum256(readFile(t, path)) != before {
+		t.Error("the refused file changed")
+	}
+}
+
+func TestOpen_refusesASecretsRowWithAShortKey(t *testing.T) {
+	full := func() accounts.Secrets {
+		return accounts.Secrets{
+			FailureKey: bytes.Repeat([]byte{1}, 32), DeviceKey: bytes.Repeat([]byte{2}, 32),
+			PendingKey: bytes.Repeat([]byte{3}, 32), CursorKey: bytes.Repeat([]byte{4}, 32),
+		}
+	}
+	for _, key := range []string{"FailureKey", "DeviceKey", "PendingKey", "CursorKey"} {
+		for _, n := range []int{0, 16, 31} {
+			t.Run(fmt.Sprintf("%s of %d bytes", key, n), func(t *testing.T) {
+				s := full()
+				short := map[string]*[]byte{"FailureKey": &s.FailureKey, "DeviceKey": &s.DeviceKey, "PendingKey": &s.PendingKey, "CursorKey": &s.CursorKey}[key]
+				*short = (*short)[:n]
+				path := filepath.Join(t.TempDir(), "accounts.db")
+				if err := accounts.WriteSecrets(path, s); err != nil {
+					t.Fatal(err)
+				}
+				before := sha256.Sum256(readFile(t, path))
+
+				_, err := accounts.Open(path)
+
+				if !errors.Is(err, accounts.ErrSecretsDamaged) {
+					t.Errorf("Open = %v, want accounts.ErrSecretsDamaged", err)
+				}
+				if sha256.Sum256(readFile(t, path)) != before {
+					t.Error("the refused file changed")
+				}
+			})
+		}
 	}
 }
 

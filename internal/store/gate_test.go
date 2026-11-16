@@ -38,7 +38,7 @@ func TestGate_unnamedRequestsFromASessionHoldingALinkMoveNothing(t *testing.T) {
 	}
 	before := getIdentity(t, s, parent.ID)
 	t.Run("inbox", func(t *testing.T) {
-		_, err := s.Inbox(t.Context(), plain("parent"), 0)
+		_, err := s.Inbox(t.Context(), plain("parent"), InboxQuery{Limit: 0})
 		wantGate(t, err, "parent/review")
 		_, _, err = s.Ack(t.Context(), Keyed{}, plain("parent"), before.Seq)
 		wantGate(t, err, "parent/review")
@@ -74,11 +74,11 @@ func TestGate_unnamedRequestsFromASessionHoldingALinkMoveNothing(t *testing.T) {
 
 func TestGate_selfPasses(t *testing.T) {
 	s, _, parent, _ := gateFixture(t)
-	page, err := s.Inbox(t.Context(), self("parent"), 0)
-	if err != nil || len(page.Entries) != 1 {
-		t.Fatalf("Inbox with --self: %d entries, %v; want peer's one post", len(page.Entries), err)
+	page, err := s.Inbox(t.Context(), self("parent"), InboxQuery{Limit: 0})
+	if err != nil || len(page.Items) != 1 {
+		t.Fatalf("Inbox with --self: %d entries, %v; want peer's one post", len(page.Items), err)
 	}
-	if _, _, err := s.Ack(t.Context(), Keyed{}, self("parent"), page.Entries[0].Seq); err != nil {
+	if _, _, err := s.Ack(t.Context(), Keyed{}, self("parent"), page.Items[0].Seq); err != nil {
 		t.Errorf("Ack with --self: %v", err)
 	}
 	if got := mustPost(t, s, selfPost("parent", Target{Agent: "peer"})); got.Delivered != 1 {
@@ -98,7 +98,7 @@ func TestGate_selfPasses(t *testing.T) {
 func TestGate_aDelegateRegisteredFromTheSessionHoldsIt(t *testing.T) {
 	s, _, _, link := gateFixture(t)
 	d := mustRegisterDelegate(t, s, sess("parent"), link)
-	_, err := s.Inbox(t.Context(), plain("parent"), 0)
+	_, err := s.Inbox(t.Context(), plain("parent"), InboxQuery{Limit: 0})
 	wantGate(t, err, d.Name)
 	if got, err := s.Seen(t.Context(), as(sess("parent"), d.Name)); err != nil || got.ID != d.ID {
 		t.Errorf("as %s: %d, %v; want the delegate %d", d.Name, got.ID, err, d.ID)
@@ -107,7 +107,7 @@ func TestGate_aDelegateRegisteredFromTheSessionHoldsIt(t *testing.T) {
 		if _, _, err := s.Retire(t.Context(), Keyed{}, as(sess("parent"), d.Name)); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := s.Inbox(t.Context(), plain("parent"), 0); err != nil {
+		if _, err := s.Inbox(t.Context(), plain("parent"), InboxQuery{Limit: 0}); err != nil {
 			t.Errorf("Inbox once the delegate ended: %v, want the gate lifted", err)
 		}
 	})
@@ -124,7 +124,7 @@ func TestGate_registerDelegatePasses(t *testing.T) {
 func TestGate_liftsWhenADelegateUsesTheLastLinkFromItsOwnSession(t *testing.T) {
 	s, _, _, link := gateFixture(t)
 	d := mustRegisterDelegate(t, s, "codex:thread-1", link)
-	if _, err := s.Inbox(t.Context(), plain("parent"), 0); err != nil {
+	if _, err := s.Inbox(t.Context(), plain("parent"), InboxQuery{Limit: 0}); err != nil {
 		t.Errorf("Inbox with the only delegate on its own session: %v, want no gate", err)
 	}
 	if got, err := s.Seen(t.Context(), Caller{Session: "codex:thread-1"}); err != nil || got.ID != d.ID {
@@ -139,7 +139,7 @@ func TestGate_anExpiredLinkHoldsNothing(t *testing.T) {
 	g.TTL = 30 * time.Minute
 	mustGrant(t, s, g)
 	clk.advance(30 * time.Minute)
-	if _, err := s.Inbox(t.Context(), plain("parent"), 0); err != nil {
+	if _, err := s.Inbox(t.Context(), plain("parent"), InboxQuery{Limit: 0}); err != nil {
 		t.Errorf("Inbox once the only link expired, before the sweep: %v, want no gate", err)
 	}
 }
@@ -151,7 +151,7 @@ func TestGate_aDelegatePastItsLeaseHoldsNothing(t *testing.T) {
 	g.TTL = 30 * time.Minute
 	mustRegisterDelegate(t, s, sess("parent"), mustGrant(t, s, g).Link)
 	clk.advance(30 * time.Minute)
-	if _, err := s.Inbox(t.Context(), plain("parent"), 0); err != nil {
+	if _, err := s.Inbox(t.Context(), plain("parent"), InboxQuery{Limit: 0}); err != nil {
 		t.Errorf("Inbox once the only delegate's lease ran out, before the sweep: %v, want no gate", err)
 	}
 }
@@ -159,7 +159,7 @@ func TestGate_aDelegatePastItsLeaseHoldsNothing(t *testing.T) {
 func TestGate_aSessionThatNeverGrantedPaysNothing(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	regAt(t, s, "parent", repoSubflux)
-	if _, err := s.Inbox(t.Context(), plain("parent"), 0); err != nil {
+	if _, err := s.Inbox(t.Context(), plain("parent"), InboxQuery{Limit: 0}); err != nil {
 		t.Errorf("Inbox: %v", err)
 	}
 	if _, err := s.Seen(t.Context(), self("parent")); err != nil {

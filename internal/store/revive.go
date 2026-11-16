@@ -117,20 +117,21 @@ func (w *wtx) revive(r *Revival, provider string) (Revived, error) {
 func (w *wtx) reviveTarget(r *Revival, provider string, own *identityRow, ownFound bool) (identityRow, bool, error) {
 	if r.Name == "" || ownFound && own.Name == r.Name {
 		if !ownFound {
-			return identityRow{}, false, refuse(KindNotFound,
+			return identityRow{}, false, notFound(ReasonIdentity,
 				"this session has no dormant identity: run grelot revive <name> --ttl=<d> to revive one by name from its own environment")
 		}
 		return *own, false, nil
 	}
 	if r.Where.Environment == "" {
-		return identityRow{}, false, w.s.refuseMove(verbRevive, r.Name, noEnvironment())
+		e := noEnvironment()
+		return identityRow{}, false, w.s.refuseMove(verbRevive, r.Name, e.Why, e)
 	}
 	row, found, err := w.identityBy(w.s.t.byName, r.Name)
 	if err != nil {
 		return identityRow{}, false, err
 	}
 	if !found || row.State != stateDormant {
-		return identityRow{}, false, refuse(KindNotFound, "no dormant identity "+r.Name)
+		return identityRow{}, false, notFound(ReasonIdentity, "no dormant identity "+r.Name)
 	}
 	if err := w.s.bound(row.Key, r.Key); err != nil {
 		return identityRow{}, false, err

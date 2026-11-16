@@ -33,10 +33,6 @@ func (s *Server) post(r *http.Request, c store.Caller, k store.Keyed) (status in
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	by, err := durationOf(req.By)
-	if err != nil {
-		return 0, nil, err
-	}
 	to, kind, err := postTarget(req.To)
 	if err != nil {
 		return 0, nil, err
@@ -45,7 +41,7 @@ func (s *Server) post(r *http.Request, c store.Caller, k store.Keyed) (status in
 	if err != nil {
 		return 0, nil, err
 	}
-	notify.By = by
+	notify.By = durationMS(req.ByMS)
 	ctx := r.Context()
 	// A re-send answers its first result before the rate limit counts it,
 	// so an empty bucket never turns a committed post into a 429.

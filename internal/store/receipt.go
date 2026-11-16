@@ -64,7 +64,7 @@ func (s *Store) Receipts(ctx context.Context, c Caller, msg uint64) (Receipts, e
 			return err
 		}
 		if !found {
-			return refuse(KindNotFound, fmt.Sprintf("no message %d: it never existed or has expired", msg))
+			return notFound(ReasonMessage, fmt.Sprintf("no message %d: it never existed or has expired", msg))
 		}
 		rows, err := s.postDeliveries(r, msg, now)
 		if err != nil {

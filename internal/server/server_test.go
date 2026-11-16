@@ -259,7 +259,7 @@ func TestSweeper_aServerAtRestLogsNoPeriodicLine(t *testing.T) {
 		h.mustRegisterAlone(sessA, "reader")
 		h.mustRegisterAlone(sessB, "writer")
 		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
-		if r := h.as(sessA, http.MethodPost, "/v1/reservations", map[string]any{"path": "/workspace/reader/main.go", "reason": "editing", "ttl": "1h"}); r.status != http.StatusCreated {
+		if r := h.as(sessA, http.MethodPost, "/v1/reservations", map[string]any{"path": "/workspace/reader/main.go", "reason": "editing", "ttl_ms": durMS("1h")}); r.status != http.StatusCreated {
 			t.Fatalf("reserve: %d %s", r.status, r.raw)
 		}
 		// The first committed pass logs the one health transition, which is

@@ -4,6 +4,7 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
@@ -14,21 +15,24 @@ import (
 	"github.com/cplieger/grelot/internal/client"
 )
 
-func TestWho_jsonIsTheServersAnswer(t *testing.T) {
+func TestWho_jsonIsOneAnswerOfEveryPageCutToTheFields(t *testing.T) {
 	ts := newServer(t)
 	registerAgent(t, ts, "s-1")
 	viewer := newAgent(t, ts, "", "")
 	delete(viewer.vars, "ALPHA_ID")
 	out := viewer.must("who", "--json", "--fields", "name,description")
-	if out != ts.lastAnswer(t) {
-		t.Errorf("who --json printed %q, want the server's body %q unchanged", out, ts.lastAnswer(t))
+	var got struct {
+		Items []map[string]any `json:"items"`
+		Total int              `json:"total"`
 	}
-	var got map[string][]map[string]any
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("who --json is not one JSON object: %v", err)
 	}
-	if len(got["identities"]) != 1 || got["identities"][0]["description"] != "testing the client" {
-		t.Errorf("identities = %v, want toolbelt-dev with its description", got["identities"])
+	if got.Total != 1 || len(got.Items) != 1 || got.Items[0]["description"] != "testing the client" || len(got.Items[0]) != 2 {
+		t.Errorf("who --json = %s, want toolbelt-dev with only its name and description", out)
+	}
+	if code, _, errOut := viewer.run("who", "--fields", "name,bogus"); code == 0 || !strings.Contains(errOut, `"bogus"`) {
+		t.Errorf("an unknown field: exit %d, stderr %q; want a usage error naming it", code, errOut)
 	}
 }
 
@@ -45,14 +49,14 @@ func TestWho_plainPrintsOneBlockPerIdentity(t *testing.T) {
 	}, nil)
 	ts.call(t, "alpha:s-1", false, &client.Request{
 		Method: http.MethodPost, Path: "/v1/reservations",
-		Body: map[string]any{"path": "/workspace/toolbelt/engine.go", "reason": "editing", "ttl": "30m"},
+		Body: map[string]any{"path": "/workspace/toolbelt/engine.go", "reason": "editing", "ttl_ms": 1800000},
 	}, nil)
 	var grant struct {
 		Link string `json:"link"`
 	}
 	ts.call(t, "alpha:s-1", true, &client.Request{
 		Method: http.MethodPost, Path: "/v1/delegates",
-		Body: map[string]any{"label": "review", "ttl": "1h"},
+		Body: map[string]any{"label": "review", "ttl_ms": 3600000},
 	}, &grant)
 	ts.call(t, "alpha:s-1", false, &client.Request{
 		Method: http.MethodPost, Path: "/v1/register",
@@ -102,7 +106,7 @@ func TestWho_flagsMapToTheQuery(t *testing.T) {
 	want := map[string]string{
 		"q": "tool dev", "repo": "toolbelt", "path": "/workspace/toolbelt/internal",
 		"holds": "/workspace/toolbelt/engine.go", "queued": "/workspace/toolbelt/go.mod",
-		"online": "1", "here": "1", "all": "1", "fields": "name,paths",
+		"online": "1", "here": "1", "all": "1", "limit": "200",
 	}
 	for k, v := range want {
 		if got.Get(k) != v {
@@ -128,5 +132,32 @@ func TestWho_noMatch(t *testing.T) {
 	registerAgent(t, ts, "s-1")
 	if out := newAgent(t, ts, "s-2", "").must("who", "--repo", "web-terminal"); !strings.Contains(out, "grelot: no identity matches\n") {
 		t.Errorf("who = %q, want the no-match line", out)
+	}
+}
+
+func TestWho_walksEveryPage(t *testing.T) {
+	defer func(n int) { pageLimit = n }(pageLimit)
+	pageLimit = 2
+	ts := newServer(t)
+	names := []string{"ant-dev", "bee-dev", "cat-dev", "dog-dev", "eel-dev"}
+	for i, name := range names {
+		registerAt(t, ts, fmt.Sprintf("s-%d", i), name)
+	}
+	viewer := newAgent(t, ts, "", "")
+	delete(viewer.vars, "ALPHA_ID")
+	out := viewer.must("who")
+	for _, name := range names {
+		if n := strings.Count(out, "@"+name+" "); n != 1 {
+			t.Errorf("@%s printed %d times, want once: %q", name, n, out)
+		}
+	}
+	pages := 0
+	for _, req := range ts.requests() {
+		if strings.HasPrefix(req.URL, "/v1/identities?") {
+			pages++
+		}
+	}
+	if pages != 3 {
+		t.Errorf("%d page requests for five identities at limit 2, want 3", pages)
 	}
 }

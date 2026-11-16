@@ -16,7 +16,7 @@ func TestLoadFacts_defaultRootWithNoFile(t *testing.T) {
 
 func TestSaveFacts_roundTrip(t *testing.T) {
 	dir := t.TempDir()
-	want := Facts{PathRoot: "/srv/work", Version: "v1.2.0"}
+	want := Facts{PathRoot: "/srv/work", Version: "v2.1.0"}
 	SaveFacts(dir, want)
 	if got := LoadFacts(dir); got != want {
 		t.Errorf("LoadFacts = %+v, want %+v", got, want)
@@ -63,31 +63,31 @@ func TestLoadFacts_badFileGivesTheDefault(t *testing.T) {
 
 func TestCannotAck(t *testing.T) {
 	dir := t.TempDir()
-	SaveFacts(dir, Facts{PathRoot: "/workspace", Version: "v1.1.0-dev.25"})
-	if got := CannotAck(dir, "v1.1.0-dev.24"); got != "" {
+	SaveFacts(dir, Facts{PathRoot: "/workspace", Version: "v2.0.0-dev.25"})
+	if got := CannotAck(dir, "v2.0.0-dev.24"); got != "" {
 		t.Errorf("before a refusal: %q, want nothing", got)
 	}
-	NoteAck(dir, "v1.1.0-dev.24", true)
-	if got := CannotAck(dir, "v1.1.0-dev.24"); !strings.Contains(got, "go install github.com/cplieger/grelot@v1.1.0-dev.25") {
+	NoteAck(dir, "v2.0.0-dev.24", true)
+	if got := CannotAck(dir, "v2.0.0-dev.24"); !strings.Contains(got, "install grelot v2.0.0 from https://github.com/cplieger/grelot/releases/tag/v2.0.0, or, if that page does not exist yet, a development build with go install github.com/cplieger/grelot@dev, then check both with grelot version") {
 		t.Errorf("after a refusal: %q, want the upgrade line", got)
 	}
 	t.Run("an upgraded client", func(t *testing.T) {
-		if got := CannotAck(dir, "v1.1.0-dev.25"); got != "" {
+		if got := CannotAck(dir, "v2.0.0-dev.25"); got != "" {
 			t.Errorf("%q, want nothing for another client", got)
 		}
 	})
 	t.Run("a server no longer newer", func(t *testing.T) {
 		d := t.TempDir()
-		SaveFacts(d, Facts{PathRoot: "/workspace", Version: "v1.1.0-dev.25", AckRefused: "v1.1.0-dev.24"})
+		SaveFacts(d, Facts{PathRoot: "/workspace", Version: "v2.0.0-dev.25", AckRefused: "v2.0.0-dev.24"})
 		f := LoadFacts(d)
-		f.Version = "v1.1.0-dev.24"
+		f.Version = "v2.0.0-dev.24"
 		SaveFacts(d, f)
-		if got := CannotAck(d, "v1.1.0-dev.24"); got != "" {
+		if got := CannotAck(d, "v2.0.0-dev.24"); got != "" {
 			t.Errorf("%q, want nothing", got)
 		}
 	})
-	NoteAck(dir, "v1.1.0-dev.24", false)
-	if got := CannotAck(dir, "v1.1.0-dev.24"); got != "" {
+	NoteAck(dir, "v2.0.0-dev.24", false)
+	if got := CannotAck(dir, "v2.0.0-dev.24"); got != "" {
 		t.Errorf("after an ack: %q, want nothing", got)
 	}
 }

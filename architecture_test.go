@@ -67,6 +67,7 @@ func fileToolNames(path string) ([]string, error) {
 	var s scanner.Scanner
 	s.Init(fset.AddFile(path, -1, len(src)), src, errs.Add, scanner.ScanComments)
 	var hits []string
+	var ident string
 	for {
 		pos, tok, lit := s.Scan()
 		if tok == token.EOF {
@@ -76,7 +77,13 @@ func fileToolNames(path string) ([]string, error) {
 			continue
 		}
 		for _, n := range namesIn(lit) {
+			if n == `"cursor"` && filepath.ToSlash(path) == cursorParamFile && ident == cursorParamConst {
+				continue
+			}
 			hits = append(hits, fmt.Sprintf("%s: %s", fset.Position(pos), n))
+		}
+		if tok == token.IDENT {
+			ident = lit
 		}
 	}
 	if errs.Len() > 0 {
@@ -84,6 +91,14 @@ func fileToolNames(path string) ([]string, error) {
 	}
 	return hits, nil
 }
+
+// The list reads' cursor parameter shares the cursor provider's name, so
+// its one declaration is the literal the guard admits; every other site
+// reads the constant.
+const (
+	cursorParamFile  = "internal/wire/wire.go"
+	cursorParamConst = "QueryCursor"
+)
 
 // namesIn reports the tool names one token holds. kas is a common run of
 // letters (taskAssign), so it counts only as a whole word or identifier

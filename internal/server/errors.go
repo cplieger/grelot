@@ -25,8 +25,11 @@ import (
 type apiError struct {
 	code   httpserver.ErrorCode
 	msg    string
+	reason string
+	fields []wire.FieldError
 	status int
-	// retryAfter, when set, goes out as Retry-After in whole seconds.
+	// retryAfter, when set, goes out as Retry-After in whole seconds,
+	// rounded up, and as retry_after_ms.
 	retryAfter time.Duration
 }
 
@@ -51,6 +54,13 @@ var errTimeout = func() *apiError {
 
 func badRequest(msg string) *apiError {
 	return refusal(wire.ErrInvalid, msg)
+}
+
+// fieldRefusal is an invalid naming the refused fields.
+func fieldRefusal(msg string, fields ...wire.FieldError) *apiError {
+	e := badRequest(msg)
+	e.fields = fields
+	return e
 }
 
 // whyDelegateGate is the store's Why on the delegate gate's 409.
@@ -81,31 +91,33 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, store.ErrOtherKey):
 		s.metrics.AuthFailures.Inc(obs.AuthWrongKeyIdentity)
 	}
-	body := wire.Error{RequestID: httpserver.RequestIDFromContext(r.Context()), PathRoot: s.cfg.PathRoot}
+	body := wire.Error{RequestID: httpserver.RequestIDFromContext(r.Context())}
 	var status int
 	var se *store.Error
 	var ae *apiError
 	switch {
 	case errors.As(err, &se):
 		k := kindStatus[se.Kind]
-		status, body.Code, body.Error = k.Status, k.Code, se.Msg
+		status, body.Code, body.Error, body.Reason = k.Status, k.Code, se.Msg, se.Reason
 		if se.Why != "" {
 			body.Code = se.Why
+		}
+		if se.Field != nil {
+			body.Fields = []wire.FieldError{*se.Field}
 		}
 		if se.Why == whyDelegateGate {
 			s.log.Info("request refused", "method", r.Method, "path", r.URL.Path)
 		}
 	case errors.As(err, &ae):
-		status, body.Code, body.Error = ae.status, string(ae.code), ae.msg
+		status, body.Code, body.Error, body.Reason, body.Fields = ae.status, string(ae.code), ae.msg, ae.reason, ae.fields
 		if ae.retryAfter > 0 {
-			w.Header().Set("Retry-After", strconv.Itoa(int(ae.retryAfter.Seconds())))
+			secs := int64(retryAfter(ae.retryAfter) / time.Second)
+			w.Header().Set("Retry-After", strconv.FormatInt(secs, 10))
+			body.RetryAfterMS = secs * 1000
 		}
 	default:
 		s.log.Error("request failed", "path", r.URL.Path, "error", err)
 		status, body.Code, body.Error = wire.ErrInternal.Status, wire.ErrInternal.Code, "internal server error"
-	}
-	if status == http.StatusUnauthorized || status == http.StatusUpgradeRequired {
-		body.PathRoot = ""
 	}
 	httpserver.WriteJSONStatus(w, status, body)
 }

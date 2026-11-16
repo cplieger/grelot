@@ -19,7 +19,7 @@ func TestReservations_reserveQueueRenewAndHandOff(t *testing.T) {
 	h.mustRegister(sessA, "holder")
 	h.mustRegister(sessB, "waiter")
 	path := repoGrelot + "/internal"
-	body := map[string]any{"path": path, "reason": "editing", "ttl": "1h"}
+	body := map[string]any{"path": path, "reason": "editing", "ttl_ms": durMS("1h")}
 	r := h.as(sessA, http.MethodPost, "/v1/reservations", body)
 	if r.status != http.StatusCreated {
 		t.Fatalf("reserve: %d %s", r.status, r.raw)
@@ -40,12 +40,12 @@ func TestReservations_reserveQueueRenewAndHandOff(t *testing.T) {
 		t.Errorf("behind = %v, want the holder", behind)
 	}
 	list := h.as(sessB, http.MethodGet, "/v1/reservations?path="+repoGrelot, nil)
-	if n := len(list.body["reservations"].([]any)); list.status != http.StatusOK || n != 2 {
+	if n := len(list.body["items"].([]any)); list.status != http.StatusOK || n != 2 {
 		t.Errorf("list: %d with %d entries, want the grant and the queue entry", list.status, n)
 	}
 	id := fmt.Sprint(held["id"])
 	h.clk.advance(10 * time.Minute)
-	r = h.as(sessA, http.MethodPatch, "/v1/reservations/"+id, map[string]any{"ttl": "2h"})
+	r = h.as(sessA, http.MethodPatch, "/v1/reservations/"+id, map[string]any{"ttl_ms": durMS("2h")})
 	if r.status != http.StatusOK || r.body["reservation"].(map[string]any)["expires_at"] != h.clk.now().Add(2*time.Hour).Format(time.RFC3339) {
 		t.Errorf("renew: %d %s, want the expiry 2 h from now", r.status, r.raw)
 	}
@@ -53,7 +53,7 @@ func TestReservations_reserveQueueRenewAndHandOff(t *testing.T) {
 		t.Fatalf("release: %d %s", r.status, r.raw)
 	}
 	list = h.as(sessB, http.MethodGet, "/v1/reservations?path="+path, nil)
-	rs := list.body["reservations"].([]any)
+	rs := list.body["items"].([]any)
 	if len(rs) != 1 || rs[0].(map[string]any)["state"] != "held" || rs[0].(map[string]any)["holder"] != "waiter" {
 		t.Errorf("after the release = %v, want the waiter holding it", rs)
 	}
@@ -73,7 +73,7 @@ func TestDelegates_grantGateAndRevoke(t *testing.T) {
 	if r := h.as(sessA, http.MethodPost, "/v1/delegates", map[string]any{"label": "review"}); r.status != http.StatusBadRequest {
 		t.Errorf("a grant with no ttl: %d %s, want 400", r.status, r.raw)
 	}
-	g := h.as(sessA, http.MethodPost, "/v1/delegates", map[string]any{"label": "review", "ttl": "1h"})
+	g := h.as(sessA, http.MethodPost, "/v1/delegates", map[string]any{"label": "review", "ttl_ms": durMS("1h")})
 	if g.status != http.StatusCreated || !strings.HasPrefix(g.str("link"), "grelot-link:") || g.str("handle") != "parent/review" {
 		t.Fatalf("grant: %d %s", g.status, g.raw)
 	}

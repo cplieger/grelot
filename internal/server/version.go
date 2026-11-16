@@ -14,7 +14,7 @@ import (
 
 // minClient is the release base of the oldest client this server speaks.
 // Raise it in the release whose API an older client can no longer use.
-const minClient = "v1.1.0"
+const minClient = "v2.0.0"
 
 // speaks reports whether this server speaks a client of version v.
 func speaks(v string) bool {
@@ -30,8 +30,7 @@ func speaks(v string) bool {
 }
 
 // upgradeLine is the 426's one line: the client to install for a server of
-// version server. It names the server's own tag, which exists for a dev
-// build whose release base is not out yet.
+// version server; version.Install owns the line.
 func upgradeLine(client, server string) string {
 	if client == "" {
 		client = "with no Grelot-Version"
@@ -45,5 +44,5 @@ func upgradeLine(client, server string) string {
 // serverVersion is GET /v1/version, which any caller may make; the answer's
 // Grelot-Version header names the same version.
 func (s *Server) serverVersion(_ *http.Request, _ store.Caller, _ store.Keyed) (status int, body any, err error) {
-	return http.StatusOK, wire.Version{Version: s.version}, nil
+	return http.StatusOK, wire.Version{Version: s.version, PathRoot: s.cfg.PathRoot}, nil
 }

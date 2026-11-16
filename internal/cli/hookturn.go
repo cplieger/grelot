@@ -16,6 +16,7 @@ import (
 	"github.com/cplieger/grelot/internal/hook"
 	"github.com/cplieger/grelot/internal/provider"
 	"github.com/cplieger/grelot/internal/transport"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // The marks the turn roles keep, beside markFork.
@@ -55,8 +56,6 @@ const (
 	// as held this turn.
 	turnLapse = 5 * time.Minute
 	wakeDown  = "down"
-	// keyEvent is a lifecycle report's event field, named as the role.
-	keyEvent = "event"
 )
 
 const (
@@ -133,7 +132,7 @@ func (h *hookCall) prompt(ctx context.Context, role *provider.PromptRole) error 
 	if role.Once {
 		h.onPrint(hook.MarkOnce, key)
 	}
-	if isSignal && role.Outputs.Block != nil && me.State == client.StateLive && me.SignalRead {
+	if isSignal && role.Outputs.Block != nil && me.State == wire.StateLive && me.SignalRead {
 		return h.emit(role.Outputs.Block, fmt.Sprintf(lineStale, seq))
 	}
 	text := h.promptLine(me)
@@ -188,7 +187,7 @@ func signalSeq(role *provider.PromptRole, prompt string) (uint64, bool) {
 
 // promptMe asks GET /v1/me?turn=start, with the signal the prompt
 // carries, which opens the turn unless the server finds the signal read.
-func (h *hookCall) promptMe(ctx context.Context, role *provider.PromptRole, seq uint64) (*client.Me, error) {
+func (h *hookCall) promptMe(ctx context.Context, role *provider.PromptRole, seq uint64) (*wire.Me, error) {
 	q := url.Values{"turn": {"start"}}
 	if seq > 0 {
 		q.Set("signal", strconv.FormatUint(seq, 10))
@@ -203,16 +202,16 @@ func (h *hookCall) promptMe(ctx context.Context, role *provider.PromptRole, seq 
 }
 
 // promptLine is the prompt's line for the server's answer.
-func (h *hookCall) promptLine(me *client.Me) string {
+func (h *hookCall) promptLine(me *wire.Me) string {
 	switch {
-	case me.State == client.StateLive:
+	case me.State == wire.StateLive:
 		if me.Identity == nil {
 			return ""
 		}
 		return h.turnLine(me)
 	case h.oneShot():
 		return ""
-	case me.State == client.StateDormant:
+	case me.State == wire.StateDormant:
 		name := ""
 		if me.Identity != nil {
 			name = me.Identity.Name
@@ -232,7 +231,7 @@ func dormantLine(name string) string {
 
 // turnLine is the one line every turn starts with. It names no peer and
 // stays under 30 words: the start line is the only part a provider sets.
-func (h *hookCall) turnLine(me *client.Me) string {
+func (h *hookCall) turnLine(me *wire.Me) string {
 	unread := 0
 	if me.Unread != nil {
 		unread = me.Unread.Total
@@ -255,7 +254,7 @@ func (h *hookCall) turnLine(me *client.Me) string {
 
 // descAge is the description's age: from the later of the identity's
 // registration and the last description this client sent for its session.
-func (h *hookCall) descAge(id *client.Identity) time.Duration {
+func (h *hookCall) descAge(id *wire.Identity) time.Duration {
 	since := id.RegisteredAt
 	if t, ok := h.marks.When(markDesc, h.identityKey()); ok && t.After(since) {
 		since = t
@@ -277,7 +276,7 @@ func (h *hookCall) reminderDue() bool {
 
 // threadDue reports, once per session, an identity past threadAge that
 // followsNoThread, outside a one-shot run.
-func (h *hookCall) threadDue(id *client.Identity) bool {
+func (h *hookCall) threadDue(id *wire.Identity) bool {
 	key := h.identityKey()
 	since := id.RegisteredAt
 	if t, ok := h.marks.When(markThreadAsked, key); ok && t.After(since) {
@@ -321,25 +320,25 @@ func (h *hookCall) stop(ctx context.Context, role *provider.StopRole) error {
 		return h.emit(role.Outputs.Notice, h.failText(err, role.Budget))
 	}
 	if h.heldThisTurn(c) {
-		postLifecycle(ctx, api, role.Budget, map[string]any{keyEvent: roleTurnEnd})
+		postLifecycle(ctx, api, role.Budget, wire.LifecycleRequest{Event: roleTurnEnd})
 		return nil
 	}
 	// Mail this client cannot ack stays unread, so a hold would hold every
 	// turn until the client is upgraded.
 	if line := client.CannotAck(h.ConfigDir, h.Version); line != "" {
-		postLifecycle(ctx, api, role.Budget, map[string]any{keyEvent: roleTurnEnd})
+		postLifecycle(ctx, api, role.Budget, wire.LifecycleRequest{Event: roleTurnEnd})
 		if h.oneShot() {
 			return nil
 		}
 		return h.emit(role.Outputs.Notice, "grelot: unread mail stays unread until this client is upgraded: "+line)
 	}
-	var held client.Held
+	var held wire.Held
 	// A host that cannot be held, or runs one stop per turn, ends the turn
 	// at this hold whatever it answers.
 	last := role.OncePerTurn || role.Outputs.Block == nil
 	bctx, cancel := budgetCtx(ctx, role.Budget)
 	_, err = api.Do(bctx, &client.Request{
-		Method: http.MethodPost, Path: "/v1/events/hold", Body: map[string]any{"for": "stop", "last": last}, Once: true,
+		Method: http.MethodPost, Path: wire.Path("holdEvent", nil), Body: wire.HoldRequest{For: "stop", Last: last}, Once: true,
 	}, &held)
 	cancel()
 	text, block, err := h.stopText(&held, err, h.chatKey(c))
@@ -374,7 +373,7 @@ func (h *hookCall) heldThisTurn(c hook.Class) bool {
 // error is a hold the server did not answer. A hold with only a down wake
 // prints nothing: the prompt line names the start line every turn. The
 // register or revive hold is spent once printed, per chat and state.
-func (h *hookCall) stopText(held *client.Held, err error, chat string) (text string, block bool, _ error) {
+func (h *hookCall) stopText(held *wire.Held, err error, chat string) (text string, block bool, _ error) {
 	if err == nil {
 		if !held.Block {
 			return "", false, nil
@@ -389,7 +388,7 @@ func (h *hookCall) stopText(held *client.Held, err error, chat string) (text str
 	switch {
 	case !isAPI || ae.HTTP != http.StatusGone:
 		return "", false, err
-	case ae.Code != client.StateNone && ae.Code != client.StateDormant, h.oneShot():
+	case ae.Code != wire.StateNone && ae.Code != wire.StateDormant, h.oneShot():
 		return "", false, nil
 	}
 	key := chat + "\x00" + ae.Code
@@ -397,7 +396,7 @@ func (h *hookCall) stopText(held *client.Held, err error, chat string) (text str
 		return "", false, nil
 	}
 	h.onPrint(markAsked, key)
-	if ae.Code == client.StateNone {
+	if ae.Code == wire.StateNone {
 		return lineRegisterHold, true, nil
 	}
 	return dormantLine("") + " " + lineAskedOnce, true, nil
@@ -420,7 +419,7 @@ func (h *hookCall) lifecycle(ctx context.Context, event string, role *provider.L
 	}
 	h.self = true
 	if api, err := h.client(true); err == nil {
-		postLifecycle(ctx, api, role.Budget, map[string]any{keyEvent: event})
+		postLifecycle(ctx, api, role.Budget, wire.LifecycleRequest{Event: event})
 	}
 }
 
@@ -436,13 +435,13 @@ func (h *hookCall) subagentStop(ctx context.Context, role *provider.SubagentStop
 	if err != nil {
 		return
 	}
-	postLifecycle(ctx, api, role.Budget, map[string]any{keyEvent: roleSubagentStop, "agent_id": h.in.String(role.Stdin.AgentID)})
+	postLifecycle(ctx, api, role.Budget, wire.LifecycleRequest{Event: roleSubagentStop, AgentID: h.in.String(role.Stdin.AgentID)})
 }
 
-func postLifecycle(ctx context.Context, api *client.API, budget time.Duration, body map[string]any) {
+func postLifecycle(ctx context.Context, api *client.API, budget time.Duration, body wire.LifecycleRequest) {
 	ctx, cancel := budgetCtx(ctx, budget)
 	defer cancel()
-	_, _ = api.Do(ctx, &client.Request{Method: http.MethodPost, Path: "/v1/lifecycle", Body: body, Once: true}, nil)
+	_, _ = api.Do(ctx, &client.Request{Method: http.MethodPost, Path: wire.Path("lifecycle", nil), Body: body, Once: true}, nil)
 }
 
 // sessionAPI is a hook API acting as the host session stdin, a subagent's

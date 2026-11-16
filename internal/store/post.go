@@ -13,6 +13,7 @@ import (
 
 	"github.com/cplieger/bolttable"
 	"github.com/cplieger/grelot/internal/protopath"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 const (
@@ -88,18 +89,22 @@ func checkMessage(p *Posting) error {
 		}
 	}
 	if targets != 1 {
-		return refuse(KindInvalid, "a post goes to exactly one target: announce, a path or '@name'")
+		return &Error{
+			Kind: KindInvalid, Msg: "a post goes to exactly one target: announce, a path or '@name'",
+			Field: &wire.FieldError{Field: "to", Code: wire.FieldOneOf, Allowed: []string{"announce", "path", "agent"}},
+		}
 	}
 	if p.To.Path != "" {
 		if _, err := checkPaths([]string{p.To.Path}); err != nil {
 			return err
 		}
 	}
-	if n := utf8.RuneCountInString(p.Subject); n == 0 || n > maxSubject || !utf8.ValidString(p.Subject) || strings.ContainsFunc(p.Subject, isControl) {
-		return refuse(KindInvalid, fmt.Sprintf("the subject must be 1 to %d characters of text, on one line", maxSubject))
+	if err := fieldRefusal(textFault("subject", p.Subject, maxSubject, true),
+		fmt.Sprintf("the subject must be 1 to %d characters of text, on one line", maxSubject)); err != nil {
+		return err
 	}
-	if len(p.Body) > maxBody || !utf8.ValidString(p.Body) {
-		return refuse(KindInvalid, "the body must be UTF-8 text of at most 64 KiB")
+	if f := bodyFault(p.Body); f != nil {
+		return fieldRefusal(f, "the body must be UTF-8 text of at most 64 KiB")
 	}
 	return p.NotifyRead.check()
 }
@@ -450,4 +455,17 @@ func (w *wtx) storeMessage(me *identityRow, where Where, th *threadRow, p *Posti
 		return messageRow{}, err
 	}
 	return m, nil
+}
+
+// bodyFault is what is wrong with a post body: not UTF-8, or over maxBody
+// bytes.
+func bodyFault(body string) *wire.FieldError {
+	switch {
+	case !utf8.ValidString(body):
+		return &wire.FieldError{Field: "body", Code: wire.FieldNotText}
+	case len(body) > maxBody:
+		m := int64(maxBody)
+		return &wire.FieldError{Field: "body", Code: wire.FieldTooLong, Max: &m}
+	}
+	return nil
 }

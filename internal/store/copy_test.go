@@ -56,11 +56,11 @@ func TestCopy_quietCopyOfAPostTheDelegateReceivesUnderASubtreeTheParentDoesNotFo
 
 	t.Run("quiet in the inbox and the hold", func(t *testing.T) {
 		self := Caller{Session: sess("subflux-dev"), Self: true}
-		page, err := s.Inbox(t.Context(), self, 0)
+		page, err := s.Inbox(t.Context(), self, InboxQuery{Limit: 0})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(page.Entries) != 1 || page.Entries[0].Via != d.Name || page.Entries[0].Wake || page.Unread.Copies != 1 || page.Unread.Wake() != 0 {
+		if len(page.Items) != 1 || page.Items[0].Via != d.Name || page.Items[0].Wake || page.Unread.Copies != 1 || page.Unread.Wake() != 0 {
 			t.Errorf("page %+v, want one quiet copy via %s", page, d.Name)
 		}
 		h, err := s.Hold(t.Context(), self)

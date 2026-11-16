@@ -51,7 +51,7 @@ const (
 	loadBodyLen    = 64 << 10
 	loadPostEvery  = 2100 * time.Millisecond
 	loadInboxLimit = 100
-	loadWait       = "55s"
+	loadWaitMS     = int64(55_000)
 	loadRepos      = 10
 	// loadAgentsPerKey is how many agents share one machine key. Each sends
 	// about one request a second (a post every loadPostEvery, its inbox
@@ -378,7 +378,7 @@ func (c *loadClient) send(ctx context.Context, method, path, session, key string
 		return 0, "", err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.keys[session])
-	req.Header.Set("Grelot-Version", "v1.1.0")
+	req.Header.Set("Grelot-Version", "v2.0.0")
 	if session != "" {
 		req.Header.Set("Grelot-Session", session)
 	}
@@ -462,7 +462,7 @@ func (a *loadAgent) register(t *testing.T, c *loadClient, cnt *loadCounts) {
 	t.Helper()
 	code, err := c.write(t.Context(), cnt, http.MethodPost, "/v1/register", a.session, map[string]any{
 		"name": a.name, "paths": []string{a.repo()}, "description": "load", "host": "load", "os": "linux",
-		"arch": "amd64", "ttl": "6h", "where": a.where(),
+		"arch": "amd64", "ttl_ms": int64(6 * time.Hour / time.Millisecond), "where": a.where(),
 	}, nil)
 	if err != nil || code != http.StatusCreated {
 		t.Fatalf("register %s: %d %v", a.name, code, err)
@@ -470,7 +470,7 @@ func (a *loadAgent) register(t *testing.T, c *loadClient, cnt *loadCounts) {
 }
 
 func (a *loadAgent) renew(ctx context.Context, c *loadClient, cnt *loadCounts) int {
-	code, _ := c.write(ctx, cnt, http.MethodPatch, "/v1/me", a.session, map[string]any{"ttl": "6h", "where": a.where()}, nil)
+	code, _ := c.write(ctx, cnt, http.MethodPatch, "/v1/me", a.session, map[string]any{"ttl_ms": int64(6 * time.Hour / time.Millisecond), "where": a.where()}, nil)
 	return code
 }
 
@@ -478,7 +478,7 @@ func (a *loadAgent) renew(ctx context.Context, c *loadClient, cnt *loadCounts) i
 // watcher does.
 func (a *loadAgent) watch(ctx context.Context, c *loadClient, cnt *loadCounts) {
 	for ctx.Err() == nil {
-		code, err := c.do(ctx, http.MethodPost, "/v1/events/wait", a.session, map[string]string{"wait": loadWait}, nil)
+		code, err := c.do(ctx, http.MethodPost, "/v1/events/wait", a.session, map[string]any{"wait_ms": loadWaitMS}, nil)
 		switch {
 		case ctx.Err() != nil:
 		case err != nil || (code != http.StatusOK && code != http.StatusNoContent):
@@ -506,7 +506,7 @@ func (a *loadAgent) read(ctx context.Context, c *loadClient, turn, offset time.D
 			var page struct {
 				Entries []struct {
 					Seq uint64 `json:"seq"`
-				} `json:"entries"`
+				} `json:"items"`
 			}
 			code, err := c.do(ctx, http.MethodGet, "/v1/inbox?limit="+strconv.Itoa(loadInboxLimit), a.session, nil, &page)
 			if ctx.Err() != nil {

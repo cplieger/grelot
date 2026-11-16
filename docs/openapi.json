@@ -641,14 +641,20 @@
           "error": {
             "type": "string"
           },
-          "path_root": {
-            "type": "string"
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            },
+            "type": "array"
           },
           "reason": {
             "type": "string"
           },
           "request_id": {
             "type": "string"
+          },
+          "retry_after_ms": {
+            "type": "integer"
           }
         },
         "required": [
@@ -711,6 +717,45 @@
         ],
         "type": "string"
       },
+      "FieldCode": {
+        "enum": [
+          "required",
+          "one_of",
+          "out_of_range",
+          "too_long",
+          "not_text",
+          "not_whole_minutes",
+          "person_reserved"
+        ],
+        "type": "string"
+      },
+      "FieldError": {
+        "properties": {
+          "allowed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "code": {
+            "$ref": "#/components/schemas/FieldCode"
+          },
+          "field": {
+            "type": "string"
+          },
+          "max": {
+            "type": "integer"
+          },
+          "min": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "field",
+          "code"
+        ],
+        "type": "object"
+      },
       "GrantRequest": {
         "properties": {
           "allow_agents": {
@@ -752,17 +797,17 @@
           "label": {
             "type": "string"
           },
-          "ttl": {
-            "type": "string"
+          "ttl_ms": {
+            "type": "integer"
           }
         },
         "required": [
           "label",
-          "ttl",
           "allow_threads",
           "allow_agents",
           "deny_threads",
-          "deny_agents"
+          "deny_agents",
+          "ttl_ms"
         ],
         "type": "object"
       },
@@ -850,7 +895,7 @@
       },
       "History": {
         "properties": {
-          "entries": {
+          "items": {
             "items": {
               "$ref": "#/components/schemas/Entry"
             },
@@ -858,10 +903,17 @@
               "array",
               "null"
             ]
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
           }
         },
         "required": [
-          "entries"
+          "items",
+          "total"
         ],
         "type": "object"
       },
@@ -1024,8 +1076,8 @@
           "threaded": {
             "type": "boolean"
           },
-          "ttl": {
-            "type": "string"
+          "ttl_ms": {
+            "type": "integer"
           }
         },
         "required": [
@@ -1038,9 +1090,9 @@
           "os",
           "arch",
           "provider",
-          "ttl",
           "paths",
           "follows",
+          "ttl_ms",
           "environment_known",
           "threaded"
         ],
@@ -1094,7 +1146,7 @@
       },
       "Inbox": {
         "properties": {
-          "entries": {
+          "items": {
             "items": {
               "$ref": "#/components/schemas/Entry"
             },
@@ -1103,12 +1155,19 @@
               "null"
             ]
           },
+          "next_cursor": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
+          },
           "unread": {
             "$ref": "#/components/schemas/Counts"
           }
         },
         "required": [
-          "entries",
+          "items",
+          "total",
           "unread"
         ],
         "type": "object"
@@ -1321,8 +1380,8 @@
               "null"
             ]
           },
-          "ttl": {
-            "type": "string"
+          "ttl_ms": {
+            "type": "integer"
           },
           "where": {
             "anyOf": [
@@ -1338,8 +1397,8 @@
         "required": [
           "name",
           "description",
-          "ttl",
-          "paths"
+          "paths",
+          "ttl_ms"
         ],
         "type": "object"
       },
@@ -1501,7 +1560,7 @@
       },
       "Peers": {
         "properties": {
-          "identities": {
+          "items": {
             "items": {
               "$ref": "#/components/schemas/Peer"
             },
@@ -1509,10 +1568,17 @@
               "array",
               "null"
             ]
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
           }
         },
         "required": [
-          "identities"
+          "items",
+          "total"
         ],
         "type": "object"
       },
@@ -1594,8 +1660,8 @@
           "body": {
             "type": "string"
           },
-          "by": {
-            "type": "string"
+          "by_ms": {
+            "type": "integer"
           },
           "identity": {
             "$ref": "#/components/schemas/IdentityFields"
@@ -1619,10 +1685,10 @@
         "required": [
           "subject",
           "body",
-          "by",
           "to",
           "notify_read",
-          "identity"
+          "identity",
+          "by_ms"
         ],
         "type": "object"
       },
@@ -1818,8 +1884,8 @@
           "take_over": {
             "type": "boolean"
           },
-          "ttl": {
-            "type": "string"
+          "ttl_ms": {
+            "type": "integer"
           },
           "where": {
             "anyOf": [
@@ -1840,8 +1906,8 @@
           "arch",
           "proc",
           "delegate",
-          "ttl",
           "paths",
+          "ttl_ms",
           "take_over"
         ],
         "type": "object"
@@ -1871,12 +1937,12 @@
       },
       "RenewRequest": {
         "properties": {
-          "ttl": {
-            "type": "string"
+          "ttl_ms": {
+            "type": "integer"
           }
         },
         "required": [
-          "ttl"
+          "ttl_ms"
         ],
         "type": "object"
       },
@@ -1912,8 +1978,8 @@
           "state": {
             "type": "string"
           },
-          "ttl": {
-            "type": "string"
+          "ttl_ms": {
+            "type": "integer"
           }
         },
         "required": [
@@ -1924,7 +1990,7 @@
           "holder",
           "host",
           "relation",
-          "ttl",
+          "ttl_ms",
           "id"
         ],
         "type": "object"
@@ -1949,7 +2015,7 @@
       },
       "Reservations": {
         "properties": {
-          "reservations": {
+          "items": {
             "items": {
               "$ref": "#/components/schemas/Reservation"
             },
@@ -1957,10 +2023,17 @@
               "array",
               "null"
             ]
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
           }
         },
         "required": [
-          "reservations"
+          "items",
+          "total"
         ],
         "type": "object"
       },
@@ -1975,14 +2048,14 @@
           "reason": {
             "type": "string"
           },
-          "ttl": {
-            "type": "string"
+          "ttl_ms": {
+            "type": "integer"
           }
         },
         "required": [
           "path",
           "reason",
-          "ttl",
+          "ttl_ms",
           "queue"
         ],
         "type": "object"
@@ -2029,8 +2102,8 @@
           "proc": {
             "type": "string"
           },
-          "ttl": {
-            "type": "string"
+          "ttl_ms": {
+            "type": "integer"
           },
           "where": {
             "anyOf": [
@@ -2049,7 +2122,7 @@
           "os",
           "arch",
           "proc",
-          "ttl"
+          "ttl_ms"
         ],
         "type": "object"
       },
@@ -2370,7 +2443,7 @@
       },
       "Threads": {
         "properties": {
-          "threads": {
+          "items": {
             "items": {
               "$ref": "#/components/schemas/Thread"
             },
@@ -2378,10 +2451,17 @@
               "array",
               "null"
             ]
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
           }
         },
         "required": [
-          "threads"
+          "items",
+          "total"
         ],
         "type": "object"
       },
@@ -2486,23 +2566,27 @@
       },
       "Version": {
         "properties": {
+          "path_root": {
+            "type": "string"
+          },
           "version": {
             "type": "string"
           }
         },
         "required": [
-          "version"
+          "version",
+          "path_root"
         ],
         "type": "object"
       },
       "WaitRequest": {
         "properties": {
-          "wait": {
-            "type": "string"
+          "wait_ms": {
+            "type": "integer"
           }
         },
         "required": [
-          "wait"
+          "wait_ms"
         ],
         "type": "object"
       },
@@ -4226,9 +4310,10 @@
                 }
               }
             },
-            "description": "Conflict: conflict",
+            "description": "Conflict: conflict, delegate_gate",
             "x-error-codes": {
-              "conflict": {}
+              "conflict": {},
+              "delegate_gate": {}
             }
           },
           "410": {
@@ -4498,6 +4583,19 @@
               "auth_method_not_allowed": {}
             }
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: delegate_gate",
+            "x-error-codes": {
+              "delegate_gate": {}
+            }
+          },
           "410": {
             "content": {
               "application/json": {
@@ -4716,6 +4814,19 @@
               "auth_method_not_allowed": {}
             }
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: delegate_gate",
+            "x-error-codes": {
+              "delegate_gate": {}
+            }
+          },
           "410": {
             "content": {
               "application/json": {
@@ -4932,6 +5043,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: delegate_gate",
+            "x-error-codes": {
+              "delegate_gate": {}
             }
           },
           "410": {
@@ -5163,6 +5287,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: delegate_gate",
+            "x-error-codes": {
+              "delegate_gate": {}
             }
           },
           "410": {
@@ -5404,6 +5541,19 @@
               "auth_method_not_allowed": {}
             }
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: delegate_gate",
+            "x-error-codes": {
+              "delegate_gate": {}
+            }
+          },
           "410": {
             "content": {
               "application/json": {
@@ -5519,6 +5669,14 @@
           {
             "in": "query",
             "name": "until",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
             "required": false,
             "schema": {
               "type": "string"
@@ -5665,8 +5823,10 @@
                 }
               }
             },
-            "description": "Bad Request: invalid",
+            "description": "Bad Request: invalid, cursor_invalid, cursor_mismatch",
             "x-error-codes": {
+              "cursor_invalid": {},
+              "cursor_mismatch": {},
               "invalid": {}
             }
           },
@@ -5712,6 +5872,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: delegate_gate",
+            "x-error-codes": {
+              "delegate_gate": {}
             }
           },
           "410": {
@@ -5785,7 +5958,7 @@
           }
         },
         "security": [],
-        "summary": "This identity's mailbox, read and unread, moving nothing"
+        "summary": "This identity's mailbox, read and unread, moving nothing; pages go back in time, each oldest first"
       }
     },
     "/v1/identities": {
@@ -5794,7 +5967,7 @@
         "parameters": [
           {
             "in": "query",
-            "name": "fields",
+            "name": "cursor",
             "required": false,
             "schema": {
               "type": "string"
@@ -5865,6 +6038,14 @@
             }
           },
           {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
             "description": "The client's version, which the server answers 426 below its floor.",
             "in": "header",
             "name": "Grelot-Version",
@@ -5932,8 +6113,10 @@
                 }
               }
             },
-            "description": "Bad Request: invalid",
+            "description": "Bad Request: invalid, cursor_invalid, cursor_mismatch",
             "x-error-codes": {
+              "cursor_invalid": {},
+              "cursor_mismatch": {},
               "invalid": {}
             }
           },
@@ -6037,7 +6220,7 @@
           }
         },
         "security": [],
-        "summary": "Every live identity, or with all=1 the dormant ones too, narrowed by the filters"
+        "summary": "Every live identity, or with all=1 the dormant ones too, narrowed by the filters, by name"
       }
     },
     "/v1/inbox": {
@@ -6046,7 +6229,7 @@
         "parameters": [
           {
             "in": "query",
-            "name": "wait",
+            "name": "cursor",
             "required": false,
             "schema": {
               "type": "string"
@@ -6055,6 +6238,14 @@
           {
             "in": "query",
             "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "wait_ms",
             "required": false,
             "schema": {
               "type": "integer"
@@ -6128,8 +6319,10 @@
                 }
               }
             },
-            "description": "Bad Request: invalid",
+            "description": "Bad Request: invalid, cursor_invalid, cursor_mismatch",
             "x-error-codes": {
+              "cursor_invalid": {},
+              "cursor_mismatch": {},
               "invalid": {}
             }
           },
@@ -6175,6 +6368,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: delegate_gate",
+            "x-error-codes": {
+              "delegate_gate": {}
             }
           },
           "410": {
@@ -6249,7 +6455,7 @@
           }
         },
         "security": [],
-        "summary": "The oldest unread entries, marking nothing; with wait, held until wake mail arrives"
+        "summary": "The unread entries oldest first, marking nothing; with wait_ms, held until wake mail arrives"
       }
     },
     "/v1/inbox/ack": {
@@ -6393,6 +6599,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: delegate_gate",
+            "x-error-codes": {
+              "delegate_gate": {}
             }
           },
           "410": {
@@ -6626,6 +6845,19 @@
               "auth_method_not_allowed": {}
             }
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: delegate_gate",
+            "x-error-codes": {
+              "delegate_gate": {}
+            }
+          },
           "410": {
             "content": {
               "application/json": {
@@ -6844,6 +7076,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: delegate_gate",
+            "x-error-codes": {
+              "delegate_gate": {}
             }
           },
           "410": {
@@ -7337,9 +7582,10 @@
                 }
               }
             },
-            "description": "Conflict: conflict, other_repository",
+            "description": "Conflict: conflict, other_repository, delegate_gate",
             "x-error-codes": {
               "conflict": {},
+              "delegate_gate": {},
               "other_repository": {}
             }
           },
@@ -7597,6 +7843,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: delegate_gate",
+            "x-error-codes": {
+              "delegate_gate": {}
             }
           },
           "410": {
@@ -8109,9 +8368,10 @@
                 }
               }
             },
-            "description": "Conflict: conflict, other_environment, other_provider, no_environment, other_repository",
+            "description": "Conflict: conflict, other_environment, other_provider, no_environment, other_repository, delegate_gate",
             "x-error-codes": {
               "conflict": {},
+              "delegate_gate": {},
               "no_environment": {},
               "other_environment": {},
               "other_provider": {},
@@ -8245,6 +8505,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
             "description": "The client's version, which the server answers 426 below its floor.",
             "in": "header",
             "name": "Grelot-Version",
@@ -8312,8 +8588,10 @@
                 }
               }
             },
-            "description": "Bad Request: invalid",
+            "description": "Bad Request: invalid, cursor_invalid, cursor_mismatch",
             "x-error-codes": {
+              "cursor_invalid": {},
+              "cursor_mismatch": {},
               "invalid": {}
             }
           },
@@ -8359,6 +8637,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: delegate_gate",
+            "x-error-codes": {
+              "delegate_gate": {}
             }
           },
           "410": {
@@ -8432,7 +8723,7 @@
           }
         },
         "security": [],
-        "summary": "The grants and queue entries overlapping a path, every one when it is absent"
+        "summary": "The grants and queue entries overlapping a path, every one when it is absent, by id"
       },
       "post": {
         "operationId": "reserve",
@@ -8584,9 +8875,10 @@
                 }
               }
             },
-            "description": "Conflict: conflict, reserved, queued",
+            "description": "Conflict: conflict, reserved, queued, delegate_gate",
             "x-error-codes": {
               "conflict": {},
+              "delegate_gate": {},
               "queued": {},
               "reserved": {}
             }
@@ -8859,6 +9151,19 @@
               "auth_method_not_allowed": {}
             }
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: delegate_gate",
+            "x-error-codes": {
+              "delegate_gate": {}
+            }
+          },
           "410": {
             "content": {
               "application/json": {
@@ -9107,6 +9412,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: delegate_gate",
+            "x-error-codes": {
+              "delegate_gate": {}
             }
           },
           "410": {
@@ -9373,11 +9691,11 @@
                 }
               }
             },
-            "description": "Conflict: conflict, other_environment, other_provider, no_environment",
+            "description": "Conflict: conflict, other_provider, no_environment, delegate_gate",
             "x-error-codes": {
               "conflict": {},
+              "delegate_gate": {},
               "no_environment": {},
-              "other_environment": {},
               "other_provider": {}
             }
           },
@@ -9389,10 +9707,11 @@
                 }
               }
             },
-            "description": "Gone: none, dormant, delegate_ended",
+            "description": "Gone: gone, none, dormant, delegate_ended",
             "x-error-codes": {
               "delegate_ended": {},
               "dormant": {},
+              "gone": {},
               "none": {}
             }
           },
@@ -9507,6 +9826,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
             "description": "The client's version, which the server answers 426 below its floor.",
             "in": "header",
             "name": "Grelot-Version",
@@ -9574,8 +9909,10 @@
                 }
               }
             },
-            "description": "Bad Request: invalid",
+            "description": "Bad Request: invalid, cursor_invalid, cursor_mismatch",
             "x-error-codes": {
+              "cursor_invalid": {},
+              "cursor_mismatch": {},
               "invalid": {}
             }
           },
@@ -9621,6 +9958,19 @@
             "description": "Method Not Allowed: auth_method_not_allowed",
             "x-error-codes": {
               "auth_method_not_allowed": {}
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: delegate_gate",
+            "x-error-codes": {
+              "delegate_gate": {}
             }
           },
           "410": {
@@ -9694,7 +10044,7 @@
           }
         },
         "security": [],
-        "summary": "The live path threads under a path"
+        "summary": "The live path threads under a path, by path"
       }
     },
     "/v1/version": {
@@ -9874,7 +10224,7 @@
           }
         },
         "security": [],
-        "summary": "The server's version"
+        "summary": "The server's version and path root"
       }
     }
   }

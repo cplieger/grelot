@@ -21,9 +21,9 @@ func direct(t *testing.T, s *Store, from, to string, n int) {
 	}
 }
 
-func mustInbox(t *testing.T, s *Store, session string, limit int) Page {
+func mustInbox(t *testing.T, s *Store, session string, limit int) InboxPage {
 	t.Helper()
-	p, err := s.Inbox(t.Context(), Caller{Session: session}, limit)
+	p, err := s.Inbox(t.Context(), Caller{Session: session}, InboxQuery{Limit: limit})
 	if err != nil {
 		t.Fatalf("Inbox(%s): %v", session, err)
 	}
@@ -59,10 +59,10 @@ func TestInbox_showsUnreadMailOnceItIsAcked(t *testing.T) {
 	direct(t, s, "alpha", "bravo", 2)
 
 	page := mustInbox(t, s, sess("bravo"), 0)
-	if got := subjects(page.Entries); len(got) != 2 || got[0] != "1" || got[1] != "2" {
+	if got := subjects(page.Items); len(got) != 2 || got[0] != "1" || got[1] != "2" {
 		t.Fatalf("subjects %q, want [1 2]", got)
 	}
-	e := page.Entries[0]
+	e := page.Items[0]
 	if e.Kind != kindDirect || e.Body != "body" || e.From != "alpha" || e.Host != "host-a/app" ||
 		e.OS != "linux" || e.Arch != "amd64" || e.Relation != "same environment" || !e.Wake || e.Message == 0 {
 		t.Errorf("entry %+v, want a wake direct message from alpha, same environment", e)
@@ -72,15 +72,15 @@ func TestInbox_showsUnreadMailOnceItIsAcked(t *testing.T) {
 	}
 
 	clk.advance(time.Minute)
-	acked := mustAck(t, s, sess("bravo"), page.Entries[1].Seq)
-	if acked.Read != page.Entries[1].Seq || total(acked.Left) != 0 {
-		t.Errorf("ack %+v, want read %d and nothing left", acked, page.Entries[1].Seq)
+	acked := mustAck(t, s, sess("bravo"), page.Items[1].Seq)
+	if acked.Read != page.Items[1].Seq || total(acked.Left) != 0 {
+		t.Errorf("ack %+v, want read %d and nothing left", acked, page.Items[1].Seq)
 	}
-	if again := mustInbox(t, s, sess("bravo"), 0); len(again.Entries) != 0 || total(again.Unread) != 0 {
+	if again := mustInbox(t, s, sess("bravo"), 0); len(again.Items) != 0 || total(again.Unread) != 0 {
 		t.Errorf("second inbox %+v, want nothing new", again)
 	}
 	row := getIdentity(t, s, bravo.ID)
-	if want := (seqRange{From: page.Entries[0].Seq, To: page.Entries[1].Seq}); row.LastPage != want {
+	if want := (seqRange{From: page.Items[0].Seq, To: page.Items[1].Seq}); row.LastPage != want {
 		t.Errorf("last_page %+v, want %+v", row.LastPage, want)
 	}
 	for _, d := range deliveriesTo(t, s, bravo.ID) {
@@ -99,7 +99,7 @@ func TestAck_neverRewindsAndStopsAtTheHighestSeq(t *testing.T) {
 	bravo := regAt(t, s, "bravo", "/workspace/bravo")
 	direct(t, s, "alpha", "bravo", 3)
 	seqs := []uint64{}
-	for _, e := range mustInbox(t, s, sess("bravo"), 0).Entries {
+	for _, e := range mustInbox(t, s, sess("bravo"), 0).Items {
 		seqs = append(seqs, e.Seq)
 	}
 
@@ -126,10 +126,10 @@ func TestInbox_aPageSmallerThanTheUnreadAcksOnlyWhatItShowed(t *testing.T) {
 	direct(t, s, "alpha", "bravo", 3)
 
 	page := mustInbox(t, s, sess("bravo"), 2)
-	if got := subjects(page.Entries); len(got) != 2 || got[1] != "2" || total(page.Unread) != 3 {
+	if got := subjects(page.Items); len(got) != 2 || got[1] != "2" || total(page.Unread) != 3 {
 		t.Fatalf("page %q with %d unread, want [1 2] of 3", got, total(page.Unread))
 	}
-	acked := mustAck(t, s, sess("bravo"), page.Entries[1].Seq)
+	acked := mustAck(t, s, sess("bravo"), page.Items[1].Seq)
 	if total(acked.Left) != 1 || acked.Left.Direct != 1 {
 		t.Errorf("left %+v, want the one direct message not shown", acked.Left)
 	}
@@ -138,10 +138,10 @@ func TestInbox_aPageSmallerThanTheUnreadAcksOnlyWhatItShowed(t *testing.T) {
 	}
 	clk.advance(time.Hour)
 	rest := mustInbox(t, s, sess("bravo"), 2)
-	if got := subjects(rest.Entries); len(got) != 1 || got[0] != "3" {
+	if got := subjects(rest.Items); len(got) != 1 || got[0] != "3" {
 		t.Fatalf("next page %q, want [3]", got)
 	}
-	mustAck(t, s, sess("bravo"), rest.Entries[0].Seq)
+	mustAck(t, s, sess("bravo"), rest.Items[0].Seq)
 	ds := deliveriesTo(t, s, bravo.ID)
 	if !ds[0].ReadAt.Equal(testNow) || !ds[2].ReadAt.Equal(testNow.Add(time.Hour)) {
 		t.Errorf("read_at %v and %v, want each row's own ack time, kept by the later ack", ds[0].ReadAt, ds[2].ReadAt)
@@ -151,19 +151,41 @@ func TestInbox_aPageSmallerThanTheUnreadAcksOnlyWhatItShowed(t *testing.T) {
 	}
 }
 
-func TestInbox_limit(t *testing.T) {
+func TestInbox_pagesPastTheSeqWithTheTotalOfEveryUnread(t *testing.T) {
 	s, _ := openClockStore(t)
 	me := regAt(t, s, "bravo", "/workspace/bravo")
-	deliverEvents(t, s, me.ID, defaultInboxLimit+5)
-	if p := mustInbox(t, s, sess("bravo"), 0); len(p.Entries) != defaultInboxLimit || total(p.Unread) != defaultInboxLimit+5 {
-		t.Errorf("default page %d of %d, want %d of %d", len(p.Entries), total(p.Unread), defaultInboxLimit, defaultInboxLimit+5)
+	deliverEvents(t, s, me.ID, 5)
+	if p := mustInbox(t, s, sess("bravo"), 0); len(p.Items) != 5 || p.Total != 5 || p.More {
+		t.Errorf("no limit: %d items of %d, more %v; want every one of 5", len(p.Items), p.Total, p.More)
 	}
-	if p := mustInbox(t, s, sess("bravo"), maxInboxLimit); len(p.Entries) != defaultInboxLimit+5 {
-		t.Errorf("page of %d at the largest limit, want every one", len(p.Entries))
+	var seqs []uint64
+	q := InboxQuery{Limit: 2}
+	for page := 1; page <= 5; page++ {
+		p, err := s.Inbox(t.Context(), Caller{Session: sess("bravo")}, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.Total != 5 {
+			t.Errorf("page %d: Total %d, want 5", page, p.Total)
+		}
+		for i := range p.Items {
+			seqs = append(seqs, p.Items[i].Seq)
+		}
+		if want := len(seqs) < 5; p.More != want {
+			t.Errorf("page %d: More %v, want %v", page, p.More, want)
+		}
+		if !p.More {
+			break
+		}
+		q.After = p.Items[len(p.Items)-1].Seq
 	}
-	for _, bad := range []int{-1, maxInboxLimit + 1} {
-		_, err := s.Inbox(t.Context(), Caller{Session: sess("bravo")}, bad)
-		wantRefusal(t, err, KindInvalid, "", "limit", "1 to 100")
+	if len(seqs) != 5 {
+		t.Errorf("the walk read seqs %v, want five", seqs)
+	}
+	for i := 1; i < len(seqs); i++ {
+		if seqs[i] <= seqs[i-1] {
+			t.Errorf("the walk read seqs %v, want them ascending, each once", seqs)
+		}
 	}
 }
 
@@ -171,7 +193,7 @@ func TestInbox_anEventCarriesItsTextAndNoSender(t *testing.T) {
 	s, _ := openClockStore(t)
 	me := regAt(t, s, "bravo", "/workspace/bravo")
 	putRows(t, s, func(w *wtx) error { return w.writeEvent(me.ID, kindIdentityExpiring, "your identity bravo expires") })
-	e := mustInbox(t, s, sess("bravo"), 0).Entries[0]
+	e := mustInbox(t, s, sess("bravo"), 0).Items[0]
 	if e.Kind != kindIdentityExpiring || e.Text != "your identity bravo expires" || e.From != "" ||
 		e.Relation != "" || e.Message != 0 || !e.Wake {
 		t.Errorf("event entry %+v, want its text, a wake event with no sender or relation", e)
@@ -191,7 +213,7 @@ func TestInbox_skipsAnExpiredDelivery(t *testing.T) {
 	deliverEvents(t, s, me.ID, 1)
 	clk.advance(time.Minute)
 	p := mustInbox(t, s, sess("bravo"), 0)
-	if len(p.Entries) != 1 || p.Entries[0].Seq != 2 || total(p.Unread) != 1 {
+	if len(p.Items) != 1 || p.Items[0].Seq != 2 || total(p.Unread) != 1 {
 		t.Errorf("page %+v, want only seq 2: a delivery at its expiry is gone, swept or not", p)
 	}
 }
@@ -209,7 +231,7 @@ func TestInbox_relationIsReadFromTheMessageSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	e := mustInbox(t, s, sess("bravo"), 0).Entries[0]
+	e := mustInbox(t, s, sess("bravo"), 0).Items[0]
 	if e.Kind != kindPath || e.From != "alpha" || e.ThreadPath != repoSubflux+"/internal" || e.Matched != repoSubflux {
 		t.Errorf("entry %+v, want alpha's post in the internal thread, matched by the work path", e)
 	}
@@ -226,10 +248,10 @@ func TestInbox_aCardIsQuietAndRelatedAtItsPath(t *testing.T) {
 	mustRegister(t, s, registration(sess("charlie"), "charlie", w, repoSubflux))
 
 	p := mustInbox(t, s, sess("bravo"), 0)
-	if len(p.Entries) != 1 {
-		t.Fatalf("%d entries, want charlie's join card", len(p.Entries))
+	if len(p.Items) != 1 {
+		t.Fatalf("%d entries, want charlie's join card", len(p.Items))
 	}
-	e := p.Entries[0]
+	e := p.Items[0]
 	if e.Kind != kindJoin || e.Wake || e.From != "charlie" || e.Relation != "same checkout" || e.ThreadPath != repoSubflux {
 		t.Errorf("card %+v, want a quiet join card from charlie, same checkout", e)
 	}
@@ -244,11 +266,11 @@ func TestInbox_aCardIsQuietAndRelatedAtItsPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	p = mustInbox(t, s, sess("bravo"), 0)
-	if len(p.Entries) != 2 || p.Entries[1].Kind != kindLeft || p.Entries[1].Wake || p.Unread.Cards != 2 || p.Unread.Wake() != 0 {
+	if len(p.Items) != 2 || p.Items[1].Kind != kindLeft || p.Items[1].Wake || p.Unread.Cards != 2 || p.Unread.Wake() != 0 {
 		t.Fatalf("page %+v, want the join and left cards, both quiet", p)
 	}
-	if want := "@charlie has left " + repoSubflux; p.Entries[1].Subject != want {
-		t.Errorf("left card subject %q, want %q", p.Entries[1].Subject, want)
+	if want := "@charlie has left " + repoSubflux; p.Items[1].Subject != want {
+		t.Errorf("left card subject %q, want %q", p.Items[1].Subject, want)
 	}
 }
 
@@ -283,8 +305,8 @@ func TestHold_advancesShownOnlyOverAWakeEvent(t *testing.T) {
 	if row.Read != 0 || row.Shown != 2 {
 		t.Errorf("read %d shown %d, want a hold to leave read alone", row.Read, row.Shown)
 	}
-	if p := mustInbox(t, s, sess("bravo"), 0); len(p.Entries) != 2 {
-		t.Errorf("inbox after the holds shows %d, want both: shown is not delivery", len(p.Entries))
+	if p := mustInbox(t, s, sess("bravo"), 0); len(p.Items) != 2 {
+		t.Errorf("inbox after the holds shows %d, want both: shown is not delivery", len(p.Items))
 	}
 }
 
@@ -342,7 +364,7 @@ func TestReads_neverMoveTheLease(t *testing.T) {
 		name string
 		call func() error
 	}{
-		{"inbox", func() error { _, err := s.Inbox(ctx, Caller{Session: me}, 0); return err }},
+		{"inbox", func() error { _, err := s.Inbox(ctx, Caller{Session: me}, InboxQuery{Limit: 0}); return err }},
 		{"ack", func() error { _, _, err := s.Ack(ctx, Keyed{}, Caller{Session: me}, 1); return err }},
 		{"hold", func() error { _, err := s.Hold(ctx, Caller{Session: me}); return err }},
 		{"history", func() error { _, err := s.History(ctx, Caller{Session: me}, &HistoryQuery{}); return err }},
@@ -371,13 +393,13 @@ func TestInbox_aDormantSessionGetsTheReviveOffer(t *testing.T) {
 	clk.set(bravo.Expires.Add(3*time.Hour + 59*time.Minute))
 	want := "your identity @bravo expired 3 h ago with 2 unread; `grelot revive --ttl=<d>` restores it; if reviving is refused or against the user's instructions, finish the user's task and tell the user"
 
-	_, err := s.Inbox(t.Context(), Caller{Session: sess("bravo")}, 0)
+	_, err := s.Inbox(t.Context(), Caller{Session: sess("bravo")}, InboxQuery{Limit: 0})
 	wantRefusal(t, err, KindGone, "dormant", want)
 	_, _, err = s.Ack(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, 1)
 	wantRefusal(t, err, KindGone, "dormant", want)
 	_, err = s.Hold(t.Context(), Caller{Session: sess("bravo")})
 	wantRefusal(t, err, KindGone, "dormant", want)
-	_, err = s.Inbox(t.Context(), Caller{Session: sess("nobody")}, 0)
+	_, err = s.Inbox(t.Context(), Caller{Session: sess("nobody")}, InboxQuery{Limit: 0})
 	wantRefusal(t, err, KindGone, "none")
 }
 
@@ -391,7 +413,7 @@ func TestInbox_clearsEnded(t *testing.T) {
 		var err error
 		switch call {
 		case "inbox":
-			_, err = s.Inbox(t.Context(), Caller{Session: sess("bravo")}, 0)
+			_, err = s.Inbox(t.Context(), Caller{Session: sess("bravo")}, InboxQuery{Limit: 0})
 		case "ack":
 			_, _, err = s.Ack(t.Context(), Keyed{}, Caller{Session: sess("bravo")}, 0)
 		case "hold":

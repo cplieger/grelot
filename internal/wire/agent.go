@@ -29,6 +29,21 @@ const (
 	HeaderIdempotencyKey = "Idempotency-Key"
 )
 
+// The identity states: GET /v1/me's State, and an identity's or a peer's.
+const (
+	StateLive    = "live"
+	StateDormant = "dormant"
+	StateNone    = "none"
+)
+
+// The states of a receipt's recipient.
+const (
+	ReceiptRead    = "read"
+	ReceiptUnread  = "unread"
+	ReceiptDormant = "dormant"
+	ReceiptRetired = "retired"
+)
+
 // Where is the machine, environment and checkouts a session reports.
 type Where struct {
 	Machine     string     `json:"machine"`
@@ -59,10 +74,10 @@ type Identity struct {
 	Arch             string    `json:"arch"`
 	Provider         string    `json:"provider"`
 	MachineKind      string    `json:"machine_kind,omitempty"`
-	TTL              string    `json:"ttl"`
 	Notice           string    `json:"notice,omitempty"`
 	Paths            []string  `json:"paths"`
 	Follows          []string  `json:"follows"`
+	TTLMS            int64     `json:"ttl_ms"`
 	EnvironmentKnown bool      `json:"environment_known"`
 	Ended            bool      `json:"ended,omitempty"`
 	Threaded         bool      `json:"threaded"`
@@ -79,8 +94,8 @@ type RegisterRequest struct {
 	Arch        string   `json:"arch"`
 	Proc        string   `json:"proc"`
 	Delegate    string   `json:"delegate"`
-	TTL         string   `json:"ttl"`
 	Paths       []string `json:"paths"`
+	TTLMS       int64    `json:"ttl_ms"`
 	TakeOver    bool     `json:"take_over"`
 }
 
@@ -93,7 +108,7 @@ type ReviveRequest struct {
 	OS    string `json:"os"`
 	Arch  string `json:"arch"`
 	Proc  string `json:"proc"`
-	TTL   string `json:"ttl"`
+	TTLMS int64  `json:"ttl_ms"`
 }
 
 // Registered is a register's or a revive's identity. NoEnvironment is set
@@ -152,7 +167,7 @@ type Reservation struct {
 	Holder   string    `json:"holder"`
 	Host     string    `json:"host"`
 	Relation string    `json:"relation"`
-	TTL      string    `json:"ttl"`
+	TTLMS    int64     `json:"ttl_ms"`
 	ID       uint64    `json:"id"`
 }
 
@@ -187,13 +202,13 @@ type Counts struct {
 }
 
 // PatchMeRequest is PATCH /v1/me: new fields, with Where when the paths
-// change, or TTL and Where to renew the lease.
+// change, or TTLMS and Where to renew the lease.
 type PatchMeRequest struct {
 	Where       *Where   `json:"where"`
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
-	TTL         string   `json:"ttl"`
 	Paths       []string `json:"paths"`
+	TTLMS       int64    `json:"ttl_ms"`
 }
 
 // IdentityAnswer is the caller's identity after a change, with the
@@ -208,10 +223,10 @@ type Retired struct {
 	Retired bool `json:"retired"`
 }
 
-// IdentitiesQuery is GET /v1/identities' query. fields keeps only the named
-// members of each identity, name always; online, here and all are 1 or 0.
+// IdentitiesQuery is GET /v1/identities' query; online, here and all are
+// 1 or 0.
 type IdentitiesQuery struct {
-	Fields string `json:"fields,omitempty"`
+	Cursor string `json:"cursor,omitempty"`
 	Path   string `json:"path,omitempty"`
 	Repo   string `json:"repo,omitempty"`
 	Holds  string `json:"holds,omitempty"`
@@ -220,11 +235,12 @@ type IdentitiesQuery struct {
 	Online string `json:"online,omitempty"`
 	Here   string `json:"here,omitempty"`
 	All    string `json:"all,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
 }
 
-// Peers is GET /v1/identities.
+// Peers is GET /v1/identities: the identities by name.
 type Peers struct {
-	Identities []Peer `json:"identities"`
+	List[Peer]
 }
 
 // Peer is one identity as another sees it. It never carries a where
@@ -268,22 +284,23 @@ type PeerDelegate struct {
 	Online      bool      `json:"online"`
 }
 
-// Version is GET /v1/version.
+// Version is GET /v1/version: the server's version and path root.
 type Version struct {
-	Version string `json:"version"`
+	Version  string `json:"version"`
+	PathRoot string `json:"path_root"`
 }
 
 // PostRequest is POST /v1/posts. To is "announce", {"path": p} or
 // {"agent": name}; NotifyRead is absent, "all" or a list of recipient
-// names; By is the duration a read receipt is asked within.
+// names; ByMS is how long a read receipt is asked within.
 type PostRequest struct {
 	Where      *Where          `json:"where"`
 	Subject    string          `json:"subject"`
 	Body       string          `json:"body"`
-	By         string          `json:"by"`
 	To         json.RawMessage `json:"to"`
 	NotifyRead json.RawMessage `json:"notify_read"`
 	Identity   IdentityFields  `json:"identity"`
+	ByMS       int64           `json:"by_ms"`
 }
 
 // IdentityFields are the identity block every post fills, each a new
@@ -318,9 +335,17 @@ type PathQuery struct {
 	Path string `json:"path,omitempty"`
 }
 
-// Threads is GET /v1/threads: the live path threads under the path.
+// ThreadsQuery is GET /v1/threads' query.
+type ThreadsQuery struct {
+	Path   string `json:"path,omitempty"`
+	Cursor string `json:"cursor,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
+}
+
+// Threads is GET /v1/threads: the live path threads under the path, by
+// path.
 type Threads struct {
-	Threads []Thread `json:"threads"`
+	List[Thread]
 }
 
 // Thread is one live path thread.
@@ -349,12 +374,12 @@ type Receipt struct {
 	State    string    `json:"state"`
 }
 
-// HistoryQuery is GET /v1/history's query. since and until are a duration
-// back from now or an RFC 3339 time; from is @me or a name; the flags are
-// 1 or 0.
+// HistoryQuery is GET /v1/history's query. since and until are RFC 3339
+// instants; from is @me or a name; the flags are 1 or 0.
 type HistoryQuery struct {
 	Since    string `json:"since,omitempty"`
 	Until    string `json:"until,omitempty"`
+	Cursor   string `json:"cursor,omitempty"`
 	Path     string `json:"path,omitempty"`
 	With     string `json:"with,omitempty"`
 	From     string `json:"from,omitempty"`
@@ -367,9 +392,9 @@ type HistoryQuery struct {
 }
 
 // History is GET /v1/history: the caller's mailbox, which it moves
-// nothing in.
+// nothing in; pages go back in time, each oldest first.
 type History struct {
-	Entries []Entry `json:"entries"`
+	List[Entry]
 }
 
 // Entry is one inbox or history entry. Subject, body, text and the paths
@@ -397,18 +422,19 @@ type Entry struct {
 	Truncated  bool      `json:"truncated,omitempty"`
 }
 
-// InboxQuery is GET /v1/inbox's query; wait, a duration up to 55s, holds
-// the read until wake mail arrives.
+// InboxQuery is GET /v1/inbox's query; WaitMS, up to MaxWaitMS, holds the
+// read until wake mail arrives.
 type InboxQuery struct {
-	Wait  string `json:"wait,omitempty"`
-	Limit int    `json:"limit,omitempty"`
+	Cursor string `json:"cursor,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
+	WaitMS int64  `json:"wait_ms,omitempty"`
 }
 
-// Inbox is GET /v1/inbox: the oldest unread entries, which it marks
-// nothing read.
+// Inbox is GET /v1/inbox: the unread entries oldest first, which it marks
+// nothing read; Total counts the unread entries.
 type Inbox struct {
-	Entries []Entry `json:"entries"`
-	Unread  Counts  `json:"unread"`
+	List[Entry]
+	Unread Counts `json:"unread"`
 }
 
 // AckRequest marks read every entry up to Upto.
@@ -427,7 +453,7 @@ type Acked struct {
 type ReserveRequest struct {
 	Path   string `json:"path"`
 	Reason string `json:"reason"`
-	TTL    string `json:"ttl"`
+	TTLMS  int64  `json:"ttl_ms"`
 	Queue  bool   `json:"queue"`
 }
 
@@ -438,9 +464,17 @@ type Reserved struct {
 	Reservation Reservation  `json:"reservation"`
 }
 
-// Reservations is GET /v1/reservations.
+// ReservationsQuery is GET /v1/reservations' query.
+type ReservationsQuery struct {
+	Path   string `json:"path,omitempty"`
+	Cursor string `json:"cursor,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
+}
+
+// Reservations is GET /v1/reservations: the grants and queue entries by
+// id.
 type Reservations struct {
-	Reservations []Reservation `json:"reservations"`
+	List[Reservation]
 }
 
 // ReservationParams names a reservation.
@@ -450,7 +484,7 @@ type ReservationParams struct {
 
 // RenewRequest renews a reservation.
 type RenewRequest struct {
-	TTL string `json:"ttl"`
+	TTLMS int64 `json:"ttl_ms"`
 }
 
 // ReservationAnswer is a reservation after a renewal or a release.
@@ -462,11 +496,11 @@ type ReservationAnswer struct {
 // registers with, scoped by the allow and deny lists.
 type GrantRequest struct {
 	Label        string   `json:"label"`
-	TTL          string   `json:"ttl"`
 	AllowThreads []string `json:"allow_threads"`
 	AllowAgents  []string `json:"allow_agents"`
 	DenyThreads  []string `json:"deny_threads"`
 	DenyAgents   []string `json:"deny_agents"`
+	TTLMS        int64    `json:"ttl_ms"`
 }
 
 // Granted is a new delegate link.
@@ -518,10 +552,13 @@ type Held struct {
 	Down   bool   `json:"down"`
 }
 
-// WaitRequest is a standing wait of up to 55s.
+// WaitRequest is a standing wait of up to MaxWaitMS.
 type WaitRequest struct {
-	Wait string `json:"wait"`
+	WaitMS int64 `json:"wait_ms"`
 }
+
+// MaxWaitMS bounds a held wait.
+const MaxWaitMS = 55_000
 
 // Nudge is a nudge as a standing wait returns it: the signal line's seq,
 // the wake deliveries past read, and which send it is, 1 to 4.

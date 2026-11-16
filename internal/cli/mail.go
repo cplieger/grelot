@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -9,10 +10,12 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cplieger/grelot/internal/canon"
 	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/protopath"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // maxBody is the largest message body the server takes.
@@ -21,29 +24,6 @@ const maxBody = 64 << 10
 // announce is the target word of an announcement, and the scope word of a
 // delegate allowed to post one.
 const announce = "announce"
-
-// postBody is POST /v1/posts's body; To is announce or a *postTo.
-type postBody struct {
-	To         any           `json:"to"`
-	NotifyRead any           `json:"notify_read,omitempty"`
-	Where      *client.Where `json:"where,omitempty"`
-	Subject    string        `json:"subject"`
-	Body       string        `json:"body"`
-	By         string        `json:"by,omitempty"`
-	Identity   postIdentity  `json:"identity"`
-}
-
-// postTo is a post's thread other than the announcements.
-type postTo struct {
-	Path  string `json:"path,omitempty"`
-	Agent string `json:"agent,omitempty"`
-}
-
-type postIdentity struct {
-	Name        string   `json:"name,omitempty"`
-	Description string   `json:"description"`
-	Paths       []string `json:"paths,omitempty"`
-}
 
 func (r *run) post(ctx context.Context, args []string) error {
 	fs := flags(r.verb)
@@ -67,12 +47,18 @@ func (r *run) post(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	req := postBody{Subject: rest[1], Body: body, By: *by, Identity: postIdentity{Name: *name, Description: *desc}}
-	if req.To, err = r.target(ctx, rest[0]); err != nil {
+	byMS, err := durationMS(r.verb, "by", *by)
+	if err != nil {
 		return err
 	}
+	req := wire.PostRequest{Subject: rest[1], Body: body, ByMS: byMS, Identity: wire.IdentityFields{Name: *name, Description: *desc}}
+	to, err := r.target(ctx, rest[0])
+	if err != nil {
+		return err
+	}
+	req.To = rawJSON(to)
 	if len(notify) > 0 {
-		req.NotifyRead = notifyRead(notify)
+		req.NotifyRead = rawJSON(notifyRead(notify))
 	}
 	if perr := r.postPaths(ctx, &req, paths); perr != nil {
 		return perr
@@ -82,16 +68,16 @@ func (r *run) post(ctx context.Context, args []string) error {
 		return err
 	}
 	finding, local := res.ScanLocal(ctx, body)
-	var got client.Posted
-	if err := r.call(ctx, &client.Request{Method: http.MethodPost, Path: "/v1/posts", Body: req}, &got); err != nil {
+	var got wire.Posted
+	if err := r.call(ctx, &client.Request{Method: http.MethodPost, Path: wire.Path("createPost", nil), Body: req}, &got); err != nil {
 		return unknownOutcome(err)
 	}
 	if *desc != noChange {
 		r.descSent()
 	}
 	thread := ""
-	if to, ok := req.To.(*postTo); ok {
-		thread = to.Path
+	if t, ok := to.(*wire.PostTarget); ok {
+		thread = t.Path
 	}
 	r.posted(&got, rest[0], thread, finding, local)
 	return nil
@@ -99,7 +85,7 @@ func (r *run) post(ctx context.Context, args []string) error {
 
 // postPaths sets a post's new paths in grelot form, with the where the
 // server needs when they change.
-func (r *run) postPaths(ctx context.Context, req *postBody, paths list) error {
+func (r *run) postPaths(ctx context.Context, req *wire.PostRequest, paths list) error {
 	if len(paths) == 0 {
 		return nil
 	}
@@ -118,7 +104,7 @@ func (r *run) postPaths(ctx context.Context, req *postBody, paths list) error {
 // posted prints a post's answer, and the local-path warning when a
 // recipient outside the sender's environment cannot read the path. thread
 // is the path of a path-thread post, empty for any other target.
-func (r *run) posted(got *client.Posted, to, thread string, finding canon.Finding, local bool) {
+func (r *run) posted(got *wire.Posted, to, thread string, finding canon.Finding, local bool) {
 	n := got.Recipients
 	fmt.Fprintf(r.Stdout, "grelot: message %d posted to %s (thread %d): delivered to %d: %d same environment, %d other%s\n",
 		got.Message, safe(to), got.Thread, n.Total, n.SameEnvironment, n.Other, wokenSplit(&n))
@@ -146,7 +132,7 @@ func (r *run) posted(got *client.Posted, to, thread string, finding canon.Findin
 
 // wokenSplit is the "; 1 woken (@a), 4 quiet" tail of an addressed post's
 // line, empty when every recipient was woken.
-func wokenSplit(n *client.Recipients) string {
+func wokenSplit(n *wire.Recipients) string {
 	if len(n.Woken) == 0 {
 		return ""
 	}
@@ -202,13 +188,20 @@ func (r *run) target(ctx context.Context, to string) (any, error) {
 	case to == announce:
 		return announce, nil
 	case strings.HasPrefix(to, "@"):
-		return &postTo{Agent: strings.TrimPrefix(to, "@")}, nil
+		return &wire.PostTarget{Agent: strings.TrimPrefix(to, "@")}, nil
 	}
 	canonical, _, err := r.canonical(ctx, []string{to})
 	if err != nil {
 		return nil, err
 	}
-	return &postTo{Path: canonical[0]}, nil
+	return &wire.PostTarget{Path: canonical[0]}, nil
+}
+
+// rawJSON is v as JSON, for a request member whose shape varies; v is a
+// string, a string list or a wire type, which always encode.
+func rawJSON(v any) json.RawMessage {
+	b, _ := json.Marshal(v)
+	return b
 }
 
 // everyone is the --notify-read word for every recipient.
@@ -246,12 +239,12 @@ func (r *run) inbox(ctx context.Context, args []string) error {
 	if len(rest) > 0 {
 		return usagef(r.verb, "unexpected %q: grelot inbox takes only --limit", rest[0])
 	}
-	q := url.Values{}
-	if *limit > 0 {
-		q.Set("limit", strconv.Itoa(*limit))
+	q, err := printPage(r.verb, *limit, "")
+	if err != nil {
+		return err
 	}
-	var page client.Inbox
-	if err := r.call(ctx, &client.Request{Method: http.MethodGet, Path: "/v1/inbox", Query: q}, &page); err != nil {
+	var page wire.Inbox
+	if err := r.call(ctx, &client.Request{Method: http.MethodGet, Path: wire.Path("readInbox", nil), Query: q}, &page); err != nil {
 		return err
 	}
 	return r.showPage(ctx, &page)
@@ -259,15 +252,15 @@ func (r *run) inbox(ctx context.Context, args []string) error {
 
 // showPage prints an inbox page, then acks up to its last seq, which marks
 // what it printed read.
-func (r *run) showPage(ctx context.Context, page *client.Inbox) error {
-	if len(page.Entries) == 0 {
+func (r *run) showPage(ctx context.Context, page *wire.Inbox) error {
+	if len(page.Items) == 0 {
 		fmt.Fprintln(r.Stdout, "grelot: no new mail")
 		return nil
 	}
 	var upto uint64
-	for i := range page.Entries {
-		writeEntry(r.Stdout, &page.Entries[i])
-		upto = max(upto, page.Entries[i].Seq)
+	for i := range page.Items {
+		writeEntry(r.Stdout, &page.Items[i])
+		upto = max(upto, page.Items[i].Seq)
 	}
 	acked, err := r.ack(ctx, upto)
 	ae, refused := errors.AsType[*client.APIError](err)
@@ -290,9 +283,9 @@ func (r *run) showPage(ctx context.Context, page *client.Inbox) error {
 
 // ack sends POST /v1/inbox/ack as one keyed call, so the client's re-send
 // of a failed attempt answers the first result.
-func (r *run) ack(ctx context.Context, upto uint64) (client.Acked, error) {
-	var got client.Acked
-	err := r.peek(ctx, &client.Request{Method: http.MethodPost, Path: "/v1/inbox/ack", Body: map[string]uint64{"upto": upto}}, &got)
+func (r *run) ack(ctx context.Context, upto uint64) (wire.Acked, error) {
+	var got wire.Acked
+	err := r.peek(ctx, &client.Request{Method: http.MethodPost, Path: wire.Path("ackInbox", nil), Body: wire.AckRequest{Upto: upto}}, &got)
 	return got, err
 }
 
@@ -301,19 +294,27 @@ func (r *run) history(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	var got client.History
-	if err := r.call(ctx, &client.Request{Method: http.MethodGet, Path: "/v1/history", Query: q}, &got); err != nil {
+	var got wire.History
+	if err := r.call(ctx, &client.Request{Method: http.MethodGet, Path: wire.Path("getHistory", nil), Query: q}, &got); err != nil {
 		return err
 	}
-	if len(got.Entries) == 0 {
+	if len(got.Items) == 0 {
 		fmt.Fprintln(r.Stdout, "grelot: no mail matches")
 		return nil
 	}
-	for i := range got.Entries {
-		writeEntry(r.Stdout, &got.Entries[i])
+	for i := range got.Items {
+		writeEntry(r.Stdout, &got.Items[i])
+	}
+	if got.NextCursor != "" {
+		fmt.Fprintf(r.Stdout, "grelot: %d of %d shown; for the older ones, run grelot history again with the same flags and --cursor=%s\n",
+			len(got.Items), got.Total, safe(got.NextCursor))
 	}
 	return nil
 }
+
+// printLimit is how many entries grelot inbox and grelot history print at
+// once unless --limit says otherwise.
+const printLimit = 20
 
 // historyQuery maps history's flags to GET /v1/history's parameters.
 func (r *run) historyQuery(ctx context.Context, args []string) (url.Values, error) {
@@ -324,7 +325,9 @@ func (r *run) historyQuery(ctx context.Context, args []string) (url.Values, erro
 	}
 	local := map[string]*string{pathParam: fs.String("path", "", "")}
 	limit := fs.Int("limit", 0, "")
-	set := map[string]*bool{"announce": fs.Bool("announce", false, ""), "full": fs.Bool("full", false, ""), "last_read": fs.Bool("last-read", false, "")}
+	cursor := fs.String(wire.QueryCursor, "", "")
+	set := boolFlags(fs, "announce", "full")
+	set["last_read"] = fs.Bool("last-read", false, "")
 	rest, err := parse(fs, args)
 	if err != nil {
 		return nil, err
@@ -332,40 +335,53 @@ func (r *run) historyQuery(ctx context.Context, args []string) (url.Values, erro
 	if len(rest) > 0 {
 		return nil, usagef(r.verb, "unexpected %q: grelot history takes only flags", rest[0])
 	}
-	q := url.Values{}
+	q, err := printPage(r.verb, *limit, *cursor)
+	if err != nil {
+		return nil, err
+	}
 	for name, v := range text {
 		if *v != "" {
 			q.Set(name, *v)
 		}
 	}
-	for _, name := range []string{"since", "until"} {
-		if v := q.Get(name); v != "" {
-			q.Set(name, days(v))
-		}
+	if err := r.instants(q, "since", "until"); err != nil {
+		return nil, err
 	}
-	for name, v := range set {
-		if *v {
-			q.Set(name, "1")
-		}
-	}
-	if *limit > 0 {
-		q.Set("limit", strconv.Itoa(*limit))
-	}
+	setFlags(q, set)
 	return q, r.canonicalQuery(ctx, q, local)
 }
 
-// days writes a whole number of days, such as 2d, as hours, since a Go
-// duration has no day unit; any other value goes as written.
-func days(v string) string {
-	n, ok := strings.CutSuffix(v, "d")
-	if !ok {
-		return v
+// instants turns each of q's names that is set into its RFC 3339 instant.
+func (r *run) instants(q url.Values, names ...string) error {
+	for _, name := range names {
+		if v := q.Get(name); v != "" {
+			at, err := instant(r.verb, name, v, r.now())
+			if err != nil {
+				return err
+			}
+			q.Set(name, at)
+		}
 	}
-	d, err := strconv.Atoi(n)
-	if err != nil || d < 0 || d > maxDays {
-		return v
+	return nil
+}
+
+// instant is a --since or --until value as the RFC 3339 instant the API
+// takes: an RFC 3339 time as written, or a duration back from now, such as
+// 2h, or a whole number of days, such as 2d, which a Go duration has no
+// unit for.
+func instant(verb, name, v string, now time.Time) (string, error) {
+	if _, err := time.Parse(time.RFC3339, v); err == nil {
+		return v, nil
 	}
-	return strconv.Itoa(d*24) + "h"
+	if n, ok := strings.CutSuffix(v, "d"); ok {
+		if d, err := strconv.Atoi(n); err == nil && d >= 0 && d <= maxDays {
+			return now.Add(-time.Duration(d) * 24 * time.Hour).UTC().Format(time.RFC3339), nil
+		}
+	}
+	if d, err := time.ParseDuration(v); err == nil && d >= 0 {
+		return now.Add(-d).UTC().Format(time.RFC3339), nil
+	}
+	return "", usagef(verb, "--%s must be a duration such as --%s=2h, a number of days such as --%s=2d, or an RFC 3339 time", name, name, name)
 }
 
 // maxDays bounds a day count well past any message's retention.
@@ -373,7 +389,7 @@ const maxDays = 3650
 
 // writeEntry prints one inbox or history entry, with the data label on
 // its header line and the body quoted with "|".
-func writeEntry(w io.Writer, e *client.Entry) {
+func writeEntry(w io.Writer, e *wire.Entry) {
 	var head []string
 	if e.Message != 0 {
 		head = append(head, fmt.Sprintf("message %d", e.Message))
@@ -441,8 +457,8 @@ func (r *run) receipts(ctx context.Context, args []string) error {
 	if len(rest) != 1 || !isID(rest[0]) {
 		return usagef(r.verb, "name one message id: grelot receipts <message id>, the id grelot post, inbox and history print")
 	}
-	var got client.Receipts
-	if err := r.call(ctx, &client.Request{Method: http.MethodGet, Path: "/v1/messages/" + rest[0] + "/receipts"}, &got); err != nil {
+	var got wire.Receipts
+	if err := r.call(ctx, &client.Request{Method: http.MethodGet, Path: wire.Path("getReceipts", map[string]string{"id": rest[0]})}, &got); err != nil {
 		return err
 	}
 	fmt.Fprintf(r.Stdout, "message %d · %s · posted %s · subject: %s%s\n", got.Message, safe(got.Kind), stamp(got.PostedAt), safe(got.Subject), dataLabel)
@@ -451,13 +467,13 @@ func (r *run) receipts(ctx context.Context, args []string) error {
 		v := &got.Recipients[i]
 		count[v.State]++
 		state := safe(v.State)
-		if v.State == client.ReceiptRead {
+		if v.State == wire.ReceiptRead {
 			state = "read at " + stamp(v.ReadAt)
 		}
 		fmt.Fprintf(r.Stdout, "  @%s%s · %s\n", safe(v.Name), origin(v.Host, v.Relation), state)
 	}
-	fmt.Fprintf(r.Stdout, "grelot: %d of %d have read; %d unread, %d dormant, %d retired\n", count[client.ReceiptRead],
-		len(got.Recipients), count[client.ReceiptUnread], count[client.ReceiptDormant], count[client.ReceiptRetired])
+	fmt.Fprintf(r.Stdout, "grelot: %d of %d have read; %d unread, %d dormant, %d retired\n", count[wire.ReceiptRead],
+		len(got.Recipients), count[wire.ReceiptUnread], count[wire.ReceiptDormant], count[wire.ReceiptRetired])
 	if got.RegisteredSince > 0 {
 		fmt.Fprintf(r.Stdout, "grelot: %d identities registered since the post and never received it\n", got.RegisteredSince)
 	}
@@ -480,29 +496,30 @@ func (r *run) threads(ctx context.Context, args []string) error {
 		}
 		q.Set(pathParam, canonical[0])
 	}
-	var got client.Threads
-	if err := r.call(ctx, &client.Request{Method: http.MethodGet, Path: "/v1/threads", Query: q}, &got); err != nil {
+	threads, err := walkList[wire.Thread](ctx, r.call, "listThreads", q)
+	if err != nil {
 		return err
 	}
-	if len(got.Threads) == 0 {
+	if len(threads) == 0 {
 		fmt.Fprintln(r.Stdout, "grelot: no live path thread")
 		return nil
 	}
-	for _, t := range got.Threads {
+	for _, t := range threads {
 		fmt.Fprintf(r.Stdout, "thread %d · %s · until %s%s\n", t.ID, safe(t.Path), stamp(t.Expires), dataLabel)
 	}
 	return nil
 }
 
 func (r *run) follow(ctx context.Context, args []string) error {
-	return r.following(ctx, args, http.MethodPut, "following")
+	return r.following(ctx, args, "follow", "following")
 }
 
 func (r *run) unfollow(ctx context.Context, args []string) error {
-	return r.following(ctx, args, http.MethodDelete, "no longer following")
+	return r.following(ctx, args, "unfollow", "no longer following")
 }
 
-func (r *run) following(ctx context.Context, args []string, method, done string) error {
+// following runs the follow or unfollow row named row.
+func (r *run) following(ctx context.Context, args []string, row, done string) error {
 	rest, err := parse(flags(r.verb), args)
 	if err != nil {
 		return err
@@ -514,8 +531,12 @@ func (r *run) following(ctx context.Context, args []string, method, done string)
 	if err != nil {
 		return err
 	}
-	var got client.IdentityAnswer
-	req := &client.Request{Method: method, Path: "/v1/follows", Query: url.Values{pathParam: {canonical[0]}}}
+	var got wire.IdentityAnswer
+	method := http.MethodPut
+	if row == "unfollow" {
+		method = http.MethodDelete
+	}
+	req := &client.Request{Method: method, Path: wire.Path(row, nil), Query: url.Values{pathParam: {canonical[0]}}}
 	if err := r.call(ctx, req, &got); err != nil {
 		return err
 	}

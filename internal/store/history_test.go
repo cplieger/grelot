@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func mustHistory(t *testing.T, s *Store, session string, q HistoryQuery) History {
+func mustHistory(t *testing.T, s *Store, session string, q HistoryQuery) Listing[Entry] {
 	t.Helper()
 	h, err := s.History(t.Context(), Caller{Session: session}, &q)
 	if err != nil {
@@ -20,7 +20,7 @@ func mustHistory(t *testing.T, s *Store, session string, q HistoryQuery) History
 // historySubjects is the subjects a history read returns, oldest first.
 func historySubjects(t *testing.T, s *Store, session string, q HistoryQuery) []string {
 	t.Helper()
-	return subjects(mustHistory(t, s, session, q).Entries)
+	return subjects(mustHistory(t, s, session, q).Items)
 }
 
 func wantSubjects(t *testing.T, label string, got []string, want ...string) {
@@ -58,14 +58,14 @@ func TestHistory_readAndUnreadMailWithOwnPostsInTimeOrder(t *testing.T) {
 	clk.advance(time.Minute)
 	say(t, s, "charlie", Target{Announce: true}, "c1")
 	page := mustInbox(t, s, sess("bravo"), 1)
-	mustAck(t, s, sess("bravo"), page.Entries[0].Seq)
+	mustAck(t, s, sess("bravo"), page.Items[0].Seq)
 	clk.advance(time.Minute)
 
 	h := mustHistory(t, s, sess("bravo"), HistoryQuery{})
-	if got := subjects(h.Entries); !slices.Equal(got, []string{"a1", "b1", "c1"}) {
+	if got := subjects(h.Items); !slices.Equal(got, []string{"a1", "b1", "c1"}) {
 		t.Fatalf("subjects %q, want [a1 b1 c1]", got)
 	}
-	read, own, unread := h.Entries[0], h.Entries[1], h.Entries[2]
+	read, own, unread := h.Items[0], h.Items[1], h.Items[2]
 	if !read.ReadAt.Equal(testNow.Add(2*time.Minute)) || read.From != "alpha" || read.Seq == 0 {
 		t.Errorf("read entry %+v, want alpha's delivery with the ack's read_at", read)
 	}
@@ -84,14 +84,14 @@ func TestHistory_neverMovesTheCursorsOrTheNudgeState(t *testing.T) {
 	bravo := regAt(t, s, "bravo", "/workspace/bravo")
 	direct(t, s, "alpha", "bravo", 3)
 	page := mustInbox(t, s, sess("bravo"), 1)
-	mustAck(t, s, sess("bravo"), page.Entries[0].Seq)
+	mustAck(t, s, sess("bravo"), page.Items[0].Seq)
 	editIdentity(t, s, bravo.ID, func(r *identityRow) {
 		r.Shown, r.Nudged, r.Nudges, r.NudgedAt = 2, 2, 1, testNow
 	})
 	before := getIdentity(t, s, bravo.ID)
 	clk.advance(time.Minute)
 
-	for _, q := range []HistoryQuery{{}, {LastRead: true}, {FromMe: true}, {Thread: page.Entries[0].Thread}, {Grep: "3"}, {Full: true}} {
+	for _, q := range []HistoryQuery{{}, {LastRead: true}, {FromMe: true}, {Thread: page.Items[0].Thread}, {Grep: "3"}, {Full: true}} {
 		mustHistory(t, s, sess("bravo"), q)
 	}
 	after := getIdentity(t, s, bravo.ID)
@@ -108,7 +108,7 @@ func TestHistory_neverMovesTheCursorsOrTheNudgeState(t *testing.T) {
 			t.Errorf("delivery %d read_at %v after history, want unread", d.Seq, d.ReadAt)
 		}
 	}
-	if got := subjects(mustInbox(t, s, sess("bravo"), 0).Entries); !slices.Equal(got, []string{"2", "3"}) {
+	if got := subjects(mustInbox(t, s, sess("bravo"), 0).Items); !slices.Equal(got, []string{"2", "3"}) {
 		t.Errorf("inbox after history %q, want [2 3] still new", got)
 	}
 }
@@ -157,8 +157,8 @@ func TestHistory_pathFilterReadsThePathsThreadAndItsSubtree(t *testing.T) {
 	wantSubjects(t, "path", historySubjects(t, s, sess("bravo"), HistoryQuery{Path: "/workspace/bravo"}),
 		"p-root", "p-sub", "own-sub")
 	h := mustHistory(t, s, sess("bravo"), HistoryQuery{})
-	if !slices.ContainsFunc(h.Entries, func(e Entry) bool { return e.Kind == kindJoin && e.ThreadPath == "/workspace/bravo/sub" }) {
-		t.Errorf("unfiltered history %q lacks delta's join card, which the path filter must leave out", subjects(h.Entries))
+	if !slices.ContainsFunc(h.Items, func(e Entry) bool { return e.Kind == kindJoin && e.ThreadPath == "/workspace/bravo/sub" }) {
+		t.Errorf("unfiltered history %q lacks delta's join card, which the path filter must leave out", subjects(h.Items))
 	}
 	for _, bad := range []string{"workspace/bravo", "/workspace/../bravo", "/workspace/bravo/"} {
 		_, err := s.History(t.Context(), Caller{Session: sess("bravo")}, &HistoryQuery{Path: bad})
@@ -185,9 +185,9 @@ func TestHistory_pathFilterReadsPostsTheReaderNeverReceived(t *testing.T) {
 	say(t, s, "alpha", Target{Path: lib}, "v2 released")
 
 	h := mustHistory(t, s, sess("bravo"), HistoryQuery{Path: lib})
-	wantSubjects(t, "path", subjects(h.Entries), "v1 released", "sub news", "v2 released")
-	if len(h.Entries) == 3 && (h.Entries[0].Seq != 0 || h.Entries[0].From != "alpha" || h.Entries[2].Seq == 0) {
-		t.Errorf("entries %+v, want v1 unreceived (no seq) from alpha and v2 as bravo's own delivery", h.Entries)
+	wantSubjects(t, "path", subjects(h.Items), "v1 released", "sub news", "v2 released")
+	if len(h.Items) == 3 && (h.Items[0].Seq != 0 || h.Items[0].From != "alpha" || h.Items[2].Seq == 0) {
+		t.Errorf("entries %+v, want v1 unreceived (no seq) from alpha and v2 as bravo's own delivery", h.Items)
 	}
 	wantSubjects(t, "from alpha", historySubjects(t, s, sess("bravo"), HistoryQuery{Path: lib, From: "alpha"}), "v1 released", "v2 released")
 	wantSubjects(t, "from me", historySubjects(t, s, sess("charlie"), HistoryQuery{Path: lib, FromMe: true}), "sub news")
@@ -201,7 +201,7 @@ func TestHistory_pathFilterReadsPostsTheReaderNeverReceived(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantSubjects(t, "a delegate outside its scope", subjects(got.Entries))
+	wantSubjects(t, "a delegate outside its scope", subjects(got.Items))
 }
 
 func TestHistory_pathFilterReadsTheWholeLiveThreadByDefault(t *testing.T) {
@@ -352,12 +352,12 @@ func TestHistory_grepIgnoresCaseOverSubjectAndBody(t *testing.T) {
 	wantSubjects(t, "notify", historySubjects(t, s, sess("bravo"), HistoryQuery{Grep: "notify"}), "Fix NOTIFY path", "other", "mine")
 	wantSubjects(t, "a body's second line", historySubjects(t, s, sess("bravo"), HistoryQuery{Grep: "LINE 2"}), "other")
 	h := mustHistory(t, s, sess("bravo"), HistoryQuery{Grep: "EVENT"})
-	if len(h.Entries) != 1 || h.Entries[0].Kind != kindIdentityExpiring || h.Entries[0].Text != "event" {
-		t.Errorf("grep EVENT %+v, want the one event, matched on its text", h.Entries)
+	if len(h.Items) != 1 || h.Items[0].Kind != kindIdentityExpiring || h.Items[0].Text != "event" {
+		t.Errorf("grep EVENT %+v, want the one event, matched on its text", h.Items)
 	}
 }
 
-func TestHistory_limitKeepsTheNewestWithTheNewestLast(t *testing.T) {
+func TestHistory_pagesGoBackInTimeEachOldestFirst(t *testing.T) {
 	s, clk := openClockStore(t)
 	regAt(t, s, "alpha", "/workspace/alpha")
 	regAt(t, s, "bravo", "/workspace/bravo")
@@ -368,16 +368,34 @@ func TestHistory_limitKeepsTheNewestWithTheNewestLast(t *testing.T) {
 		all = append(all, subject)
 		clk.advance(time.Minute)
 	}
-
-	wantSubjects(t, "default 20", historySubjects(t, s, sess("bravo"), HistoryQuery{}), all[5:]...)
-	wantSubjects(t, "limit 2", historySubjects(t, s, sess("bravo"), HistoryQuery{Limit: 2}), all[23:]...)
-	wantSubjects(t, "limit 100", historySubjects(t, s, sess("bravo"), HistoryQuery{Limit: 100}), all...)
 	say(t, s, "bravo", Target{Agent: "alpha"}, "own")
-	wantSubjects(t, "limit 2 with an own post", historySubjects(t, s, sess("bravo"), HistoryQuery{Limit: 2}), all[24], "own")
-	for _, bad := range []int{-1, maxHistoryLimit + 1} {
-		_, err := s.History(t.Context(), Caller{Session: sess("bravo")}, &HistoryQuery{Limit: bad})
-		wantRefusal(t, err, KindInvalid, "", "limit")
+	all = append(all, "own")
+
+	wantSubjects(t, "no limit", historySubjects(t, s, sess("bravo"), HistoryQuery{}), all...)
+	var walked []string
+	q := HistoryQuery{Limit: 4}
+	for page := 1; ; page++ {
+		got, err := s.History(t.Context(), Caller{Session: sess("bravo")}, &q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Total != len(all) {
+			t.Errorf("page %d: Total %d, want %d", page, got.Total, len(all))
+		}
+		var subjects []string
+		for i := range got.Items {
+			subjects = append(subjects, got.Items[i].Subject)
+		}
+		walked = append(subjects, walked...)
+		if want := len(walked) < len(all); got.More != want {
+			t.Errorf("page %d: More %v, want %v", page, got.More, want)
+		}
+		if !got.More || page > len(all) {
+			break
+		}
+		q.Before = got.Items[0].Key()
 	}
+	wantSubjects(t, "every page, oldest first", walked, all...)
 }
 
 func TestHistory_fullBodiesOnlyWhenAsked(t *testing.T) {
@@ -395,7 +413,7 @@ func TestHistory_fullBodiesOnlyWhenAsked(t *testing.T) {
 		clk.advance(time.Minute)
 	}
 
-	short := mustHistory(t, s, sess("bravo"), HistoryQuery{}).Entries
+	short := mustHistory(t, s, sess("bravo"), HistoryQuery{}).Items
 	type cut struct {
 		body      string
 		truncated bool
@@ -408,7 +426,7 @@ func TestHistory_fullBodiesOnlyWhenAsked(t *testing.T) {
 		t.Errorf("default bodies %+v, want %+v", got, want)
 	}
 	got = got[:0]
-	for _, e := range mustHistory(t, s, sess("bravo"), HistoryQuery{Full: true}).Entries {
+	for _, e := range mustHistory(t, s, sess("bravo"), HistoryQuery{Full: true}).Items {
 		got = append(got, cut{e.Body, e.Truncated})
 	}
 	if want := []cut{{"line one\nline two", false}, {"only line", false}, {"mine one\nmine two", false}}; !slices.Equal(got, want) {
@@ -426,9 +444,9 @@ func TestHistory_lastReadIsTheLastAckedInboxPage(t *testing.T) {
 
 	wantSubjects(t, "before any ack", historySubjects(t, s, sess("bravo"), HistoryQuery{LastRead: true}))
 	first := mustInbox(t, s, sess("bravo"), 1)
-	mustAck(t, s, sess("bravo"), first.Entries[0].Seq)
+	mustAck(t, s, sess("bravo"), first.Items[0].Seq)
 	page := mustInbox(t, s, sess("bravo"), 2)
-	mustAck(t, s, sess("bravo"), page.Entries[1].Seq)
+	mustAck(t, s, sess("bravo"), page.Items[1].Seq)
 	clk.advance(30 * time.Hour)
 
 	wantSubjects(t, "last read, past the default window", historySubjects(t, s, sess("bravo"), HistoryQuery{LastRead: true}), "2", "3")
@@ -500,8 +518,8 @@ func TestHistory_keepsARetiredSendersMessagesAndRelation(t *testing.T) {
 	}
 
 	h := mustHistory(t, s, sess("bravo"), HistoryQuery{})
-	if len(h.Entries) != 1 || h.Entries[0].From != "alpha" || h.Entries[0].Relation != "same environment" {
-		t.Errorf("entries %+v, want alpha's message, same environment, from its snapshot", h.Entries)
+	if len(h.Items) != 1 || h.Items[0].From != "alpha" || h.Items[0].Relation != "same environment" {
+		t.Errorf("entries %+v, want alpha's message, same environment, from its snapshot", h.Items)
 	}
 }
 
@@ -533,7 +551,7 @@ func TestThreads_clearsEnded(t *testing.T) {
 	if err := s.EndSession(t.Context(), sess("bravo"), 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Threads(t.Context(), Caller{Session: sess("bravo")}, ""); err != nil {
+	if _, err := s.Threads(t.Context(), Caller{Session: sess("bravo")}, ThreadQuery{}); err != nil {
 		t.Fatal(err)
 	}
 	if getIdentity(t, s, bravo.ID).Ended {

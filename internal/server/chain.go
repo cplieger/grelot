@@ -243,6 +243,12 @@ func (s *Server) identityFor(fn identityFunc, route *wire.Route, anySession bool
 		httpserver.LimitBody(w, r, maxBody)
 		status, body := 0, any(nil)
 		k, err := keyRule(r, route, c)
+		if err == nil && route.Paged {
+			var p *paging
+			if p, err = s.readPaging(r, route); err == nil {
+				r = r.WithContext(context.WithValue(r.Context(), pagingKey{}, p))
+			}
+		}
 		if err == nil {
 			status, body, err = fn(r, c, k)
 		}

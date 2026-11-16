@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/cplieger/grelot/internal/canon"
-	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/where"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // noChange is the field value that keeps the identity's current one.
@@ -41,12 +41,12 @@ func (r *run) canonical(ctx context.Context, locals []string) ([]string, []canon
 
 // placeOf is this session's where with one checkout per repo the
 // locations lie in, the first location's working tree winning.
-func (r *run) placeOf(ctx context.Context, locs []canon.Location) client.Where {
+func (r *run) placeOf(ctx context.Context, locs []canon.Location) wire.Where {
 	w := r.machineAndEnvironment(ctx)
-	w.Checkouts = []client.Checkout{}
+	w.Checkouts = []wire.Checkout{}
 	for _, loc := range locs {
 		c := r.checkoutOf(ctx, loc)
-		if c == nil || slices.ContainsFunc(w.Checkouts, func(o client.Checkout) bool { return o.Repo == c.Repo }) {
+		if c == nil || slices.ContainsFunc(w.Checkouts, func(o wire.Checkout) bool { return o.Repo == c.Repo }) {
 			continue
 		}
 		w.Checkouts = append(w.Checkouts, *c)
@@ -56,7 +56,7 @@ func (r *run) placeOf(ctx context.Context, locs []canon.Location) client.Where {
 
 // checkoutOf is loc's checkout entry, nil outside a clone with a remote or
 // where the checkout key can neither be read nor created.
-func (r *run) checkoutOf(ctx context.Context, loc canon.Location) *client.Checkout {
+func (r *run) checkoutOf(ctx context.Context, loc canon.Location) *wire.Checkout {
 	if loc.Clone == nil || loc.Clone.Repo == "" {
 		return nil
 	}
@@ -64,7 +64,7 @@ func (r *run) checkoutOf(ctx context.Context, loc canon.Location) *client.Checko
 	if id == "" {
 		return nil
 	}
-	return &client.Checkout{
+	return &wire.Checkout{
 		Repo: path.Join(r.root, loc.Clone.Repo), ID: id, Remote: where.Remote(loc.Clone.Remote),
 	}
 }
@@ -72,9 +72,9 @@ func (r *run) checkoutOf(ctx context.Context, loc canon.Location) *client.Checko
 // placeHere is this session's where for a command that names no paths: the
 // working directory's checkout, when one of paths lies in its repo, since
 // the server keeps the entries of every other repo.
-func (r *run) placeHere(ctx context.Context, paths []string) client.Where {
+func (r *run) placeHere(ctx context.Context, paths []string) wire.Where {
 	w := r.machineAndEnvironment(ctx)
-	w.Checkouts = []client.Checkout{}
+	w.Checkouts = []wire.Checkout{}
 	res, err := r.paths()
 	if err != nil {
 		return w

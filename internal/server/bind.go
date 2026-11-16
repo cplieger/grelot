@@ -43,12 +43,12 @@ func bindFields(v reflect.Value, get func(string) string) error {
 				return badRequest(name + " must be a whole number")
 			}
 			fv.SetUint(n)
-		case reflect.Int:
-			n, err := strconv.Atoi(s)
+		case reflect.Int, reflect.Int64:
+			n, err := strconv.ParseInt(s, 10, 64)
 			if err != nil || n < 0 {
 				return badRequest(name + " must be a whole number")
 			}
-			fv.SetInt(int64(n))
+			fv.SetInt(n)
 		default:
 			panic("server: cannot bind " + v.Type().Name() + "." + f.Name + " of kind " + f.Type.Kind().String())
 		}

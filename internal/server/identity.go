@@ -17,7 +17,7 @@ func identityOut(id *store.Identity) wire.Identity {
 		LastSeen: id.LastSeen.UTC(), DormantSince: id.DormantSince.UTC(),
 		Name: id.Name, Description: id.Description, State: id.State,
 		Host: id.Host, OS: id.OS, Arch: id.Arch, Provider: id.Provider,
-		MachineKind: id.MachineKind, TTL: id.TTL.String(), Notice: id.Notice,
+		MachineKind: id.MachineKind, TTLMS: id.TTL.Milliseconds(), Notice: id.Notice,
 		Paths: nonNil(id.Paths), Follows: nonNil(id.Follows),
 		EnvironmentKnown: id.EnvironmentKnown, Ended: id.Ended, Threaded: id.Threaded,
 	}
@@ -42,10 +42,7 @@ func (s *Server) register(r *http.Request, c store.Caller, k store.Keyed) (statu
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	ttl, err := durationOf(req.TTL)
-	if err != nil {
-		return 0, nil, err
-	}
+	ttl := durationMS(req.TTLMS)
 	got, replayed, err := s.store.Register(r.Context(), k, &store.Registration{
 		Where: whereOf(req.Where), Session: c.Session, Key: c.Key, Link: req.Delegate,
 		Host: req.Host, OS: req.OS, Arch: req.Arch, Proc: req.Proc,
@@ -84,10 +81,7 @@ func (s *Server) revive(r *http.Request, c store.Caller, k store.Keyed) (status 
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	ttl, err := durationOf(req.TTL)
-	if err != nil {
-		return 0, nil, err
-	}
+	ttl := durationMS(req.TTLMS)
 	got, replayed, err := s.store.Revive(r.Context(), k, &store.Revival{
 		Where: whereOf(req.Where), Session: c.Session, Key: c.Key, Name: req.Name,
 		Host: req.Host, OS: req.OS, Arch: req.Arch, Proc: req.Proc, TTL: ttl,
@@ -186,8 +180,8 @@ func (s *Server) meLive(r *http.Request, c store.Caller, out *wire.Me, id uint64
 	out.Unread, out.Wake = &counts, s.wakeState(&st, now)
 	out.Push = string(s.push.State(id))
 	out.Online = s.onlineAt(now)(&st.Identity)
-	for i := range resv {
-		out.Reservations = append(out.Reservations, reservationOut(&resv[i]))
+	for i := range resv.Items {
+		out.Reservations = append(out.Reservations, reservationOut(&resv.Items[i]))
 	}
 	for _, d := range dl.Delegates {
 		out.Delegates = append(out.Delegates, wire.Delegate{
@@ -230,10 +224,7 @@ func (s *Server) patchMe(r *http.Request, c store.Caller, k store.Keyed) (status
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	ttl, err := durationOf(req.TTL)
-	if err != nil {
-		return 0, nil, err
-	}
+	ttl := durationMS(req.TTLMS)
 	got, err := s.store.Set(r.Context(), k, c, store.Change{
 		Where: whereOf(req.Where), TTL: ttl,
 		Fields: store.Fields{Name: req.Name, Description: req.Description, Paths: req.Paths},

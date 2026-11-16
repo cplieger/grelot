@@ -14,6 +14,7 @@ import (
 	"github.com/cplieger/grelot/internal/hook"
 	"github.com/cplieger/grelot/internal/proctree"
 	"github.com/cplieger/grelot/internal/provider"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 const verbHook = "hook"
@@ -251,10 +252,10 @@ func (h *hookCall) startRequest(ctx context.Context, role *provider.SessionStart
 	header := http.Header{}
 	w := h.machineAndEnvironment(ctx)
 	if w.Environment != "" {
-		header.Set(client.HeaderEnvironment, w.Environment)
+		header.Set(wire.HeaderEnvironment, w.Environment)
 	}
 	if w.Machine != "" {
-		header.Set(client.HeaderMachine, w.Machine)
+		header.Set(wire.HeaderMachine, w.Machine)
 	}
 	return q, header
 }
@@ -273,12 +274,12 @@ func (h *hookCall) takesOver(role *provider.SessionStartRole) bool {
 	return role.TakeOverEveryStart || slices.Contains(s.TakeOver, source)
 }
 
-func (h *hookCall) startText(role *provider.SessionStartRole, me *client.Me, status string) string {
-	if me.State != client.StateLive && h.oneShot() {
+func (h *hookCall) startText(role *provider.SessionStartRole, me *wire.Me, status string) string {
+	if me.State != wire.StateLive && h.oneShot() {
 		return ""
 	}
 	switch me.State {
-	case client.StateLive, client.StateDormant:
+	case wire.StateLive, wire.StateDormant:
 		return h.identityStart(role, me, status)
 	}
 	text := lineUnregistered + "\n"
@@ -291,13 +292,13 @@ func (h *hookCall) startText(role *provider.SessionStartRole, me *client.Me, sta
 // identityStart is the card, the status line and the manual, or, when that
 // is over the host's context limit, the most of it that fits with a line
 // naming what was left out; the leanest form is printed whatever its size.
-func (h *hookCall) identityStart(role *provider.SessionStartRole, me *client.Me, status string) string {
+func (h *hookCall) identityStart(role *provider.SessionStartRole, me *wire.Me, status string) string {
 	var b strings.Builder
 	writeCard(&b, me.Identity)
 	card := b.String()
 	line := h.statusLine(status) + "\n"
 	join := func(card, tail string) string {
-		if me.State == client.StateDormant {
+		if me.State == wire.StateDormant {
 			return line + card + tail
 		}
 		return card + line + tail
@@ -336,7 +337,7 @@ func (h *hookCall) childStart(ctx context.Context, c hook.Class, subagent bool, 
 	if err != nil {
 		return failLine(err, budget)
 	}
-	if me.State != client.StateLive || me.Identity == nil || !strings.Contains(me.Identity.Name, "/") {
+	if me.State != wire.StateLive || me.Identity == nil || !strings.Contains(me.Identity.Name, "/") {
 		return ""
 	}
 	name := safe(me.Identity.Name)
@@ -355,7 +356,7 @@ func (h *hookCall) forkLine(c hook.Class) string {
 }
 
 // hookMe sends GET /v1/me within the role's budget.
-func hookMe(ctx context.Context, api *client.API, budget time.Duration, q url.Values, header http.Header) (*client.Me, client.Response, error) {
+func hookMe(ctx context.Context, api *client.API, budget time.Duration, q url.Values, header http.Header) (*wire.Me, client.Response, error) {
 	if budget == 0 {
 		budget = provider.DefaultBudget
 	}

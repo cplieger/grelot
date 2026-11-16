@@ -49,6 +49,9 @@ func (b *syncBuffer) String() string {
 	return b.buf.String()
 }
 
+// testCursorKey is the cursor key of every server a test builds.
+var testCursorKey = bytes.Repeat([]byte{7}, 32)
+
 var listeningAddr = regexp.MustCompile(`"msg":"listening","addr":"([^"]+)","ops_addr":"([^"]+)"`)
 
 // testConfig is a config over files of the test's own, its accounts file
@@ -170,7 +173,9 @@ func TestProbeHealth(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = st.Close() })
-		srv := server.New(&server.Options{Store: st, Logger: slog.New(slog.DiscardHandler), Config: *testConfig(t), Auth: authtest.New(t, nil)})
+		srv := server.New(&server.Options{
+			Store: st, Logger: slog.New(slog.DiscardHandler), Config: *testConfig(t), Auth: authtest.New(t, nil), CursorKey: testCursorKey,
+		})
 		ts := httptest.NewServer(srv.OpsHandler())
 		t.Cleanup(ts.Close)
 		var stderr bytes.Buffer
@@ -245,7 +250,7 @@ func (brokenListener) Accept() (net.Conn, error) { return nil, errAcceptBroken }
 // error is the one returned.
 func TestRunListeners_anOperationsServeFailureStopsTheAPI(t *testing.T) {
 	t.Parallel()
-	st, srv, err := build(testConfig(t), nil, authtest.New(t, nil), slog.New(slog.DiscardHandler), obs.New())
+	st, srv, err := build(testConfig(t), nil, testCursorKey, authtest.New(t, nil), slog.New(slog.DiscardHandler), obs.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +326,7 @@ func TestRunListeners_anAPIServeFailureStopsHostPush(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cfg.ProvidersDir, "testhost.yaml"), []byte(door), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	st, srv, err := build(cfg, nil, authtest.New(t, nil), slog.New(slog.DiscardHandler), obs.New())
+	st, srv, err := build(cfg, nil, testCursorKey, authtest.New(t, nil), slog.New(slog.DiscardHandler), obs.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -345,7 +350,7 @@ func TestRunListeners_anAPIServeFailureStopsHostPush(t *testing.T) {
 	where := `"where":{"machine":"dmi:` + strings.Repeat("1", 32) + `","environment":"` + strings.Repeat("a", 32) + `","checkouts":[]}`
 	for _, name := range []string{"reader", "writer"} {
 		register := `{"name":"` + name + `","paths":["/workspace/` + name + `"],"description":"testing push","host":"host-a/app",` +
-			`"os":"linux","arch":"amd64","ttl":"1h",` + where + `}`
+			`"os":"linux","arch":"amd64","ttl_ms":3600000,` + where + `}`
 		if status, code := call(t, addr, http.MethodPost, "/v1/register", "kiro-cli:session-"+name, `"register-key-`+name+`"`, register); status != http.StatusCreated {
 			t.Fatalf("register %s: %d %s", name, status, code)
 		}
@@ -586,7 +591,7 @@ func TestServe_aStopAnswersAnOpenWaitAndDrains(t *testing.T) {
 	opsAddr.Store(&addrs.ops)
 	const session = "test:session-a"
 	register := `{"name":"reader","paths":["/workspace/grelot"],"description":"reading","host":"host-a/app",` +
-		`"os":"linux","arch":"amd64","ttl":"1h","where":{"machine":"dmi:` + strings.Repeat("1", 32) +
+		`"os":"linux","arch":"amd64","ttl_ms":3600000,"where":{"machine":"dmi:` + strings.Repeat("1", 32) +
 		`","environment":"` + strings.Repeat("a", 32) + `","checkouts":[]}}`
 	if status, code := call(t, addrs.api, http.MethodPost, "/v1/register", session, `"register-key-0001"`, register); status != http.StatusCreated {
 		t.Fatalf("register: %d %s", status, code)
@@ -600,7 +605,7 @@ func TestServe_aStopAnswersAnOpenWaitAndDrains(t *testing.T) {
 	waited := make(chan answer, 1)
 	ctx := t.Context()
 	go func() {
-		status, code, err := callErr(ctx, addrs.api, http.MethodPost, "/v1/events/wait", session, "", `{"wait":"55s"}`)
+		status, code, err := callErr(ctx, addrs.api, http.MethodPost, "/v1/events/wait", session, "", `{"wait_ms":55000}`)
 		waited <- answer{err: err, code: code, status: status}
 	}()
 	time.Sleep(200 * time.Millisecond)
@@ -657,7 +662,7 @@ func TestServe_postsLiveTheRetentionTheAccountsFileHolds(t *testing.T) {
 	addr := addrs.api
 	const session = "test:session-a"
 	register := `{"name":"poster","paths":["/workspace/grelot"],"description":"posting","host":"host-a/app",` +
-		`"os":"linux","arch":"amd64","ttl":"1h","where":{"machine":"dmi:` + strings.Repeat("1", 32) +
+		`"os":"linux","arch":"amd64","ttl_ms":3600000,"where":{"machine":"dmi:` + strings.Repeat("1", 32) +
 		`","environment":"` + strings.Repeat("a", 32) + `","checkouts":[]}}`
 	if status, code := call(t, addr, http.MethodPost, "/v1/register", session, `"register-key-0001"`, register); status != http.StatusCreated {
 		t.Fatalf("register: %d %s", status, code)
@@ -684,7 +689,7 @@ func TestServe_postsLiveTheRetentionTheAccountsFileHolds(t *testing.T) {
 	var got struct {
 		Threads []struct {
 			Expires time.Time `json:"expires_at"`
-		}
+		} `json:"items"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
@@ -743,7 +748,7 @@ func TestRun_serveRefusesAMissingPublicURL(t *testing.T) {
 // authenticates, so a machine whose key was replaced keeps its sessions.
 func TestBuild_aSessionKeepsItsIdentityUnderItsMachinesNewKey(t *testing.T) {
 	au := authtest.New(t, nil)
-	st, srv, err := build(testConfig(t), nil, au, slog.New(slog.DiscardHandler), obs.New())
+	st, srv, err := build(testConfig(t), nil, testCursorKey, au, slog.New(slog.DiscardHandler), obs.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -752,7 +757,7 @@ func TestBuild_aSessionKeepsItsIdentityUnderItsMachinesNewKey(t *testing.T) {
 	t.Cleanup(ts.Close)
 	register := func(key, idem string) int {
 		body := `{"name":"alpha","paths":["/workspace/grelot"],"description":"testing keys","host":"host-a/app",` +
-			`"os":"linux","arch":"amd64","ttl":"1h","where":{"machine":"dmi:` + strings.Repeat("1", 32) +
+			`"os":"linux","arch":"amd64","ttl_ms":3600000,"where":{"machine":"dmi:` + strings.Repeat("1", 32) +
 			`","environment":"` + strings.Repeat("a", 32) + `","checkouts":[]}}`
 		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, ts.URL+"/v1/register", strings.NewReader(body))
 		if err != nil {

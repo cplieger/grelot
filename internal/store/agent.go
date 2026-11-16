@@ -133,7 +133,7 @@ func (wr *webReader) history(name string, before uint64, limit int) (AgentHistor
 func (wr *webReader) agent(name string) (identityRow, error) {
 	row, found, err := wr.s.lookupIdentity(wr.r, wr.s.t.byName, name)
 	if err == nil && !found {
-		err = refuse(KindNotFound, fmt.Sprintf("no agent called @%s: it never registered or has expired", name))
+		err = notFound(ReasonAgent, fmt.Sprintf("no agent called @%s: it never registered or has expired", name))
 	}
 	return row, err
 }

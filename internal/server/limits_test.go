@@ -84,7 +84,7 @@ func registerUnder(h *harness, key, name string) {
 func standingWait(h *harness, key, name string) *pending {
 	headers := withBearer(session(name), key)
 	headers[wire.HeaderSelf] = "1"
-	return h.async(http.MethodPost, "/v1/events/wait", map[string]any{"wait": "55s"}, headers)
+	return h.async(http.MethodPost, "/v1/events/wait", map[string]any{"wait_ms": durMS("55s")}, headers)
 }
 
 // heldWaits registers each of names with key and opens its standing wait,
@@ -135,7 +135,7 @@ func TestLimits_theNinthWaitOfAKeyIsRefusedUntilOneAnswers(t *testing.T) {
 		if got := h.scrape()[`grelot_requests_limited_total{limit="waits_key"}`]; got != 1 {
 			t.Errorf(`grelot_requests_limited_total{limit="waits_key"} = %v, want 1`, got)
 		}
-		in := h.request(http.MethodGet, "/v1/inbox?wait=10s", nil, withBearer(session("ninth"), key))
+		in := h.request(http.MethodGet, "/v1/inbox?wait_ms=10000", nil, withBearer(session("ninth"), key))
 		if in.status != http.StatusTooManyRequests || in.str("code") != "too_many_waits" {
 			t.Errorf("an in-turn wait past the cap: %d %s, want 429 too_many_waits", in.status, in.raw)
 		}

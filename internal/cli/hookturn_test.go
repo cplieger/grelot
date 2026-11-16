@@ -67,7 +67,7 @@ func blockReason(t *testing.T, out string) string {
 // unread its counts, signalRead whether read has reached the signal sent.
 func meServer(t *testing.T, unread string, signalRead bool) *testServer {
 	t.Helper()
-	body := fmt.Sprintf(`{"state":"live","identity":{"name":"toolbelt-dev","registered_at":"2026-11-05T09:00:00Z"},"unread":%s,"version":"v1.1.0","path_root":"/workspace","signal_read":%t}`, unread, signalRead)
+	body := fmt.Sprintf(`{"state":"live","identity":{"name":"toolbelt-dev","registered_at":"2026-11-05T09:00:00Z"},"unread":%s,"version":"v2.0.0","path_root":"/workspace","signal_read":%t}`, unread, signalRead)
 	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, body)

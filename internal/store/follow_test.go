@@ -347,7 +347,7 @@ func wantFollowsKept(t *testing.T, s *Store, ids map[string]uint64) {
 func TestThreadExpiry_keepsItsFollows(t *testing.T) {
 	s, ids := followThreadsFixture(t)
 	mustSweep(t, s)
-	if ths, err := s.Threads(t.Context(), Caller{Session: sess("alpha")}, sharedX); err != nil || len(ths) != 1 || ths[0].Path != sharedX+"/sub" {
+	if ths, err := items(s.Threads(t.Context(), Caller{Session: sess("alpha")}, ThreadQuery{Root: sharedX})); err != nil || len(ths) != 1 || ths[0].Path != sharedX+"/sub" {
 		t.Fatalf("threads under x after the sweep %+v, %v: want only the subpath's, x expired", ths, err)
 	}
 	wantFollowsKept(t, s, ids)

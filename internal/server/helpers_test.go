@@ -39,6 +39,9 @@ const (
 	repoGrelot  = "/workspace/grelot"
 )
 
+// testCursorKey is every test server's cursor key.
+var testCursorKey = bytes.Repeat([]byte{7}, 32)
+
 // testNow is the fixed instant every server test starts from.
 var testNow = time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC)
 
@@ -252,7 +255,7 @@ func buildHarness(t *testing.T, o store.Options, now func() time.Time, edits ...
 		h.push = &fakePush{states: map[uint64]pushState{}}
 		opts := &Options{
 			Store: st, Logger: logger, Now: now, Version: testVersion, Push: h.push, Hub: hub, Events: events, Metrics: m,
-			Config: Config{PathRoot: protopath.DefaultRoot}, Limits: unlimited,
+			Config: Config{PathRoot: protopath.DefaultRoot}, Limits: unlimited, CursorKey: testCursorKey,
 		}
 		for _, edit := range edits {
 			edit(opts)
@@ -595,7 +598,7 @@ func registerBody(name, ttl string, paths ...string) map[string]any {
 	return map[string]any{
 		"name": name, "paths": paths, "description": "building the HTTP API",
 		"host": "host-a/app", "os": "linux", "arch": "amd64",
-		"where": where("a"), "ttl": ttl,
+		"where": where("a"), "ttl_ms": durMS(ttl),
 	}
 }
 
@@ -618,4 +621,17 @@ func (h *harness) directPost(session, to string) {
 	}); err != nil {
 		h.t.Fatalf("Post to %s: %v", to, err)
 	}
+}
+
+// durMS is the milliseconds of the duration d, such as "2h", which a test
+// writes as a literal; "" is 0.
+func durMS(d string) int64 {
+	if d == "" {
+		return 0
+	}
+	v, err := time.ParseDuration(d)
+	if err != nil {
+		panic(err)
+	}
+	return v.Milliseconds()
 }

@@ -15,21 +15,7 @@ import (
 	"github.com/cplieger/go/httpclient"
 	"github.com/cplieger/go/textsafe"
 	"github.com/cplieger/grelot/internal/version"
-)
-
-// The headers the API reads and writes.
-const (
-	headerVersion = "Grelot-Version"
-	headerSession = "Grelot-Session"
-	headerAs      = "Grelot-As"
-	headerSelf    = "Grelot-Self"
-	headerStatus  = "Grelot-Status"
-	headerKey     = "Idempotency-Key"
-	// HeaderEnvironment and HeaderMachine carry the caller's where values to
-	// GET /v1/me for the take-over hint; the server never reads them from a
-	// URL, which access logs keep.
-	HeaderEnvironment = "Grelot-Environment"
-	HeaderMachine     = "Grelot-Machine"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // defaultTimeout bounds a call, its retries included, when its Request sets
@@ -98,8 +84,8 @@ func newAPI(cfg *Config, clientVersion, configDir string, retry httpclient.Trans
 // it, and a hook's budget bounds the whole call.
 const retryDelay = 250 * time.Millisecond
 
-// Request is one API call. Path is the route under the server URL, such as
-// /v1/me; Header adds to the identity headers; Body, when not nil, goes out
+// Request is one API call. Path is the route under the server URL, from
+// wire.Path; Header adds to the identity headers; Body, when not nil, goes out
 // as JSON. Timeout bounds the call with its retries, defaultTimeout when
 // zero. A write other than a GET carries a new Idempotency-Key, which every
 // retry of the call re-sends, unless Once is set: the route takes no key
@@ -124,16 +110,21 @@ type Response struct {
 	Code    int
 }
 
-// APIError is a non-2xx answer. Msg is the server's reason, one line naming
-// the fix; Code is its error code, such as conflict or the store's why.
-// Upgrade is set when a server newer than this client refused a request it
-// may have refused for that reason: the line naming the client to install.
+// APIError is a non-2xx answer: the envelope's members, Msg its error
+// sanitized to one line. Upgrade is set when a server newer than this
+// client refused a request it may have refused for that reason: the line
+// naming the client to install.
 type APIError struct {
 	Status  string
 	Msg     string
 	Code    string
+	Reason  string
 	Upgrade string
-	HTTP    int
+	Fields  []wire.FieldError
+	// RetryAfter is how long the server asked the caller to wait, zero
+	// when no wait helps.
+	RetryAfter time.Duration
+	HTTP       int
 }
 
 func (e *APIError) Error() string { return "grelot: " + e.Msg }
@@ -187,11 +178,11 @@ func (a *API) Do(ctx context.Context, r *Request, out any) (Response, error) {
 		return Response{}, &UnreachableError{Server: a.server, Timeout: callCtx.Err() != nil, Err: httpclient.LogSafeError(err)}
 	}
 	got := Response{
-		Status:  textsafe.SanitizeSingleLine(resp.Header.Get(headerStatus)),
-		Version: textsafe.SanitizeSingleLine(resp.Header.Get(headerVersion)),
+		Status:  textsafe.SanitizeSingleLine(resp.Header.Get(wire.HeaderStatus)),
+		Version: textsafe.SanitizeSingleLine(resp.Header.Get(wire.HeaderVersion)),
 		Body:    body, Code: resp.StatusCode,
 	}
-	server := a.noteVersion(resp.Header.Get(headerVersion))
+	server := a.noteVersion(resp.Header.Get(wire.HeaderVersion))
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		err := a.refusal(&got, server)
 		return got, err
@@ -228,18 +219,18 @@ func (a *API) request(ctx context.Context, r *Request) (*http.Request, error) {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	req.Header.Set("Authorization", "Bearer "+a.token)
-	req.Header.Set(headerVersion, a.version)
+	req.Header.Set(wire.HeaderVersion, a.version)
 	if a.Session != "" {
-		req.Header.Set(headerSession, a.Session)
+		req.Header.Set(wire.HeaderSession, a.Session)
 	}
 	if a.As != "" {
-		req.Header.Set(headerAs, a.As)
+		req.Header.Set(wire.HeaderAs, a.As)
 	}
 	if a.Self {
-		req.Header.Set(headerSelf, "1")
+		req.Header.Set(wire.HeaderSelf, "1")
 	}
 	if r.Method != http.MethodGet && !r.Once {
-		req.Header.Set(headerKey, newKey())
+		req.Header.Set(wire.HeaderIdempotencyKey, newKey())
 	}
 	return req, nil
 }
@@ -250,13 +241,6 @@ func newKey() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b) // crypto/rand.Read never returns an error.
 	return `"` + base64.RawURLEncoding.EncodeToString(b) + `"`
-}
-
-// errorBody is the server's error answer.
-type errorBody struct {
-	Error    string `json:"error"`
-	Code     string `json:"code"`
-	PathRoot string `json:"path_root"`
 }
 
 // noteVersion caches the server version an answer names and answers it,
@@ -279,22 +263,18 @@ var skewStatus = map[int]bool{
 	http.StatusUnsupportedMediaType: true, http.StatusUnprocessableEntity: true,
 }
 
-// refusal reads a non-2xx answer from a server of version server, caching
-// the path root it names.
+// refusal reads a non-2xx answer from a server of version server.
 func (a *API) refusal(r *Response, server string) error {
-	var eb errorBody
+	var eb wire.Error
 	if json.Unmarshal(r.Body, &eb) != nil || eb.Error == "" {
-		eb = errorBody{Error: fmt.Sprintf("the server answered %d %s", r.Code, http.StatusText(r.Code))}
-	}
-	if eb.PathRoot != "" {
-		f := LoadFacts(a.configDir)
-		f.PathRoot = eb.PathRoot
-		SaveFacts(a.configDir, f)
+		eb = wire.Error{Error: fmt.Sprintf("the server answered %d %s", r.Code, http.StatusText(r.Code))}
 	}
 	ae := &APIError{
 		Status: r.Status, HTTP: r.Code,
-		Msg:  textsafe.SanitizeSingleLine(eb.Error),
-		Code: textsafe.SanitizeSingleLine(eb.Code),
+		Msg:    textsafe.SanitizeSingleLine(eb.Error),
+		Code:   textsafe.SanitizeSingleLine(eb.Code),
+		Reason: textsafe.SanitizeSingleLine(eb.Reason),
+		Fields: eb.Fields, RetryAfter: time.Duration(eb.RetryAfterMS) * time.Millisecond,
 	}
 	if skewStatus[r.Code] && older(a.version, server) {
 		ae.Upgrade = upgradeLine(a.version, server)
@@ -304,14 +284,31 @@ func (a *API) refusal(r *Response, server string) error {
 
 // Me sends GET /v1/me with q and header and caches the path root and
 // server version it answers.
-func (a *API) Me(ctx context.Context, q url.Values, header http.Header) (*Me, Response, error) {
-	var me Me
-	resp, err := a.Do(ctx, &Request{Method: http.MethodGet, Path: "/v1/me", Query: q, Header: header}, &me)
+func (a *API) Me(ctx context.Context, q url.Values, header http.Header) (*wire.Me, Response, error) {
+	var me wire.Me
+	resp, err := a.Do(ctx, &Request{Method: http.MethodGet, Path: wire.Path("getMe", nil), Query: q, Header: header}, &me)
 	if err != nil {
 		return nil, resp, err
 	}
-	f := LoadFacts(a.configDir)
-	f.PathRoot, f.Version = me.PathRoot, me.Version
-	SaveFacts(a.configDir, f)
+	a.noteFacts(me.PathRoot, me.Version)
 	return &me, resp, nil
+}
+
+// Version sends GET /v1/version, as r asks, and caches the path root and
+// server version it answers.
+func (a *API) Version(ctx context.Context, r *Request) (*wire.Version, Response, error) {
+	var v wire.Version
+	r.Method, r.Path = http.MethodGet, wire.Path("getVersion", nil)
+	resp, err := a.Do(ctx, r, &v)
+	if err != nil {
+		return nil, resp, err
+	}
+	a.noteFacts(v.PathRoot, v.Version)
+	return &v, resp, nil
+}
+
+func (a *API) noteFacts(pathRoot, server string) {
+	f := LoadFacts(a.configDir)
+	f.PathRoot, f.Version = pathRoot, server
+	SaveFacts(a.configDir, f)
 }

@@ -123,7 +123,7 @@ func TestThread_neverExpiresBeforeAnOlderMessage(t *testing.T) {
 
 	clk.set(testNow.Add(2 * time.Hour))
 	mustSweep(t, s)
-	if got := subjects(mustInbox(t, s, sess("bravo"), 0).Entries); len(got) != 1 || got[0] != "first" {
+	if got := subjects(mustInbox(t, s, sess("bravo"), 0).Items); len(got) != 1 || got[0] != "first" {
 		t.Errorf("inbox %q, want [first]: the second post expired, the first lives until its own expiry", got)
 	}
 	wantSubjects(t, "history --path", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: testNow, Path: shared}), "first")
@@ -168,7 +168,7 @@ func TestSweep_catchesUpAfterARestart(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
-	_, err = s.Inbox(t.Context(), Caller{Session: sess("bravo")}, 0)
+	_, err = s.Inbox(t.Context(), Caller{Session: sess("bravo")}, InboxQuery{Limit: 0})
 	wantRefusal(t, err, KindGone, "dormant", "your identity @bravo expired 22 h ago with 0 unread")
 
 	mustSweep(t, s)
@@ -179,13 +179,13 @@ func TestSweep_catchesUpAfterARestart(t *testing.T) {
 		t.Error("the direct thread outlived its post across the restart")
 	}
 	for _, name := range []string{"alpha", "bravo"} {
-		_, err := s.Inbox(t.Context(), Caller{Session: sess(name)}, 0)
+		_, err := s.Inbox(t.Context(), Caller{Session: sess(name)}, InboxQuery{Limit: 0})
 		wantRefusal(t, err, KindGone, "dormant")
 	}
 	p := mustInbox(t, s, sess("carol"), 0)
-	if len(p.Entries) != 1 || p.Entries[0].Kind != kindIdentityExpiring ||
-		p.Entries[0].Text != "your identity @carol expires in 20 min (at 2026-11-05 05:39 UTC); if you are still working on moving the run surface, run `grelot renew --ttl=24h`, otherwise do nothing" {
-		t.Errorf("carol's inbox %+v, want the one identity_expiring written by the sweep after the restart", p.Entries)
+	if len(p.Items) != 1 || p.Items[0].Kind != kindIdentityExpiring ||
+		p.Items[0].Text != "your identity @carol expires in 20 min (at 2026-11-05 05:39 UTC); if you are still working on moving the run surface, run `grelot renew --ttl=24h`, otherwise do nothing" {
+		t.Errorf("carol's inbox %+v, want the one identity_expiring written by the sweep after the restart", p.Items)
 	}
 	mustSweep(t, s)
 	if ds := allDeliveriesTo(t, s, carol.ID); len(ds) != 1 {

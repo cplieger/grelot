@@ -253,7 +253,7 @@ func TestKeyedWrites_reSendAnswersTheFirstResultWhereARunWouldRefuse(t *testing.
 		if err != nil || !replayed || !reflect.DeepEqual(again, first) {
 			t.Errorf("re-sent Reserve = %+v, replayed %v, %v; want the first %+v", again, replayed, err, first)
 		}
-		got, err := s.Reservations(t.Context(), plain("holder"), ReservationQuery{Mine: true})
+		got, err := items(s.Reservations(t.Context(), plain("holder"), ReservationQuery{Mine: true}))
 		if err != nil || len(got) != 1 {
 			t.Errorf("Reservations = %d rows, %v; want 1", len(got), err)
 		}

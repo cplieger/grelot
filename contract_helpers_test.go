@@ -58,7 +58,9 @@ type contractOptions struct {
 // contract is one grelot server composed as serve composes it, over files
 // of the test's own, served over HTTP, with its first account set up.
 type contract struct {
-	t      *testing.T
+	t *testing.T
+	// hits, when set, records each row an agent of this contract calls.
+	hits   map[string]bool
 	doc    *wiretest.Doc
 	au     *auth.Auth
 	clk    *contractClock
@@ -143,7 +145,7 @@ func newContractWith(t *testing.T, o contractOptions) *contract {
 	t.Cleanup(func() { _ = st.Close() })
 	srv := server.New(&server.Options{
 		Store: st, Logger: logger, Now: clk.now, Hub: hub, Events: events, Metrics: metrics, Auth: au,
-		Version: contractVersion, Config: *cfg, Limits: limits,
+		Version: contractVersion, Config: *cfg, Limits: limits, CursorKey: acc.Secrets().CursorKey,
 	})
 	t.Cleanup(func() { srv.Release(context.WithoutCancel(t.Context())) })
 	hs := httptest.NewServer(srv.Handler())
@@ -244,7 +246,7 @@ type agent struct {
 
 // agent is a v2 client of key acting as session, in environment env.
 func (c *contract) agent(key, session, env string) *agent {
-	return &agent{c: c, key: key, session: session, version: contractVersion, env: env}
+	return &agent{c: c, key: key, session: session, version: contractVersion, env: env, hits: c.hits}
 }
 
 // where is a's where report: one machine, its environment, no checkout.

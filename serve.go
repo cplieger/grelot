@@ -76,9 +76,9 @@ func probeHealth(stderr io.Writer, addr string, timeout time.Duration) int {
 // build opens the store and builds the server on it with sign-in au, both
 // recording into metrics, which gains grelot_build_info. Each store write
 // reads its history retention from retention, nil being
-// store.DefaultRetention. The caller closes the store and releases the
-// server.
-func build(cfg *server.Config, retention func() time.Duration, au *auth.Auth, logger *slog.Logger, metrics *obs.Metrics) (*store.Store, *server.Server, error) {
+// store.DefaultRetention, and the server seals its list cursors with
+// cursorKey. The caller closes the store and releases the server.
+func build(cfg *server.Config, retention func() time.Duration, cursorKey []byte, au *auth.Auth, logger *slog.Logger, metrics *obs.Metrics) (*store.Store, *server.Server, error) {
 	metrics.ServeBuildInfo(buildVersion())
 	hub, events := server.NewHub(), server.NewEvents(logger)
 	st, err := store.Open(cfg.StorePath, &store.Options{
@@ -91,7 +91,7 @@ func build(cfg *server.Config, retention func() time.Duration, au *auth.Auth, lo
 	}
 	return st, server.New(&server.Options{
 		Store: st, Logger: logger, Hub: hub, Events: events, Metrics: metrics, Auth: au,
-		Version: buildver.Wire(buildVersion()), Config: *cfg,
+		Version: buildver.Wire(buildVersion()), Config: *cfg, CursorKey: cursorKey,
 	}), nil
 }
 
@@ -122,7 +122,7 @@ func serve(ctx context.Context, cfg *server.Config, addrs listeners, logger *slo
 		return err
 	}
 	defer stopAdmin()
-	st, srv, err := build(cfg, acc.Retention, au, logger, metrics)
+	st, srv, err := build(cfg, acc.Retention, acc.Secrets().CursorKey, au, logger, metrics)
 	if err != nil {
 		return err
 	}

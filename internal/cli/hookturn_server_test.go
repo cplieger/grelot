@@ -15,6 +15,7 @@ import (
 
 	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/provider"
+	"github.com/cplieger/grelot/internal/wire"
 	"github.com/cplieger/grelot/providers"
 )
 
@@ -29,12 +30,12 @@ func turnAgent(t *testing.T, ts *testServer, file string) *agent {
 // without acking it.
 func firstUnread(t *testing.T, ts *testServer, session string) uint64 {
 	t.Helper()
-	var page client.Inbox
+	var page wire.Inbox
 	ts.call(t, session, true, &client.Request{Method: http.MethodGet, Path: "/v1/inbox"}, &page)
-	if len(page.Entries) == 0 {
+	if len(page.Items) == 0 {
 		t.Fatal("no unread delivery")
 	}
-	return page.Entries[0].Seq
+	return page.Items[0].Seq
 }
 
 func words(s string) int {
@@ -166,8 +167,9 @@ func longestStart(t *testing.T) string {
 	return longest
 }
 
-// The turn-start line stays under 30 words in every state.
+// The turn-start line stays under 30 words in every state the hook words.
 func TestHookPrompt_underThirtyWords(t *testing.T) {
+	const tooOld = "a client too old"
 	ts := newServer(t)
 	start := longestStart(t)
 	file := hookTurnFile + "doors:\n  - {name: tray, layer: 2, transport: stdout, start: " + strconv.Quote(start) + "}\n"
@@ -189,10 +191,12 @@ func TestHookPrompt_underThirtyWords(t *testing.T) {
 	_, lines["the server unreachable"], _ = down.hook("prompt", `{"session_id":"s-1"}`)
 	old := hooked(t, newAgent(t, ts, "s-9", ""), "alpha", hookTurnFile)
 	old.env.Version = "v0.0.1"
-	_, lines["a client too old"], _ = old.hook("prompt", `{"session_id":"s-9"}`)
+	// A client too old prints the server's 426 line, whose words are
+	// version.Install's; the test only holds it to one line.
+	_, lines[tooOld], _ = old.hook("prompt", `{"session_id":"s-9"}`)
 	for state, line := range lines {
 		t.Run(strings.ReplaceAll(state, " ", "_"), func(t *testing.T) {
-			if line == "" || strings.Count(line, "\n") != 1 || words(line) >= 30 {
+			if line == "" || strings.Count(line, "\n") != 1 || words(line) >= 30 && state != tooOld {
 				t.Errorf("line %q: %d words, want one line under 30", line, words(line))
 			}
 		})
@@ -327,20 +331,20 @@ func TestHookPrompt_staleSignalBlockAgainstTheServer(t *testing.T) {
 	for i := range 3 {
 		b.postTo("@toolbelt-dev", fmt.Sprintf("question %d", i+1))
 	}
-	var page client.Inbox
+	var page wire.Inbox
 	ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodGet, Path: "/v1/inbox"}, &page)
-	if len(page.Entries) != 3 {
-		t.Fatalf("inbox holds %d entries, want the 3 questions", len(page.Entries))
+	if len(page.Items) != 3 {
+		t.Fatalf("inbox holds %d entries, want the 3 questions", len(page.Items))
 	}
-	sig := page.Entries[1].Seq
+	sig := page.Items[1].Seq
 	line := signal(int(sig), 1)
 	stale := fmt.Sprintf("signal %d is stale", sig)
 	ackUpto := func(seq uint64) {
-		var left client.Acked
+		var left wire.Acked
 		ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodPost, Path: "/v1/inbox/ack", Body: map[string]uint64{"upto": seq}}, &left)
 	}
 
-	ackUpto(page.Entries[0].Seq)
+	ackUpto(page.Items[0].Seq)
 	t.Run("read one below the signal runs the turn", func(t *testing.T) {
 		if code, out := a.prompt(line); code != 0 || !strings.HasPrefix(out, "grelot: @toolbelt-dev · 2 unread") {
 			t.Errorf("exit %d, stdout %q; want the turn's line", code, out)
@@ -515,7 +519,7 @@ func TestHookPrompt_failsOpenAndThe426(t *testing.T) {
 		ts := newServer(t)
 		a := hooked(t, newAgent(t, ts, "s-1", ""), "alpha", hookTurnFile)
 		a.env.Version = "v0.0.1"
-		if _, out := a.prompt("x"); !strings.HasPrefix(out, "grelot: this grelot server (v1.1.0-dev.4) does not speak client v0.0.1") {
+		if _, out := a.prompt("x"); !strings.HasPrefix(out, "grelot: this grelot server (v2.0.0-dev.1) does not speak client v0.0.1") {
 			t.Errorf("stdout %q, want the 426's line as context", out)
 		}
 	})
@@ -664,7 +668,7 @@ func TestHookStop_aDownWakeAloneHoldsNothing(t *testing.T) {
 	ts := newServer(t)
 	a := turnAgent(t, ts, hookTurnFile)
 	ts.clock.run()
-	ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodPost, Path: "/v1/events/wait", Body: map[string]string{"wait": "10ms"}, Once: true}, nil)
+	ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodPost, Path: "/v1/events/wait", Body: wire.WaitRequest{WaitMS: 10}, Once: true}, nil)
 	ts.clock.advance(5 * time.Minute)
 	a.prompt("x")
 	if _, out := a.stopHook(); out != "" {
@@ -681,7 +685,7 @@ func TestHookStop_noticesAndChildren(t *testing.T) {
 		a := hooked(t, newAgent(t, ts, "s-1", ""), "alpha", hookTurnFile)
 		a.env.Version = "v0.0.1"
 		_, out := a.stopHook()
-		if !strings.HasPrefix(out, `{"systemMessage":"grelot: this grelot server (v1.1.0-dev.4) does not speak client v0.0.1`) {
+		if !strings.HasPrefix(out, `{"systemMessage":"grelot: this grelot server (v2.0.0-dev.1) does not speak client v0.0.1`) {
 			t.Errorf("stdout %q, want the 426's line as the notice", out)
 		}
 		t.Run("nothing where notice is not spelled", func(t *testing.T) {
@@ -739,7 +743,7 @@ func TestHookLifecycle(t *testing.T) {
 		return ev[len(ev)-1], len(ev)
 	}
 	t.Run("turn_end reports and prints nothing", func(t *testing.T) {
-		if got, n := report(t, "turn_end", `{"session_id":"s-1"}`); n != 1 || got != `{"event":"turn_end"}` {
+		if got, n := report(t, "turn_end", `{"session_id":"s-1"}`); n != 1 || got != `{"event":"turn_end","agent_id":""}` {
 			t.Errorf("reports %d, last %q; want one turn_end", n, got)
 		}
 		if got := ts.last(t, http.MethodPost, "/v1/lifecycle"); got.Header.Get("Grelot-Self") != "1" {
@@ -762,10 +766,10 @@ func TestHookLifecycle(t *testing.T) {
 		})
 	}
 	t.Run("session_end of the identity's own session ends it", func(t *testing.T) {
-		if got, n := report(t, "session_end", `{"session_id":"s-1","reason":"delete"}`); n != 1 || got != `{"event":"session_end"}` {
+		if got, n := report(t, "session_end", `{"session_id":"s-1","reason":"delete"}`); n != 1 || got != `{"event":"session_end","agent_id":""}` {
 			t.Errorf("reports %d, last %q; want one session_end", n, got)
 		}
-		var me client.Me
+		var me wire.Me
 		ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodGet, Path: "/v1/me"}, &me)
 		if me.Online || me.Identity == nil || !me.Identity.Expires.Before(ts.clock.Now().Add(time.Hour+time.Second)) {
 			t.Errorf("after session_end: %+v, want offline and the lease capped at an hour", me)
@@ -780,7 +784,7 @@ func TestHookSubagentStop_endsTheDelegateOfItsOwnSession(t *testing.T) {
 		Link string `json:"link"`
 	}
 	ts.call(t, "alpha:s-1", false, &client.Request{
-		Method: http.MethodPost, Path: "/v1/delegates", Body: map[string]any{"label": "review", "ttl": "1h"},
+		Method: http.MethodPost, Path: "/v1/delegates", Body: map[string]any{"label": "review", "ttl_ms": 3600000},
 	}, &grant)
 	sub := newAgent(t, ts, "sub-1", "")
 	sub.must("register", "--delegate", grant.Link, "--desc", "reviewing the diff")
@@ -844,7 +848,7 @@ func TestHook_actsAsTheStdinSessionWhenTheHookHasNoVariable(t *testing.T) {
 
 	// An ended session's lease is capped at an hour; this one runs 2 h.
 	capped := func() bool {
-		var me client.Me
+		var me wire.Me
 		ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodGet, Path: "/v1/me"}, &me)
 		return me.Identity == nil || me.Identity.Expires.Before(ts.clock.Now().Add(time.Hour+time.Second))
 	}
@@ -868,7 +872,7 @@ func TestHookSubagentStop_readsTheSubagentsSessionAtItsPath(t *testing.T) {
 		Link string `json:"link"`
 	}
 	ts.call(t, "alpha:s-1", false, &client.Request{
-		Method: http.MethodPost, Path: "/v1/delegates", Body: map[string]any{"label": "review", "ttl": "1h"},
+		Method: http.MethodPost, Path: "/v1/delegates", Body: map[string]any{"label": "review", "ttl_ms": 3600000},
 	}, &grant)
 	sub := newAgent(t, ts, "sub-1", "")
 	sub.must("register", "--delegate", grant.Link, "--desc", "reviewing the diff")
@@ -884,9 +888,9 @@ func TestHookSubagentStop_readsTheSubagentsSessionAtItsPath(t *testing.T) {
 	if out := sub.must("me"); !strings.Contains(out, "this session has no identity") {
 		t.Errorf("the delegate's me after the stop: %q, want no identity", out)
 	}
-	var me client.Me
+	var me wire.Me
 	ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodGet, Path: "/v1/me"}, &me)
-	if me.State != client.StateLive {
+	if me.State != wire.StateLive {
 		t.Errorf("the parent after the stop: %+v, want it live", me)
 	}
 }

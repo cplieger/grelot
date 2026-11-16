@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -301,7 +302,7 @@ func TestWait_printsTheFirstMailAndReadsIt(t *testing.T) {
 		defer close(done)
 		code, out, _ = reader.run("wait", "--timeout", "10s")
 	}()
-	awaitRequest(t, ts, "/v1/inbox?wait=")
+	awaitRequest(t, ts, "/v1/inbox?limit=20&wait_ms=")
 	writer.postTo("@reader-dev", "the answer")
 	<-done
 	if code != 0 {
@@ -330,13 +331,13 @@ func TestWait_timeoutPrintsOnlyTheStatusLine(t *testing.T) {
 	holds := 0
 	for _, req := range ts.requests() {
 		path, query, _ := strings.Cut(req.URL, "?")
-		if path != "/v1/inbox" || !strings.Contains(query, "wait=") {
+		q, _ := url.ParseQuery(query)
+		if path != "/v1/inbox" || !q.Has("wait_ms") {
 			continue
 		}
 		holds++
-		d, err := time.ParseDuration(strings.TrimPrefix(query, "wait="))
-		if err != nil || d > 100*time.Millisecond {
-			t.Errorf("a hold asked wait=%s, want at most the 100ms ceiling", strings.TrimPrefix(query, "wait="))
+		if ms, err := strconv.ParseInt(q.Get("wait_ms"), 10, 64); err != nil || ms > 100 {
+			t.Errorf("a hold asked wait_ms=%s, want at most the 100ms ceiling", q.Get("wait_ms"))
 		}
 	}
 	if holds < 3 {
@@ -359,7 +360,7 @@ func refusingWaits(t *testing.T, ts *testServer, fails int32, body string) (fron
 	waits = &atomic.Int32{}
 	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// A hold of 0 is a plain read, which no cap refuses.
-		hold, _ := time.ParseDuration(r.URL.Query().Get("wait"))
+		hold, _ := strconv.ParseInt(r.URL.Query().Get("wait_ms"), 10, 64)
 		if r.URL.Path != "/v1/inbox" || hold <= 0 || waits.Add(1) > fails {
 			proxy.ServeHTTP(w, r)
 			return

@@ -311,7 +311,7 @@ func TestMetrics_noLabelValueNamesAnAgentPathSubjectOrSession(t *testing.T) {
 	h.mustPost(sessQ, map[string]any{"agent": "marrowbone"}, subject)
 	h.mustPost(sessQ, map[string]any{"path": repo}, subject)
 	h.mustPost(sessQ, announce, subject)
-	if r := h.as(sessQ, http.MethodPost, "/v1/reservations", map[string]any{"path": repo + "/internal", "reason": "editing", "ttl": "1h"}); r.status != http.StatusCreated {
+	if r := h.as(sessQ, http.MethodPost, "/v1/reservations", map[string]any{"path": repo + "/internal", "reason": "editing", "ttl_ms": durMS("1h")}); r.status != http.StatusCreated {
 		t.Fatalf("reserve: %d %s", r.status, r.raw)
 	}
 	handle := h.grantDelegate(sessQ, "tanglewood")

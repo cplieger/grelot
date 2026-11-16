@@ -23,11 +23,15 @@ import (
 // those that share the caller's environment.
 type WhoQuery struct {
 	Online func(*Identity) bool
+	// After and Limit page the list: the names past After, at most Limit
+	// (every one at 0).
+	After  string
 	Path   string
 	Repo   string
 	Holds  string
 	Queued string
 	Text   string
+	Limit  int
 	All    bool
 	Here   bool
 }
@@ -64,13 +68,13 @@ type PeerQueued struct {
 // parents. A session with no live identity sees every relation as unknown.
 // Refusals: KindInvalid for a filter path that is not canonical or a repo
 // that is not one path segment.
-func (s *Store) Who(ctx context.Context, c Caller, query *WhoQuery) ([]Peer, error) {
+func (s *Store) Who(ctx context.Context, c Caller, query *WhoQuery) (Listing[Peer], error) {
 	q := *query
 	if err := s.checkWho(&q); err != nil {
-		return nil, err
+		return Listing[Peer]{}, err
 	}
 	if _, err := s.Seen(ctx, c); err != nil && !isKind(err, KindGone) {
-		return nil, err
+		return Listing[Peer]{}, err
 	}
 	var out []Peer
 	err := s.read(ctx, func(r *bolttable.ReadTx) error {
@@ -101,7 +105,7 @@ func (s *Store) Who(ctx context.Context, c Caller, query *WhoQuery) ([]Peer, err
 		return err
 	})
 	slices.SortFunc(out, func(a, b Peer) int { return strings.Compare(a.Name, b.Name) })
-	return out, err
+	return listing(out, pastKey(q.After, func(p *Peer) string { return p.Name }), q.Limit), err
 }
 
 // whoPeers is each of shown that text matches as caller sees it, with
@@ -126,7 +130,7 @@ func (s *Store) whoPeers(
 // checkWho validates q's paths and repo, and lowercases its text.
 func (s *Store) checkWho(q *WhoQuery) error {
 	for _, f := range []struct{ name, v string }{{"path", q.Path}, {"holds", q.Holds}, {"queued", q.Queued}} {
-		if f.v != "" && (!isCanonicalPath(f.v) || len(f.v) > maxPathBytes) {
+		if f.v != "" && (!isCanonicalPath(f.v) || len(f.v) > MaxPathBytes) {
 			return refuse(KindInvalid, fmt.Sprintf(
 				"%s %q is not a canonical path: send it as %s/<repo>/<file>, which grelot path prints", f.name, f.v, s.pathRoot,
 			))

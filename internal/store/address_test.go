@@ -95,11 +95,11 @@ func TestPost_anAddressedPathPostWakesOnlyItsNames(t *testing.T) {
 	})
 	t.Run("a quiet recipient reads it in its inbox, counted apart and not waking", func(t *testing.T) {
 		p := mustInbox(t, s, sess("charlie"), 0)
-		i := slices.IndexFunc(p.Entries, func(e Entry) bool { return e.Message == got.Message })
+		i := slices.IndexFunc(p.Items, func(e Entry) bool { return e.Message == got.Message })
 		if i < 0 {
-			t.Fatalf("charlie's inbox %+v has no message %d", p.Entries, got.Message)
+			t.Fatalf("charlie's inbox %+v has no message %d", p.Items, got.Message)
 		}
-		if e := p.Entries[i]; e.Wake || e.Kind != kindPath || e.Body != "@bravo: the fix is on dev" {
+		if e := p.Items[i]; e.Wake || e.Kind != kindPath || e.Body != "@bravo: the fix is on dev" {
 			t.Errorf("entry %+v, want the quiet path post", e)
 		}
 		if p.Unread.QuietPath != 1 || p.Unread.Path != 0 || p.Unread.Wake() != 0 || p.Unread.Total() != total(p.Unread) {

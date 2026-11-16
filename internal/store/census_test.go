@@ -98,7 +98,7 @@ func TestCensus_onlineCountsLiveIdentitiesOnly(t *testing.T) {
 // seqOf is the seq of session's unread delivery of kind.
 func seqOf(t *testing.T, s *Store, session, kind string) uint64 {
 	t.Helper()
-	for _, e := range mustInbox(t, s, session, 0).Entries {
+	for _, e := range mustInbox(t, s, session, 0).Items {
 		if e.Kind == kind {
 			return e.Seq
 		}

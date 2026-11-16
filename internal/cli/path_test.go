@@ -114,7 +114,7 @@ func TestMe_correctsACachedRoot(t *testing.T) {
 	ts := newServer(t)
 	a, clone := registerAgent(t, ts, "s-1")
 	if err := os.WriteFile(filepath.Join(a.env.ConfigDir, "grelot", "state", "server.json"),
-		[]byte(`{"path_root":"/home/u/src","version":"v1.1.0-dev.4"}`), 0o600); err != nil {
+		[]byte(`{"path_root":"/home/u/src","version":"v2.0.0-dev.1"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if out := a.must("path", clone); out != "/home/u/src/toolbelt\n" {

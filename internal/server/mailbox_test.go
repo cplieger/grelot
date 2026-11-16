@@ -17,7 +17,7 @@ func entriesOf(t *testing.T, r *response) []map[string]any {
 	if r.status != http.StatusOK {
 		t.Fatalf("%d %s", r.status, r.raw)
 	}
-	raw, _ := r.body["entries"].([]any)
+	raw, _ := r.body["items"].([]any)
 	out := make([]map[string]any, 0, len(raw))
 	for _, e := range raw {
 		out = append(out, e.(map[string]any))
@@ -106,6 +106,7 @@ func TestHistory_routeMapsEveryFilterAndMovesNothing(t *testing.T) {
 		}
 		return out
 	}
+	since := "since=" + h.clk.now().Add(-30*time.Minute).Format(time.RFC3339)
 	for _, tc := range []struct {
 		query string
 		want  []string
@@ -116,10 +117,10 @@ func TestHistory_routeMapsEveryFilterAndMovesNothing(t *testing.T) {
 		{"?from=@peer", []string{"answer"}},
 		{"?announce=1", []string{"notice"}},
 		{"?grep=ANSW", []string{"answer"}},
-		{"?since=30m", []string{"answer", "notice"}},
+		{"?" + since, []string{"answer", "notice"}},
 		{"?until=" + testNow.Add(time.Minute).Format(time.RFC3339), []string{"question"}},
 		{"?limit=1", []string{"notice"}},
-		{"?with=peer&since=30m", []string{"answer"}},
+		{"?with=peer&" + since, []string{"answer"}},
 	} {
 		t.Run(tc.query, func(t *testing.T) {
 			if got := subjects(tc.query); fmt.Sprint(got) != fmt.Sprint(tc.want) {
@@ -130,7 +131,7 @@ func TestHistory_routeMapsEveryFilterAndMovesNothing(t *testing.T) {
 	if unread := entriesOf(t, h.as(sessA, http.MethodGet, "/v1/inbox", nil)); len(unread) != 2 {
 		t.Errorf("inbox after history = %d entries, want both still unread", len(unread))
 	}
-	for _, q := range []string{"?since=soon", "?thread=x", "?limit=-1", "?full=yes", "?from=@me&with=nobody"} {
+	for _, q := range []string{"?since=soon", "?since=30m", "?thread=x", "?limit=-1", "?full=yes", "?from=@me&with=nobody"} {
 		if r := h.as(sessA, http.MethodGet, "/v1/history"+q, nil); r.status/100 != 4 {
 			t.Errorf("history%s: %d, want a refusal", q, r.status)
 		}
@@ -162,7 +163,7 @@ func TestThreads_listsLivePathThreadsUnderAPath(t *testing.T) {
 			t.Fatalf("threads%s: %d %s", query, r.status, r.raw)
 		}
 		var out []string
-		for _, th := range r.body["threads"].([]any) {
+		for _, th := range r.body["items"].([]any) {
 			out = append(out, th.(map[string]any)["path"].(string))
 		}
 		return out
@@ -250,7 +251,7 @@ func TestFollows_followAndUnfollowALiveThread(t *testing.T) {
 	if got := fmt.Sprint(unfollowed.body["notices"]); got != "[]" {
 		t.Errorf("unfollow of a plain follow: notices %s, want []", got)
 	}
-	if r := h.as(sessA, http.MethodPost, "/v1/reservations", map[string]any{"path": "/workspace/other", "reason": "editing", "ttl": "1h"}); r.status != http.StatusCreated {
+	if r := h.as(sessA, http.MethodPost, "/v1/reservations", map[string]any{"path": "/workspace/other", "reason": "editing", "ttl_ms": durMS("1h")}); r.status != http.StatusCreated {
 		t.Fatalf("reserve: %d %s", r.status, r.raw)
 	}
 	if r := h.as(sessA, http.MethodDelete, "/v1/follows?path=/workspace/other", nil); r.status != http.StatusOK || !strings.Contains(fmt.Sprint(r.body["notices"]), "your reservation") {

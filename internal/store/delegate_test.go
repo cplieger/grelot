@@ -405,7 +405,7 @@ func TestDelegate_asIsAcceptedOnlyFromTheParentsSessionOrItsOwn(t *testing.T) {
 	t.Run("another session", func(t *testing.T) {
 		_, err := s.Seen(t.Context(), as(sess("stranger"), d.Name))
 		wantRefusal(t, err, KindForbidden, "", "parent's session or its own")
-		_, err = s.Inbox(t.Context(), as(sess("stranger"), d.Name), 0)
+		_, err = s.Inbox(t.Context(), as(sess("stranger"), d.Name), InboxQuery{Limit: 0})
 		wantRefusal(t, err, KindForbidden, "", "parent's session or its own")
 	})
 	t.Run("with self", func(t *testing.T) {
@@ -513,7 +513,7 @@ func TestDelegate_endsWithItsParent(t *testing.T) {
 			t.Fatal(err)
 		}
 		clk.advance(time.Minute)
-		_, err := s.Inbox(t.Context(), as(sess("parent"), d.Name), 0)
+		_, err := s.Inbox(t.Context(), as(sess("parent"), d.Name), InboxQuery{Limit: 0})
 		wantRefusal(t, err, KindGone, "delegate_ended", "")
 		_, err = s.Set(t.Context(), Keyed{}, as(sess("parent"), d.Name), Change{Fields: Fields{Description: "x"}})
 		wantRefusal(t, err, KindGone, "delegate_ended", "")
@@ -533,7 +533,7 @@ func TestDelegate_endsWithItsParent(t *testing.T) {
 			t.Fatal(err)
 		}
 		clk.advance(time.Minute)
-		_, err := s.Inbox(t.Context(), Caller{Session: own}, 0)
+		_, err := s.Inbox(t.Context(), Caller{Session: own}, InboxQuery{Limit: 0})
 		wantRefusal(t, err, KindGone, "delegate_ended", "")
 		p := posting(own, Target{Agent: "parent"})
 		p.Fields = Fields{Description: NoChange}

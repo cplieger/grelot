@@ -9,6 +9,7 @@ package accounts
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -40,18 +41,26 @@ const rowKey uint64 = 1
 const secretBytes = 32
 
 // Secrets are the keys the server generates at the first open and keeps,
-// so what they seal or sign stays valid across restarts.
+// so what they seal or sign stays valid across restarts. Each is
+// secretBytes long.
 type Secrets struct {
 	FailureKey []byte
 	DeviceKey  []byte
 	PendingKey []byte
+	// CursorKey seals the API's list cursors.
+	CursorKey []byte
 }
 
 type secretsRow struct {
 	FailureKey []byte
 	DeviceKey  []byte
 	PendingKey []byte
+	CursorKey  []byte
 }
+
+// ErrSecretsDamaged is Open's refusal of a secrets row with a key that is
+// not secretBytes long; the file is left as it was.
+var ErrSecretsDamaged = errors.New("the stored secrets are damaged")
 
 type tables struct {
 	settings *bolttable.Table[uint64, settingsRow]
@@ -83,7 +92,7 @@ func newSchema() (*bolttable.Schema, tables, *accessTables, error) {
 		return nil, t, nil, err
 	}
 	if t.secrets, err = bolttable.Define(ns, prefixSecrets, "secrets",
-		bolttable.Uint64Key{}, bolttable.JSON[secretsRow](1), silent); err != nil {
+		bolttable.Uint64Key{}, bolttable.JSON[secretsRow](2), silent); err != nil {
 		return nil, t, nil, err
 	}
 	accessNS, err := s.Namespace("access")
@@ -139,21 +148,45 @@ func (d *DB) Secrets() Secrets {
 		FailureKey: slices.Clone(d.secrets.FailureKey),
 		DeviceKey:  slices.Clone(d.secrets.DeviceKey),
 		PendingKey: slices.Clone(d.secrets.PendingKey),
+		CursorKey:  slices.Clone(d.secrets.CursorKey),
 	}
 }
 
+// ensureSecrets reads the secrets row, creating it on the first open. It
+// reads before it writes, because a bbolt update commits a new meta page
+// even when it changes nothing, and a refused file must stay as it was.
 func (d *DB) ensureSecrets(ctx context.Context) (Secrets, error) {
 	var row secretsRow
-	err := d.db.Update(ctx, func(tx *bolttable.Tx) error {
-		got, found, err := d.t.secrets.Get(tx.Read(), rowKey)
-		if err != nil || found {
-			row = got
-			return err
-		}
-		row = secretsRow{FailureKey: newSecret(), DeviceKey: newSecret(), PendingKey: newSecret()}
-		return d.t.secrets.Put(tx, rowKey, &row)
+	var found bool
+	err := d.db.View(ctx, func(r *bolttable.ReadTx) (err error) {
+		row, found, err = d.t.secrets.Get(r, rowKey)
+		return err
 	})
+	if err == nil && !found {
+		err = d.db.Update(ctx, func(tx *bolttable.Tx) error {
+			got, stored, gerr := d.t.secrets.Get(tx.Read(), rowKey)
+			if gerr != nil || stored {
+				row = got
+				return gerr
+			}
+			row = secretsRow{FailureKey: newSecret(), DeviceKey: newSecret(), PendingKey: newSecret(), CursorKey: newSecret()}
+			return d.t.secrets.Put(tx, rowKey, &row)
+		})
+	}
+	if err == nil && !row.whole() {
+		err = ErrSecretsDamaged
+	}
 	return Secrets(row), err
+}
+
+// whole reports whether every key of r is secretBytes long.
+func (r *secretsRow) whole() bool {
+	for _, k := range [][]byte{r.FailureKey, r.DeviceKey, r.PendingKey, r.CursorKey} {
+		if len(k) != secretBytes {
+			return false
+		}
+	}
+	return true
 }
 
 // newSecret relies on crypto/rand.Read never returning an error (Go 1.24).

@@ -3,6 +3,7 @@
 package client
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"log/slog"
@@ -14,15 +15,17 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cplieger/grelot/internal/auth/authtest"
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/server"
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // serverVersion is the in-process server's version in these tests.
-const serverVersion = "v1.1.0-dev.4"
+const serverVersion = "v2.0.0-dev.1"
 
 // realServer runs grelot's server over a fresh store and returns its URL
 // and a machine key it admits.
@@ -40,7 +43,7 @@ func realServer(t *testing.T) (url, key string) {
 	a := authtest.New(t, nil)
 	srv := server.New(&server.Options{
 		Store: st, Logger: logger, Hub: hub, Version: serverVersion, Auth: a,
-		Config: server.Config{PathRoot: protopath.DefaultRoot},
+		Config: server.Config{PathRoot: protopath.DefaultRoot}, CursorKey: bytes.Repeat([]byte{7}, 32),
 	})
 	h := httptest.NewServer(srv.Handler())
 	t.Cleanup(h.Close)
@@ -69,13 +72,13 @@ func newKeyedAPI(t *testing.T, server, key, version string) (*API, string) {
 func registerBody(name string) map[string]any {
 	return map[string]any{
 		"name": name, "paths": []string{"/workspace/tool"}, "description": "testing the client",
-		"host": "box", "os": "linux", "arch": "amd64", "ttl": "2h",
+		"host": "box", "os": "linux", "arch": "amd64", "ttl_ms": (2 * time.Hour).Milliseconds(),
 		"where": map[string]any{"machine": "", "environment": "", "checkouts": []any{}},
 	}
 }
 
 func TestMe_againstTheServer(t *testing.T) {
-	a, dir := newServerAPI(t, "v1.1.0")
+	a, dir := newServerAPI(t, "v2.0.0")
 	a.Session = "alpha:s-1"
 	if _, err := a.Do(t.Context(), &Request{Method: http.MethodPost, Path: "/v1/register", Body: registerBody("tool-dev")}, nil); err != nil {
 		t.Fatalf("register: %v", err)
@@ -84,7 +87,7 @@ func TestMe_againstTheServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Me: %v", err)
 	}
-	if me.State != StateLive || me.Identity == nil || me.Identity.Name != "tool-dev" || me.Identity.Provider != "alpha" {
+	if me.State != wire.StateLive || me.Identity == nil || me.Identity.Name != "tool-dev" || me.Identity.Provider != "alpha" {
 		t.Errorf("Me = %+v, want the live identity tool-dev of provider alpha", me)
 	}
 	if !strings.HasPrefix(resp.Status, "grelot: @tool-dev · 0 unread") {
@@ -96,13 +99,13 @@ func TestMe_againstTheServer(t *testing.T) {
 }
 
 func TestMe_aSessionWithNoIdentity(t *testing.T) {
-	a, _ := newServerAPI(t, "v1.1.0")
+	a, _ := newServerAPI(t, "v2.0.0")
 	a.Session = "alpha:s-new"
 	me, resp, err := a.Me(t.Context(), nil, nil)
 	if err != nil {
 		t.Fatalf("Me: %v", err)
 	}
-	if me.State != StateNone || me.Identity != nil {
+	if me.State != wire.StateNone || me.Identity != nil {
 		t.Errorf("Me = %+v, want state none and no identity", me)
 	}
 	if !strings.Contains(resp.Status, "grelot register") {
@@ -111,7 +114,7 @@ func TestMe_aSessionWithNoIdentity(t *testing.T) {
 }
 
 func TestMe_cachedRootCorrectedByTheNextMe(t *testing.T) {
-	a, dir := newServerAPI(t, "v1.1.0")
+	a, dir := newServerAPI(t, "v2.0.0")
 	a.Session = "alpha:s-1"
 	SaveFacts(dir, Facts{PathRoot: "/home/u/src"})
 	if _, _, err := a.Me(t.Context(), nil, nil); err != nil {
@@ -130,14 +133,14 @@ func TestDo_oldClientGetsThe426(t *testing.T) {
 	if !errors.As(err, &ae) || ae.HTTP != http.StatusUpgradeRequired {
 		t.Fatalf("err = %v, want a 426 *APIError", err)
 	}
-	if !strings.Contains(ae.Msg, "install grelot "+serverVersion+" with go install github.com/cplieger/grelot@"+serverVersion) {
-		t.Errorf("426 line = %q, want it to name the version to install", ae.Msg)
+	if want := "this grelot server (" + serverVersion + ") does not speak client v0.9.0; install grelot v2.0.0 from https://github.com/cplieger/grelot/releases/tag/v2.0.0, or, if that page does not exist yet, a development build with go install github.com/cplieger/grelot@dev, then check both with grelot version"; ae.Msg != want {
+		t.Errorf("426 line = %q, want %q", ae.Msg, want)
 	}
 }
 
 func TestDo_wrongTokenIsRefused(t *testing.T) {
 	url, _ := realServer(t)
-	a, err := NewAPI(&Config{Server: url, Token: "wrong"}, "v1.1.0", t.TempDir())
+	a, err := NewAPI(&Config{Server: url, Token: "wrong"}, "v2.0.0", t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,9 +199,9 @@ func dropFirstPost(t *testing.T, server string) (front string, keys func() []str
 func TestDo_aPostCommittedButUnansweredIsReSentWithItsKeyAndAnswersItsFirstResult(t *testing.T) {
 	url, key := realServer(t)
 	front, keys := dropFirstPost(t, url)
-	sender, _ := newKeyedAPI(t, front, key, "v1.1.0")
+	sender, _ := newKeyedAPI(t, front, key, "v2.0.0")
 	sender.Session = "alpha:s-1"
-	reader, _ := newKeyedAPI(t, front, key, "v1.1.0")
+	reader, _ := newKeyedAPI(t, front, key, "v2.0.0")
 	reader.Session = "alpha:s-2"
 	for _, r := range []struct {
 		api  *API
@@ -222,17 +225,12 @@ func TestDo_aPostCommittedButUnansweredIsReSentWithItsKeyAndAnswersItsFirstResul
 	if k := keys(); len(k) != 2 || k[0] == "" || k[1] != k[0] {
 		t.Errorf("the post's attempts sent keys %q, want two attempts with one key", k)
 	}
-	var history struct {
-		Entries []struct {
-			Subject string `json:"subject"`
-			Message uint64 `json:"message"`
-		} `json:"entries"`
-	}
-	if _, err := reader.Do(t.Context(), &Request{Method: http.MethodGet, Path: "/v1/history"}, &history); err != nil {
+	var history wire.History
+	if _, err := reader.Do(t.Context(), &Request{Method: http.MethodGet, Path: wire.Path("getHistory", nil)}, &history); err != nil {
 		t.Fatalf("history: %v", err)
 	}
 	var stored []uint64
-	for _, e := range history.Entries {
+	for _, e := range history.Items {
 		if e.Subject == "once" {
 			stored = append(stored, e.Message)
 		}

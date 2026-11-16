@@ -31,19 +31,26 @@ func entriesOut(es []store.Entry) []wire.Entry {
 // nothing; the client acks what it printed. With wait it is the in-turn
 // wait.
 func (s *Server) inbox(r *http.Request, c store.Caller, _ store.Keyed) (status int, body any, err error) {
-	limit, err := intParam(r, "limit")
-	if err != nil {
-		return 0, nil, err
+	p := pagingOf(r)
+	q := store.InboxQuery{Limit: p.limit}
+	if p.after != nil {
+		if q.After, err = afterSeq(p.after); err != nil {
+			return 0, nil, err
+		}
 	}
 	wait, err := waitParam(r)
 	if err != nil {
 		return 0, nil, err
 	}
-	page, err := s.inTurnWait(r.Context(), c, limit, wait)
+	page, err := s.inTurnWait(r.Context(), c, q, wait)
 	if err != nil {
 		return 0, nil, err
 	}
-	return http.StatusOK, wire.Inbox{Entries: entriesOut(page.Entries), Unread: countsOut(page.Unread)}, nil
+	out := wire.Inbox{List: wire.List[wire.Entry]{Items: entriesOut(page.Items), Total: page.Total}, Unread: countsOut(page.Unread)}
+	if n := len(page.Items); n > 0 {
+		out.NextCursor, err = s.next(r, page.More, seqPosition(page.Items[n-1].Seq))
+	}
+	return http.StatusOK, out, err
 }
 
 // ack is POST /v1/inbox/ack, which marks read every entry up to upto.
@@ -65,33 +72,14 @@ func (s *Server) ack(r *http.Request, c store.Caller, k store.Keyed) (status int
 
 // history is GET /v1/history, which reads the mailbox and moves nothing.
 func (s *Server) history(r *http.Request, c store.Caller, _ store.Keyed) (status int, body any, err error) {
-	q := r.URL.Query()
-	hq := store.HistoryQuery{Path: q.Get("path"), With: strings.TrimPrefix(q.Get("with"), "@"), Grep: q.Get("grep")}
-	if from := q.Get("from"); from == "@me" {
-		hq.FromMe = true
-	} else {
-		hq.From = strings.TrimPrefix(from, "@")
-	}
-	if v := q.Get("thread"); v != "" {
-		if hq.Thread, err = strconv.ParseUint(v, 10, 64); err != nil || hq.Thread == 0 {
-			return 0, nil, badRequest("thread must be a thread id")
-		}
-	}
-	if hq.Limit, err = intParam(r, "limit"); err != nil {
+	hq, err := historyQuery(r)
+	if err != nil {
 		return 0, nil, err
 	}
-	now := s.now()
-	if hq.Since, err = timeParam(q.Get("since"), "since", now); err != nil {
-		return 0, nil, err
-	}
-	if hq.Until, err = timeParam(q.Get("until"), "until", now); err != nil {
-		return 0, nil, err
-	}
-	for _, f := range []struct {
-		dst  *bool
-		name string
-	}{{&hq.Announce, "announce"}, {&hq.Full, "full"}, {&hq.LastRead, "last_read"}} {
-		if *f.dst, err = flag(q.Get(f.name), f.name); err != nil {
+	p := pagingOf(r)
+	hq.Limit = p.limit
+	if p.after != nil {
+		if hq.Before, err = afterHistory(p.after); err != nil {
 			return 0, nil, err
 		}
 	}
@@ -99,48 +87,71 @@ func (s *Server) history(r *http.Request, c store.Caller, _ store.Keyed) (status
 	if err != nil {
 		return 0, nil, err
 	}
-	return http.StatusOK, wire.History{Entries: entriesOut(got.Entries)}, nil
+	out := wire.History{List: wire.List[wire.Entry]{Items: entriesOut(got.Items), Total: got.Total}}
+	if len(got.Items) > 0 {
+		out.NextCursor, err = s.next(r, got.More, historyPosition(got.Items[0].Key()))
+	}
+	return http.StatusOK, out, err
 }
 
-// timeParam reads a history bound: a duration back from now, such as
-// 2h, or an RFC 3339 time.
-func timeParam(v, name string, now time.Time) (time.Time, error) {
+// historyQuery reads GET /v1/history's filters.
+func historyQuery(r *http.Request) (hq store.HistoryQuery, err error) {
+	q := r.URL.Query()
+	hq = store.HistoryQuery{Path: q.Get("path"), With: strings.TrimPrefix(q.Get("with"), "@"), Grep: q.Get("grep")}
+	if from := q.Get("from"); from == "@me" {
+		hq.FromMe = true
+	} else {
+		hq.From = strings.TrimPrefix(from, "@")
+	}
+	if v := q.Get("thread"); v != "" {
+		if hq.Thread, err = strconv.ParseUint(v, 10, 64); err != nil || hq.Thread == 0 {
+			return hq, badRequest("thread must be a thread id")
+		}
+	}
+	if hq.Since, err = instantParam(q.Get("since"), "since"); err != nil {
+		return hq, err
+	}
+	if hq.Until, err = instantParam(q.Get("until"), "until"); err != nil {
+		return hq, err
+	}
+	for _, f := range []struct {
+		dst  *bool
+		name string
+	}{{&hq.Announce, "announce"}, {&hq.Full, "full"}, {&hq.LastRead, "last_read"}} {
+		if *f.dst, err = flag(q.Get(f.name), f.name); err != nil {
+			return hq, err
+		}
+	}
+	return hq, nil
+}
+
+// instantParam reads a history bound, an RFC 3339 instant.
+func instantParam(v, name string) (time.Time, error) {
 	if v == "" {
 		return time.Time{}, nil
 	}
-	if d, err := time.ParseDuration(v); err == nil && d >= 0 {
-		return now.Add(-d), nil
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return time.Time{}, badRequest(name + " must be an RFC 3339 instant")
 	}
-	if t, err := time.Parse(time.RFC3339, v); err == nil {
-		return t, nil
-	}
-	return time.Time{}, badRequest("--" + name + " must be a duration such as --" + name + "=2h or an RFC 3339 time")
-}
-
-// intParam reads a non-negative integer query parameter; 0 when absent.
-func intParam(r *http.Request, name string) (int, error) {
-	v := r.URL.Query().Get(name)
-	if v == "" {
-		return 0, nil
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil || n < 0 {
-		return 0, badRequest(name + " must be a whole number")
-	}
-	return n, nil
+	return t, nil
 }
 
 // threads is GET /v1/threads: the live path threads under path.
 func (s *Server) threads(r *http.Request, c store.Caller, _ store.Keyed) (status int, body any, err error) {
-	got, err := s.store.Threads(r.Context(), c, r.URL.Query().Get("path"))
+	p := pagingOf(r)
+	got, err := s.store.Threads(r.Context(), c, store.ThreadQuery{Root: r.URL.Query().Get("path"), After: string(p.after), Limit: p.limit})
 	if err != nil {
 		return 0, nil, err
 	}
-	out := make([]wire.Thread, 0, len(got))
-	for _, t := range got {
-		out = append(out, wire.Thread{Expires: t.Expires.UTC(), Path: t.Path, ID: t.ID})
+	out := wire.Threads{List: wire.List[wire.Thread]{Items: make([]wire.Thread, 0, len(got.Items)), Total: got.Total}}
+	for _, t := range got.Items {
+		out.Items = append(out.Items, wire.Thread{Expires: t.Expires.UTC(), Path: t.Path, ID: t.ID})
 	}
-	return http.StatusOK, wire.Threads{Threads: out}, nil
+	if n := len(got.Items); n > 0 {
+		out.NextCursor, err = s.next(r, got.More, []byte(got.Items[n-1].Path))
+	}
+	return http.StatusOK, out, err
 }
 
 // receipts is GET /v1/messages/{id}/receipts.

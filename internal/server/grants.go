@@ -13,7 +13,7 @@ import (
 func reservationOut(v *store.Reservation) wire.Reservation {
 	return wire.Reservation{
 		Expires: v.Expires.UTC(), Since: v.Since.UTC(), Path: v.Path, Reason: v.Reason, State: v.State,
-		Holder: v.Holder, Host: v.Host, Relation: v.Relation, TTL: v.TTL.String(), ID: v.ID,
+		Holder: v.Holder, Host: v.Host, Relation: v.Relation, TTLMS: v.TTL.Milliseconds(), ID: v.ID,
 	}
 }
 
@@ -24,10 +24,7 @@ func (s *Server) reserve(r *http.Request, c store.Caller, k store.Keyed) (status
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	ttl, err := durationOf(req.TTL)
-	if err != nil {
-		return 0, nil, err
-	}
+	ttl := durationMS(req.TTLMS)
 	got, _, err := s.store.Reserve(r.Context(), k, &store.Reserving{
 		Path: req.Path, Reason: req.Reason, Caller: c, TTL: ttl, Queue: req.Queue,
 	})
@@ -52,10 +49,7 @@ func (s *Server) renewReservation(r *http.Request, c store.Caller, k store.Keyed
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	ttl, err := durationOf(req.TTL)
-	if err != nil {
-		return 0, nil, err
-	}
+	ttl := durationMS(req.TTLMS)
 	got, err := s.store.RenewReservation(r.Context(), k, c, id, ttl)
 	if err != nil {
 		return 0, nil, err
@@ -78,17 +72,27 @@ func (s *Server) release(r *http.Request, c store.Caller, k store.Keyed) (status
 }
 
 // reservations is GET /v1/reservations?path=: the grants and queue
-// entries overlapping path, every one when it is absent.
+// entries overlapping path, every one when it is absent, by id.
 func (s *Server) reservations(r *http.Request, c store.Caller, _ store.Keyed) (status int, body any, err error) {
-	got, err := s.store.Reservations(r.Context(), c, store.ReservationQuery{Path: r.URL.Query().Get("path")})
+	p := pagingOf(r)
+	q := store.ReservationQuery{Path: r.URL.Query().Get("path"), Limit: p.limit}
+	if p.after != nil {
+		if q.After, err = afterSeq(p.after); err != nil {
+			return 0, nil, err
+		}
+	}
+	got, err := s.store.Reservations(r.Context(), c, q)
 	if err != nil {
 		return 0, nil, err
 	}
-	out := make([]wire.Reservation, 0, len(got))
-	for i := range got {
-		out = append(out, reservationOut(&got[i]))
+	out := wire.Reservations{List: wire.List[wire.Reservation]{Items: make([]wire.Reservation, 0, len(got.Items)), Total: got.Total}}
+	for i := range got.Items {
+		out.Items = append(out.Items, reservationOut(&got.Items[i]))
 	}
-	return http.StatusOK, wire.Reservations{Reservations: out}, nil
+	if n := len(got.Items); n > 0 {
+		out.NextCursor, err = s.next(r, got.More, seqPosition(got.Items[n-1].ID))
+	}
+	return http.StatusOK, out, err
 }
 
 func reservationID(r *http.Request) (uint64, error) {
@@ -106,10 +110,7 @@ func (s *Server) grant(r *http.Request, c store.Caller, k store.Keyed) (status i
 	if derr := decode(r, &req); derr != nil {
 		return 0, nil, derr
 	}
-	ttl, err := durationOf(req.TTL)
-	if err != nil {
-		return 0, nil, err
-	}
+	ttl := durationMS(req.TTLMS)
 	got, _, err := s.store.Delegate(r.Context(), k, &store.Grant{
 		Caller: c, Label: req.Label, AllowThreads: req.AllowThreads, AllowAgents: req.AllowAgents,
 		DenyThreads: req.DenyThreads, DenyAgents: req.DenyAgents, TTL: ttl,

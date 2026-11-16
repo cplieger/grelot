@@ -4,6 +4,8 @@ export type AgentState = "live" | "dormant";
 
 export type EventKind = "post_refused" | "push_retry" | "push_gave_up" | "nudge_repeat";
 
+export type FieldCode = "required" | "one_of" | "out_of_range" | "too_long" | "not_text" | "not_whole_minutes" | "person_reserved";
+
 export type ReservationState = "held" | "queued";
 
 export type SenderKind = "agent" | "user";
@@ -270,18 +272,23 @@ export interface Entry {
 
 /** Error is every error response, on /api and /v1 alike. */
 export interface Error {
-  /** Error is the refusal and its fix, in words. */
+  /**
+   * Error is the server's sentence for a person reading a raw answer;
+   * a client words Code instead.
+   */
   error: string;
   /** Code names the refusal, such as not_found. */
   code?: string;
-  /** Reason refines a sign-in route's Code, such as label_too_long. */
+  /**
+   * Reason refines Code, such as label_too_long or the resource a
+   * not_found names.
+   */
   reason?: string;
   request_id?: string;
-  /**
-   * PathRoot is the server's path root; an unauthenticated caller never
-   * gets it.
-   */
-  path_root?: string;
+  /** Fields are the refused request fields of an invalid or too_large. */
+  fields?: FieldError[];
+  /** RetryAfterMS is set, with Retry-After, when a wait fixes the refusal. */
+  retry_after_ms?: number;
 }
 
 /** Event is one delivery problem. */
@@ -304,16 +311,28 @@ export interface EventCounts {
 }
 
 /**
+ * FieldError is one refused request field: Field is its JSON or query
+ * name, dotted when nested, and Code what is wrong with it.
+ */
+export interface FieldError {
+  field: string;
+  code: FieldCode;
+  min?: number;
+  max?: number;
+  allowed?: string[];
+}
+
+/**
  * GrantRequest is POST /v1/delegates: a single-use link a subagent
  * registers with, scoped by the allow and deny lists.
  */
 export interface GrantRequest {
   label: string;
-  ttl: string;
   allow_threads: string[];
   allow_agents: string[];
   deny_threads: string[];
   deny_agents: string[];
+  ttl_ms: number;
 }
 
 /** Granted is a new delegate link. */
@@ -354,10 +373,12 @@ export interface Hint {
 
 /**
  * History is GET /v1/history: the caller's mailbox, which it moves
- * nothing in.
+ * nothing in; pages go back in time, each oldest first.
  */
 export interface History {
-  entries: Entry[];
+  next_cursor?: string;
+  items: Entry[];
+  total: number;
 }
 
 /** HistoryPage is one page of an agent's posts, newest first. */
@@ -388,13 +409,13 @@ export interface HistoryPost {
 }
 
 /**
- * HistoryQuery is GET /v1/history's query. since and until are a duration
- * back from now or an RFC 3339 time; from is @me or a name; the flags are
- * 1 or 0.
+ * HistoryQuery is GET /v1/history's query. since and until are RFC 3339
+ * instants; from is @me or a name; the flags are 1 or 0.
  */
 export interface HistoryQuery {
   since?: string;
   until?: string;
+  cursor?: string;
   path?: string;
   with?: string;
   from?: string;
@@ -416,11 +437,11 @@ export interface HoldRequest {
 }
 
 /**
- * IdentitiesQuery is GET /v1/identities' query. fields keeps only the named
- * members of each identity, name always; online, here and all are 1 or 0.
+ * IdentitiesQuery is GET /v1/identities' query; online, here and all are
+ * 1 or 0.
  */
 export interface IdentitiesQuery {
-  fields?: string;
+  cursor?: string;
   path?: string;
   repo?: string;
   holds?: string;
@@ -429,6 +450,7 @@ export interface IdentitiesQuery {
   online?: string;
   here?: string;
   all?: string;
+  limit?: number;
 }
 
 /**
@@ -448,10 +470,10 @@ export interface Identity {
   arch: string;
   provider: string;
   machine_kind?: string;
-  ttl: string;
   notice?: string;
   paths: string[];
   follows: string[];
+  ttl_ms: number;
   environment_known: boolean;
   ended?: boolean;
   threaded: boolean;
@@ -477,21 +499,24 @@ export interface IdentityFields {
 }
 
 /**
- * Inbox is GET /v1/inbox: the oldest unread entries, which it marks
- * nothing read.
+ * Inbox is GET /v1/inbox: the unread entries oldest first, which it marks
+ * nothing read; Total counts the unread entries.
  */
 export interface Inbox {
-  entries: Entry[];
+  next_cursor?: string;
+  items: Entry[];
+  total: number;
   unread: Counts;
 }
 
 /**
- * InboxQuery is GET /v1/inbox's query; wait, a duration up to 55s, holds
- * the read until wake mail arrives.
+ * InboxQuery is GET /v1/inbox's query; WaitMS, up to MaxWaitMS, holds the
+ * read until wake mail arrives.
  */
 export interface InboxQuery {
-  wait?: string;
+  cursor?: string;
   limit?: number;
+  wait_ms?: number;
 }
 
 /** LastPost is a conversation's newest post. */
@@ -596,14 +621,14 @@ export interface PageQuery {
 
 /**
  * PatchMeRequest is PATCH /v1/me: new fields, with Where when the paths
- * change, or TTL and Where to renew the lease.
+ * change, or TTLMS and Where to renew the lease.
  */
 export interface PatchMeRequest {
   where?: Where;
   name: string;
   description: string;
-  ttl: string;
   paths: string[];
+  ttl_ms: number;
 }
 
 /** PathQuery is a query naming one path. */
@@ -654,9 +679,11 @@ export interface PeerReservation {
   queue: number;
 }
 
-/** Peers is GET /v1/identities. */
+/** Peers is GET /v1/identities: the identities by name. */
 export interface Peers {
-  identities: Peer[];
+  next_cursor?: string;
+  items: Peer[];
+  total: number;
 }
 
 /** Post is one message. */
@@ -691,16 +718,16 @@ export interface PostBucket {
 /**
  * PostRequest is POST /v1/posts. To is "announce", {"path": p} or
  * {"agent": name}; NotifyRead is absent, "all" or a list of recipient
- * names; By is the duration a read receipt is asked within.
+ * names; ByMS is how long a read receipt is asked within.
  */
 export interface PostRequest {
   where?: Where;
   subject: string;
   body: string;
-  by: string;
   to: unknown;
   notify_read: unknown;
   identity: IdentityFields;
+  by_ms: number;
 }
 
 /** PostTarget is where the user posts: exactly one of its fields. */
@@ -769,8 +796,8 @@ export interface RegisterRequest {
   arch: string;
   proc: string;
   delegate: string;
-  ttl: string;
   paths: string[];
+  ttl_ms: number;
   take_over: boolean;
 }
 
@@ -789,7 +816,7 @@ export interface Registered {
 
 /** RenewRequest renews a reservation. */
 export interface RenewRequest {
-  ttl: string;
+  ttl_ms: number;
 }
 
 /**
@@ -805,7 +832,7 @@ export interface Reservation {
   holder: string;
   host: string;
   relation: string;
-  ttl: string;
+  ttl_ms: number;
   id: number;
 }
 
@@ -819,9 +846,21 @@ export interface ReservationParams {
   id: number;
 }
 
-/** Reservations is GET /v1/reservations. */
+/**
+ * Reservations is GET /v1/reservations: the grants and queue entries by
+ * id.
+ */
 export interface Reservations {
-  reservations: Reservation[];
+  next_cursor?: string;
+  items: Reservation[];
+  total: number;
+}
+
+/** ReservationsQuery is GET /v1/reservations' query. */
+export interface ReservationsQuery {
+  path?: string;
+  cursor?: string;
+  limit?: number;
 }
 
 /**
@@ -831,7 +870,7 @@ export interface Reservations {
 export interface ReserveRequest {
   path: string;
   reason: string;
-  ttl: string;
+  ttl_ms: number;
   queue: boolean;
 }
 
@@ -860,7 +899,7 @@ export interface ReviveRequest {
   os: string;
   arch: string;
   proc: string;
-  ttl: string;
+  ttl_ms: number;
 }
 
 /**
@@ -992,9 +1031,21 @@ export interface ThreadStats {
   deliveries: number;
 }
 
-/** Threads is GET /v1/threads: the live path threads under the path. */
+/**
+ * Threads is GET /v1/threads: the live path threads under the path, by
+ * path.
+ */
 export interface Threads {
-  threads: Thread[];
+  next_cursor?: string;
+  items: Thread[];
+  total: number;
+}
+
+/** ThreadsQuery is GET /v1/threads' query. */
+export interface ThreadsQuery {
+  path?: string;
+  cursor?: string;
+  limit?: number;
 }
 
 /** UserPostRequest is a post the user sends. */
@@ -1035,14 +1086,15 @@ export interface UserReceipts {
   registered_since: number;
 }
 
-/** Version is GET /v1/version. */
+/** Version is GET /v1/version: the server's version and path root. */
 export interface Version {
   version: string;
+  path_root: string;
 }
 
-/** WaitRequest is a standing wait of up to 55s. */
+/** WaitRequest is a standing wait of up to MaxWaitMS. */
 export interface WaitRequest {
-  wait: string;
+  wait_ms: number;
 }
 
 /** Where is the machine, environment and checkouts a session reports. */

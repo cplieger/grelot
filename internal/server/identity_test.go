@@ -15,7 +15,7 @@ import (
 
 // reviveBody is a revive request for ttl, by name when name is set.
 func reviveBody(name, ttl string) map[string]any {
-	b := map[string]any{"host": "host-a/app", "os": "linux", "arch": "amd64", "where": where("a"), "ttl": ttl}
+	b := map[string]any{"host": "host-a/app", "os": "linux", "arch": "amd64", "where": where("a"), "ttl_ms": durMS(ttl)}
 	if name != "" {
 		b["name"] = name
 	}
@@ -57,7 +57,7 @@ func TestRevive_refusals(t *testing.T) {
 func TestRevive_ownDormantIdentityWithTheMailSentWhileDormant(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegister(sessB, "store-dev")
-	if r := h.as(sessB, http.MethodPatch, "/v1/me", map[string]any{"ttl": "24h", "where": where("a")}); r.status != http.StatusOK {
+	if r := h.as(sessB, http.MethodPatch, "/v1/me", map[string]any{"ttl_ms": durMS("24h"), "where": where("a")}); r.status != http.StatusOK {
 		t.Fatalf("renew store-dev: %d %s", r.status, r.raw)
 	}
 	h.mustRegister(sessA, "grelot-dev")
@@ -132,13 +132,13 @@ func TestPatchMe(t *testing.T) {
 	h.mustRegister(sessA, "grelot-dev")
 
 	t.Run("a ttl with where renews, and the status line shows the time under an hour", func(t *testing.T) {
-		r := h.as(sessA, http.MethodPatch, "/v1/me", map[string]any{"ttl": "45m", "where": where("a")})
+		r := h.as(sessA, http.MethodPatch, "/v1/me", map[string]any{"ttl_ms": durMS("45m"), "where": where("a")})
 		if r.status != http.StatusOK || !strings.HasSuffix(r.line(), " · expires in 45 min") {
 			t.Errorf("got %d with status %q, want 200 ending with 45 min left", r.status, r.line())
 		}
 	})
 	t.Run("a ttl with no where is 400 naming where", func(t *testing.T) {
-		r := h.as(sessA, http.MethodPatch, "/v1/me", map[string]any{"ttl": "2h"})
+		r := h.as(sessA, http.MethodPatch, "/v1/me", map[string]any{"ttl_ms": durMS("2h")})
 		if r.status != http.StatusBadRequest || !strings.Contains(r.str("error"), "where is required") {
 			t.Errorf("got %d %s, want 400 naming where", r.status, r.raw)
 		}

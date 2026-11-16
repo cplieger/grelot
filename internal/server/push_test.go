@@ -462,7 +462,7 @@ func TestPush_neverForADormantIdentityAnEndedSessionOrADelegate(t *testing.T) {
 			h.mustRegisterAlone(sessA, "parent")
 			h.mustRegisterAlone(sessB, "writer")
 			g := h.self(sessA, http.MethodPost, "/v1/delegates",
-				map[string]any{"label": "review", "ttl": "1h", "allow_agents": []string{"writer"}})
+				map[string]any{"label": "review", "ttl_ms": durMS("1h"), "allow_agents": []string{"writer"}})
 			if g.status != http.StatusCreated {
 				t.Fatalf("grant: %d %s", g.status, g.raw)
 			}

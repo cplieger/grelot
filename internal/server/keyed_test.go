@@ -90,7 +90,7 @@ func (h *harness) postsTo(session, subject string) int {
 	if r.status != http.StatusOK {
 		h.t.Fatalf("history: %d %s", r.status, r.raw)
 	}
-	entries, _ := r.body["entries"].([]any)
+	entries, _ := r.body["items"].([]any)
 	n := 0
 	for _, e := range entries {
 		if m, _ := e.(map[string]any); m["subject"] == subject {
@@ -266,7 +266,7 @@ func TestUnkeyedRoute_aKeyIs400(t *testing.T) {
 		body         any
 		method, path string
 	}{
-		{method: http.MethodPost, path: "/v1/events/wait", body: map[string]any{"wait": "1s"}},
+		{method: http.MethodPost, path: "/v1/events/wait", body: map[string]any{"wait_ms": durMS("1s")}},
 		{method: http.MethodPost, path: "/v1/events/hold", body: map[string]any{"for": "stop"}},
 		{method: http.MethodPost, path: "/v1/lifecycle", body: map[string]any{"event": "turn_end"}},
 		{method: http.MethodGet, path: "/v1/me"},
@@ -401,7 +401,7 @@ func TestKeyedWrites_reSendAnswersTheFirstAnswerWhereARunWouldRefuse(t *testing.
 	t.Run("release", func(t *testing.T) {
 		h := newHarness(t)
 		h.mustRegister(sessA, "alpha")
-		g := h.as(sessA, http.MethodPost, "/v1/reservations", map[string]any{"path": repoGrelot + "/main.go", "reason": "editing", "ttl": "1h"})
+		g := h.as(sessA, http.MethodPost, "/v1/reservations", map[string]any{"path": repoGrelot + "/main.go", "reason": "editing", "ttl_ms": durMS("1h")})
 		if g.status != http.StatusCreated {
 			t.Fatalf("reserve: %d %s", g.status, g.raw)
 		}
@@ -414,10 +414,10 @@ func TestKeyedWrites_reSendAnswersTheFirstAnswerWhereARunWouldRefuse(t *testing.
 	t.Run("reserve", func(t *testing.T) {
 		h := newHarness(t)
 		h.mustRegister(sessA, "alpha")
-		body := map[string]any{"path": repoGrelot + "/main.go", "reason": "editing", "ttl": "1h"}
+		body := map[string]any{"path": repoGrelot + "/main.go", "reason": "editing", "ttl_ms": durMS("1h")}
 		resend(t, h, http.MethodPost, "/v1/reservations", body, keyHeader(sessA, "reserve-key-0001"))
 		r := h.as(sessA, http.MethodGet, "/v1/reservations", nil)
-		if got, _ := r.body["reservations"].([]any); len(got) != 1 {
+		if got, _ := r.body["items"].([]any); len(got) != 1 {
 			t.Errorf("reservations = %s, want the one grant", r.raw)
 		}
 	})
@@ -426,7 +426,7 @@ func TestKeyedWrites_reSendAnswersTheFirstAnswerWhereARunWouldRefuse(t *testing.
 		h.mustRegister(sessA, "alpha")
 		headers := keyHeader(sessA, "grant-key-000001")
 		headers[wire.HeaderSelf] = "1"
-		first, _ := resend(t, h, http.MethodPost, "/v1/delegates", map[string]any{"label": "review", "ttl": "1h"}, headers)
+		first, _ := resend(t, h, http.MethodPost, "/v1/delegates", map[string]any{"label": "review", "ttl_ms": durMS("1h")}, headers)
 		if first.status != http.StatusCreated || first.str("link") == "" {
 			t.Errorf("grant: %d %s, want 201 with a link", first.status, first.raw)
 		}
@@ -445,7 +445,7 @@ func TestPatchMe_requiresAKey(t *testing.T) {
 		return me.body["identity"].(map[string]any)["expires_at"].(string)
 	}
 	registered := expires()
-	renewal := map[string]any{"ttl": "3h", "where": where("a")}
+	renewal := map[string]any{"ttl_ms": durMS("3h"), "where": where("a")}
 
 	unkeyed := h.request(http.MethodPatch, "/v1/me", renewal, map[string]string{wire.HeaderSession: sessA, wire.HeaderIdempotencyKey: ""})
 	if unkeyed.status != http.StatusBadRequest || unkeyed.str("code") != "invalid" ||

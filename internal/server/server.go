@@ -22,6 +22,7 @@ import (
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/webui"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // Options are what New needs.
@@ -50,8 +51,12 @@ type Options struct {
 	// the server a page of its own.
 	Metrics *obs.Metrics
 	Version string
-	Config  Config
-	Limits  Limits
+	// CursorKey seals the list cursors: 32 bytes, kept with the accounts
+	// file's secrets so a cursor outlives a restart. New panics on any
+	// other length.
+	CursorKey []byte
+	Config    Config
+	Limits    Limits
 }
 
 // Server serves the API over one open store.
@@ -62,6 +67,7 @@ type Server struct {
 	presence *presence
 	posts    *postLimit
 	rates    *keyRates
+	cursors  *cursors
 	waits    *waitCaps
 	hub      *Hub
 	events   *Events
@@ -115,6 +121,7 @@ func New(o *Options) *Server {
 		health:   health.NewStatus(health.WithLogger(o.Logger)),
 		sampler:  newSampler(),
 		needles:  doors.Secrets(),
+		cursors:  newCursors(o.CursorKey, now),
 		stopping: make(chan struct{}),
 	}
 	m.ServeState(s.state, now)
@@ -185,7 +192,7 @@ const (
 	// and the deadline only ends one whose store calls stall.
 	waitRouteDeadline = maxWait + 10*time.Second
 	// maxWait is the longest a standing or in-turn wait holds.
-	maxWait = 55 * time.Second
+	maxWait = wire.MaxWaitMS * time.Millisecond
 )
 
 // readTimeout bounds reading a request's headers and body. net/http clears

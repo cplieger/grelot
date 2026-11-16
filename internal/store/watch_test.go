@@ -69,8 +69,8 @@ func TestNotifyRead_allFiresReceiptsCompleteOnceWhenTheLastRecipientReads(t *tes
 	})
 	t.Run("the event wakes the sender", func(t *testing.T) {
 		page := mustInbox(t, s, sess("alpha"), 0)
-		i := slices.IndexFunc(page.Entries, func(e Entry) bool { return e.Kind == kindReceiptsComplete })
-		if page.Unread.Receipts != 1 || page.Unread.Wake() != 1 || i < 0 || !page.Entries[i].Wake || page.Entries[i].Text != want {
+		i := slices.IndexFunc(page.Items, func(e Entry) bool { return e.Kind == kindReceiptsComplete })
+		if page.Unread.Receipts != 1 || page.Unread.Wake() != 1 || i < 0 || !page.Items[i].Wake || page.Items[i].Text != want {
 			t.Errorf("sender's inbox %+v, want one waking receipts event", page.Unread)
 		}
 	})
@@ -336,8 +336,8 @@ func TestNotifyRead_aDormantSenderGetsTheEventAndReadsItAfterRevival(t *testing.
 
 	mustRevive(t, s, revival(sess("alpha"), "", envA()))
 	page := mustInbox(t, s, sess("alpha"), 0)
-	if !slices.ContainsFunc(page.Entries, func(e Entry) bool { return e.Kind == kindReceiptsComplete && e.Text == want }) {
-		t.Errorf("inbox after revival %+v, want the receipts_complete event", page.Entries)
+	if !slices.ContainsFunc(page.Items, func(e Entry) bool { return e.Kind == kindReceiptsComplete && e.Text == want }) {
+		t.Errorf("inbox after revival %+v, want the receipts_complete event", page.Items)
 	}
 }
 
@@ -351,10 +351,10 @@ func TestNotifyRead_anAnnouncementWhileDormantIsInTheInboxAfterRevival(t *testin
 
 	mustRevive(t, s, revival(sessA, "", envA()))
 	page := mustInbox(t, s, sessA, 0)
-	if !slices.ContainsFunc(page.Entries, func(e Entry) bool { return e.Message == msg }) {
-		t.Errorf("inbox of %d after revival %+v, want the announcement", sleeper.ID, page.Entries)
+	if !slices.ContainsFunc(page.Items, func(e Entry) bool { return e.Message == msg }) {
+		t.Errorf("inbox of %d after revival %+v, want the announcement", sleeper.ID, page.Items)
 	}
-	mustAck(t, s, sessA, page.Entries[len(page.Entries)-1].Seq)
+	mustAck(t, s, sessA, page.Items[len(page.Items)-1].Seq)
 	wantEvents(t, s, sender.ID, kindReceiptsComplete, fmt.Sprintf("message %d: all 1 have read %s", msg, subject))
 }
 

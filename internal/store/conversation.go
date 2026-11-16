@@ -285,7 +285,7 @@ func (wr *webReader) conversation(id, before uint64, limit int) (Conversation, e
 		return out, err
 	}
 	if !found || th.Kind == kindCards || th.Lease.due(wr.now) {
-		return out, refuse(KindNotFound, fmt.Sprintf("no conversation %d: it never existed or has expired", id))
+		return out, notFound(ReasonConversation, fmt.Sprintf("no conversation %d: it never existed or has expired", id))
 	}
 	if out.Thread, err = wr.conversationThread(&th); err != nil {
 		return out, err
@@ -318,7 +318,7 @@ func (wr *webReader) receipts(msg uint64) (Receipts, error) {
 		return Receipts{}, err
 	}
 	if !found || !isPost(m.Kind) {
-		return Receipts{}, refuse(KindNotFound, fmt.Sprintf("no message %d: it never existed or has expired", msg))
+		return Receipts{}, notFound(ReasonMessage, fmt.Sprintf("no message %d: it never existed or has expired", msg))
 	}
 	rows, err := wr.s.postDeliveries(wr.r, msg, wr.now)
 	if err != nil {

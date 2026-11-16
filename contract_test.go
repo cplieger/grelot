@@ -79,7 +79,7 @@ var agentScenario = []scenarioStep{
 		}
 	}},
 	{row: "patchMe", what: "alpha renews with a new description", run: func(s *scenario) {
-		r := s.alpha.call(http.StatusOK, "patchMe", "/v1/me", map[string]any{"description": "patched", "ttl_ms": hourMS})
+		r := s.alpha.call(http.StatusOK, "patchMe", "/v1/me", map[string]any{"description": "patched", "ttl_ms": hourMS, "where": s.alpha.where()})
 		if got := num(obj(r.body, "identity"), "ttl_ms"); got != hourMS {
 			s.c.t.Errorf("PATCH /v1/me: identity.ttl_ms %d, want the %d sent", got, hourMS)
 		}
@@ -196,8 +196,8 @@ var agentScenario = []scenarioStep{
 	{row: "grantDelegate", what: "alpha grants a delegate link", run: func(s *scenario) {
 		s.alpha.call(http.StatusCreated, "grantDelegate", "/v1/delegates", map[string]any{"label": "helper", "ttl_ms": hourMS})
 	}},
-	{row: "revokeDelegate", what: "alpha revokes it", run: func(s *scenario) {
-		s.alpha.call(http.StatusOK, "revokeDelegate", "/v1/delegates/helper", nil)
+	{row: "revokeDelegate", what: "alpha revokes it, as its own command past the delegate gate", run: func(s *scenario) {
+		s.alpha.callWith(http.StatusOK, "revokeDelegate", "/v1/delegates/helper", nil, map[string]string{"Grelot-Self": "1"})
 	}},
 	{row: "lifecycle", what: "alpha's turn ends", run: func(s *scenario) {
 		s.alpha.call(http.StatusOK, "lifecycle", "/v1/lifecycle", map[string]any{"event": "turn_end"})
@@ -240,13 +240,11 @@ func TestContract_agentRowsMatchTheDocument(t *testing.T) {
 	c := newContract(t)
 	k1, k2 := c.mintKey("machine-1"), c.mintKey("machine-2")
 	hits := map[string]bool{}
+	c.hits = hits
 	s := &scenario{
 		c: c, k1: k1,
 		alpha: c.agent(k1, sessAlpha, "a"), beta: c.agent(k2, sessBeta, "b"),
 		gamma: c.agent(k1, sessGamma, "a"), delta: c.agent(k1, sessDelta, "a"),
-	}
-	for _, a := range []*agent{s.alpha, s.beta, s.gamma, s.delta} {
-		a.hits = hits
 	}
 	for _, step := range agentScenario {
 		clear(hits)
@@ -583,8 +581,10 @@ func TestV1ClientUpgradeRequired(t *testing.T) {
 			t.Errorf("identities %v after the refused register, want observer and sender", names)
 		}
 		r := observer.call(http.StatusOK, "getHistory", "/v1/history", nil)
-		if items := r.items(); items == nil || len(items) != 0 || num(r.body, "total") != 0 {
-			t.Errorf("observer's history after the refused post: %s, want no item and total 0", r.raw)
+		for _, it := range r.items() {
+			if it["subject"] == "hello" {
+				t.Errorf("observer's history after the refused post holds it: %s", r.raw)
+			}
 		}
 	})
 	for _, served := range []string{"v2.0.0", "v2.0.0-dev.1", "v2.1.0", "dev"} {

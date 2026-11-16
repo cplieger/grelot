@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/cplieger/go/textsafe"
-	"github.com/cplieger/grelot/internal/client"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // dataLabel ends the first line of each block that carries another
@@ -42,7 +42,7 @@ func joined(s []string) string {
 
 // writeCard prints the identity card: who the session is, what it
 // declared and its lease.
-func writeCard(w io.Writer, id *client.Identity) {
+func writeCard(w io.Writer, id *wire.Identity) {
 	fmt.Fprintf(w, "@%s · %s · %s/%s · provider %s\n", safe(id.Name), safe(id.Host), safe(id.OS), safe(id.Arch), safe(id.Provider))
 	fmt.Fprintf(w, "  description: %s\n", safe(id.Description))
 	if len(id.Paths) > 0 {
@@ -51,21 +51,21 @@ func writeCard(w io.Writer, id *client.Identity) {
 	if len(id.Follows) > 0 {
 		fmt.Fprintf(w, "  follows: %s\n", joined(id.Follows))
 	}
-	if id.State == client.StateDormant {
+	if id.State == wire.StateDormant {
 		fmt.Fprintf(w, "  dormant since %s; purged at %s unless revived\n", stamp(id.DormantSince), stamp(id.Expires))
 		return
 	}
-	fmt.Fprintf(w, "  lease: %s, until %s\n", safe(id.TTL), stamp(id.Expires))
+	fmt.Fprintf(w, "  lease: %s, until %s\n", durationText(id.TTLMS), stamp(id.Expires))
 }
 
 // writeMe prints what grelot me adds to the card: unread mail, presence,
 // what is known of where the session runs, and its grants. It names the
 // environment file and never an id.
-func writeMe(w io.Writer, me *client.Me, envFile string) {
+func writeMe(w io.Writer, me *wire.Me, envFile string) {
 	if me.Unread != nil {
 		fmt.Fprintf(w, "  unread: %s\n", countsLine(me.Unread))
 	}
-	if me.State == client.StateLive {
+	if me.State == wire.StateLive {
 		online := "no"
 		if me.Online {
 			online = "yes"
@@ -95,7 +95,7 @@ func writeMe(w io.Writer, me *client.Me, envFile string) {
 }
 
 // countsLine is the unread total with each kind that has any.
-func countsLine(c *client.Counts) string {
+func countsLine(c *wire.Counts) string {
 	var parts []string
 	for _, k := range []struct {
 		name string

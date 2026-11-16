@@ -32,7 +32,7 @@ func (c *clock) advance(d time.Duration) {
 
 func newServer(t *testing.T) *testServer {
 	t.Helper()
-	return newServerAt(t, "v1.1.0-dev.4", nil)
+	return newServerAt(t, "v2.0.0-dev.1", nil)
 }
 
 // newServerAt is newServer at version, answering any request refuse
@@ -54,7 +54,7 @@ func newServerAt(t *testing.T, version string, refuse func(*http.Request) bool) 
 	ts.Key = authtest.Key(t, a, "cli")
 	srv := server.New(&server.Options{
 		Store: st, Logger: logger, Hub: hub, Version: version, Now: ts.clock.Now, Auth: a,
-		Config: server.Config{PathRoot: protopath.DefaultRoot},
+		Config: server.Config{PathRoot: protopath.DefaultRoot}, CursorKey: bytes.Repeat([]byte{7}, 32),
 	})
 	h := srv.Handler()
 	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -115,7 +115,7 @@ func (ts *testServer) last(t *testing.T, method, route string) sent {
 // step the test takes outside the verbs under test.
 func (ts *testServer) call(t *testing.T, session string, self bool, req *client.Request, out any) {
 	t.Helper()
-	a, err := client.NewAPI(&client.Config{Server: ts.URL, Token: ts.Key}, "v1.1.0", t.TempDir())
+	a, err := client.NewAPI(&client.Config{Server: ts.URL, Token: ts.Key}, "v2.0.0", t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

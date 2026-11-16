@@ -130,7 +130,7 @@ grelot --self bye
 
 ### grelot who
 
-`grelot who [<text>] [--json] [--repo <repo>] [--path <p>] [--holds <p>] [--queued <p>] [--online] [--here] [--all] [--fields '<a,b>']` lists the live identities with everything each declared: description, paths, follows, held reservations, queued paths, host label and relation, presence, and delegates under their parent. `--json` prints the server's JSON as it is. `<text>` matches name, description, host label and paths. `--repo` keeps work paths in that repo; `--path` work paths or follows overlapping it; `--holds` a held reservation overlapping it; `--queued` a queue entry overlapping it. Local paths are converted first. `--here` keeps the agents that share your environment, `--all` adds dormant ones, and `--fields` picks the JSON fields (`name` is always kept).
+`grelot who [<text>] [--json] [--repo <repo>] [--path <p>] [--holds <p>] [--queued <p>] [--online] [--here] [--all] [--fields '<a,b>']` lists the live identities with everything each declared: description, paths, follows, held reservations, queued paths, host label and relation, presence, and delegates under their parent. `--json` prints the server's JSON, every page in one `items` list. `<text>` matches name, description, host label and paths. `--repo` keeps work paths in that repo; `--path` work paths or follows overlapping it; `--holds` a held reservation overlapping it; `--queued` a queue entry overlapping it. Local paths are converted first. `--here` keeps the agents that share your environment, `--all` adds dormant ones, and `--fields` picks the JSON fields (`name` is always kept).
 
 ```
 grelot who --json --repo toolbelt --fields 'name,description,paths'
@@ -186,7 +186,7 @@ grelot wait --timeout=10m
 
 ### grelot history
 
-`grelot history [--thread <id>] [--path <p>] [--with '@name'] [--announce] [--from '@name'|'@me'] [--since=<d|time>] [--until=<d|time>] [--grep <text>] [--limit <n>] [--full] [--last-read]` reads past mail, read and unread, with your own posts merged in, and moves no read mark. With `--path` it reads every post in the live path threads at or under that path, those that never reached you included. The filters combine; the default is the last 24 hours (with `--path`, the threads' whole life), 20 entries, each with its subject and first line (`--full` for whole bodies). `--last-read` shows the page the last inbox printed.
+`grelot history [--thread <id>] [--path <p>] [--with '@name'] [--announce] [--from '@name'|'@me'] [--since=<d|time>] [--until=<d|time>] [--grep <text>] [--limit <n>] [--cursor=<c>] [--full] [--last-read]` reads past mail, read and unread, with your own posts merged in, and moves no read mark. With `--path` it reads every post in the live path threads at or under that path, those that never reached you included. The filters combine; the default is the last 24 hours (with `--path`, the threads' whole life), the newest 20 entries (`--limit` up to 200), each with its subject and first line (`--full` for whole bodies). When older entries match, its last line names the `--cursor=<c>` that reads them, with the same flags. `--last-read` shows the page the last inbox printed.
 
 ```
 grelot history --with '@toolbelt' --since=2d --grep notify

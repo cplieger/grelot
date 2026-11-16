@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 	"unicode"
-	"unicode/utf8"
 
 	"github.com/cplieger/bolttable"
 )
@@ -29,8 +28,9 @@ const userProvider = "web"
 const (
 	// maxPaths bounds one write's join-card fan-out, since each added work
 	// path owes a card to every overlapping identity.
-	maxPaths       = 16
-	maxPathBytes   = 1024
+	maxPaths = 16
+	// MaxPathBytes bounds one stored path.
+	MaxPathBytes   = 1024
 	maxPathDepth   = 64
 	maxDescription = 280
 	maxLabel       = 128
@@ -660,13 +660,15 @@ func (s *Store) moveRefusal(verb string, target *identityRow, caller Where, prov
 	var e *Error
 	switch {
 	case caller.Environment == "":
-		return s.refuseMove(verb, target.Name, noEnvironment())
+		ne := noEnvironment()
+		return s.refuseMove(verb, target.Name, ne.Why, ne)
 	case !shareEnvironment(caller, target.Where) && verb == verbRevive:
-		e = &Error{Kind: KindNotFound, Why: "other_environment", Msg: fmt.Sprintf(
+		e = &Error{Kind: KindNotFound, Reason: ReasonIdentity, Msg: fmt.Sprintf(
 			"no dormant identity %s in this environment (%s)", target.Name, relation(caller, target.Where, ""),
 		)}
+		return s.refuseMove(verb, target.Name, whyOtherEnvironment, e)
 	case !shareEnvironment(caller, target.Where):
-		e = &Error{Kind: KindConflict, Why: "other_environment", Msg: fmt.Sprintf(
+		e = &Error{Kind: KindConflict, Why: whyOtherEnvironment, Msg: fmt.Sprintf(
 			"%s is not in this environment (%s); a %s moves an identity only within its own environment and provider: choose another name",
 			target.Name, relation(caller, target.Where, ""), verb,
 		)}
@@ -678,7 +680,7 @@ func (s *Store) moveRefusal(verb string, target *identityRow, caller Where, prov
 	default:
 		return nil
 	}
-	return s.refuseMove(verb, target.Name, e)
+	return s.refuseMove(verb, target.Name, e.Why, e)
 }
 
 func noEnvironment() *Error {
@@ -688,9 +690,11 @@ func noEnvironment() *Error {
 	}
 }
 
+const whyOtherEnvironment = "other_environment"
+
 // refuseMove logs a refused move as move refused with its why.
-func (s *Store) refuseMove(verb, name string, e *Error) *Error {
-	s.log.Info("move refused", "verb", verb, "name", name, "why", e.Why)
+func (s *Store) refuseMove(verb, name, why string, e *Error) *Error {
+	s.log.Info("move refused", "verb", verb, "name", name, "why", why)
 	return e
 }
 
@@ -787,19 +791,17 @@ func checkName(n string) error {
 func isUser(row *identityRow) bool { return row.Name == userName && row.Parent == 0 }
 
 func checkDescription(d string) error {
-	if n := utf8.RuneCountInString(d); n > maxDescription || !utf8.ValidString(d) || strings.ContainsFunc(d, isControl) {
-		return refuse(KindInvalid, fmt.Sprintf("the description must be 1 to %d characters of text, on one line", maxDescription))
-	}
-	return nil
+	return fieldRefusal(textFault("description", d, maxDescription, false),
+		fmt.Sprintf("the description must be 1 to %d characters of text, on one line", maxDescription))
 }
 
 // checkPaths validates work paths and drops repeats, keeping their order.
 func checkPaths(ps []string) ([]string, error) {
 	var out []string
 	for _, p := range ps {
-		if !isCanonicalPath(p) || len(p) > maxPathBytes || strings.Count(p, "/") > maxPathDepth || strings.ContainsFunc(p, isControl) {
+		if !isCanonicalPath(p) || len(p) > MaxPathBytes || strings.Count(p, "/") > maxPathDepth || strings.ContainsFunc(p, isControl) {
 			return nil, refuse(KindInvalid, fmt.Sprintf(
-				"path %q must be a canonical path: absolute, clean, no .., at most %d bytes and %d components", p, maxPathBytes, maxPathDepth,
+				"path %q must be a canonical path: absolute, clean, no .., at most %d bytes and %d components", p, MaxPathBytes, maxPathDepth,
 			))
 		}
 		if !slices.Contains(out, p) {
@@ -823,8 +825,9 @@ func checkSession(session string) (string, error) {
 
 func checkLabels(host, goos, arch, proc string) error {
 	for _, l := range []struct{ field, v string }{{"host", host}, {"os", goos}, {"arch", arch}, {"proc", proc}} {
-		if utf8.RuneCountInString(l.v) > maxLabel || !utf8.ValidString(l.v) || strings.ContainsFunc(l.v, isControl) {
-			return refuse(KindInvalid, fmt.Sprintf("%s must be at most %d characters of text, on one line", l.field, maxLabel))
+		if err := fieldRefusal(textFault(l.field, l.v, maxLabel, false),
+			fmt.Sprintf("%s must be at most %d characters of text, on one line", l.field, maxLabel)); err != nil {
+			return err
 		}
 	}
 	return nil

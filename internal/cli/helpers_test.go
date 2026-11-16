@@ -153,7 +153,7 @@ func newAgent(t *testing.T, ts *testServer, session, extra string) *agent {
 		Providers:   providerSet(t, "alpha", alphaFile, "beta", betaFile),
 		Processes:   agentTable,
 		ConfigDir:   dir,
-		Version:     "v1.1.0",
+		Version:     "v2.0.0",
 		PID:         300,
 	}
 	if ts.clock != nil {

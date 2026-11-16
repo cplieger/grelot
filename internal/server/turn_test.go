@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -407,9 +408,9 @@ func TestInTurnWait_closingWithNoMailWakesAStandingWaitItDeferred(t *testing.T) 
 	})
 }
 
-// inTurn holds GET /v1/inbox?wait= from session in its own goroutine.
+// inTurn holds GET /v1/inbox?wait_ms= from session in its own goroutine.
 func (h *harness) inTurn(session string, wait time.Duration) *pending {
-	return h.async(http.MethodGet, "/v1/inbox?wait="+wait.String(), nil, map[string]string{wire.HeaderSession: session})
+	return h.async(http.MethodGet, "/v1/inbox?wait_ms="+strconv.FormatInt(wait.Milliseconds(), 10), nil, map[string]string{wire.HeaderSession: session})
 }
 
 func TestInTurnWait_returnsMailPastReadWhateverTheNudgeState(t *testing.T) {
@@ -497,9 +498,9 @@ func TestInTurnWait_mailLeftUnackedIsNudgedAfterTheGrace(t *testing.T) {
 func TestInTurnWait_refusals(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegisterAlone(sessA, "reader")
-	for _, w := range []string{"56s", "-1s", "soon"} {
+	for _, w := range []string{"55001", "-1", "soon"} {
 		t.Run(w, func(t *testing.T) {
-			if r := h.as(sessA, http.MethodGet, "/v1/inbox?wait="+w, nil); r.status != http.StatusBadRequest {
+			if r := h.as(sessA, http.MethodGet, "/v1/inbox?wait_ms="+w, nil); r.status != http.StatusBadRequest {
 				t.Errorf("got %d %s, want 400", r.status, r.raw)
 			}
 		})

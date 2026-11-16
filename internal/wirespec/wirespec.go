@@ -80,8 +80,9 @@ var agentCommon = append(slices.Clone(sessionGate), errKeyRequired, wire.ErrRate
 
 // asIdentity is what a request acting as its session's identity can be
 // refused: a bad identity header, another key's identity, no live
-// identity, an ended delegate.
-var asIdentity = []wire.ErrorCode{wire.ErrInvalid, wire.ErrForbidden, wire.ErrNone, wire.ErrDormant, wire.ErrDelegateEnded}
+// identity, an ended delegate, the delegate gate of a session with
+// delegates.
+var asIdentity = []wire.ErrorCode{wire.ErrInvalid, wire.ErrForbidden, wire.ErrNone, wire.ErrDormant, wire.ErrDelegateEnded, wire.ErrDelegateGate}
 
 // agent is an agent row's refusals: own, asIdentity and agentCommon, each
 // code once.
@@ -116,7 +117,7 @@ var specs = map[string]Spec{
 	"revive": {
 		Summary: "Make this session's dormant identity, or one of this environment by name, live again",
 		Request: typeOf[wire.ReviveRequest](), Response: typeOf[wire.Registered](),
-		Errors: agent(wire.ErrNotFound, wire.ErrConflict, wire.ErrOtherEnv, wire.ErrOtherProvider, wire.ErrNoEnvironment,
+		Errors: agent(wire.ErrNotFound, wire.ErrGone, wire.ErrConflict, wire.ErrOtherProvider, wire.ErrNoEnvironment,
 			wire.ErrKeyReused, wire.ErrStoreFull, wire.ErrTooLarge),
 	},
 	"getMe": {
@@ -143,11 +144,11 @@ var specs = map[string]Spec{
 		Response: typeOf[wire.Retired](), Errors: agent(wire.ErrKeyReused),
 	},
 	"listIdentities": {
-		Summary: "Every live identity, or with all=1 the dormant ones too, narrowed by the filters",
+		Summary: "Every live identity, or with all=1 the dormant ones too, narrowed by the filters, by name",
 		Query:   typeOf[wire.IdentitiesQuery](), Response: typeOf[wire.Peers](), Errors: anySession(), AnySession: true,
 	},
 	"getVersion": {
-		Summary:  "The server's version",
+		Summary:  "The server's version and path root",
 		Response: typeOf[wire.Version](), Errors: anySession(), AnySession: true,
 	},
 	"createPost": {
@@ -157,15 +158,15 @@ var specs = map[string]Spec{
 			wire.ErrTooLarge, wire.ErrKeyReused, wire.ErrStoreFull),
 	},
 	"listThreads": {
-		Summary: "The live path threads under a path",
-		Query:   typeOf[wire.PathQuery](), Response: typeOf[wire.Threads](), Errors: agent(),
+		Summary: "The live path threads under a path, by path",
+		Query:   typeOf[wire.ThreadsQuery](), Response: typeOf[wire.Threads](), Errors: agent(),
 	},
 	"getReceipts": {
 		Summary: "Who has read a message this identity sent or received",
 		Params:  typeOf[wire.MessageParams](), Response: typeOf[wire.Receipts](), Errors: agent(wire.ErrNotFound),
 	},
 	"getHistory": {
-		Summary: "This identity's mailbox, read and unread, moving nothing",
+		Summary: "This identity's mailbox, read and unread, moving nothing; pages go back in time, each oldest first",
 		Query:   typeOf[wire.HistoryQuery](), Response: typeOf[wire.History](), Errors: agent(),
 	},
 	"follow": {
@@ -189,8 +190,8 @@ var specs = map[string]Spec{
 		Errors: agent(wire.ErrConflict, wire.ErrReserved, wire.ErrQueued, wire.ErrKeyReused, wire.ErrStoreFull, wire.ErrTooLarge),
 	},
 	"listReservations": {
-		Summary: "The grants and queue entries overlapping a path, every one when it is absent",
-		Query:   typeOf[wire.PathQuery](), Response: typeOf[wire.Reservations](), Errors: agent(),
+		Summary: "The grants and queue entries overlapping a path, every one when it is absent, by id",
+		Query:   typeOf[wire.ReservationsQuery](), Response: typeOf[wire.Reservations](), Errors: agent(),
 	},
 	"renewReservation": {
 		Summary: "Renew one of this identity's reservations",
@@ -226,7 +227,7 @@ var specs = map[string]Spec{
 		Errors: agent(wire.ErrTooManyWaits, wire.ErrEnded, wire.ErrReplaced, wire.ErrTooLarge),
 	},
 	"readInbox": {
-		Summary: "The oldest unread entries, marking nothing; with wait, held until wake mail arrives",
+		Summary: "The unread entries oldest first, marking nothing; with wait_ms, held until wake mail arrives",
 		Query:   typeOf[wire.InboxQuery](), Response: typeOf[wire.Inbox](), Errors: agent(wire.ErrTooManyWaits),
 	},
 	"listConversations": {
@@ -308,6 +309,7 @@ func Registry() *wiregen.Registry {
 			wiregen.StringEnum[wire.AgentState](),
 			wiregen.StringEnum[wire.StatsRange](),
 			wiregen.StringEnum[wire.EventKind](),
+			wiregen.StringEnum[wire.FieldCode](),
 		},
 		// The types a route's own types reach; a route's own are registered
 		// by naming them on its endpoint.
@@ -325,7 +327,7 @@ func Registry() *wiregen.Registry {
 			wiregen.TypeRef[wire.Delegate](), wiregen.TypeRef[wire.Link](), wiregen.TypeRef[wire.Peer](),
 			wiregen.TypeRef[wire.PeerReservation](), wiregen.TypeRef[wire.PeerQueued](), wiregen.TypeRef[wire.PeerDelegate](),
 			wiregen.TypeRef[wire.IdentityFields](), wiregen.TypeRef[wire.Recipients](), wiregen.TypeRef[wire.Thread](),
-			wiregen.TypeRef[wire.Receipt](), wiregen.TypeRef[wire.Entry](),
+			wiregen.TypeRef[wire.Receipt](), wiregen.TypeRef[wire.Entry](), wiregen.TypeRef[wire.FieldError](),
 		},
 		Endpoints: endpoints(wire.Routes),
 		Events:    []wiregen.Event{{Name: wire.EventChanged, Data: wiregen.TypeRef[wire.Changed]()}},
@@ -388,7 +390,11 @@ func endpoints(routes []wire.Route) []wiregen.Endpoint {
 		if r.Keyed {
 			e.Headers = append(e.Headers, idempotencyKey)
 		}
-		for _, c := range s.Errors {
+		codes := s.Errors
+		if r.Paged {
+			codes = append(slices.Clone(codes), wire.ErrCursorInvalid, wire.ErrCursorMismatch)
+		}
+		for _, c := range codes {
 			e.Errors = append(e.Errors, wiregen.ErrorRef{Code: c.Code, Status: c.Status})
 		}
 		out = append(out, e)

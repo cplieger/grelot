@@ -3,35 +3,23 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
-	"slices"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/wire"
 )
 
-// whoFields are the names fields= takes, in wire.Peer's JSON names.
-var whoFields = []string{
-	"arch", "delegates", "description", "expires_at", "follows", "host", "last_seen",
-	"name", "online", "os", "paths", "queued", "relation", "reservations", "state",
-}
-
 // who is GET /v1/identities: every live identity, with all=1 the dormant
-// ones too, narrowed by the filters, which combine with AND. A session
-// with no identity, or no Grelot-Session at all, sees every relation as
-// unknown.
+// ones too, narrowed by the filters, which combine with AND, by name. A
+// session with no identity, or no Grelot-Session at all, sees every
+// relation as unknown.
 func (s *Server) who(r *http.Request, c store.Caller, _ store.Keyed) (status int, body any, err error) {
 	q := r.URL.Query()
-	fields, err := whoFieldSet(q.Get("fields"))
-	if err != nil {
-		return 0, nil, err
-	}
+	p := pagingOf(r)
 	wq := store.WhoQuery{
 		Path: q.Get("path"), Repo: q.Get("repo"), Holds: q.Get("holds"), Queued: q.Get("queued"), Text: q.Get("q"),
+		After: string(p.after), Limit: p.limit,
 	}
 	var online bool
 	for _, f := range []struct {
@@ -47,24 +35,18 @@ func (s *Server) who(r *http.Request, c store.Caller, _ store.Keyed) (status int
 	if online {
 		wq.Online = isOnline
 	}
-	peers, err := s.store.Who(r.Context(), c, &wq)
+	got, err := s.store.Who(r.Context(), c, &wq)
 	if err != nil {
 		return 0, nil, err
 	}
-	entries := make([]any, 0, len(peers))
-	for i := range peers {
-		e := whoOut(&peers[i], isOnline, now)
-		if fields == nil {
-			entries = append(entries, e)
-			continue
-		}
-		picked, perr := pick(&e, fields)
-		if perr != nil {
-			return 0, nil, perr
-		}
-		entries = append(entries, picked)
+	out := wire.Peers{List: wire.List[wire.Peer]{Items: make([]wire.Peer, 0, len(got.Items)), Total: got.Total}}
+	for i := range got.Items {
+		out.Items = append(out.Items, whoOut(&got.Items[i], isOnline, now))
 	}
-	return http.StatusOK, map[string]any{"identities": entries}, nil
+	if n := len(got.Items); n > 0 {
+		out.NextCursor, err = s.next(r, got.More, []byte(got.Items[n-1].Name))
+	}
+	return http.StatusOK, out, err
 }
 
 func whoOut(p *store.Peer, online func(*store.Identity) bool, now time.Time) wire.Peer {
@@ -88,41 +70,6 @@ func whoOut(p *store.Peer, online func(*store.Identity) bool, now time.Time) wir
 		})
 	}
 	return e
-}
-
-// whoFieldSet parses fields=, which always keeps name; nil means every
-// field.
-func whoFieldSet(v string) ([]string, error) {
-	if v == "" {
-		return nil, nil
-	}
-	out := []string{"name"}
-	for f := range strings.SplitSeq(v, ",") {
-		if !slices.Contains(whoFields, f) {
-			return nil, badRequest("unknown field " + strconv.Quote(f) + " in fields: valid fields are " + strings.Join(whoFields, ", "))
-		}
-		out = append(out, f)
-	}
-	return out, nil
-}
-
-// pick is e with only the named fields.
-func pick(e *wire.Peer, fields []string) (map[string]json.RawMessage, error) {
-	b, err := json.Marshal(e)
-	if err != nil {
-		return nil, err
-	}
-	var all map[string]json.RawMessage
-	if err := json.Unmarshal(b, &all); err != nil {
-		return nil, err
-	}
-	out := make(map[string]json.RawMessage, len(fields))
-	for _, f := range fields {
-		if v, ok := all[f]; ok {
-			out[f] = v
-		}
-	}
-	return out, nil
 }
 
 // flag reads a 0-or-1 query parameter.

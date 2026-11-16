@@ -116,7 +116,7 @@ func TestPost_aReplyToAQuestionTheThreadStillHoldsHintsNothing(t *testing.T) {
 	for range 24 {
 		h.clk.advance(4 * time.Hour)
 		for _, s := range sessions {
-			if r := h.as(s, http.MethodPatch, "/v1/me", map[string]any{"ttl": "6h", "where": where("a")}); r.status != http.StatusOK {
+			if r := h.as(s, http.MethodPatch, "/v1/me", map[string]any{"ttl_ms": durMS("6h"), "where": where("a")}); r.status != http.StatusOK {
 				t.Fatalf("renew %s: %d %s", s, r.status, r.raw)
 			}
 		}

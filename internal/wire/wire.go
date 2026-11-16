@@ -1,24 +1,77 @@
 // Package wire is grelot's wire contract: the JSON the server sends and
 // reads, and the route rows it binds. It imports the standard library only,
 // so the server, the clients and the generator share it. The agent rows'
-// instants are RFC 3339 and their durations strings such as "2h"; the other
-// rows' instants are milliseconds since the Unix epoch and their durations
-// milliseconds, each named with _ms.
+// instants are RFC 3339; the other rows' instants are milliseconds since
+// the Unix epoch. Durations are milliseconds, each named with _ms.
 package wire
 
 // Error is every error response, on /api and /v1 alike.
 type Error struct {
-	// Error is the refusal and its fix, in words.
+	// Error is the server's sentence for a person reading a raw answer;
+	// a client words Code instead.
 	Error string `json:"error"`
 	// Code names the refusal, such as not_found.
 	Code string `json:"code,omitempty"`
-	// Reason refines a sign-in route's Code, such as label_too_long.
+	// Reason refines Code, such as label_too_long or the resource a
+	// not_found names.
 	Reason    string `json:"reason,omitempty"`
 	RequestID string `json:"request_id,omitempty"`
-	// PathRoot is the server's path root; an unauthenticated caller never
-	// gets it.
-	PathRoot string `json:"path_root,omitempty"`
+	// Fields are the refused request fields of an invalid or too_large.
+	Fields []FieldError `json:"fields,omitempty"`
+	// RetryAfterMS is set, with Retry-After, when a wait fixes the refusal.
+	RetryAfterMS int64 `json:"retry_after_ms,omitempty"`
 }
+
+// FieldError is one refused request field: Field is its JSON or query
+// name, dotted when nested, and Code what is wrong with it.
+type FieldError struct {
+	Field   string    `json:"field"`
+	Code    FieldCode `json:"code"`
+	Min     *int64    `json:"min,omitempty"`
+	Max     *int64    `json:"max,omitempty"`
+	Allowed []string  `json:"allowed,omitempty"`
+}
+
+// FieldCode is what is wrong with a refused field.
+type FieldCode string
+
+// The field codes.
+const (
+	FieldRequired FieldCode = "required"
+	// FieldOneOf carries Allowed.
+	FieldOneOf FieldCode = "one_of"
+	// FieldOutOfRange carries Min and Max.
+	FieldOutOfRange FieldCode = "out_of_range"
+	// FieldTooLong carries Max.
+	FieldTooLong FieldCode = "too_long"
+	// FieldNotText is not UTF-8, or more than one line where one is
+	// required.
+	FieldNotText         FieldCode = "not_text"
+	FieldNotWholeMinutes FieldCode = "not_whole_minutes"
+	FieldPersonReserved  FieldCode = "person_reserved"
+)
+
+// List is one page of a list read, which every list answer embeds: Items
+// in the row's order, NextCursor absent on the last page, and Total the
+// items matching the query over every page.
+type List[T any] struct {
+	NextCursor string `json:"next_cursor,omitempty"`
+	Items      []T    `json:"items"`
+	Total      int    `json:"total"`
+}
+
+// The limit a list read takes: 1 to PageLimitMax, PageLimitDefault when
+// absent.
+const (
+	PageLimitDefault = 50
+	PageLimitMax     = 200
+)
+
+// The query parameters a list read pages with.
+const (
+	QueryCursor = "cursor"
+	QueryLimit  = "limit"
+)
 
 // Show filters the conversation list.
 type Show string

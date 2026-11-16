@@ -24,7 +24,7 @@ func TestWhere_requiredOnRegisterReviveAndRenew(t *testing.T) {
 	}{
 		{"register", http.MethodPost, "/v1/register", reg, nil},
 		{"revive", http.MethodPost, "/v1/revive", rev, nil},
-		{"renew", http.MethodPatch, "/v1/me", map[string]any{"ttl": "2h"}, func() { h.mustRegister(sessA, "grelot-dev") }},
+		{"renew", http.MethodPatch, "/v1/me", map[string]any{"ttl_ms": durMS("2h")}, func() { h.mustRegister(sessA, "grelot-dev") }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.setup != nil {
@@ -113,7 +113,7 @@ func TestWhere_storedValuesInNoResponseOrLogLine(t *testing.T) {
 	answers = append(answers,
 		h.as(sessA, http.MethodPost, "/v1/register", reg),
 		h.as(sessA, http.MethodGet, "/v1/me", nil),
-		h.as(sessA, http.MethodPatch, "/v1/me", map[string]any{"ttl": "2h", "where": seeded}),
+		h.as(sessA, http.MethodPatch, "/v1/me", map[string]any{"ttl_ms": durMS("2h"), "where": seeded}),
 		h.request(http.MethodGet, "/v1/me?proc=4242:1700000000", nil, hint),
 		h.as(sessC, http.MethodGet, "/v1/identities", nil),
 	)
@@ -122,7 +122,7 @@ func TestWhere_storedValuesInNoResponseOrLogLine(t *testing.T) {
 	answers = append(answers,
 		h.as(sessA, http.MethodGet, "/v1/me", nil),
 		h.request(http.MethodGet, "/v1/me?proc=4242:1700000000", nil, hint),
-		h.as(sessA, http.MethodPost, "/v1/revive", map[string]any{"ttl": "2h", "where": seeded}),
+		h.as(sessA, http.MethodPost, "/v1/revive", map[string]any{"ttl_ms": durMS("2h"), "where": seeded}),
 		h.as(sessA, http.MethodDelete, "/v1/me", nil),
 	)
 	if got := answers[3].body["hint"]; got == nil {

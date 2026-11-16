@@ -156,7 +156,7 @@ func TestPost_aDirectPostToADormantIdentityNamesItsDormancy(t *testing.T) {
 // registers it from session, returning its handle.
 func (h *harness) grantDelegate(session, label string) string {
 	h.t.Helper()
-	g := h.request(http.MethodPost, "/v1/delegates", map[string]any{"label": label, "ttl": "1h"},
+	g := h.request(http.MethodPost, "/v1/delegates", map[string]any{"label": label, "ttl_ms": durMS("1h")},
 		map[string]string{wire.HeaderSession: session, wire.HeaderSelf: "1"})
 	if g.status != http.StatusCreated {
 		h.t.Fatalf("grant: %d %s", g.status, g.raw)
@@ -294,7 +294,7 @@ func TestPost_refusesABadTargetOrReceiptList(t *testing.T) {
 		})
 	}
 	b := postBody(map[string]any{"agent": "reader"}, "hello", "a body")
-	b["notify_read"], b["by"] = "all", "2h"
+	b["notify_read"], b["by_ms"] = "all", durMS("2h")
 	if r := h.as(sessA, http.MethodPost, "/v1/posts", b); r.status != http.StatusCreated {
 		t.Errorf("notify_read all with by: %d %s", r.status, r.raw)
 	}

@@ -159,3 +159,7 @@ func openTestStore(t *testing.T) *Store {
 	t.Cleanup(func() { _ = s.Close() })
 	return s
 }
+
+// items is a list read's every item, for a test that reads one page of
+// all of them.
+func items[T any](l Listing[T], err error) ([]T, error) { return l.Items, err }

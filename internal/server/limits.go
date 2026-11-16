@@ -3,12 +3,12 @@
 package server
 
 import (
-	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/cplieger/grelot/internal/obs"
+	"github.com/cplieger/grelot/internal/wire"
 	"golang.org/x/time/rate"
 )
 
@@ -128,10 +128,10 @@ func (w *waitCaps) hold(key int64) (release func(), limit string) {
 func (s *Server) rateLimited(retry time.Duration) error {
 	s.metrics.RequestsLimited.Inc(obs.LimitRate)
 	retry = retryAfter(retry)
-	return &apiError{
-		status: http.StatusTooManyRequests, code: "rate_limited", retryAfter: retry,
-		msg: "over " + strconv.FormatFloat(s.limits.Rate, 'f', -1, 64) + " requests a second from this machine's key: send again in " + retry.String(),
-	}
+	e := refusal(wire.ErrRateLimited,
+		"over "+strconv.FormatFloat(s.limits.Rate, 'f', -1, 64)+" requests a second from this machine's key: send again in "+retry.String())
+	e.retryAfter = retry
+	return e
 }
 
 // holdWait admits one held wait of key, or refuses it with 429
@@ -146,5 +146,7 @@ func (s *Server) holdWait(key int64) (release func(), err error) {
 	if limit == obs.LimitWaitsServer {
 		msg = "the server holds " + strconv.Itoa(s.limits.ServerWaits) + " waits at once, its most: retry once one has answered"
 	}
-	return nil, &apiError{status: http.StatusTooManyRequests, code: "too_many_waits", msg: msg}
+	e := refusal(wire.ErrTooManyWaits, msg)
+	e.retryAfter = time.Second
+	return nil, e
 }

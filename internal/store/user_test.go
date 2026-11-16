@@ -183,7 +183,7 @@ func TestUser_postsReachTheirRecipientsLikeAnAgentsPost(t *testing.T) {
 			t.Errorf("delivered %d, want 1", got.Delivered)
 		}
 		p := mustInbox(t, s, sess("bravo"), 0)
-		last := p.Entries[len(p.Entries)-1]
+		last := p.Items[len(p.Items)-1]
 		if last.Kind != kindDirect || last.From != userName || last.Message != got.Message {
 			t.Errorf("bravo's last entry %+v, want the direct post from user", last)
 		}
@@ -324,7 +324,7 @@ func TestUser_isLeftOutOfCensusWhoAndPush(t *testing.T) {
 		}
 	})
 	t.Run("who", func(t *testing.T) {
-		peers, err := s.Who(t.Context(), Caller{Session: sess("alpha")}, &WhoQuery{All: true})
+		peers, err := items(s.Who(t.Context(), Caller{Session: sess("alpha")}, &WhoQuery{All: true}))
 		if err != nil {
 			t.Fatal(err)
 		}

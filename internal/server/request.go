@@ -21,6 +21,9 @@ import (
 // maxBody caps every request body.
 const maxBody = 128 << 10
 
+// reasonRequestBody is a too_large's reason for a body over maxBody.
+const reasonRequestBody = "request_body"
+
 // bearer is the key r sends, which its own logged text must not carry.
 func bearer(r *http.Request) string {
 	token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
@@ -101,7 +104,9 @@ func notKeyChar(ch rune) bool {
 // bodyError answers a request body that could not be read.
 func bodyError(err error) error {
 	if errors.As(err, new(*http.MaxBytesError)) {
-		return refusal(wire.ErrTooLarge, "the request body is over 128 KiB")
+		e := refusal(wire.ErrTooLarge, "the request body is over 128 KiB")
+		e.reason = reasonRequestBody
+		return e
 	}
 	return badRequest("the request body could not be read: " + err.Error())
 }
@@ -118,14 +123,5 @@ func decode(r *http.Request, v any) error {
 	return badRequest("the request body must be one JSON object: " + err.Error())
 }
 
-// durationOf reads a request's duration string, such as "2h"; "" is none.
-func durationOf(v string) (time.Duration, error) {
-	if v == "" {
-		return 0, nil
-	}
-	d, err := time.ParseDuration(v)
-	if err != nil {
-		return 0, badRequest(`a duration must be a string such as "90m" or "2h", got ` + v)
-	}
-	return d, nil
-}
+// durationMS is a request's _ms duration; 0 is none.
+func durationMS(ms int64) time.Duration { return time.Duration(ms) * time.Millisecond }

@@ -121,7 +121,7 @@ func TestDelegate_idleForAnHourSurvivesToItsLease(t *testing.T) {
 		t.Fatal("delegate ended after an hour with no request, want it kept to its lease")
 	}
 	mustPost(t, s, asPost("parent", d.Name, Target{Agent: "parent"}))
-	if _, err := s.Inbox(t.Context(), as(sess("parent"), d.Name), 0); err != nil {
+	if _, err := s.Inbox(t.Context(), as(sess("parent"), d.Name), InboxQuery{Limit: 0}); err != nil {
 		t.Fatal(err)
 	}
 	if row, _ := findIdentity(t, s, d.ID); !row.Lease.Expires.Equal(d.Expires) {

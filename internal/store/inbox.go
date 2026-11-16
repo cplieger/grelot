@@ -4,18 +4,11 @@ package store
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"time"
 
 	"github.com/cplieger/bolttable"
-)
-
-// Inbox page sizes: a limit of 0 takes the default.
-const (
-	defaultInboxLimit = 20
-	maxInboxLimit     = 100
 )
 
 // Entry is one delivery, or in history one of the reader's own posts, as
@@ -103,11 +96,19 @@ func (d *deliveryRow) wakes() bool {
 	return c.Wake() == 1
 }
 
-// Page is an inbox fetch: the oldest unread deliveries, and Unread, every
-// delivery past read, the page's included.
-type Page struct {
-	Entries []Entry
-	Unread  Counts
+// InboxQuery pages an inbox read: the deliveries past the seq After, at
+// most Limit of them (every one at 0).
+type InboxQuery struct {
+	After uint64
+	Limit int
+}
+
+// InboxPage is an inbox read: a page of the unread deliveries oldest
+// first, Total counting every one, and Unread, every delivery past read by
+// kind.
+type InboxPage struct {
+	Listing[Entry]
+	Unread Counts
 }
 
 // Acked is what an ack answers: the read cursor and the deliveries still
@@ -129,21 +130,14 @@ type Held struct {
 	Shown    uint64
 }
 
-// Inbox returns up to limit of c's unexpired deliveries past read,
-// oldest first, and moves no cursor: the caller acks what it printed.
-// Refusals: KindInvalid for a limit outside 0 to maxInboxLimit; KindGone
-// for a session with no live identity.
-func (s *Store) Inbox(ctx context.Context, c Caller, limit int) (Page, error) {
-	switch {
-	case limit == 0:
-		limit = defaultInboxLimit
-	case limit < 0 || limit > maxInboxLimit:
-		return Page{}, refuse(KindInvalid, fmt.Sprintf("the inbox limit must be 1 to %d", maxInboxLimit))
-	}
+// Inbox returns a page of c's unexpired deliveries past read, oldest
+// first, and moves no cursor: the caller acks what it printed. Refusals:
+// KindGone for a session with no live identity.
+func (s *Store) Inbox(ctx context.Context, c Caller, q InboxQuery) (InboxPage, error) {
 	if _, err := s.Seen(ctx, c); err != nil {
-		return Page{}, err
+		return InboxPage{}, err
 	}
-	var out Page
+	var out InboxPage
 	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		me, err := s.liveFor(r, c, now)
@@ -155,18 +149,20 @@ func (s *Store) Inbox(ctx context.Context, c Caller, limit int) (Page, error) {
 			return err
 		}
 		out.Unread = u.Counts
-		err = s.scanUnread(r, me.ID, me.Read, now, func(d *deliveryRow) error {
-			if len(out.Entries) == limit {
-				return errScanDone
+		out.Items = []Entry{}
+		return s.scanUnread(r, me.ID, me.Read, now, func(d *deliveryRow) error {
+			out.Total++
+			switch {
+			case d.Seq <= q.After:
+				return nil
+			case q.Limit != 0 && len(out.Items) == q.Limit:
+				out.More = true
+				return nil
 			}
 			e, eerr := s.entry(r, &me, d)
-			out.Entries = append(out.Entries, e)
+			out.Items = append(out.Items, e)
 			return eerr
 		})
-		if errors.Is(err, errScanDone) {
-			err = nil
-		}
-		return err
 	})
 	return out, err
 }
@@ -261,7 +257,7 @@ func (s *Store) ReadThread(ctx context.Context, c Caller, thread, upTo uint64) (
 			return err
 		}
 		if !found || th.Kind == kindCards || th.Lease.due(w.now) {
-			return refuse(KindNotFound, fmt.Sprintf("no conversation %d: it never existed or has expired", thread))
+			return notFound(ReasonConversation, fmt.Sprintf("no conversation %d: it never existed or has expired", thread))
 		}
 		threads, err := s.conversationThreads(w.r, thread, w.now)
 		if err != nil {
