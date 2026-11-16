@@ -166,11 +166,12 @@ func TestBelowTheFloor_everyCommandClassPrintsThe426(t *testing.T) {
 		}
 	})
 	t.Run("the watcher", func(t *testing.T) {
+		const end = "end [grelot:end] grelot (automated, not the user): this watcher stopped (error); run grelot me\n"
 		_, reader, _ := watchPair(t)
 		reader.env.Version = belowFloor
 		w := reader.start("watch", "--door", "poll")
-		if code := w.exit(t); code == 0 {
-			t.Errorf("exit 0, want a failure")
+		if code, out := w.exit(t), w.stdout.String(); code != 0 || out != end {
+			t.Errorf("exit %d, stdout %q; want the door's end_exit 0 and its end output %q", code, out, end)
 		}
 		if got := w.stderr.String(); !strings.Contains(got, belowFloor426) {
 			t.Errorf("stderr %q, want the 426's line %q", got, belowFloor426)

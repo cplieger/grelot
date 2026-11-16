@@ -148,13 +148,19 @@ type outcome struct {
 // run runs one grelot command in the shell with stdin as its input.
 func (s *shell) run(stdin string, args ...string) outcome {
 	s.t.Helper()
+	return s.runCtx(s.t.Context(), stdin, args...)
+}
+
+// runCtx is run under ctx, for a test that cancels the command.
+func (s *shell) runCtx(ctx context.Context, stdin string, args ...string) outcome {
+	s.t.Helper()
 	set, err := provider.LoadSet(providers.FS)
 	if err != nil {
 		s.t.Fatalf("LoadSet: %v", err)
 	}
 	var stdout, stderr bytes.Buffer
 	before := s.srv.count()
-	code := cli.Run(s.t.Context(), &cli.Env{
+	code := cli.Run(ctx, &cli.Env{
 		Stdin: strings.NewReader(stdin), Stdout: &stdout, Stderr: &stderr,
 		Lookup: func(name string) (string, bool) {
 			if s.inHook && slices.Contains(s.hookOmits, name) {

@@ -53,7 +53,7 @@ func TestKiroCLIWorkflowDoor(t *testing.T) {
 				t.Fatal(err)
 			}
 			if !step.Exit || step.Code != 0 {
-				t.Errorf("step %+v, want exit 0: the watch reads any other code as idle without reading the line", step)
+				t.Errorf("step %+v, want exit 0: the watch reads a non-zero exit as idle or a failure, never as this line", step)
 			}
 			if strings.Count(out.String(), "\n") != 1 || !strings.HasSuffix(out.String(), "\n") {
 				t.Errorf("stdout %q, want one line", out.String())

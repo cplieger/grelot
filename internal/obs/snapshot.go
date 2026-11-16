@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/cplieger/go/measure"
+	"github.com/cplieger/go/measure/v2"
 )
 
 // Snapshot is the page's state and process gauges at one gather. State is
