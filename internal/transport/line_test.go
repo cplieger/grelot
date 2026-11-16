@@ -24,6 +24,13 @@ func TestEndLine(t *testing.T) {
 	}
 }
 
+func TestEndLine_restoredSaysHostPushWorksAgain(t *testing.T) {
+	want := "[grelot:end] grelot (automated, not the user): this watcher stopped (host push working again); run grelot me"
+	if got := EndLine("restored"); got != want {
+		t.Errorf("EndLine(restored) = %q, want %q", got, want)
+	}
+}
+
 // The reason is the server's word; anything else must not reach a door, which
 // may deliver the line with the user's authority.
 func TestEndLineRefusesText(t *testing.T) {

@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/cplieger/grelot/internal/client"
@@ -889,4 +891,61 @@ func TestHookSubagentStop_readsTheSubagentsSessionAtItsPath(t *testing.T) {
 	if me.State != client.StateLive {
 		t.Errorf("the parent after the stop: %+v, want it live", me)
 	}
+}
+
+// pushDoors is a server providers folder whose one door pushes every alpha
+// identity's nudge to url.
+func pushDoors(url string) fstest.MapFS {
+	door := "name: alpha\ndoors:\n  - name: push\n    layer: 1\n    transport: http\n" +
+		"    url: '" + url + "/notify/{{path .Session}}'\n" +
+		"    body: '{\"line\": {{json .Line}}}'\n    match: {provider: alpha}\n"
+	return fstest.MapFS{"alpha.yaml": &fstest.MapFile{Data: []byte(door)}}
+}
+
+// A push that waits on its retry still wakes the session, so the turn line
+// names no start line until the push has failed for 2 minutes.
+func TestHookPrompt_aFailingPushNamesNoStartLineForTwoMinutes(t *testing.T) {
+	var tries atomic.Int32
+	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		tries.Add(1)
+		w.Header().Set("Retry-After", "600")
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer failing.Close()
+	ts := newPushServer(t, pushDoors(failing.URL))
+	file := hookTurnFile + "doors:\n  - {name: tray, layer: 2, transport: stdout, start: grelot watch --door tray}\n"
+	a := turnAgent(t, ts, file)
+	b, _ := registerAt(t, ts, "s-2", "bee-dev")
+	b.postTo("@toolbelt-dev", "a question")
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		var me map[string]any
+		ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodGet, Path: "/v1/me"}, &me)
+		if me["push"] == "failing" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("push never failed: %d tries, me %v", tries.Load(), me)
+		}
+	}
+
+	if _, out := a.prompt("go on"); strings.Contains(out, "wake: down") {
+		t.Errorf("turn line %q names the start line one failed push in", out)
+	}
+	if out := a.must("inbox"); !strings.Contains(statusOf(out), "wake: host push") {
+		t.Errorf("inbox status %q, want wake: host push", statusOf(out))
+	}
+	ts.clock.advance(2 * time.Minute)
+	want := "wake: down, start: grelot watch --door tray"
+	if _, out := a.prompt("go on"); !strings.Contains(out, want) {
+		t.Errorf("turn line %q after 2 min of failed push, want %q", out, want)
+	}
+	if out := a.must("me"); !strings.Contains(statusOf(out), "wake: down") {
+		t.Errorf("me status %q after 2 min of failed push, want wake: down", statusOf(out))
+	}
+}
+
+// statusOf is the first line of a command's stdout, its status line.
+func statusOf(out string) string {
+	line, _, _ := strings.Cut(out, "\n")
+	return line
 }

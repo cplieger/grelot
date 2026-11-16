@@ -60,6 +60,9 @@ type mark struct {
 	closed time.Time
 	// turnAt is when the open turn was last set, zero when none is.
 	turnAt time.Time
+	// watched is when the identity's online stretch began: its first
+	// standing wait while it was offline.
+	watched time.Time
 	// servedAt is when an in-turn wait last returned wake mail, up to seq
 	// served, which its ack is still to mark read.
 	servedAt time.Time
@@ -98,17 +101,20 @@ func (p *presence) get(id uint64) mark {
 // take-over or a revival; the waits already open stay counted.
 func (p *presence) registered(id uint64) {
 	p.update(id, func(m *mark) {
-		*m = mark{closed: m.closed, open: m.open, inTurn: m.inTurn}
+		*m = mark{closed: m.closed, watched: m.watched, open: m.open, inTurn: m.inTurn}
 	})
 }
 
-// opened records a standing wait of id starting in session, which ends
-// the down episode and replaces the session's other open standing waits;
-// the caller calls closed with the ticket when it ends.
-func (p *presence) opened(id uint64, session string) waitTicket {
+// opened records a standing wait of id starting in session at now, which
+// ends the down episode and replaces the session's other open standing
+// waits; the caller calls closed with the ticket when it ends.
+func (p *presence) opened(id uint64, session string, now time.Time) waitTicket {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	m := p.m[id]
+	if !m.onlineAt(now) {
+		m.watched = now
+	}
 	m.open, m.held, m.downTold = m.open+1, true, false
 	p.m[id] = m
 	t := waitTicket{replaced: make(chan struct{}), session: session, id: id}
@@ -175,8 +181,15 @@ func (p *presence) closed(t waitTicket, now time.Time) {
 // Server.onlineAt checks.
 func (p *presence) online(id uint64, now time.Time) bool {
 	m := p.get(id)
+	return m.onlineAt(now)
+}
+
+func (m *mark) onlineAt(now time.Time) bool {
 	return m.open > 0 || (!m.closed.IsZero() && now.Sub(m.closed) < onlineFor)
 }
+
+// watched is when id's online stretch began, zero for none yet.
+func (p *presence) watched(id uint64) time.Time { return p.get(id).watched }
 
 // onlineAt reports, at now, whether an identity is online.
 func (s *Server) onlineAt(now time.Time) func(*store.Identity) bool {

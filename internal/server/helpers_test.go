@@ -176,7 +176,7 @@ func buildHarness(t *testing.T, o store.Options, now func() time.Time, edits ...
 			t.Fatalf("store.Open: %v", err)
 		}
 		t.Cleanup(func() { _ = st.Close() })
-		h.push = &fakePush{states: map[uint64]pushState{}}
+		h.push = &fakePush{states: map[uint64]pushReading{}}
 		opts := &Options{
 			Store: st, Logger: logger, Now: now, Version: testVersion, Push: h.push, Hub: hub, Metrics: m,
 			Config: Config{Token: testToken, PathRoot: protopath.DefaultRoot},
@@ -233,21 +233,21 @@ func (h *harness) fill() {
 	}
 }
 
-// fakePush serves the identities a test gives a push state.
+// fakePush serves the identities a test gives a push reading.
 type fakePush struct {
-	states map[uint64]pushState
+	states map[uint64]pushReading
 	mu     sync.Mutex
 }
 
 var _ Pusher = (*fakePush)(nil)
 
-func (f *fakePush) State(id uint64) pushState {
+func (f *fakePush) Reading(id uint64) pushReading {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if st, ok := f.states[id]; ok {
-		return st
+	if r, ok := f.states[id]; ok {
+		return r
 	}
-	return pushNone
+	return pushReading{state: pushNone}
 }
 
 func (*fakePush) registered(uint64, string, string) {}
@@ -256,10 +256,13 @@ func (*fakePush) beat(context.Context) {}
 
 func (*fakePush) stop() {}
 
-func (f *fakePush) set(id uint64, st pushState) {
+// set gives id push state st with no failing run, healthy since ever.
+func (f *fakePush) set(id uint64, st pushState) { f.setReading(id, pushReading{state: st}) }
+
+func (f *fakePush) setReading(id uint64, r pushReading) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.states[id] = st
+	f.states[id] = r
 }
 
 // idOf is the store id of the identity session acts as.

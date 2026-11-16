@@ -57,6 +57,9 @@ type pushee struct {
 	at time.Time
 	// retryAt is when the failed send key is tried again, zero for none.
 	retryAt time.Time
+	// failing and healthy are pushReading's.
+	failing time.Time
+	healthy time.Time
 	door    provider.ServerDoor
 	key     sendKey
 	off     bool
@@ -95,31 +98,38 @@ func startHostPush(s *Server, doors *provider.ServerDoors) *hostPush {
 	return p
 }
 
-func (p *hostPush) State(id uint64) pushState {
+func (p *hostPush) Reading(id uint64) pushReading {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	e := p.ids[id]
 	switch {
 	case e == nil:
-		return pushNone
+		return pushReading{state: pushNone}
 	case e.off || p.doorOff[e.door.Door]:
-		return pushOff
-	case !e.retryAt.IsZero():
-		return pushFailing
+		return pushReading{state: pushOff}
 	}
-	return pushOK
+	r := pushReading{failing: e.failing, healthy: e.healthy, state: pushOK}
+	if !e.retryAt.IsZero() {
+		r.state = pushFailing
+	}
+	return r
 }
 
 // registered always installs a new entry, so a forget holding the old one
-// leaves it, and on the same door it keeps a pending retry, so a repeated
-// register never sends before the receiver's Retry-After.
+// leaves it, and on the same door it keeps a pending retry and its failing
+// run, so a repeated register never sends before the receiver's
+// Retry-After nor restarts the run's grace.
 func (p *hostPush) registered(id uint64, prov, host string) {
 	d, ok := p.doors.For(prov, host)
+	now := p.s.now()
 	p.mu.Lock()
 	if ok {
-		fresh := &pushee{door: d}
+		fresh := &pushee{door: d, healthy: now}
 		if e := p.ids[id]; e != nil && e.door.Door == d.Door {
 			fresh.retryAt, fresh.key, fresh.at = e.retryAt, e.key, e.at
+			if !e.off {
+				fresh.failing, fresh.healthy = e.failing, e.healthy
+			}
 		}
 		p.ids[id] = fresh
 		p.marks[id] = struct{}{}
@@ -326,6 +336,7 @@ func (p *hostPush) send(ctx context.Context, id uint64, cur *pushee, due *store.
 	p.counted(d, sendOutcome(res.Outcome))
 	switch res.Outcome {
 	case transport.Accepted:
+		p.accepted(id)
 		if _, _, err := p.s.store.RecordNudge(ctx, due, store.NudgeByPush); err != nil {
 			return false, p.lookupFailed(ctx, id, err)
 		}
@@ -381,17 +392,34 @@ func doorAttrs(d provider.ServerDoor, status int) []any {
 	return []any{"provider", d.File, "door", d.Door.Name, attrStatus, status}
 }
 
-// retryLater tries key again after the receiver's Retry-After. Meanwhile
-// push is failing, so id's standing waits may send the nudge, which ends
-// the retry.
+// accepted ends id's failing run, if one is open, so a standing wait's
+// hand-back is measured from now.
+func (p *hostPush) accepted(id uint64) {
+	now := p.s.now()
+	p.edit(id, func(e *pushee) {
+		if !e.failing.IsZero() {
+			e.failing, e.healthy = time.Time{}, now
+		}
+	})
+}
+
+// retryLater tries key again after the receiver's Retry-After, and starts
+// id's failing run unless one is open. Meanwhile push is failing, so id's
+// standing waits may send the nudge, which ends the retry.
 func (p *hostPush) retryLater(ctx context.Context, id uint64, key sendKey, res transport.HTTPResult, attrs []any) {
 	level := slog.LevelWarn
 	if res.Status != 0 && res.Status != http.StatusTooManyRequests && res.Status != http.StatusServiceUnavailable {
 		level = slog.LevelError
 	}
 	p.s.log.Log(ctx, level, msgPushFailed, attrs...)
-	at := p.s.now().Add(res.RetryAfter)
-	p.edit(id, func(e *pushee) { e.retryAt, e.key, e.at = at, key, at })
+	now := p.s.now()
+	at := now.Add(res.RetryAfter)
+	p.edit(id, func(e *pushee) {
+		e.retryAt, e.key, e.at = at, key, at
+		if e.failing.IsZero() {
+			e.failing = now
+		}
+	})
 	p.s.hub.Woke([]uint64{id})
 }
 
@@ -399,7 +427,7 @@ func (p *hostPush) retryLater(ctx context.Context, id uint64, key sendKey, res t
 // revived, and hands its nudge to its standing waits.
 func (p *hostPush) identityOff(ctx context.Context, id uint64, level slog.Level, msg string, attrs []any) {
 	p.s.log.Log(ctx, level, msg, attrs...)
-	p.edit(id, func(e *pushee) { e.off, e.retryAt, e.at = true, time.Time{}, time.Time{} })
+	p.edit(id, func(e *pushee) { e.off, e.retryAt, e.at, e.failing = true, time.Time{}, time.Time{}, time.Time{} })
 	p.s.hub.Woke([]uint64{id})
 }
 

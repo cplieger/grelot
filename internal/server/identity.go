@@ -300,7 +300,7 @@ func (s *Server) meLive(r *http.Request, c store.Caller, out *meResponse, id uin
 	now := s.now()
 	counts := countsOut(st.Unread)
 	out.Unread, out.Wake = &counts, s.wakeState(&st, now)
-	out.Push = string(s.push.State(id))
+	out.Push = string(s.push.Reading(id).state)
 	out.Online = s.onlineAt(now)(&st.Identity)
 	for i := range resv {
 		out.Reservations = append(out.Reservations, reservationOut(&resv[i]))

@@ -35,7 +35,7 @@ The grelot server can wake a marotte chat itself, through marotte's notify route
 5. Put both containers on one network, so `http://marotte:9847` resolves from the grelot container. The notify route skips marotte's `ALLOWED_HOSTS` check, so `marotte` need not be added to that list.
 6. Restart the grelot server, which reads its providers folder and secrets at startup.
 
-A served chat's status line then reads `wake: host push`. When marotte answers 404, the chat is gone and push stops for that identity. A 401 or 403 means the token is wrong or missing on one side. It turns the door off for every marotte chat until the server restarts, with one `"msg":"push refused"` line. While the door is off, each chat's status line reads `wake: down` and names the grelot-watch workflow, so mail is slower to wake a chat, but none is lost.
+A served chat's status line then reads `wake: host push`. A busy marotte or a timeout is retried, and the line keeps reading `wake: host push` until push has failed for 2 minutes with no accepted send. When marotte answers 404, the chat is gone and push stops for that identity. A 401 or 403 means the token is wrong or missing on one side. It turns the door off for every marotte chat until the server restarts, with one `"msg":"push refused"` line. While the door is off, each chat's status line reads `wake: down` and names the grelot-watch workflow, so mail is slower to wake a chat, but none is lost.
 
 ## 4. Without push: the grelot-watch workflow
 
@@ -45,7 +45,7 @@ When the server has no door for marotte, or the door is off, an idle chat is wok
 - Install the workflow and its notifier into the container's `$KIRO_HOME`, as [kiro-cli.md, section 3](kiro-cli.md#install-the-workflow-and-its-notifier) shows.
 - When the chat first asks to run a `grelot` command, allow it for every `grelot` command, so the workflow's polls do not wait on approval. The rule is written to `permissions.yaml` under `$KIRO_HOME/settings`, as on the Kiro CLI.
 
-When the turn's grelot line reads `wake: down, start: start the grelot-watch workflow (...)`, the agent starts it, even when the chat's workflow launch setting is "When asked", because the manual tells it that installing the watcher is that request. The status line then reads `wake: watcher`. To stop a run, cancel it from **Workflows** on marotte's `/docs` page. Once push works again, a run that is still going keeps its wait and sends nothing, so cancel it.
+When the turn's grelot line reads `wake: down, start: start the grelot-watch workflow (...)`, the agent starts it, even when the chat's workflow launch setting is "When asked", because the manual tells it that installing the watcher is that request. The status line then reads `wake: watcher`. To stop a run, cancel it from **Workflows** on marotte's `/docs` page. Once push has worked for 2 minutes, a run that is still going ends on its own with its end line, `(host push working again)`. If push fails again for 2 minutes, the status line reads `wake: down` once more and the agent starts a new run.
 
 ## 5. Which sessions share a chat's identity
 

@@ -5,6 +5,7 @@ package cli
 import (
 	"bytes"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -39,6 +40,18 @@ func newServer(t *testing.T) *testServer {
 // that sent no Idempotency-Key.
 func newServerAt(t *testing.T, version string, refuse func(*http.Request) bool) *testServer {
 	t.Helper()
+	return newServerWith(t, version, refuse, nil)
+}
+
+// newPushServer is newServer pushing through the doors of the providers
+// folder doors, which the server reads at its start.
+func newPushServer(t *testing.T, doors fs.FS) *testServer {
+	t.Helper()
+	return newServerWith(t, "v1.1.0-dev.4", nil, doors)
+}
+
+func newServerWith(t *testing.T, version string, refuse func(*http.Request) bool, doors fs.FS) *testServer {
+	t.Helper()
 	ts := &testServer{clock: &clock{now: time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC)}}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	hub := server.NewHub()
@@ -50,9 +63,12 @@ func newServerAt(t *testing.T, version string, refuse func(*http.Request) bool) 
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	srv := server.New(&server.Options{
-		Store: st, Logger: logger, Hub: hub, Version: version, Now: ts.clock.Now,
+		Store: st, Logger: logger, Hub: hub, Version: version, Now: ts.clock.Now, Providers: doors,
 		Config: server.Config{Token: "test-token", PathRoot: protopath.DefaultRoot},
 	})
+	if doors != nil {
+		t.Cleanup(srv.Release)
+	}
 	h := srv.Handler()
 	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)

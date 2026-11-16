@@ -14,11 +14,11 @@ func TestPresence_onlineWhileAWaitIsOpenAndFor90sAfter(t *testing.T) {
 	if p.online(id, testNow) {
 		t.Error("online before any wait")
 	}
-	older := p.opened(id, sessA)
+	older := p.opened(id, sessA, testNow)
 	if !p.online(id, testNow.Add(10*time.Minute)) {
 		t.Error("offline while a wait is open")
 	}
-	newer := p.opened(id, sessA)
+	newer := p.opened(id, sessA, testNow)
 	p.closed(older, testNow)
 	if !p.online(id, testNow.Add(time.Hour)) {
 		t.Error("offline while the newer wait still holds after the replaced one closed")
@@ -84,14 +84,14 @@ func TestPresence_theDownNoticeIsOncePerEpisodeAfterAStandingWait(t *testing.T) 
 	if p.tellDown(id) {
 		t.Error("owed to an identity that never held a standing wait")
 	}
-	p.closed(p.opened(id, sessA), testNow)
+	p.closed(p.opened(id, sessA, testNow), testNow)
 	if !p.tellDown(id) {
 		t.Fatal("not owed once its standing wait is gone")
 	}
 	if p.tellDown(id) {
 		t.Error("owed twice in one down episode")
 	}
-	p.closed(p.opened(id, sessA), testNow)
+	p.closed(p.opened(id, sessA, testNow), testNow)
 	if !p.tellDown(id) {
 		t.Error("not owed in the episode after the next standing wait")
 	}
@@ -107,7 +107,7 @@ func TestPresence_theDownNoticeIsOncePerEpisodeAfterAStandingWait(t *testing.T) 
 // markStopAndWait gives id a seen stop hook and a held standing wait.
 func markStopAndWait(p *presence, id uint64) {
 	p.sawStop(id)
-	p.closed(p.opened(id, "test:session"), testNow)
+	p.closed(p.opened(id, "test:session", testNow), testNow)
 }
 
 func TestPresence_aNewerStandingWaitReplacesItsSessionsOlderOnes(t *testing.T) {
@@ -121,9 +121,9 @@ func TestPresence_aNewerStandingWaitReplacesItsSessionsOlderOnes(t *testing.T) {
 			return false
 		}
 	}
-	first, other := p.opened(id, sessA), p.opened(id+1, sessB)
-	second := p.opened(id, sessA)
-	third := p.opened(id, sessA)
+	first, other := p.opened(id, sessA, testNow), p.opened(id+1, sessB, testNow)
+	second := p.opened(id, sessA, testNow)
+	third := p.opened(id, sessA, testNow)
 	if !replaced(first) || !replaced(second) || replaced(third) || replaced(other) {
 		t.Errorf("replaced first %v, second %v, third %v, another session's %v; want only the first two",
 			replaced(first), replaced(second), replaced(third), replaced(other))
@@ -158,8 +158,8 @@ func TestPresence_aNewerStandingWaitReplacesItsSessionsOlderOnes(t *testing.T) {
 func TestPresence_aWaitForAnotherIdentityTakesNoHandedNudge(t *testing.T) {
 	p := newPresence()
 	const id = 7
-	old := p.opened(id, sessA)
-	moved := p.opened(id+1, sessA)
+	old := p.opened(id, sessA, testNow)
+	moved := p.opened(id+1, sessA, testNow)
 	if handed, gone := p.handOff(old, nudgeJSON{Seq: 9, Count: 1, Attempt: 1}); handed || !gone {
 		t.Errorf("handOff = handed %v, replaced %v; want replaced and nothing handed", handed, gone)
 	}

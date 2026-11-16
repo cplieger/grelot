@@ -104,7 +104,7 @@ func TestStatus_wakeState(t *testing.T) {
 			t.Errorf("wake %q, want down", got)
 		}
 	})
-	h.srv.presence.opened(id, sessA)
+	h.srv.presence.opened(id, sessA, h.clk.now())
 	t.Run("watcher while a standing wait is open", func(t *testing.T) {
 		if got := wake(); got != "watcher" {
 			t.Errorf("wake %q, want watcher", got)
@@ -116,14 +116,24 @@ func TestStatus_wakeState(t *testing.T) {
 			t.Errorf("wake %q, want host push", got)
 		}
 	})
-	for _, st := range []pushState{pushFailing, pushOff} {
-		h.push.set(id, st)
-		t.Run("watcher while push is "+string(st), func(t *testing.T) {
-			if got := wake(); got != "watcher" {
-				t.Errorf("wake %q, want watcher", got)
-			}
-		})
-	}
+	h.push.setReading(id, pushReading{state: pushFailing, failing: h.clk.now().Add(-pushGrace + time.Second)})
+	t.Run("host push while its failing run is under the grace", func(t *testing.T) {
+		if got := wake(); got != "host push" {
+			t.Errorf("wake %q, want host push", got)
+		}
+	})
+	h.push.setReading(id, pushReading{state: pushFailing, failing: h.clk.now().Add(-pushGrace)})
+	t.Run("watcher once its failing run reaches the grace", func(t *testing.T) {
+		if got := wake(); got != "watcher" {
+			t.Errorf("wake %q, want watcher", got)
+		}
+	})
+	h.push.set(id, pushOff)
+	t.Run("watcher while push is off", func(t *testing.T) {
+		if got := wake(); got != "watcher" {
+			t.Errorf("wake %q, want watcher", got)
+		}
+	})
 }
 
 func TestCaller_headers(t *testing.T) {
