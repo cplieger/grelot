@@ -66,8 +66,9 @@ type PeerQueued struct {
 // Who lists live identities but @user, by name, as c's identity sees them, each
 // live parent's delegates nested under it and nowhere else; q filters the
 // parents. A session with no live identity sees every relation as unknown.
-// Refusals: KindInvalid for a filter path that is not canonical or a repo
-// that is not one path segment.
+// Refusals: those of every route, the delegate gate (KindConflict) and an
+// As naming no delegate (KindGone) included; KindInvalid for a filter path
+// that is not canonical or a repo that is not one path segment.
 func (s *Store) Who(ctx context.Context, c Caller, query *WhoQuery) (Listing[Peer], error) {
 	q := *query
 	if err := s.checkWho(&q); err != nil {
