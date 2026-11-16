@@ -41,8 +41,8 @@ func upgradeLine(client, server string) string {
 	return fmt.Sprintf("this grelot server (%s) does not speak client %s; %s", server, client, version.Install(server))
 }
 
-// serverVersion is GET /v1/version, which any caller may make; the answer's
-// Grelot-Version header names the same version.
+// serverVersion is GET /v1/version for a machine key, with or without
+// Grelot-Session; the answer's Grelot-Version header names the same version.
 func (s *Server) serverVersion(_ *http.Request, _ store.Caller, _ store.Keyed) (status int, body any, err error) {
 	return http.StatusOK, wire.Version{Version: s.version, PathRoot: s.cfg.PathRoot}, nil
 }
