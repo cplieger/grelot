@@ -3,7 +3,6 @@
 package store
 
 import (
-	"errors"
 	"slices"
 	"time"
 
@@ -153,6 +152,3 @@ func (w *wtx) recount() error {
 	w.recounts = nil
 	return nil
 }
-
-// errScanDone ends a scanUnread early.
-var errScanDone = errors.New("scan done")

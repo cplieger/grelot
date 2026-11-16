@@ -73,8 +73,3 @@ func walkList[T any](ctx context.Context, send sender, row string, q url.Values)
 		q.Set(wire.QueryCursor, page.NextCursor)
 	}
 }
-
-// walkPeers is every identity GET /v1/identities lists for q.
-func (r *run) walkPeers(ctx context.Context, q url.Values, send sender) ([]wire.Peer, error) {
-	return walkList[wire.Peer](ctx, send, "listIdentities", q)
-}

@@ -55,7 +55,7 @@ func (r *run) serverVersion(ctx context.Context) (string, error) {
 	if timeout == 0 {
 		timeout = versionTimeout
 	}
-	_, resp, err := a.Version(ctx, &client.Request{Timeout: timeout})
+	resp, err := a.Version(ctx, &client.Request{Timeout: timeout})
 	switch {
 	case resp.Version != "":
 		return resp.Version, nil

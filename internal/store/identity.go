@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // NoChange is the literal an identity field takes on a post to keep its
@@ -663,7 +664,7 @@ func (s *Store) moveRefusal(verb string, target *identityRow, caller Where, prov
 		ne := noEnvironment()
 		return s.refuseMove(verb, target.Name, ne.Why, ne)
 	case !shareEnvironment(caller, target.Where) && verb == verbRevive:
-		e = &Error{Kind: KindNotFound, Reason: ReasonIdentity, Msg: fmt.Sprintf(
+		e = &Error{Kind: KindNotFound, Reason: wire.ReasonIdentity, Msg: fmt.Sprintf(
 			"no dormant identity %s in this environment (%s)", target.Name, relation(caller, target.Where, ""),
 		)}
 		return s.refuseMove(verb, target.Name, whyOtherEnvironment, e)

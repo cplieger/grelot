@@ -82,23 +82,3 @@ func TestCodes_isTheGatesCodesThenTheMounts(t *testing.T) {
 		})
 	}
 }
-
-func TestAuthDescriptors_areUnderTheWirePrefixes(t *testing.T) {
-	ds := wiregate.AuthDescriptors()
-	if len(ds) == 0 {
-		t.Fatal("no descriptors")
-	}
-	oidc := 0
-	for i := range ds {
-		d := &ds[i]
-		if !strings.HasPrefix(d.Path, wire.AuthPrefix+"/") {
-			t.Errorf("%s %s is outside %s", d.Method, d.Path, wire.AuthPrefix)
-		}
-		if strings.HasPrefix(d.Path, wire.OIDCPrefix+"/") {
-			oidc++
-		}
-	}
-	if oidc == 0 {
-		t.Errorf("no descriptor under %s", wire.OIDCPrefix)
-	}
-}

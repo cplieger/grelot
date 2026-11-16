@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // Entry is one delivery, or in history one of the reader's own posts, as
@@ -257,7 +258,7 @@ func (s *Store) ReadThread(ctx context.Context, c Caller, thread, upTo uint64) (
 			return err
 		}
 		if !found || th.Kind == kindCards || th.Lease.due(w.now) {
-			return notFound(ReasonConversation, fmt.Sprintf("no conversation %d: it never existed or has expired", thread))
+			return notFound(wire.ReasonConversation, fmt.Sprintf("no conversation %d: it never existed or has expired", thread))
 		}
 		threads, err := s.conversationThreads(w.r, thread, w.now)
 		if err != nil {

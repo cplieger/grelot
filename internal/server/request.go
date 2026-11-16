@@ -22,9 +22,6 @@ import (
 // maxBody caps every request body.
 const maxBody = 128 << 10
 
-// reasonRequestBody is a too_large's reason for a body over maxBody.
-const reasonRequestBody = "request_body"
-
 // bearer is the key r sends, which its own logged text must not carry.
 func bearer(r *http.Request) string {
 	token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
@@ -106,7 +103,7 @@ func notKeyChar(ch rune) bool {
 func bodyError(err error) error {
 	if errors.As(err, new(*http.MaxBytesError)) {
 		e := refusal(wire.ErrTooLarge, "the request body is over 128 KiB")
-		e.reason = reasonRequestBody
+		e.reason = wire.ReasonRequestBody
 		return e
 	}
 	return badRequest("the request body could not be read: " + err.Error())

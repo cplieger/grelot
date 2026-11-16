@@ -174,3 +174,21 @@ func TestRowsDeclareTheirCredential(t *testing.T) {
 		}
 	}
 }
+
+// A wire.Kind added with no wiregen kind stops the generator rather than
+// reaching the document as JSON.
+func TestKindOf_mapsEveryKindAndRefusesAnother(t *testing.T) {
+	for k, want := range map[wire.Kind]wiregen.Kind{wire.KindJSON: wiregen.KindJSON, wire.KindEventStream: wiregen.KindEventStream} {
+		if got := kindOf(&wire.Route{Name: "r", Kind: k}); got != want {
+			t.Errorf("kindOf(%d) = %d, want %d", k, got, want)
+		}
+	}
+	t.Run("an unmapped kind panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("kindOf of an unmapped kind returned")
+			}
+		}()
+		kindOf(&wire.Route{Name: "r", Kind: wire.KindEventStream + 1})
+	})
+}

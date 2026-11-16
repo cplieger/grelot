@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // Receipt states.
@@ -64,7 +65,7 @@ func (s *Store) Receipts(ctx context.Context, c Caller, msg uint64) (Receipts, e
 			return err
 		}
 		if !found {
-			return notFound(ReasonMessage, fmt.Sprintf("no message %d: it never existed or has expired", msg))
+			return notFound(wire.ReasonMessage, fmt.Sprintf("no message %d: it never existed or has expired", msg))
 		}
 		rows, err := s.postDeliveries(r, msg, now)
 		if err != nil {

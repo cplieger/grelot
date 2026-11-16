@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 const maxReason = 280
@@ -252,7 +253,7 @@ func (w *wtx) ownReservation(c Caller, id uint64) (identityRow, reservationRow, 
 		return identityRow{}, reservationRow{}, err
 	}
 	if !found || row.Holder != me.ID {
-		return identityRow{}, reservationRow{}, notFound(ReasonReservation, fmt.Sprintf(
+		return identityRow{}, reservationRow{}, notFound(wire.ReasonReservation, fmt.Sprintf(
 			"no reservation %d of yours: it expired or was released; grelot reservations --mine lists yours", id,
 		))
 	}

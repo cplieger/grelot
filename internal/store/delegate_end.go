@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // Revoked is what a revoke ended: the live delegates of the label, by
@@ -44,7 +46,7 @@ func (w *wtx) revoke(c Caller, label string) (Revoked, error) {
 		return Revoked{}, err
 	}
 	if len(out.Handles) == 0 && !out.Link {
-		return Revoked{}, notFound(ReasonDelegate, fmt.Sprintf("no live delegate or unused link is labelled %s: grelot who lists your delegates", label))
+		return Revoked{}, notFound(wire.ReasonDelegate, fmt.Sprintf("no live delegate or unused link is labelled %s: grelot who lists your delegates", label))
 	}
 	if w.seen(&me) {
 		err = w.putIdentity(me.ID, &me)

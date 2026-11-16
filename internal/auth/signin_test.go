@@ -9,17 +9,14 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"path/filepath"
-	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/cplieger/access"
-	"github.com/cplieger/access/accesshttp"
 	"github.com/cplieger/access/accesstest"
 	"github.com/cplieger/grelot/internal/accounts"
 	"github.com/cplieger/grelot/internal/auth"
-	"github.com/cplieger/grelot/internal/wiregate"
 )
 
 // failing fails its first requests with a transport error, as a provider
@@ -170,19 +167,4 @@ func TestClientAddr_saysHowTheClientWasReached(t *testing.T) {
 			t.Errorf("ClientAddr = %+v, want no known client", c)
 		}
 	})
-}
-
-// The generated contract documents access's routes from
-// wiregate.AuthDescriptors, which cannot read a running Auth, so the
-// routes the server mounts must be exactly those descriptors.
-func TestRoutes_areTheWireDescriptors(t *testing.T) {
-	a, _ := newAuth(t)
-	routes := a.Routes()
-	got := make([]accesshttp.Descriptor, 0, len(routes))
-	for i := range routes {
-		got = append(got, routes[i].Descriptor)
-	}
-	if want := wiregate.AuthDescriptors(); !reflect.DeepEqual(got, want) {
-		t.Errorf("Routes' descriptors differ from wiregate.AuthDescriptors:\n got %d: %+v\nwant %d: %+v", len(got), got, len(want), want)
-	}
 }

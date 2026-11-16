@@ -62,7 +62,7 @@ func TestErrorMembers(t *testing.T) {
 		{func() error { return errCursorInvalid }, "cursor_invalid"},
 		{func() error { return errCursorMismatch }, "cursor_mismatch"},
 		{func() error {
-			return &store.Error{Kind: store.KindNotFound, Reason: store.ReasonMessage, Msg: "no message"}
+			return &store.Error{Kind: store.KindNotFound, Reason: wire.ReasonMessage, Msg: "no message"}
 		}, "not_found"},
 		{func() error { return &store.Error{Kind: store.KindGone, Why: "none", Msg: "none"} }, "none"},
 		{func() error { return &store.Error{Kind: store.KindGone, Why: "dormant", Msg: "dormant"} }, "dormant"},

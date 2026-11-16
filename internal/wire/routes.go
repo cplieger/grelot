@@ -58,6 +58,18 @@ var (
 	ErrCursorMismatch = ErrorCode{"cursor_mismatch", http.StatusBadRequest}
 )
 
+// The reasons that refine a code: the resource a not_found names, and a
+// too_large past the request body's cap rather than a field's bound.
+const (
+	ReasonAgent        = "agent"
+	ReasonConversation = "conversation"
+	ReasonMessage      = "message"
+	ReasonIdentity     = "identity"
+	ReasonDelegate     = "delegate"
+	ReasonReservation  = "reservation"
+	ReasonRequestBody  = "request_body"
+)
+
 // Common is what every row can answer beyond its own codes and the gate's:
 // a deadline passed, the server stopping, a failure of its own. A row the
 // gate authenticates can also answer ErrRateLimited, from a key's bucket.

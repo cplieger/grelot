@@ -39,7 +39,7 @@ func (r *run) who(ctx context.Context, args []string) error {
 		}
 		return derr
 	}
-	peers, err := r.walkPeers(ctx, q, send)
+	peers, err := walkList[wire.Peer](ctx, send, "listIdentities", q)
 	switch {
 	case err != nil:
 		return err

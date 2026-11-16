@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 const (
@@ -192,7 +193,7 @@ func (w *wtx) scopeAgents(flag string, names []string) ([]uint64, error) {
 			return nil, err
 		}
 		if !found || row.State != stateLive {
-			return nil, notFound(ReasonIdentity, fmt.Sprintf("%s %s: no live identity has that name", flag, n))
+			return nil, notFound(wire.ReasonIdentity, fmt.Sprintf("%s %s: no live identity has that name", flag, n))
 		}
 		if !slices.Contains(ids, row.ID) {
 			ids = append(ids, row.ID)

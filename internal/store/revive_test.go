@@ -9,6 +9,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 func revival(session, name string, w Where) Revival {
@@ -240,8 +242,8 @@ func TestRevive_byNameRefusalsInOrder(t *testing.T) {
 			_, _, err := s.Revive(t.Context(), Keyed{}, new(revival(tt.session, tt.target, tt.caller)))
 			wantRefusal(t, err, tt.kind, tt.why, tt.want)
 			var e *Error
-			if tt.logged != "" && (!errors.As(err, &e) || e.Reason != ReasonIdentity) {
-				t.Errorf("a revive from another environment = %v, want reason %s", err, ReasonIdentity)
+			if tt.logged != "" && (!errors.As(err, &e) || e.Reason != wire.ReasonIdentity) {
+				t.Errorf("a revive from another environment = %v, want reason %s", err, wire.ReasonIdentity)
 			}
 			logged := cmp.Or(tt.logged, tt.why)
 			lines := sink.lines(slog.LevelInfo, "move refused")

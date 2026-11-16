@@ -52,16 +52,6 @@ func (e *Error) Error() string { return e.Msg }
 
 func refuse(k Kind, msg string) *Error { return &Error{Kind: k, Msg: msg} }
 
-// The resources a KindNotFound names in its Reason.
-const (
-	ReasonAgent        = "agent"
-	ReasonConversation = "conversation"
-	ReasonMessage      = "message"
-	ReasonIdentity     = "identity"
-	ReasonDelegate     = "delegate"
-	ReasonReservation  = "reservation"
-)
-
 func notFound(reason, msg string) *Error { return &Error{Kind: KindNotFound, Reason: reason, Msg: msg} }
 
 func isKind(err error, k Kind) bool {

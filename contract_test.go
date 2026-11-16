@@ -564,8 +564,8 @@ func TestV1ClientUpgradeRequired(t *testing.T) {
 					t.Errorf("code %q, error %q; want upgrade_required and %q", r.str("code"), r.str("error"), want)
 				}
 				var v1 v1ErrorBody
-				if err := json.Unmarshal(r.raw, &v1); err != nil || v1.Error != want {
-					t.Errorf("a v1 client decodes %s to error %q (%v), want %q", r.raw, v1.Error, err, want)
+				if err := json.Unmarshal(r.raw, &v1); err != nil || v1.Error != want || v1.Code != "upgrade_required" || v1.PathRoot != "" {
+					t.Errorf("a v1 client decodes %s to error %q, code %q, path root %q (%v); want %q, upgrade_required and no path root", r.raw, v1.Error, v1.Code, v1.PathRoot, err, want)
 				}
 			})
 		}

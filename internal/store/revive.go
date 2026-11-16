@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // Revival is a revive request from Session, "<provider>:<id>". An empty
@@ -118,7 +119,7 @@ func (w *wtx) revive(r *Revival, provider string) (Revived, error) {
 func (w *wtx) reviveTarget(r *Revival, provider string, own *identityRow, ownFound bool) (identityRow, bool, error) {
 	if r.Name == "" || ownFound && own.Name == r.Name {
 		if !ownFound {
-			return identityRow{}, false, notFound(ReasonIdentity,
+			return identityRow{}, false, notFound(wire.ReasonIdentity,
 				"this session has no dormant identity: run grelot revive <name> --ttl=<d> to revive one by name from its own environment")
 		}
 		return *own, false, nil
@@ -132,7 +133,7 @@ func (w *wtx) reviveTarget(r *Revival, provider string, own *identityRow, ownFou
 		return identityRow{}, false, err
 	}
 	if !found || row.State != stateDormant {
-		return identityRow{}, false, notFound(ReasonIdentity, "no dormant identity "+r.Name)
+		return identityRow{}, false, notFound(wire.ReasonIdentity, "no dormant identity "+r.Name)
 	}
 	if err := w.s.bound(row.Key, r.Key); err != nil {
 		return identityRow{}, false, err

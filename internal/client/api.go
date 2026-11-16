@@ -296,15 +296,15 @@ func (a *API) Me(ctx context.Context, q url.Values, header http.Header) (*wire.M
 
 // Version sends GET /v1/version, as r asks, and caches the path root and
 // server version it answers.
-func (a *API) Version(ctx context.Context, r *Request) (*wire.Version, Response, error) {
+func (a *API) Version(ctx context.Context, r *Request) (Response, error) {
 	var v wire.Version
 	r.Method, r.Path = http.MethodGet, wire.Path("getVersion", nil)
 	resp, err := a.Do(ctx, r, &v)
 	if err != nil {
-		return nil, resp, err
+		return resp, err
 	}
 	a.noteFacts(v.PathRoot, v.Version)
-	return &v, resp, nil
+	return resp, nil
 }
 
 func (a *API) noteFacts(pathRoot, server string) {

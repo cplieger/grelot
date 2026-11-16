@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // defaultHistoryWindow is a nil Since's window, except with LastRead or
@@ -231,7 +232,7 @@ func (s *Store) historyPeer(r *bolttable.ReadTx, name string) (identityRow, erro
 }
 
 func unknownIdentity(name string) *Error {
-	return notFound(ReasonIdentity, fmt.Sprintf("no identity %s: grelot who --all lists them", name))
+	return notFound(wire.ReasonIdentity, fmt.Sprintf("no identity %s: grelot who --all lists them", name))
 }
 
 // read walks me's deliveries, and its posts or with a path the path

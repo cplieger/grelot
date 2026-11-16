@@ -66,13 +66,11 @@ func (a *agent) probe(row string, req rowRequest, headers map[string]string) *an
 }
 
 // refuses is probe failing unless the answer's code is code.
-func (a *agent) refuses(code, row string, req rowRequest, headers map[string]string) *answer {
+func (a *agent) refuses(code, row string, req rowRequest, headers map[string]string) {
 	a.c.t.Helper()
-	ans := a.probe(row, req, headers)
-	if ans.str("code") != code {
+	if ans := a.probe(row, req, headers); ans.str("code") != code {
 		a.c.t.Errorf("%s %s: %d %s, want code %s", row, req.path, ans.status, ans.raw, code)
 	}
-	return ans
 }
 
 // asSelf is the header of an agent's own command, which passes its

@@ -353,6 +353,18 @@ func identityHeaders(sessionRequired bool) []wiregen.Header {
 	}
 }
 
+// kindOf is wiregen's kind for r's; it panics on a kind it does not map,
+// so a new wire.Kind cannot reach the document as JSON.
+func kindOf(r *wire.Route) wiregen.Kind {
+	switch r.Kind {
+	case wire.KindJSON:
+		return wiregen.KindJSON
+	case wire.KindEventStream:
+		return wiregen.KindEventStream
+	}
+	panic("wirespec: row " + r.Name + " has a kind wiregen is not given")
+}
+
 func endpoints(routes []wire.Route) []wiregen.Endpoint {
 	out := make([]wiregen.Endpoint, 0, len(routes))
 	for i := range routes {
@@ -365,10 +377,7 @@ func endpoints(routes []wire.Route) []wiregen.Endpoint {
 			Name: r.Name, Method: r.Method, Path: r.Path, Summary: s.Summary, Status: r.Status,
 			Params: wiregen.TypeOf(s.Params), Query: wiregen.TypeOf(s.Query),
 			Request: wiregen.TypeOf(s.Request), Response: wiregen.TypeOf(s.Response),
-			Kind: wiregen.KindJSON, ExtraSuccesses: s.Successes,
-		}
-		if r.Kind == wire.KindEventStream {
-			e.Kind = wiregen.KindEventStream
+			Kind: kindOf(r), ExtraSuccesses: s.Successes,
 		}
 		if r.Access == wire.AccessAgent {
 			e.Headers = identityHeaders(!s.AnySession)

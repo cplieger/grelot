@@ -175,7 +175,7 @@ func (r *run) revive(ctx context.Context, args []string) error {
 // dormantPaths are the work paths of the dormant identity name, nil when
 // none is listed; the server answers for a name it cannot revive.
 func (r *run) dormantPaths(ctx context.Context, name string) []string {
-	peers, err := r.walkPeers(ctx, url.Values{"all": {"1"}, "q": {name}}, r.peek)
+	peers, err := walkList[wire.Peer](ctx, r.peek, "listIdentities", url.Values{"all": {"1"}, "q": {name}})
 	if err != nil {
 		return nil
 	}
@@ -226,7 +226,7 @@ func (r *run) meWithoutSession(ctx context.Context, why error) error {
 	if err != nil {
 		return err
 	}
-	_, resp, err := a.Version(ctx, r.bounded(&client.Request{}))
+	resp, err := a.Version(ctx, r.bounded(&client.Request{}))
 	if err != nil {
 		return err
 	}
