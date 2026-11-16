@@ -42,6 +42,16 @@ describe("clientRequest", () => {
     });
   });
 
+  it("hands the decoder the answer's status", async () => {
+    worker.use(http.get("/api/thing", () => HttpResponse.json({ n: 1 }, { status: 203 })));
+    const seen: number[] = [];
+    await clientRequest(spec(), (v, status) => {
+      seen.push(status);
+      return v;
+    });
+    expect(seen).toEqual([203]);
+  });
+
   it("decodes an answer with no body as undefined", async () => {
     worker.use(http.post("/api/thing", () => new HttpResponse(null, { status: 204 })));
     const seen: unknown[] = [];

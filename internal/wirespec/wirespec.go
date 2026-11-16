@@ -8,6 +8,7 @@ package wirespec
 
 import (
 	"fmt"
+	"net/http"
 	"reflect"
 	"slices"
 
@@ -26,6 +27,8 @@ type Spec struct {
 	Request  reflect.Type
 	Response reflect.Type
 	Summary  string
+	// Successes are the row's success statuses besides its Status.
+	Successes []wiregen.Success
 	// Errors are the row's own refusals; Registry adds the gate's, the
 	// common ones and a list row's cursor refusals.
 	Errors []wire.ErrorCode
@@ -41,6 +44,7 @@ type Spec struct {
 func Lookup(name string) (Spec, bool) {
 	s, ok := specs[name]
 	s.Errors = slices.Clone(s.Errors)
+	s.Successes = slices.Clone(s.Successes)
 	return s, ok
 }
 
@@ -75,6 +79,7 @@ var specs = map[string]Spec{
 	"register": {
 		Summary: "Register this session as a new identity, take one over, or register a delegate from its link",
 		Request: typeOf[wire.RegisterRequest](), Response: typeOf[wire.Registered](),
+		Successes: []wiregen.Success{{Status: http.StatusOK, Response: wiregen.TypeRef[wire.Registered]()}},
 		Errors: agent(wire.ErrConflict, wire.ErrOtherEnv, wire.ErrOtherProvider, wire.ErrNoEnvironment, wire.ErrOtherRepo,
 			wire.ErrLinkGone, wire.ErrKeyReused, wire.ErrStoreFull, wire.ErrTooLarge),
 	},
@@ -188,7 +193,8 @@ var specs = map[string]Spec{
 	"waitEvent": {
 		Summary: "A standing wait, held up to 55s, that returns this identity's next nudge",
 		Request: typeOf[wire.WaitRequest](), Response: typeOf[wire.Nudge](),
-		Errors: agent(wire.ErrTooManyWaits, wire.ErrEnded, wire.ErrReplaced, wire.ErrTooLarge),
+		Successes: []wiregen.Success{{Status: http.StatusNoContent}},
+		Errors:    agent(wire.ErrTooManyWaits, wire.ErrEnded, wire.ErrReplaced, wire.ErrTooLarge),
 	},
 	"readInbox": {
 		Summary: "The unread entries oldest first, marking nothing; with wait_ms, held until wake mail arrives",
@@ -351,7 +357,7 @@ func endpoints(routes []wire.Route) []wiregen.Endpoint {
 			Name: r.Name, Method: r.Method, Path: r.Path, Summary: s.Summary, Status: r.Status,
 			Params: wiregen.TypeOf(s.Params), Query: wiregen.TypeOf(s.Query),
 			Request: wiregen.TypeOf(s.Request), Response: wiregen.TypeOf(s.Response),
-			Kind: wiregen.KindJSON,
+			Kind: wiregen.KindJSON, ExtraSuccesses: s.Successes,
 		}
 		if r.Kind == wire.KindEventStream {
 			e.Kind = wiregen.KindEventStream

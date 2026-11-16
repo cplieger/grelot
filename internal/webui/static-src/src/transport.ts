@@ -81,12 +81,13 @@ function envelope(text: string): { readonly code: string | null; readonly messag
 }
 
 /**
- * Sends spec same-origin and decodes a 2xx answer, never throwing. A 401
- * also sends the browser to sign-in, to come back to this address.
+ * Sends spec same-origin and decodes a 2xx answer with its status, never
+ * throwing. A 401 also sends the browser to sign-in, to come back to this
+ * address.
  */
 export async function clientRequest<T, E extends string>(
   spec: EndpointSpec,
-  decode: (v: unknown) => T,
+  decode: (v: unknown, status: number) => T,
   opts?: { readonly signal?: AbortSignal },
 ): Promise<ApiResult<T, E>> {
   const deadline = AbortSignal.timeout(requestDeadlineMs);
@@ -127,7 +128,7 @@ export async function clientRequest<T, E extends string>(
       }
     }
     try {
-      return { ok: true, data: decode(body) };
+      return { ok: true, data: decode(body, response.status) };
     } catch {
       return failure(response.status, "decode", null);
     }

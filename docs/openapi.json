@@ -5358,6 +5358,9 @@
             },
             "description": "OK"
           },
+          "204": {
+            "description": "No Content"
+          },
           "400": {
             "content": {
               "application/json": {
@@ -8860,6 +8863,16 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Registered"
+                }
+              }
+            },
+            "description": "OK"
+          },
           "201": {
             "content": {
               "application/json": {

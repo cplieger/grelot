@@ -16,7 +16,7 @@ require (
 	github.com/cplieger/go/slogx v1.1.0
 	github.com/cplieger/go/sse/v2 v2.2.0
 	github.com/cplieger/go/textsafe v1.1.0
-	github.com/cplieger/go/wiregen/v2 v2.3.0-dev.4
+	github.com/cplieger/go/wiregen/v2 v2.3.0-dev.9
 	github.com/cplieger/go/yamlenv v1.1.0
 	github.com/evanw/esbuild v0.28.2
 	go.etcd.io/bbolt v1.5.0

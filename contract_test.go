@@ -141,9 +141,12 @@ var agentScenario = []scenarioStep{
 	{row: "unfollow", what: "alpha unfollows it", run: func(s *scenario) {
 		s.alpha.call(http.StatusOK, "unfollow", "/v1/follows?path="+url.QueryEscape(otherPath), nil)
 	}},
-	{row: "waitEvent", what: "beta's standing wait returns the direct post's nudge", run: func(s *scenario) {
+	{row: "waitEvent", what: "beta's standing wait returns the direct post's nudge; gamma's passes with none", run: func(s *scenario) {
 		if r := s.beta.call(http.StatusOK, "waitEvent", "/v1/events/wait", map[string]any{"wait_ms": int64(5000)}); num(r.body, "seq") < 1 {
 			s.c.t.Errorf("POST /v1/events/wait: %s, want a nudge", r.raw)
+		}
+		if r := s.gamma.call(http.StatusNoContent, "waitEvent", "/v1/events/wait", map[string]any{"wait_ms": int64(1000)}); len(r.raw) != 0 {
+			s.c.t.Errorf("a standing wait that passes with no nudge: body %s, want none", r.raw)
 		}
 	}},
 	{row: "readInbox", what: "beta reads its inbox", run: func(s *scenario) {

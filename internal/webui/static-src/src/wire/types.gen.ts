@@ -624,7 +624,7 @@ export interface PageQuery {
  * change, or TTLMS and Where to renew the lease.
  */
 export interface PatchMeRequest {
-  where?: Where;
+  where: Where | null;
   name: string;
   description: string;
   paths: string[];
@@ -721,7 +721,7 @@ export interface PostBucket {
  * names; ByMS is how long a read receipt is asked within.
  */
 export interface PostRequest {
-  where?: Where;
+  where: Where | null;
   subject: string;
   body: string;
   to: unknown;
@@ -788,7 +788,7 @@ export interface Recipients {
  * register from.
  */
 export interface RegisterRequest {
-  where?: Where;
+  where: Where | null;
   name: string;
   description: string;
   host: string;
@@ -893,7 +893,7 @@ export interface Retired {
  * dormant one of this environment named by Name.
  */
 export interface ReviveRequest {
-  where?: Where;
+  where: Where | null;
   name: string;
   host: string;
   os: string;

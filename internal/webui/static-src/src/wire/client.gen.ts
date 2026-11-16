@@ -63,7 +63,16 @@ export const registerEndpoint = {
       codes: registerCodes,
     };
   },
-  decode: decodeRegistered,
+  decode: (v: unknown, status: number): Registered => {
+    switch (status) {
+      case 201:
+        return decodeRegistered(v);
+      case 200:
+        return decodeRegistered(v);
+      default:
+        throw new globalThis.TypeError(`$: expected status 201 or 200, got ${status}`);
+    }
+  },
 } as const;
 
 /** Register this session as a new identity, take one over, or register a delegate from its link */
@@ -1160,12 +1169,21 @@ export const waitEventEndpoint = {
       codes: waitEventCodes,
     };
   },
-  decode: decodeNudge,
+  decode: (v: unknown, status: number): Nudge | undefined => {
+    switch (status) {
+      case 200:
+        return decodeNudge(v);
+      case 204:
+        return undefined;
+      default:
+        throw new globalThis.TypeError(`$: expected status 200 or 204, got ${status}`);
+    }
+  },
 } as const;
 
 /** A standing wait, held up to 55s, that returns this identity's next nudge */
-export function waitEvent(args: WaitEventArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Nudge, WaitEventError>> {
-  return clientRequest<Nudge, WaitEventError>(waitEventEndpoint.request(args), waitEventEndpoint.decode, opts);
+export function waitEvent(args: WaitEventArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Nudge | undefined, WaitEventError>> {
+  return clientRequest<Nudge | undefined, WaitEventError>(waitEventEndpoint.request(args), waitEventEndpoint.decode, opts);
 }
 
 export interface ReadInboxArgs {
