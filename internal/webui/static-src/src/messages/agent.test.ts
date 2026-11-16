@@ -7,8 +7,8 @@ import type {
   AgentPage,
   HistoryPage,
   HistoryPost,
-  Reservation,
-  Thread,
+  ConversationReservation,
+  ConversationThread,
 } from "../wire/types.gen.js";
 import {
   at,
@@ -42,7 +42,7 @@ function pageOf(over: Partial<AgentPage> = {}, card: Partial<Agent> = {}): Agent
   return { agent: agent(card), reservations: [], delegates: [], ...over };
 }
 
-function reservation(over: Partial<Reservation> = {}): Reservation {
+function reservation(over: Partial<ConversationReservation> = {}): ConversationReservation {
   return {
     id: 1,
     path: "/workspace/demo",
@@ -54,13 +54,18 @@ function reservation(over: Partial<Reservation> = {}): Reservation {
   };
 }
 
-const direct: Thread = {
+const direct: ConversationThread = {
   id: 7,
   kind: "direct",
   title: "@alpha and @user",
   agents: ["alpha", "user"],
 };
-const demo: Thread = { id: 3, kind: "path", title: "/workspace/demo", path: "/workspace/demo" };
+const demo: ConversationThread = {
+  id: 3,
+  kind: "path",
+  title: "/workspace/demo",
+  path: "/workspace/demo",
+};
 
 function historyPost(id: number, over: Partial<HistoryPost> = {}): HistoryPost {
   return {

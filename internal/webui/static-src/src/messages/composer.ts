@@ -2,7 +2,7 @@ import { el } from "@cplieger/reactive/dom";
 import { showError } from "@cplieger/ui/form";
 
 import { newIdempotencyKey, type ApiResult } from "../transport.js";
-import { createPost } from "../wire/client.gen.js";
+import { createUserPost } from "../wire/client.gen.js";
 import type { Post, PostTarget } from "../wire/types.gen.js";
 import {
   checkOnLeave,
@@ -157,7 +157,7 @@ export function conversationComposer(opts: ComposerOptions): Composer {
     }
     sends.refusals.delete(n);
     set(n, { state: "sending" });
-    const result = await createPost(
+    const result = await createUserPost(
       { body: { to: opts.to, subject: p.subject, body: p.body }, idempotencyKey: key },
       { signal: opts.page },
     );

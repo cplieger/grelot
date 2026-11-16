@@ -19,7 +19,7 @@ import (
 	"github.com/cplieger/go/httpserver"
 	"github.com/cplieger/go/keyenc"
 	"github.com/cplieger/grelot/internal/store"
-	"github.com/cplieger/grelot/internal/webui/wire"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // The request headers every /v1 route reads.

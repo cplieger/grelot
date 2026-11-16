@@ -1,12 +1,12 @@
 import { el } from "@cplieger/reactive/dom";
 
 import { agentHref } from "../router.js";
-import type { Thread } from "../wire/types.gen.js";
+import type { ConversationThread } from "../wire/types.gen.js";
 
 /** The reserved name the user posts as (internal/store userName). */
 const userName = "user";
 
-type Named = Pick<Thread, "kind" | "title" | "path" | "agents">;
+type Named = Pick<ConversationThread, "kind" | "title" | "path" | "agents">;
 
 /** Whether name is the user's own, @user. */
 export function isUser(name: string): boolean {
@@ -47,7 +47,7 @@ export function conversationTitle(t: Named): string {
 }
 
 /** The kind's chip, or null for announce, whose title already names it. */
-export function kindWords(kind: Thread["kind"]): string | null {
+export function kindWords(kind: ConversationThread["kind"]): string | null {
   switch (kind) {
     case "announce":
       return null;

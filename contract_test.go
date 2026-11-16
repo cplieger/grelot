@@ -15,7 +15,7 @@ import (
 
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/server"
-	"github.com/cplieger/grelot/internal/webui/wire"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // The scenario's sessions, one per identity it acts as.
@@ -269,7 +269,8 @@ type pagedRow struct {
 // pagedRows are the agent list rows of design 1.2 (C), each with five
 // items seeded out of the row's order and that order (gate note B1).
 var pagedRows = []pagedRow{
-	{row: "listIdentities", path: "/v1/identities", key: "name", order: []string{"alpha", "bravo", "charlie", "delta", "echo"},
+	{
+		row: "listIdentities", path: "/v1/identities", key: "name", order: []string{"alpha", "bravo", "charlie", "delta", "echo"},
 		seed: func(c *contract) *agent {
 			k := c.mintKey("machine")
 			var reader *agent
@@ -279,8 +280,10 @@ var pagedRows = []pagedRow{
 				reader = a
 			}
 			return reader
-		}},
-	{row: "listThreads", path: "/v1/threads", key: "path", order: []string{"/workspace/p/a", "/workspace/p/b", "/workspace/p/c", "/workspace/p/d", "/workspace/p/e"},
+		},
+	},
+	{
+		row: "listThreads", path: "/v1/threads", key: "path", order: []string{"/workspace/p/a", "/workspace/p/b", "/workspace/p/c", "/workspace/p/d", "/workspace/p/e"},
 		seed: func(c *contract) *agent {
 			a := c.agent(c.mintKey("machine"), sessAlpha, "a")
 			a.call(http.StatusCreated, "register", "/v1/register", a.registerBody("alpha", hourMS, "/workspace/p"))
@@ -288,11 +291,13 @@ var pagedRows = []pagedRow{
 				a.call(http.StatusCreated, "createPost", "/v1/posts", postBody(map[string]any{"path": "/workspace/p/" + p}, "on "+p, "a body"))
 			}
 			return a
-		}},
+		},
+	},
 	// History pages go back in time, each page oldest first (gate note B1).
 	{row: "getHistory", path: "/v1/history", key: "subject", order: []string{"h4", "h5", "h2", "h3", "h1"}, seed: seedDirect},
 	{row: "readInbox", path: "/v1/inbox", key: "subject", order: []string{"h1", "h2", "h3", "h4", "h5"}, seed: seedDirect},
-	{row: "listReservations", path: "/v1/reservations", key: "path", order: []string{"/workspace/r/e", "/workspace/r/a", "/workspace/r/d", "/workspace/r/c", "/workspace/r/b"},
+	{
+		row: "listReservations", path: "/v1/reservations", key: "path", order: []string{"/workspace/r/e", "/workspace/r/a", "/workspace/r/d", "/workspace/r/c", "/workspace/r/b"},
 		seed: func(c *contract) *agent {
 			a := c.agent(c.mintKey("machine"), sessAlpha, "a")
 			a.call(http.StatusCreated, "register", "/v1/register", a.registerBody("alpha", hourMS, "/workspace/r"))
@@ -300,7 +305,8 @@ var pagedRows = []pagedRow{
 				a.call(http.StatusCreated, "reserve", "/v1/reservations", map[string]any{"path": "/workspace/r/" + p, "reason": "a change", "ttl_ms": hourMS})
 			}
 			return a
-		}},
+		},
+	},
 }
 
 // seedDirect has alpha send beta five direct posts, h1 to h5, on paths

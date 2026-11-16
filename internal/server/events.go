@@ -11,7 +11,7 @@ import (
 
 	"github.com/cplieger/go/sse/v2"
 	"github.com/cplieger/grelot/internal/store"
-	"github.com/cplieger/grelot/internal/webui/wire"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // The event stream's replay, sized for one user's tabs: a changed frame

@@ -1,11 +1,14 @@
 package main
 
 import (
+	"cmp"
+	"errors"
 	"fmt"
 	"go/scanner"
 	"go/token"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -249,6 +252,50 @@ func TestToolNameHitsPlantedTree(t *testing.T) {
 			t.Error("toolNameHits answered no error for an unterminated literal")
 		}
 	})
+}
+
+// codegen is what wiregen links: it loads packages through
+// golang.org/x/tools/go/packages, so only cmd/wire-codegen and tests may
+// reach it, through internal/wirespec.
+var codegen = []string{
+	"github.com/cplieger/grelot/internal/wirespec",
+	"github.com/cplieger/go/wiregen/",
+	"golang.org/x/tools/",
+}
+
+func TestBinaryImportsNoCodegen(t *testing.T) {
+	for _, tags := range []string{"", "noui"} {
+		t.Run("tags "+cmp.Or(tags, "none"), func(t *testing.T) {
+			for _, p := range goList(t, "-deps", "-tags="+tags, ".") {
+				for _, c := range codegen {
+					if p == strings.TrimSuffix(c, "/") || strings.HasPrefix(p, c) {
+						t.Errorf("the binary imports %s", p)
+					}
+				}
+			}
+		})
+	}
+	t.Run("the wire package imports the standard library only", func(t *testing.T) {
+		const wire = "github.com/cplieger/grelot/internal/wire"
+		for _, p := range goList(t, "-deps", "-f", "{{if not .Standard}}{{.ImportPath}}{{end}}", "./internal/wire") {
+			if p != wire {
+				t.Errorf("internal/wire imports %s", p)
+			}
+		}
+	})
+}
+
+// goList runs go list with args and returns its non-empty lines.
+func goList(t *testing.T, args ...string) []string {
+	t.Helper()
+	out, err := exec.CommandContext(t.Context(), "go", append([]string{"list"}, args...)...).Output()
+	if err != nil {
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok {
+			t.Fatalf("go list %v: %v\n%s", args, err, ee.Stderr)
+		}
+		t.Fatalf("go list %v: %v", args, err)
+	}
+	return strings.Fields(string(out))
 }
 
 func plantTree(t *testing.T, files map[string]string) string {

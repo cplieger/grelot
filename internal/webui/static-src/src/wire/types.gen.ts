@@ -48,7 +48,7 @@ export interface AgentList {
  * live delegates' handles.
  */
 export interface AgentPage {
-  reservations: Reservation[];
+  reservations: ConversationReservation[];
   delegates: string[];
   agent: Agent;
 }
@@ -88,12 +88,12 @@ export interface Conversation {
    * Reservations are a path conversation's grants then queue entries
    * overlapping its path.
    */
-  reservations: Reservation[];
+  reservations: ConversationReservation[];
   /** Followers are the agents a path conversation's posts reach. */
   followers: string[];
   /** Cards are a direct conversation's agents. */
   cards: Agent[];
-  thread: Thread;
+  thread: ConversationThread;
   /** Next is the before of the older page, absent on the oldest. */
   next?: number;
 }
@@ -112,6 +112,21 @@ export interface ConversationParams {
   id: number;
 }
 
+/** ConversationReservation is a path an agent holds or waits for. */
+export interface ConversationReservation {
+  path: string;
+  holder: string;
+  host?: string;
+  reason?: string;
+  state: ReservationState;
+  id: number;
+  /** Place is a queued entry's place in its path's queue, from 1. */
+  place?: number;
+  /** SinceMS is when it was queued or, once held, granted. */
+  since_ms: number;
+  expires_ms: number;
+}
+
 /** ConversationRow is one row of the conversation list. */
 export interface ConversationRow {
   last: LastPost;
@@ -125,6 +140,17 @@ export interface ConversationRow {
   participants: number;
   /** Unread counts the user's unread posts in it. */
   unread: number;
+}
+
+/** ConversationThread names one conversation. */
+export interface ConversationThread {
+  kind: ThreadKind;
+  /** Title is announce, the path, or the direct thread's two names. */
+  title: string;
+  path?: string;
+  /** Agents are a direct thread's two names. */
+  agents?: string[];
+  id: number;
 }
 
 /** ConversationsPage is one page of conversations, newest activity first. */
@@ -215,7 +241,7 @@ export interface HistoryPage {
 
 /** HistoryPost is a post an agent sent or received, with its conversation. */
 export interface HistoryPost {
-  conversation: Thread;
+  conversation: ConversationThread;
   from: string;
   from_kind: SenderKind;
   subject: string;
@@ -302,13 +328,6 @@ export interface PostBucket {
   open?: boolean;
 }
 
-/** PostRequest is a post the user sends. */
-export interface PostRequest {
-  subject: string;
-  body: string;
-  to: PostTarget;
-}
-
 /** PostTarget is where the user posts: exactly one of its fields. */
 export interface PostTarget {
   path?: string;
@@ -316,56 +335,10 @@ export interface PostTarget {
   announce?: boolean;
 }
 
-/** Posted is a post the server stored. */
-export interface Posted {
-  message: number;
-  thread: number;
-  /** Delivered counts its recipients. */
-  delivered: number;
-}
-
 /** ReadCount is how many of a post's recipients have read it. */
 export interface ReadCount {
   read: number;
   total: number;
-}
-
-/** Receipt is one recipient of a message. */
-export interface Receipt {
-  name: string;
-  host?: string;
-  state: string;
-  /** ReadAtMS is absent while unread. */
-  read_at_ms?: number;
-}
-
-/** Receipts are who has read a message. */
-export interface Receipts {
-  subject: string;
-  kind: string;
-  recipients: Receipt[];
-  message: number;
-  posted_at_ms: number;
-  /**
-   * RegisteredSince counts, for an announcement, the agents registered
-   * after it, which never received it.
-   */
-  registered_since: number;
-}
-
-/** Reservation is a path an agent holds or waits for. */
-export interface Reservation {
-  path: string;
-  holder: string;
-  host?: string;
-  reason?: string;
-  state: ReservationState;
-  id: number;
-  /** Place is a queued entry's place in its path's queue, from 1. */
-  place?: number;
-  /** SinceMS is when it was queued or, once held, granted. */
-  since_ms: number;
-  expires_ms: number;
 }
 
 /** Sample is one minute of the server. */
@@ -473,22 +446,49 @@ export interface StatsQuery {
   range: StatsRange;
 }
 
-/** Thread names one conversation. */
-export interface Thread {
-  kind: ThreadKind;
-  /** Title is announce, the path, or the direct thread's two names. */
-  title: string;
-  path?: string;
-  /** Agents are a direct thread's two names. */
-  agents?: string[];
-  id: number;
-}
-
 /** ThreadStats is one conversation's activity in the range. */
 export interface ThreadStats {
-  thread: Thread;
+  thread: ConversationThread;
   posts: number;
   participants: number;
   deliveries: number;
+}
+
+/** UserPostRequest is a post the user sends. */
+export interface UserPostRequest {
+  subject: string;
+  body: string;
+  to: PostTarget;
+}
+
+/** UserPosted is a post the server stored. */
+export interface UserPosted {
+  message: number;
+  thread: number;
+  /** Delivered counts its recipients. */
+  delivered: number;
+}
+
+/** UserReceipt is one recipient of a message. */
+export interface UserReceipt {
+  name: string;
+  host?: string;
+  state: string;
+  /** ReadAtMS is absent while unread. */
+  read_at_ms?: number;
+}
+
+/** UserReceipts are who has read a message. */
+export interface UserReceipts {
+  subject: string;
+  kind: string;
+  recipients: UserReceipt[];
+  message: number;
+  posted_at_ms: number;
+  /**
+   * RegisteredSince counts, for an announcement, the agents registered
+   * after it, which never received it.
+   */
+  registered_since: number;
 }
 

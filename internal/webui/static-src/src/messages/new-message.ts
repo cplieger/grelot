@@ -6,15 +6,15 @@ import { toast } from "@cplieger/ui/toast";
 
 import { agentHref } from "../router.js";
 import { newIdempotencyKey } from "../transport.js";
-import { createPost, listAgents } from "../wire/client.gen.js";
-import type { Agent, Posted, PostTarget } from "../wire/types.gen.js";
+import { createUserPost, listAgents } from "../wire/client.gen.js";
+import type { Agent, UserPosted, PostTarget } from "../wire/types.gen.js";
 import { checkPost, checkOnLeave, composeFields, failureError, type Draft } from "./compose.js";
 import { isUser } from "./names.js";
 
 interface NewMessageOptions {
   readonly signal: AbortSignal;
   /** The post was stored and the dialog has closed: open its conversation. */
-  readonly onSent: (posted: Posted) => void;
+  readonly onSent: (posted: UserPosted) => void;
 }
 
 interface NewMessage {
@@ -265,7 +265,7 @@ export function newMessageDialog(opts: NewMessageOptions): NewMessage {
         unfinished = { what, key };
         const mine = new AbortController();
         sending = mine;
-        const result = await createPost(
+        const result = await createUserPost(
           { body: { to: who.to, subject: d.subject, body: d.body }, idempotencyKey: key },
           { signal: AbortSignal.any([signal, mine.signal]) },
         );

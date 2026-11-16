@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -350,9 +351,7 @@ func (a *agent) send(row, path string, body any, headers map[string]string) *ans
 	if r.keyed {
 		set["Idempotency-Key"] = newIdemKey()
 	}
-	for k, v := range headers {
-		set[k] = v
-	}
+	maps.Copy(set, headers)
 	for k, v := range set {
 		if v != "" {
 			req.Header.Set(k, v)

@@ -8,7 +8,7 @@ import { icon } from "../icons.js";
 import type { Live } from "../live.js";
 import { failureWords, type ApiResult } from "../transport.js";
 import { getConversation, markConversationRead } from "../wire/client.gen.js";
-import type { Conversation, Post, PostTarget, Thread } from "../wire/types.gen.js";
+import type { Conversation, Post, PostTarget, ConversationThread } from "../wire/types.gen.js";
 import { conversationComposer, storedCount, type SendStore } from "./composer.js";
 import { conversationContext } from "./context.js";
 import { conversationFeed } from "./feed.js";
@@ -17,7 +17,7 @@ import { busyButton, retryButton } from "./parts.js";
 import { reader, type Answer } from "./reader.js";
 import { rewalk } from "./window.js";
 
-type Named = Pick<Thread, "kind" | "title" | "path" | "agents">;
+type Named = Pick<ConversationThread, "kind" | "title" | "path" | "agents">;
 
 type Failure = Extract<ApiResult<unknown, string>, { readonly ok: false }>;
 
@@ -57,7 +57,7 @@ interface Held {
  * conversation the other side; null for two agents' conversation, which
  * the user cannot post in.
  */
-function replyTarget(t: Thread): PostTarget | null {
+function replyTarget(t: ConversationThread): PostTarget | null {
   switch (t.kind) {
     case "announce":
       return { announce: true };
@@ -263,7 +263,7 @@ export function conversationDetail(opts: DetailOptions): ConversationDetail {
     };
 
     /** The composer, or for two agents' conversation a way to write to either. */
-    const reply = (t: Thread): HTMLElement => {
+    const reply = (t: ConversationThread): HTMLElement => {
       const to = replyTarget(t);
       if (to !== null) {
         composer = conversationComposer({

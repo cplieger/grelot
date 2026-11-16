@@ -3,7 +3,7 @@ import { enhanceContextPanel } from "@cplieger/ui/context-panel";
 
 import { clockTime, ordinal } from "../format.js";
 import { icon } from "../icons.js";
-import type { Agent, Conversation, Reservation } from "../wire/types.gen.js";
+import type { Agent, Conversation, ConversationReservation } from "../wire/types.gen.js";
 import { agentLink, isUser } from "./names.js";
 
 interface ConversationContext {
@@ -14,12 +14,12 @@ interface ConversationContext {
   update(c: Conversation): void;
 }
 
-function reason(r: Reservation): (Node | string)[] {
+function reason(r: ConversationReservation): (Node | string)[] {
   return r.reason === undefined || r.reason === "" ? [] : [": ", el("bdi", null, r.reason)];
 }
 
 /** The reservation strip (shape 1 item 6): the grants, then the queue in order. */
-function reservationItem(r: Reservation): HTMLElement {
+function reservationItem(r: ConversationReservation): HTMLElement {
   const path = el("code", { className: "cp-mono", dir: "auto" }, r.path);
   if (r.state === "held") {
     return el(

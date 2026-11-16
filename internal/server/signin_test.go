@@ -21,7 +21,7 @@ import (
 	"github.com/cplieger/grelot/internal/auth"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
-	"github.com/cplieger/grelot/internal/webui/wire"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // testOrigin is the public URL every sign-in test serves at: the passkey
@@ -449,7 +449,7 @@ func TestWeb_anAPIKeyOrAForeignOriginIsRefused(t *testing.T) {
 		}
 	})
 	t.Run("a cross-site write", func(t *testing.T) {
-		r := h.request(http.MethodPost, "/api/posts", wire.PostRequest{Subject: "hi", Body: "from elsewhere", To: wire.PostTarget{Announce: true}},
+		r := h.request(http.MethodPost, "/api/posts", wire.UserPostRequest{Subject: "hi", Body: "from elsewhere", To: wire.PostTarget{Announce: true}},
 			map[string]string{"Sec-Fetch-Site": "cross-site"})
 		if r.status != http.StatusForbidden || r.str("code") != "auth_cross_origin" {
 			t.Errorf("a cross-site post: %d %s, want 403 auth_cross_origin", r.status, r.raw)

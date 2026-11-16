@@ -13,7 +13,7 @@ import (
 	"github.com/cplieger/go/sse/v2"
 	"github.com/cplieger/go/sse/v2/ssetest"
 	"github.com/cplieger/grelot/internal/store"
-	"github.com/cplieger/grelot/internal/webui/wire"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 const (

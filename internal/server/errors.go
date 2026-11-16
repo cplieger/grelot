@@ -18,7 +18,7 @@ import (
 	"github.com/cplieger/grelot/internal/auth"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
-	"github.com/cplieger/grelot/internal/webui/wire"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // apiError is a refusal the HTTP layer makes itself, before the store.

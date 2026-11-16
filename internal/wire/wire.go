@@ -1,7 +1,8 @@
-// Package wire is the web API's JSON: the types the server sends and
-// reads on /api, and the endpoint table that binds its routes and
-// generates the browser's typed client. Instants are milliseconds since
-// the Unix epoch and durations milliseconds, each named with _ms.
+// Package wire is grelot's wire contract: the JSON the server sends and
+// reads, and the route rows it binds. It imports the standard library only,
+// so the server, the clients and the generator share it. Instants are
+// milliseconds since the Unix epoch and durations milliseconds, each named
+// with _ms.
 package wire
 
 // Error is every error response, on /api and /v1 alike.
@@ -47,8 +48,8 @@ const (
 	SenderUser  SenderKind = "user"
 )
 
-// Thread names one conversation.
-type Thread struct {
+// ConversationThread names one conversation.
+type ConversationThread struct {
 	Kind ThreadKind `json:"kind"`
 	// Title is announce, the path, or the direct thread's two names.
 	Title string `json:"title"`
@@ -71,7 +72,7 @@ type LastPost struct {
 // ConversationRow is one row of the conversation list.
 type ConversationRow struct {
 	Last LastPost `json:"last"`
-	Thread
+	ConversationThread
 	Participants int `json:"participants"`
 	// Unread counts the user's unread posts in it.
 	Unread int `json:"unread"`
@@ -136,8 +137,8 @@ const (
 	ReservationQueued ReservationState = "queued"
 )
 
-// Reservation is a path an agent holds or waits for.
-type Reservation struct {
+// ConversationReservation is a path an agent holds or waits for.
+type ConversationReservation struct {
 	Path   string           `json:"path"`
 	Holder string           `json:"holder"`
 	Host   string           `json:"host,omitempty"`
@@ -192,12 +193,12 @@ type Conversation struct {
 	Posts []Post `json:"posts"`
 	// Reservations are a path conversation's grants then queue entries
 	// overlapping its path.
-	Reservations []Reservation `json:"reservations"`
+	Reservations []ConversationReservation `json:"reservations"`
 	// Followers are the agents a path conversation's posts reach.
 	Followers []string `json:"followers"`
 	// Cards are a direct conversation's agents.
-	Cards  []Agent `json:"cards"`
-	Thread Thread  `json:"thread"`
+	Cards  []Agent            `json:"cards"`
+	Thread ConversationThread `json:"thread"`
 	// Next is the before of the older page, absent on the oldest.
 	Next uint64 `json:"next,omitempty"`
 }
@@ -218,8 +219,8 @@ type MessageParams struct {
 	ID uint64 `json:"id"`
 }
 
-// Receipt is one recipient of a message.
-type Receipt struct {
+// UserReceipt is one recipient of a message.
+type UserReceipt struct {
 	Name  string `json:"name"`
 	Host  string `json:"host,omitempty"`
 	State string `json:"state"`
@@ -227,13 +228,13 @@ type Receipt struct {
 	ReadAtMS int64 `json:"read_at_ms,omitempty"`
 }
 
-// Receipts are who has read a message.
-type Receipts struct {
-	Subject    string    `json:"subject"`
-	Kind       string    `json:"kind"`
-	Recipients []Receipt `json:"recipients"`
-	Message    uint64    `json:"message"`
-	PostedAtMS int64     `json:"posted_at_ms"`
+// UserReceipts are who has read a message.
+type UserReceipts struct {
+	Subject    string        `json:"subject"`
+	Kind       string        `json:"kind"`
+	Recipients []UserReceipt `json:"recipients"`
+	Message    uint64        `json:"message"`
+	PostedAtMS int64         `json:"posted_at_ms"`
 	// RegisteredSince counts, for an announcement, the agents registered
 	// after it, which never received it.
 	RegisteredSince int `json:"registered_since"`
@@ -257,15 +258,15 @@ type PostTarget struct {
 	Announce bool   `json:"announce,omitempty"`
 }
 
-// PostRequest is a post the user sends.
-type PostRequest struct {
+// UserPostRequest is a post the user sends.
+type UserPostRequest struct {
 	Subject string     `json:"subject"`
 	Body    string     `json:"body"`
 	To      PostTarget `json:"to"`
 }
 
-// Posted is a post the server stored.
-type Posted struct {
+// UserPosted is a post the server stored.
+type UserPosted struct {
 	Message uint64 `json:"message"`
 	Thread  uint64 `json:"thread"`
 	// Delivered counts its recipients.
@@ -280,14 +281,14 @@ type AgentParams struct {
 // AgentPage is an agent's card, its reservations (grants first) and its
 // live delegates' handles.
 type AgentPage struct {
-	Reservations []Reservation `json:"reservations"`
-	Delegates    []string      `json:"delegates"`
-	Agent        Agent         `json:"agent"`
+	Reservations []ConversationReservation `json:"reservations"`
+	Delegates    []string                  `json:"delegates"`
+	Agent        Agent                     `json:"agent"`
 }
 
 // HistoryPost is a post an agent sent or received, with its conversation.
 type HistoryPost struct {
-	Conversation Thread `json:"conversation"`
+	Conversation ConversationThread `json:"conversation"`
 	Post
 }
 

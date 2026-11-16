@@ -5,7 +5,13 @@ import { userEvent } from "vitest/browser";
 import { until } from "../__test-helpers__/until.js";
 
 import { clockTime } from "../format.js";
-import type { Agent, Conversation, Post, Receipts, Reservation } from "../wire/types.gen.js";
+import type {
+  Agent,
+  Conversation,
+  Post,
+  UserReceipts,
+  ConversationReservation,
+} from "../wire/types.gen.js";
 import {
   answer,
   at,
@@ -244,7 +250,7 @@ describe("the open conversation", () => {
   it("shows a path thread's reservations, its queue in order and its followers", async () => {
     answer(pageOf([row(1)]));
     const until = new Date(2026, 10, 13, 11, 30).getTime();
-    const reservations: Reservation[] = [
+    const reservations: ConversationReservation[] = [
       {
         id: 7,
         path: "/workspace/r1/web",
@@ -385,7 +391,7 @@ describe("the open conversation", () => {
   it("opens who read a message, says when that fails, and closes on Escape back to its button", async () => {
     answer(pageOf([row(1)]));
     serve(1, conversationOf(1, { posts: [post(5, { read: { read: 1, total: 4 } })] }));
-    const receipts: Receipts = {
+    const receipts: UserReceipts = {
       subject: "s5",
       kind: "path",
       message: 5,
@@ -1281,7 +1287,7 @@ describe("agent-written text under a right-to-left page", () => {
     try {
       answer(pageOf([row(1)]));
       serve(1, conversationOf(1, { posts: [post(5, { read: { read: 0, total: 1 } })] }));
-      const receipts: Receipts = {
+      const receipts: UserReceipts = {
         subject: "s5",
         kind: "path",
         message: 5,
@@ -1310,7 +1316,7 @@ describe("agent-written text under a right-to-left page", () => {
     document.documentElement.dir = "rtl";
     try {
       answer(pageOf([row(1)]));
-      const reservations: Reservation[] = [
+      const reservations: ConversationReservation[] = [
         {
           id: 7,
           path: "/workspace/r1/web",

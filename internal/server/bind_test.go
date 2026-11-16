@@ -8,20 +8,22 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/grelot/internal/webui/wire"
+	"github.com/cplieger/grelot/internal/wire"
+	"github.com/cplieger/grelot/internal/wirespec"
 )
 
-// routeInputs is every Params and Query type wire.Routes declares, by
-// route and role.
+// routeInputs is every Params and Query type the wire.Routes rows' specs
+// declare, by route and role.
 func routeInputs() map[string]reflect.Type {
 	out := map[string]reflect.Type{}
 	for i := range wire.Routes {
-		r := &wire.Routes[i]
-		if r.Params != nil {
-			out[r.Name+"_params"] = r.Params
+		name := wire.Routes[i].Name
+		s, _ := wirespec.Lookup(name)
+		if s.Params != nil {
+			out[name+"_params"] = s.Params
 		}
-		if r.Query != nil {
-			out[r.Name+"_query"] = r.Query
+		if s.Query != nil {
+			out[name+"_query"] = s.Query
 		}
 	}
 	return out

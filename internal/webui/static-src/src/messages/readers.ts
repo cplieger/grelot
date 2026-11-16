@@ -3,8 +3,8 @@ import { anchorTo } from "@cplieger/ui/anchor";
 import { enhancePanel } from "@cplieger/ui/panel";
 
 import { icon } from "../icons.js";
-import { getReceipts } from "../wire/client.gen.js";
-import type { ReadCount, Receipt, Receipts } from "../wire/types.gen.js";
+import { getUserReceipts } from "../wire/client.gen.js";
+import type { ReadCount, UserReceipt, UserReceipts } from "../wire/types.gen.js";
 import { agentLink, senderWords } from "./names.js";
 
 interface ReadSummary {
@@ -27,7 +27,7 @@ function inlineLoad(words: string): HTMLElement {
 }
 
 /** A recipient by name: a retired one has no agent page left, and its name may be another's now. */
-function recipient(r: Receipt): HTMLElement {
+function recipient(r: UserReceipt): HTMLElement {
   switch (r.state) {
     case "retired":
       return el("li", null, el("bdi", null, senderWords(r.name)), ", retired");
@@ -38,7 +38,7 @@ function recipient(r: Receipt): HTMLElement {
   }
 }
 
-function group(title: string, rs: readonly Receipt[], none: string): HTMLElement {
+function group(title: string, rs: readonly UserReceipt[], none: string): HTMLElement {
   return el(
     "section",
     null,
@@ -49,7 +49,7 @@ function group(title: string, rs: readonly Receipt[], none: string): HTMLElement
   );
 }
 
-function receiptsBody(rc: Receipts): HTMLElement[] {
+function receiptsBody(rc: UserReceipts): HTMLElement[] {
   const read = rc.recipients.filter((r) => r.state === "read");
   const waiting = rc.recipients.filter((r) => r.state !== "read");
   const out = [
@@ -121,7 +121,7 @@ export function readSummary(
       panel.setAttribute("aria-busy", "true");
       panel.replaceChildren(inlineLoad("Loading who read it…"));
     }
-    const result = await getReceipts(
+    const result = await getUserReceipts(
       { id: message },
       { signal: AbortSignal.any([signal, stop.signal]) },
     );

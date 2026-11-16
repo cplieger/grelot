@@ -2,8 +2,8 @@
 
 import { clientRequest } from "../transport.js";
 import type { ApiResult, EndpointSpec } from "../transport.js";
-import { decodeAgentList, decodeAgentPage, decodeConversation, decodeConversationsPage, decodeHistoryPage, decodeMarkedRead, decodePosted, decodeReceipts, decodeSettings, decodeSignIn, decodeStats } from "./decoders.gen.js";
-import type { AgentList, AgentPage, Conversation, ConversationsPage, HistoryPage, MarkReadRequest, MarkedRead, PostRequest, Posted, Receipts, Settings, SettingsRequest, Show, SignIn, Stats, StatsRange } from "./types.gen.js";
+import { decodeAgentList, decodeAgentPage, decodeConversation, decodeConversationsPage, decodeHistoryPage, decodeMarkedRead, decodeSettings, decodeSignIn, decodeStats, decodeUserPosted, decodeUserReceipts } from "./decoders.gen.js";
+import type { AgentList, AgentPage, Conversation, ConversationsPage, HistoryPage, MarkReadRequest, MarkedRead, Settings, SettingsRequest, Show, SignIn, Stats, StatsRange, UserPostRequest, UserPosted, UserReceipts } from "./types.gen.js";
 
 /** Options accepted by every generated client function. */
 export interface ClientOpts {
@@ -23,6 +23,10 @@ function qs(entries: readonly (readonly [string, string | number | boolean | und
 
 export interface ListConversationsArgs {
   readonly kind?: Show;
+  /**
+   * Before and BeforeThread are the Next and NextThread of the newer
+   * page; both absent for the newest.
+   */
   readonly before?: number;
   readonly before_thread?: number;
 }
@@ -31,9 +35,7 @@ const listConversationsCodes = ["invalid", "auth_method_not_allowed", "auth_requ
 
 export type ListConversationsError = (typeof listConversationsCodes)[number];
 
-/**
- * Conversations newest activity first, 50 a page
- */
+/** Conversations newest activity first, 50 a page */
 export const listConversationsEndpoint = {
   method: "GET",
   path: "/api/conversations",
@@ -48,15 +50,14 @@ export const listConversationsEndpoint = {
   decode: decodeConversationsPage,
 } as const;
 
-/**
- * Conversations newest activity first, 50 a page
- */
+/** Conversations newest activity first, 50 a page */
 export function listConversations(args: ListConversationsArgs = {}, opts?: ClientOpts): globalThis.Promise<ApiResult<ConversationsPage, ListConversationsError>> {
   return clientRequest<ConversationsPage, ListConversationsError>(listConversationsEndpoint.request(args), listConversationsEndpoint.decode, opts);
 }
 
 export interface GetConversationArgs {
   readonly id: number;
+  /** Before is the Next of the newer page; absent for the newest. */
   readonly before?: number;
 }
 
@@ -64,9 +65,7 @@ const getConversationCodes = ["invalid", "not_found", "auth_method_not_allowed",
 
 export type GetConversationError = (typeof getConversationCodes)[number];
 
-/**
- * A conversation's posts oldest first, 100 a page, and its context
- */
+/** A conversation's posts oldest first, 100 a page, and its context */
 export const getConversationEndpoint = {
   method: "GET",
   path: "/api/conversations/{id}",
@@ -81,9 +80,7 @@ export const getConversationEndpoint = {
   decode: decodeConversation,
 } as const;
 
-/**
- * A conversation's posts oldest first, 100 a page, and its context
- */
+/** A conversation's posts oldest first, 100 a page, and its context */
 export function getConversation(args: GetConversationArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Conversation, GetConversationError>> {
   return clientRequest<Conversation, GetConversationError>(getConversationEndpoint.request(args), getConversationEndpoint.decode, opts);
 }
@@ -97,9 +94,7 @@ const markConversationReadCodes = ["invalid", "forbidden", "not_found", "auth_cr
 
 export type MarkConversationReadError = (typeof markConversationReadCodes)[number];
 
-/**
- * Mark the user's unread posts in a conversation read, up to the newest shown
- */
+/** Mark the user's unread posts in a conversation read, up to the newest shown */
 export const markConversationReadEndpoint = {
   method: "POST",
   path: "/api/conversations/{id}/read",
@@ -115,62 +110,55 @@ export const markConversationReadEndpoint = {
   decode: decodeMarkedRead,
 } as const;
 
-/**
- * Mark the user's unread posts in a conversation read, up to the newest shown
- */
+/** Mark the user's unread posts in a conversation read, up to the newest shown */
 export function markConversationRead(args: MarkConversationReadArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<MarkedRead, MarkConversationReadError>> {
   return clientRequest<MarkedRead, MarkConversationReadError>(markConversationReadEndpoint.request(args), markConversationReadEndpoint.decode, opts);
 }
 
-export interface GetReceiptsArgs {
+export interface GetUserReceiptsArgs {
   readonly id: number;
 }
 
-const getReceiptsCodes = ["invalid", "not_found", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "timeout", "shutting_down", "internal_error"] as const;
+const getUserReceiptsCodes = ["invalid", "not_found", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "timeout", "shutting_down", "internal_error"] as const;
 
-export type GetReceiptsError = (typeof getReceiptsCodes)[number];
+export type GetUserReceiptsError = (typeof getUserReceiptsCodes)[number];
 
-/**
- * Who has read a message
- */
-export const getReceiptsEndpoint = {
+/** Who has read a message */
+export const getUserReceiptsEndpoint = {
   method: "GET",
   path: "/api/messages/{id}/receipts",
-  codes: getReceiptsCodes,
-  request(args: GetReceiptsArgs): EndpointSpec {
+  codes: getUserReceiptsCodes,
+  request(args: GetUserReceiptsArgs): EndpointSpec {
     return {
       method: "GET",
       path: `/api/messages/${globalThis.encodeURIComponent(globalThis.String(args.id))}/receipts`,
-      codes: getReceiptsCodes,
+      codes: getUserReceiptsCodes,
     };
   },
-  decode: decodeReceipts,
+  decode: decodeUserReceipts,
 } as const;
 
-/**
- * Who has read a message
- */
-export function getReceipts(args: GetReceiptsArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Receipts, GetReceiptsError>> {
-  return clientRequest<Receipts, GetReceiptsError>(getReceiptsEndpoint.request(args), getReceiptsEndpoint.decode, opts);
+/** Who has read a message */
+export function getUserReceipts(args: GetUserReceiptsArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<UserReceipts, GetUserReceiptsError>> {
+  return clientRequest<UserReceipts, GetUserReceiptsError>(getUserReceiptsEndpoint.request(args), getUserReceiptsEndpoint.decode, opts);
 }
 
-export interface CreatePostArgs {
-  readonly body: PostRequest;
+export interface CreateUserPostArgs {
+  readonly body: UserPostRequest;
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
   readonly idempotencyKey: string;
 }
 
-const createPostCodes = ["invalid", "forbidden", "not_found", "conflict", "gone", "too_large", "key_reused", "store_full", "auth_cross_origin", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "timeout", "shutting_down", "internal_error"] as const;
+const createUserPostCodes = ["invalid", "forbidden", "not_found", "conflict", "gone", "too_large", "key_reused", "store_full", "auth_cross_origin", "auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "timeout", "shutting_down", "internal_error"] as const;
 
-export type CreatePostError = (typeof createPostCodes)[number];
+export type CreateUserPostError = (typeof createUserPostCodes)[number];
 
-/**
- * Post as @user to announce, a path thread or an agent
- */
-export const createPostEndpoint = {
+/** Post as @user to announce, a path thread or an agent */
+export const createUserPostEndpoint = {
   method: "POST",
   path: "/api/posts",
-  codes: createPostCodes,
-  request(args: CreatePostArgs): EndpointSpec {
+  codes: createUserPostCodes,
+  request(args: CreateUserPostArgs): EndpointSpec {
     const headers: globalThis.Record<string, string> = {};
     headers["Idempotency-Key"] = args.idempotencyKey;
     return {
@@ -178,26 +166,22 @@ export const createPostEndpoint = {
       path: "/api/posts",
       body: args.body,
       headers,
-      codes: createPostCodes,
+      codes: createUserPostCodes,
     };
   },
-  decode: decodePosted,
+  decode: decodeUserPosted,
 } as const;
 
-/**
- * Post as @user to announce, a path thread or an agent
- */
-export function createPost(args: CreatePostArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Posted, CreatePostError>> {
-  return clientRequest<Posted, CreatePostError>(createPostEndpoint.request(args), createPostEndpoint.decode, opts);
+/** Post as @user to announce, a path thread or an agent */
+export function createUserPost(args: CreateUserPostArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<UserPosted, CreateUserPostError>> {
+  return clientRequest<UserPosted, CreateUserPostError>(createUserPostEndpoint.request(args), createUserPostEndpoint.decode, opts);
 }
 
 const listAgentsCodes = ["auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "timeout", "shutting_down", "internal_error"] as const;
 
 export type ListAgentsError = (typeof listAgentsCodes)[number];
 
-/**
- * Every live and dormant agent, by name
- */
+/** Every live and dormant agent, by name */
 export const listAgentsEndpoint = {
   method: "GET",
   path: "/api/agents",
@@ -212,9 +196,7 @@ export const listAgentsEndpoint = {
   decode: decodeAgentList,
 } as const;
 
-/**
- * Every live and dormant agent, by name
- */
+/** Every live and dormant agent, by name */
 export function listAgents(opts?: ClientOpts): globalThis.Promise<ApiResult<AgentList, ListAgentsError>> {
   return clientRequest<AgentList, ListAgentsError>(listAgentsEndpoint.request(), listAgentsEndpoint.decode, opts);
 }
@@ -227,9 +209,7 @@ const getAgentCodes = ["not_found", "auth_method_not_allowed", "auth_required", 
 
 export type GetAgentError = (typeof getAgentCodes)[number];
 
-/**
- * An agent's card, reservations and delegates
- */
+/** An agent's card, reservations and delegates */
 export const getAgentEndpoint = {
   method: "GET",
   path: "/api/agents/{name}",
@@ -244,15 +224,14 @@ export const getAgentEndpoint = {
   decode: decodeAgentPage,
 } as const;
 
-/**
- * An agent's card, reservations and delegates
- */
+/** An agent's card, reservations and delegates */
 export function getAgent(args: GetAgentArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<AgentPage, GetAgentError>> {
   return clientRequest<AgentPage, GetAgentError>(getAgentEndpoint.request(args), getAgentEndpoint.decode, opts);
 }
 
 export interface GetAgentHistoryArgs {
   readonly name: string;
+  /** Before is the Next of the newer page; absent for the newest. */
   readonly before?: number;
 }
 
@@ -260,9 +239,7 @@ const getAgentHistoryCodes = ["invalid", "not_found", "auth_method_not_allowed",
 
 export type GetAgentHistoryError = (typeof getAgentHistoryCodes)[number];
 
-/**
- * Every post an agent sent or received, newest first, 100 a page
- */
+/** Every post an agent sent or received, newest first, 100 a page */
 export const getAgentHistoryEndpoint = {
   method: "GET",
   path: "/api/agents/{name}/history",
@@ -277,9 +254,7 @@ export const getAgentHistoryEndpoint = {
   decode: decodeHistoryPage,
 } as const;
 
-/**
- * Every post an agent sent or received, newest first, 100 a page
- */
+/** Every post an agent sent or received, newest first, 100 a page */
 export function getAgentHistory(args: GetAgentHistoryArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<HistoryPage, GetAgentHistoryError>> {
   return clientRequest<HistoryPage, GetAgentHistoryError>(getAgentHistoryEndpoint.request(args), getAgentHistoryEndpoint.decode, opts);
 }
@@ -292,9 +267,7 @@ const getStatsCodes = ["invalid", "auth_method_not_allowed", "auth_required", "a
 
 export type GetStatsError = (typeof getStatsCodes)[number];
 
-/**
- * The Statistics tab over a range
- */
+/** The Statistics tab over a range */
 export const getStatsEndpoint = {
   method: "GET",
   path: "/api/stats",
@@ -309,9 +282,7 @@ export const getStatsEndpoint = {
   decode: decodeStats,
 } as const;
 
-/**
- * The Statistics tab over a range
- */
+/** The Statistics tab over a range */
 export function getStats(args: GetStatsArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Stats, GetStatsError>> {
   return clientRequest<Stats, GetStatsError>(getStatsEndpoint.request(args), getStatsEndpoint.decode, opts);
 }
@@ -320,9 +291,7 @@ const getSettingsCodes = ["auth_method_not_allowed", "auth_required", "auth_sess
 
 export type GetSettingsError = (typeof getSettingsCodes)[number];
 
-/**
- * The history retention and sign-in methods
- */
+/** The history retention and sign-in methods */
 export const getSettingsEndpoint = {
   method: "GET",
   path: "/api/settings",
@@ -337,9 +306,7 @@ export const getSettingsEndpoint = {
   decode: decodeSettings,
 } as const;
 
-/**
- * The history retention and sign-in methods
- */
+/** The history retention and sign-in methods */
 export function getSettings(opts?: ClientOpts): globalThis.Promise<ApiResult<Settings, GetSettingsError>> {
   return clientRequest<Settings, GetSettingsError>(getSettingsEndpoint.request(), getSettingsEndpoint.decode, opts);
 }
@@ -352,9 +319,7 @@ const putSettingsCodes = ["invalid", "forbidden", "recent_auth_required", "would
 
 export type PutSettingsError = (typeof putSettingsCodes)[number];
 
-/**
- * Replace the settings; a change of sign-in methods needs a recent sign-in
- */
+/** Replace the settings; a change of sign-in methods needs a recent sign-in */
 export const putSettingsEndpoint = {
   method: "PUT",
   path: "/api/settings",
@@ -370,9 +335,7 @@ export const putSettingsEndpoint = {
   decode: decodeSettings,
 } as const;
 
-/**
- * Replace the settings; a change of sign-in methods needs a recent sign-in
- */
+/** Replace the settings; a change of sign-in methods needs a recent sign-in */
 export function putSettings(args: PutSettingsArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Settings, PutSettingsError>> {
   return clientRequest<Settings, PutSettingsError>(putSettingsEndpoint.request(args), putSettingsEndpoint.decode, opts);
 }
@@ -381,9 +344,7 @@ const getSignInCodes = ["auth_method_not_allowed", "internal_error"] as const;
 
 export type GetSignInError = (typeof getSignInCodes)[number];
 
-/**
- * What the sign-in page shows beside the sign-in routes' state; needs no session
- */
+/** What the sign-in page shows beside the sign-in routes' state; needs no session */
 export const getSignInEndpoint = {
   method: "GET",
   path: "/api/sign-in",
@@ -398,9 +359,7 @@ export const getSignInEndpoint = {
   decode: decodeSignIn,
 } as const;
 
-/**
- * What the sign-in page shows beside the sign-in routes' state; needs no session
- */
+/** What the sign-in page shows beside the sign-in routes' state; needs no session */
 export function getSignIn(opts?: ClientOpts): globalThis.Promise<ApiResult<SignIn, GetSignInError>> {
   return clientRequest<SignIn, GetSignInError>(getSignInEndpoint.request(), getSignInEndpoint.decode, opts);
 }
@@ -409,9 +368,7 @@ const eventsCodes = ["auth_method_not_allowed", "auth_required", "auth_session_e
 
 export type EventsError = (typeof eventsCodes)[number];
 
-/**
- * A changed event after each commit the web UI shows, resumed from Last-Event-ID, between the sse hub's hello and keepalive events
- */
+/** A changed event after each commit the web UI shows, resumed from Last-Event-ID, between the sse hub's hello and keepalive events */
 export const eventsEndpoint = {
   method: "GET",
   path: "/api/events",

@@ -101,7 +101,7 @@
           },
           "reservations": {
             "items": {
-              "$ref": "#/components/schemas/Reservation"
+              "$ref": "#/components/schemas/ConversationReservation"
             },
             "type": [
               "array",
@@ -213,7 +213,7 @@
           },
           "reservations": {
             "items": {
-              "$ref": "#/components/schemas/Reservation"
+              "$ref": "#/components/schemas/ConversationReservation"
             },
             "type": [
               "array",
@@ -221,7 +221,7 @@
             ]
           },
           "thread": {
-            "$ref": "#/components/schemas/Thread"
+            "$ref": "#/components/schemas/ConversationThread"
           }
         },
         "required": [
@@ -245,6 +245,47 @@
         "required": [
           "threads",
           "direct"
+        ],
+        "type": "object"
+      },
+      "ConversationReservation": {
+        "properties": {
+          "expires_ms": {
+            "type": "integer"
+          },
+          "holder": {
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "id": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          },
+          "place": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "since_ms": {
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ReservationState"
+          }
+        },
+        "required": [
+          "path",
+          "holder",
+          "state",
+          "id",
+          "since_ms",
+          "expires_ms"
         ],
         "type": "object"
       },
@@ -286,6 +327,35 @@
           "id",
           "participants",
           "unread"
+        ],
+        "type": "object"
+      },
+      "ConversationThread": {
+        "properties": {
+          "agents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ThreadKind"
+          },
+          "path": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "id"
         ],
         "type": "object"
       },
@@ -484,7 +554,7 @@
             "type": "string"
           },
           "conversation": {
-            "$ref": "#/components/schemas/Thread"
+            "$ref": "#/components/schemas/ConversationThread"
           },
           "from": {
             "type": "string"
@@ -669,25 +739,6 @@
         ],
         "type": "object"
       },
-      "PostRequest": {
-        "properties": {
-          "body": {
-            "type": "string"
-          },
-          "subject": {
-            "type": "string"
-          },
-          "to": {
-            "$ref": "#/components/schemas/PostTarget"
-          }
-        },
-        "required": [
-          "subject",
-          "body",
-          "to"
-        ],
-        "type": "object"
-      },
       "PostTarget": {
         "properties": {
           "agent": {
@@ -702,27 +753,6 @@
         },
         "type": "object"
       },
-      "Posted": {
-        "properties": {
-          "delivered": {
-            "type": "integer"
-          },
-          "message": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "thread": {
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "message",
-          "thread",
-          "delivered"
-        ],
-        "type": "object"
-      },
       "ReadCount": {
         "properties": {
           "read": {
@@ -735,106 +765,6 @@
         "required": [
           "read",
           "total"
-        ],
-        "type": "object"
-      },
-      "Receipt": {
-        "properties": {
-          "host": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "read_at_ms": {
-            "type": "integer"
-          },
-          "state": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "state"
-        ],
-        "type": "object"
-      },
-      "Receipts": {
-        "properties": {
-          "kind": {
-            "type": "string"
-          },
-          "message": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "posted_at_ms": {
-            "type": "integer"
-          },
-          "recipients": {
-            "items": {
-              "$ref": "#/components/schemas/Receipt"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "registered_since": {
-            "type": "integer"
-          },
-          "subject": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "subject",
-          "kind",
-          "recipients",
-          "message",
-          "posted_at_ms",
-          "registered_since"
-        ],
-        "type": "object"
-      },
-      "Reservation": {
-        "properties": {
-          "expires_ms": {
-            "type": "integer"
-          },
-          "holder": {
-            "type": "string"
-          },
-          "host": {
-            "type": "string"
-          },
-          "id": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "path": {
-            "type": "string"
-          },
-          "place": {
-            "type": "integer"
-          },
-          "reason": {
-            "type": "string"
-          },
-          "since_ms": {
-            "type": "integer"
-          },
-          "state": {
-            "$ref": "#/components/schemas/ReservationState"
-          }
-        },
-        "required": [
-          "path",
-          "holder",
-          "state",
-          "id",
-          "since_ms",
-          "expires_ms"
         ],
         "type": "object"
       },
@@ -1087,35 +1017,6 @@
         ],
         "type": "string"
       },
-      "Thread": {
-        "properties": {
-          "agents": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "id": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/ThreadKind"
-          },
-          "path": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "kind",
-          "title",
-          "id"
-        ],
-        "type": "object"
-      },
       "ThreadKind": {
         "enum": [
           "announce",
@@ -1136,7 +1037,7 @@
             "type": "integer"
           },
           "thread": {
-            "$ref": "#/components/schemas/Thread"
+            "$ref": "#/components/schemas/ConversationThread"
           }
         },
         "required": [
@@ -1144,6 +1045,105 @@
           "posts",
           "participants",
           "deliveries"
+        ],
+        "type": "object"
+      },
+      "UserPostRequest": {
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "to": {
+            "$ref": "#/components/schemas/PostTarget"
+          }
+        },
+        "required": [
+          "subject",
+          "body",
+          "to"
+        ],
+        "type": "object"
+      },
+      "UserPosted": {
+        "properties": {
+          "delivered": {
+            "type": "integer"
+          },
+          "message": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "thread": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "message",
+          "thread",
+          "delivered"
+        ],
+        "type": "object"
+      },
+      "UserReceipt": {
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "read_at_ms": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "state"
+        ],
+        "type": "object"
+      },
+      "UserReceipts": {
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "message": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "posted_at_ms": {
+            "type": "integer"
+          },
+          "recipients": {
+            "items": {
+              "$ref": "#/components/schemas/UserReceipt"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "registered_since": {
+            "type": "integer"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "kind",
+          "recipients",
+          "message",
+          "posted_at_ms",
+          "registered_since"
         ],
         "type": "object"
       }
@@ -1989,7 +1989,7 @@
     },
     "/api/messages/{id}/receipts": {
       "get": {
-        "operationId": "getReceipts",
+        "operationId": "getUserReceipts",
         "parameters": [
           {
             "in": "path",
@@ -2006,7 +2006,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Receipts"
+                  "$ref": "#/components/schemas/UserReceipts"
                 }
               }
             },
@@ -2115,7 +2115,7 @@
     },
     "/api/posts": {
       "post": {
-        "operationId": "createPost",
+        "operationId": "createUserPost",
         "parameters": [
           {
             "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again.",
@@ -2134,7 +2134,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PostRequest"
+                "$ref": "#/components/schemas/UserPostRequest"
               }
             }
           },
@@ -2145,7 +2145,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Posted"
+                  "$ref": "#/components/schemas/UserPosted"
                 }
               }
             },

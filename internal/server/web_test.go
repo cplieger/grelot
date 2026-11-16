@@ -15,7 +15,8 @@ import (
 	"github.com/cplieger/access/gate"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
-	"github.com/cplieger/grelot/internal/webui/wire"
+	"github.com/cplieger/grelot/internal/wire"
+	"github.com/cplieger/grelot/internal/wirespec"
 )
 
 // noKey removes the key request adds to a write.
@@ -36,13 +37,13 @@ func webGet[T any](h *harness, path string) T {
 }
 
 // userPost posts as @user through the web API and returns its answer.
-func userPost(h *harness, to wire.PostTarget, subject string) wire.Posted {
+func userPost(h *harness, to wire.PostTarget, subject string) wire.UserPosted {
 	h.t.Helper()
-	r := h.request(http.MethodPost, "/api/posts", wire.PostRequest{Subject: subject, Body: "from the web UI", To: to}, nil)
+	r := h.request(http.MethodPost, "/api/posts", wire.UserPostRequest{Subject: subject, Body: "from the web UI", To: to}, nil)
 	if r.status != http.StatusCreated {
 		h.t.Fatalf("POST /api/posts: %d %s", r.status, r.raw)
 	}
-	var out wire.Posted
+	var out wire.UserPosted
 	if err := json.Unmarshal([]byte(r.raw), &out); err != nil {
 		h.t.Fatal(err)
 	}
@@ -80,7 +81,8 @@ func TestWeb_everyRouteDeclaresTheGatesCodes(t *testing.T) {
 		route := &wire.Routes[slices.IndexFunc(wire.Routes, func(r wire.Route) bool { return r.Pattern() == row.Name })]
 		t.Run(route.Name, func(t *testing.T) {
 			var declared, want []string
-			for _, e := range route.Errors {
+			spec, _ := wirespec.Lookup(route.Name)
+			for _, e := range spec.Errors {
 				if strings.HasPrefix(e.Code, "auth_") {
 					declared = append(declared, e.Code)
 				}
@@ -140,7 +142,7 @@ func TestWeb_aDirectPostFromUserStartsAConversationWithTheAgent(t *testing.T) {
 		t.Errorf("reservations %v, followers %v, want empty lists, not null", c.Reservations, c.Followers)
 	}
 
-	rc := webGet[wire.Receipts](h, "/api/messages/"+strconv.FormatUint(p.Message, 10)+"/receipts")
+	rc := webGet[wire.UserReceipts](h, "/api/messages/"+strconv.FormatUint(p.Message, 10)+"/receipts")
 	if len(rc.Recipients) != 1 || rc.Recipients[0].Name != "alpha" || rc.Recipients[0].State != "unread" || rc.Recipients[0].ReadAtMS != 0 {
 		t.Errorf("receipts %+v, want alpha unread", rc.Recipients)
 	}
@@ -190,7 +192,7 @@ func TestWeb_createPostReplaysItsKey(t *testing.T) {
 	h := newSignedIn(t)
 	h.mustRegister(sessA, "alpha")
 	key := newTestKey()
-	body := wire.PostRequest{Subject: "once", Body: "sent twice", To: wire.PostTarget{Agent: "alpha"}}
+	body := wire.UserPostRequest{Subject: "once", Body: "sent twice", To: wire.PostTarget{Agent: "alpha"}}
 
 	first := h.request(http.MethodPost, "/api/posts", body, map[string]string{headerKey: key})
 	again := h.request(http.MethodPost, "/api/posts", body, map[string]string{headerKey: key})
@@ -218,9 +220,9 @@ func TestWeb_createPostRefusals(t *testing.T) {
 		status int
 		code   string
 	}{
-		{"unknownAgent", wire.PostRequest{Subject: "s", Body: "b", To: wire.PostTarget{Agent: "nobody"}}, http.StatusNotFound, "not_found"},
-		{"twoTargets", wire.PostRequest{Subject: "s", Body: "b", To: wire.PostTarget{Announce: true, Agent: "x"}}, http.StatusBadRequest, "invalid"},
-		{"noSubject", wire.PostRequest{Body: "b", To: wire.PostTarget{Announce: true}}, http.StatusBadRequest, "invalid"},
+		{"unknownAgent", wire.UserPostRequest{Subject: "s", Body: "b", To: wire.PostTarget{Agent: "nobody"}}, http.StatusNotFound, "not_found"},
+		{"twoTargets", wire.UserPostRequest{Subject: "s", Body: "b", To: wire.PostTarget{Announce: true, Agent: "x"}}, http.StatusBadRequest, "invalid"},
+		{"noSubject", wire.UserPostRequest{Body: "b", To: wire.PostTarget{Announce: true}}, http.StatusBadRequest, "invalid"},
 		{"notAnObject", []int{1}, http.StatusBadRequest, "invalid"},
 	}
 	for _, c := range cases {

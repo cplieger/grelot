@@ -39,10 +39,10 @@ type AgentStats struct {
 
 // ThreadStats is one conversation's activity in the range.
 type ThreadStats struct {
-	Thread       Thread `json:"thread"`
-	Posts        int    `json:"posts"`
-	Participants int    `json:"participants"`
-	Deliveries   int    `json:"deliveries"`
+	Thread       ConversationThread `json:"thread"`
+	Posts        int                `json:"posts"`
+	Participants int                `json:"participants"`
+	Deliveries   int                `json:"deliveries"`
 }
 
 // DelayHistogram bins the post-to-read delays of the deliveries read in

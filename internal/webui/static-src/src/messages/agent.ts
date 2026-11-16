@@ -5,7 +5,7 @@ import { icon } from "../icons.js";
 import type { ScreenMount } from "../shell.js";
 import { failureWords, type ApiResult } from "../transport.js";
 import { getAgent, getSettings } from "../wire/client.gen.js";
-import type { Agent, AgentPage, Reservation } from "../wire/types.gen.js";
+import type { Agent, AgentPage, ConversationReservation } from "../wire/types.gen.js";
 import { agentHistory } from "./history.js";
 import { agentLink, isUser } from "./names.js";
 import { newMessageDialog } from "./new-message.js";
@@ -79,7 +79,7 @@ function cardFacts(page: AgentPage, signal: AbortSignal): HTMLElement {
   return dl;
 }
 
-function reservationState(r: Reservation): HTMLElement {
+function reservationState(r: ConversationReservation): HTMLElement {
   return r.state === "held"
     ? el("span", { className: "cp-state", "data-tone": "success" }, icon("lock"), "Held")
     : el(
@@ -91,7 +91,10 @@ function reservationState(r: Reservation): HTMLElement {
 }
 
 /** The agent's reservations as a .cp-table: Until and Reason leave first on a narrow box. */
-function reservationsTable(rs: readonly Reservation[], signal: AbortSignal): HTMLElement {
+function reservationsTable(
+  rs: readonly ConversationReservation[],
+  signal: AbortSignal,
+): HTMLElement {
   if (rs.length === 0) {
     return el("p", { className: "cp-meta" }, "Holds no reservations.");
   }

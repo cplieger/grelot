@@ -18,7 +18,7 @@ import (
 	"github.com/cplieger/grelot/internal/auth"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
-	"github.com/cplieger/grelot/internal/webui/wire"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // webFunc serves one JSON route of the web API as @user; k is the
@@ -35,8 +35,8 @@ func (s *Server) webRoutes(t *table) {
 		"listConversations":    s.listConversations,
 		"getConversation":      s.getConversation,
 		"markConversationRead": s.markConversationRead,
-		"getReceipts":          s.getReceipts,
-		"createPost":           s.createPost,
+		"getUserReceipts":      s.getUserReceipts,
+		"createUserPost":       s.createUserPost,
 		"listAgents":           s.listAgents,
 		"getAgent":             s.getAgent,
 		"getAgentHistory":      s.getAgentHistory,
@@ -156,7 +156,7 @@ func (s *Server) listConversations(r *http.Request, _ store.Keyed) (body any, er
 	for i := range page.Rows {
 		row := &page.Rows[i]
 		out.Rows = append(out.Rows, wire.ConversationRow{
-			Thread: wireThread(&row.ConversationThread),
+			ConversationThread: wireThread(&row.ConversationThread),
 			Last: wire.LastPost{
 				From: row.Last.From, Subject: row.Last.Subject, Preview: row.Last.Preview,
 				ID: row.Last.ID, AtMS: ms(row.Last.At),
@@ -217,7 +217,7 @@ func (s *Server) markConversationRead(r *http.Request, _ store.Keyed) (body any,
 	return wire.MarkedRead{Read: n}, nil
 }
 
-func (s *Server) getReceipts(r *http.Request, _ store.Keyed) (body any, err error) {
+func (s *Server) getUserReceipts(r *http.Request, _ store.Keyed) (body any, err error) {
 	id, err := idParam[wire.MessageParams](r)
 	if err != nil {
 		return nil, err
@@ -226,19 +226,19 @@ func (s *Server) getReceipts(r *http.Request, _ store.Keyed) (body any, err erro
 	if err != nil {
 		return nil, err
 	}
-	out := wire.Receipts{
+	out := wire.UserReceipts{
 		Subject: rc.Subject, Kind: rc.Kind, Message: rc.Message, PostedAtMS: ms(rc.PostedAt),
-		RegisteredSince: rc.RegisteredSince, Recipients: make([]wire.Receipt, 0, len(rc.Recipients)),
+		RegisteredSince: rc.RegisteredSince, Recipients: make([]wire.UserReceipt, 0, len(rc.Recipients)),
 	}
 	for i := range rc.Recipients {
 		p := &rc.Recipients[i]
-		out.Recipients = append(out.Recipients, wire.Receipt{Name: p.Name, Host: p.Host, State: p.State, ReadAtMS: ms(p.ReadAt)})
+		out.Recipients = append(out.Recipients, wire.UserReceipt{Name: p.Name, Host: p.Host, State: p.State, ReadAtMS: ms(p.ReadAt)})
 	}
 	return out, nil
 }
 
-func (s *Server) createPost(r *http.Request, k store.Keyed) (body any, err error) {
-	var req wire.PostRequest
+func (s *Server) createUserPost(r *http.Request, k store.Keyed) (body any, err error) {
+	var req wire.UserPostRequest
 	err = decode(r, &req)
 	if err != nil {
 		return nil, err
@@ -250,7 +250,7 @@ func (s *Server) createPost(r *http.Request, k store.Keyed) (body any, err error
 	if err != nil {
 		return nil, err
 	}
-	return wire.Posted{Message: p.Message, Thread: p.Thread, Delivered: p.Delivered}, nil
+	return wire.UserPosted{Message: p.Message, Thread: p.Thread, Delivered: p.Delivered}, nil
 }
 
 func (s *Server) listAgents(r *http.Request, _ store.Keyed) (body any, err error) {
@@ -379,8 +379,8 @@ func orEmpty[T any](v []T) []T {
 	return v
 }
 
-func wireThread(t *store.ConversationThread) wire.Thread {
-	return wire.Thread{Kind: wire.ThreadKind(t.Kind), Title: t.Title, Path: t.Path, Agents: t.Agents, ID: t.ID}
+func wireThread(t *store.ConversationThread) wire.ConversationThread {
+	return wire.ConversationThread{Kind: wire.ThreadKind(t.Kind), Title: t.Title, Path: t.Path, Agents: t.Agents, ID: t.ID}
 }
 
 func wirePost(p *store.ConversationPost) wire.Post {
@@ -395,11 +395,11 @@ func wirePost(p *store.ConversationPost) wire.Post {
 	}
 }
 
-func wireReservations(rs []store.ReservationEntry) []wire.Reservation {
-	out := make([]wire.Reservation, 0, len(rs))
+func wireReservations(rs []store.ReservationEntry) []wire.ConversationReservation {
+	out := make([]wire.ConversationReservation, 0, len(rs))
 	for i := range rs {
 		e := &rs[i]
-		out = append(out, wire.Reservation{
+		out = append(out, wire.ConversationReservation{
 			Path: e.Path, Holder: e.Holder, Host: e.Host, Reason: e.Reason, State: wire.ReservationState(e.State),
 			ID: e.ID, Place: e.Place, SinceMS: ms(e.Since), ExpiresMS: ms(e.Expires),
 		})

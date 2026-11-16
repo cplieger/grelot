@@ -17,7 +17,7 @@ import type {
   Conversation,
   ConversationRow,
   ConversationsPage,
-  Thread,
+  ConversationThread,
 } from "../../wire/types.gen.js";
 import { mountAgent } from "../agent.js";
 import { messagesScreen } from "../screen.js";
@@ -39,7 +39,7 @@ export const h = {
   /** The answers /api/conversations gives in turn; the last one repeats. */
   answers: [] as Answer[],
   /** Each listed row's thread, which /api/conversations/{id} answers by default. */
-  threads: new Map<number, Thread>(),
+  threads: new Map<number, ConversationThread>(),
 };
 
 const originalHref = location.href;
