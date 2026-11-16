@@ -6620,6 +6620,32 @@
               "auth_method_not_allowed": {}
             }
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: delegate_gate",
+            "x-error-codes": {
+              "delegate_gate": {}
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Gone: delegate_ended",
+            "x-error-codes": {
+              "delegate_ended": {}
+            }
+          },
           "426": {
             "content": {
               "application/json": {

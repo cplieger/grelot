@@ -307,7 +307,7 @@ export interface ListIdentitiesArgs {
   readonly grelotSelf?: string;
 }
 
-const listIdentitiesCodes = ["invalid", "forbidden", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found", "cursor_invalid", "cursor_mismatch"] as const;
+const listIdentitiesCodes = ["delegate_gate", "delegate_ended", "invalid", "forbidden", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found", "cursor_invalid", "cursor_mismatch"] as const;
 
 export type ListIdentitiesError = (typeof listIdentitiesCodes)[number];
 

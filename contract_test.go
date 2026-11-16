@@ -199,6 +199,15 @@ var agentScenario = []scenarioStep{
 	{row: "grantDelegate", what: "alpha grants a delegate link", run: func(s *scenario) {
 		s.alpha.call(http.StatusCreated, "grantDelegate", "/v1/delegates", map[string]any{"label": "helper", "ttl_ms": hourMS})
 	}},
+	{row: "listIdentities", what: "alpha's list meets its delegate gate, and a handle naming no delegate has ended", run: func(s *scenario) {
+		if r := s.alpha.call(http.StatusConflict, "listIdentities", "/v1/identities", nil); r.str("code") != "delegate_gate" {
+			s.c.t.Errorf("list past an unused link: code %q, want delegate_gate", r.str("code"))
+		}
+		r := s.alpha.callWith(http.StatusGone, "listIdentities", "/v1/identities", nil, map[string]string{"Grelot-As": "alpha/nobody"})
+		if r.str("code") != "delegate_ended" {
+			s.c.t.Errorf("list as a handle naming no delegate: code %q, want delegate_ended", r.str("code"))
+		}
+	}},
 	{row: "revokeDelegate", what: "alpha revokes it, as its own command past the delegate gate", run: func(s *scenario) {
 		s.alpha.callWith(http.StatusOK, "revokeDelegate", "/v1/delegates/helper", nil, map[string]string{"Grelot-Self": "1"})
 	}},

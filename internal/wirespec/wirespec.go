@@ -68,8 +68,8 @@ func agent(own ...wire.ErrorCode) []wire.ErrorCode {
 	return out
 }
 
-// anySession is agent's for a row taking a request with no session: only
-// a bad identity header and another key's identity of asIdentity.
+// anySession is agent's for a row that also answers with no session: own,
+// a bad identity header, another key's identity and the client's version.
 func anySession(own ...wire.ErrorCode) []wire.ErrorCode {
 	return append(own, wire.ErrInvalid, wire.ErrForbidden, wire.ErrUpgradeRequired)
 }
@@ -114,7 +114,8 @@ var specs = map[string]Spec{
 	},
 	"listIdentities": {
 		Summary: "Every live identity, or with all=1 the dormant ones too, narrowed by the filters, by name",
-		Query:   typeOf[wire.IdentitiesQuery](), Response: typeOf[wire.Peers](), Errors: anySession(), AnySession: true,
+		Query:   typeOf[wire.IdentitiesQuery](), Response: typeOf[wire.Peers](),
+		Errors: anySession(wire.ErrDelegateGate, wire.ErrDelegateEnded), AnySession: true,
 	},
 	"getVersion": {
 		Summary:  "The server's version and path root",
