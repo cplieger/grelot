@@ -17,8 +17,8 @@ import (
 const goldenPage = "testdata/page.golden"
 
 // TestHandler_servesTheGoldenPage pins grelot's own families on /metrics
-// byte for byte, since alerts/promql.yaml and the dashboards read them by
-// name, label, HELP and bucket.
+// byte for byte: alerts/promql.yaml and the dashboards select them by name,
+// label and bucket.
 func TestHandler_servesTheGoldenPage(t *testing.T) {
 	m := New()
 	m.ServeBuildInfo("v1.2.3")
