@@ -12,6 +12,7 @@ const SENDER_KINDS = ["agent", "user"] as const;
 const SHOWS = ["all", "threads", "direct"] as const;
 const STATS_RANGES = ["6h", "24h", "72h"] as const;
 const THREAD_KINDS = ["announce", "path", "direct"] as const;
+const TURNS = ["start"] as const;
 
 export const decodeAckRequest: Decoder<AckRequest> = (v) => {
   const o = asObject(v, "$.ack_request");
@@ -876,7 +877,7 @@ export const decodeMeQuery: Decoder<MeQuery> = (v) => {
   };
   {
     const $v = own(o, "turn");
-    if ($v !== undefined && $v !== null) out.turn = reqStr(o, "turn", "$.me_query");
+    if ($v !== undefined && $v !== null) out.turn = reqOneOf(o, "turn", TURNS, "$.me_query");
   }
   {
     const $v = own(o, "proc");

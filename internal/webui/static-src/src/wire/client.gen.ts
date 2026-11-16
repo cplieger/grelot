@@ -3,7 +3,7 @@
 import { clientRequest } from "../transport.js";
 import type { ApiResult, EndpointSpec } from "../transport.js";
 import { decodeAcked, decodeAgentList, decodeAgentPage, decodeConversation, decodeConversationsPage, decodeGranted, decodeHeld, decodeHistory, decodeHistoryPage, decodeIdentityAnswer, decodeInbox, decodeLifecycle, decodeMarkedRead, decodeMe, decodeNudge, decodePeers, decodePosted, decodeReceipts, decodeRegistered, decodeReservationAnswer, decodeReservations, decodeReserved, decodeRetired, decodeRevoked, decodeSettings, decodeSignIn, decodeStats, decodeThreads, decodeUserPosted, decodeUserReceipts, decodeVersion } from "./decoders.gen.js";
-import type { AckRequest, Acked, AgentList, AgentPage, Conversation, ConversationsPage, Flag, GrantRequest, Granted, Held, History, HistoryPage, HoldRequest, IdentityAnswer, Inbox, Lifecycle, LifecycleRequest, MarkReadRequest, MarkedRead, Me, Nudge, PatchMeRequest, Peers, PostRequest, Posted, Receipts, RegisterRequest, Registered, RenewRequest, ReservationAnswer, Reservations, ReserveRequest, Reserved, Retired, ReviveRequest, Revoked, Settings, SettingsRequest, Show, SignIn, Stats, StatsRange, Threads, UserPostRequest, UserPosted, UserReceipts, Version, WaitRequest } from "./types.gen.js";
+import type { AckRequest, Acked, AgentList, AgentPage, Conversation, ConversationsPage, Flag, GrantRequest, Granted, Held, History, HistoryPage, HoldRequest, IdentityAnswer, Inbox, Lifecycle, LifecycleRequest, MarkReadRequest, MarkedRead, Me, Nudge, PatchMeRequest, Peers, PostRequest, Posted, Receipts, RegisterRequest, Registered, RenewRequest, ReservationAnswer, Reservations, ReserveRequest, Reserved, Retired, ReviveRequest, Revoked, Settings, SettingsRequest, Show, SignIn, Stats, StatsRange, Threads, Turn, UserPostRequest, UserPosted, UserReceipts, Version, WaitRequest } from "./types.gen.js";
 
 /** Options accepted by every generated client function. */
 export interface ClientOpts {
@@ -131,7 +131,7 @@ export function revive(args: ReviveArgs, opts?: ClientOpts): globalThis.Promise<
 }
 
 export interface GetMeArgs {
-  readonly turn?: string;
+  readonly turn?: Turn;
   readonly proc?: string;
   readonly signal?: number;
   /** The client's version, which the server answers 426 below its floor. */

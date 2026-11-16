@@ -284,6 +284,7 @@ func Registry() *wiregen.Registry {
 		Enums: []wiregen.EnumRef{
 			wiregen.StringEnum[wire.Show](),
 			wiregen.StringEnum[wire.Flag](),
+			wiregen.StringEnum[wire.Turn](),
 			wiregen.StringEnum[wire.ThreadKind](),
 			wiregen.StringEnum[wire.SenderKind](),
 			wiregen.StringEnum[wire.ReservationState](),

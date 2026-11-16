@@ -310,6 +310,23 @@ func TestPrompt_refusals(t *testing.T) {
 	}
 }
 
+func TestPrompt_aTurnOtherThanStartIsRefusedWithItsFieldError(t *testing.T) {
+	h := newHarness(t)
+	h.mustRegisterAlone(sessA, "reader")
+	for _, q := range []string{"turn=end", "turn=no", "turn=START"} {
+		r := h.self(sessA, http.MethodGet, "/v1/me?"+q, nil)
+		fields, _ := r.body["fields"].([]any)
+		var f map[string]any
+		if len(fields) == 1 {
+			f, _ = fields[0].(map[string]any)
+		}
+		if r.status != http.StatusBadRequest || r.str("code") != "invalid" || f["field"] != "turn" || f["code"] != "one_of" ||
+			fmt.Sprint(f["allowed"]) != "[start]" {
+			t.Errorf("%s: %d %s, want 400 invalid naming turn one_of [start]", q, r.status, r.raw)
+		}
+	}
+}
+
 func TestPrompt_anUnreportedTurnEndWaitsForTheLapse(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h := newBubbleHarness(t)

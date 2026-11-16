@@ -18,6 +18,8 @@ export type StatsRange = "6h" | "24h" | "72h";
 
 export type ThreadKind = "announce" | "path" | "direct";
 
+export type Turn = "start";
+
 /** AckRequest marks read every entry up to Upto. */
 export interface AckRequest {
   upto: number;
@@ -587,7 +589,7 @@ export interface Me {
  * names a signal line already read; proc asks for the take-over hint.
  */
 export interface MeQuery {
-  turn?: string;
+  turn?: Turn;
   proc?: string;
   signal?: number;
 }

@@ -2474,6 +2474,12 @@
         ],
         "type": "object"
       },
+      "Turn": {
+        "enum": [
+          "start"
+        ],
+        "type": "string"
+      },
       "UserPostRequest": {
         "properties": {
           "body": {
@@ -7765,7 +7771,7 @@
             "name": "turn",
             "required": false,
             "schema": {
-              "type": "string"
+              "$ref": "#/components/schemas/Turn"
             }
           },
           {

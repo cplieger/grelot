@@ -671,8 +671,8 @@ func TestOpenAPIErrorRequiresItsMembers(t *testing.T) {
 // TestOpenAPIDeclaresTheQueryBounds holds the document to the bounds the
 // server enforces: every paged row's limit, the inbox's wait_ms, a
 // standing wait's wait_ms, the history window's RFC 3339 since and until,
-// its thread id from 1, the 0-or-1 flags of history and identities, and
-// every integer path id from 1.
+// its thread id from 1, the 0-or-1 flags of history and identities,
+// getMe's turn as start alone, and every integer path id from 1.
 func TestOpenAPIDeclaresTheQueryBounds(t *testing.T) {
 	raw, err := os.ReadFile(contractDoc)
 	if err != nil {
@@ -753,6 +753,13 @@ func TestOpenAPIDeclaresTheQueryBounds(t *testing.T) {
 		}
 		if r.Name == "listIdentities" {
 			flags(r, "online", "here", "all")
+		}
+		if r.Name == "getMe" {
+			ref := query(r, "turn").Ref
+			got := doc.Components.Schemas[strings.TrimPrefix(ref, "#/components/schemas/")].Enum
+			if ref == "" || !slices.Equal(got, []string{"start"}) {
+				t.Errorf("%s: getMe's turn is %q with members %v, want an enum of start alone", contractDoc, ref, got)
+			}
 		}
 	}
 	if paged == 0 {

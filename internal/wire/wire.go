@@ -100,6 +100,12 @@ const (
 	FlagOn  Flag = "1"
 )
 
+// Turn is GET /v1/me's turn parameter; absent opens no turn.
+type Turn string
+
+// TurnStart opens the turn.
+const TurnStart Turn = "start"
+
 // ThreadKind is a conversation's kind.
 type ThreadKind string
 

@@ -188,7 +188,7 @@ func signalSeq(role *provider.PromptRole, prompt string) (uint64, bool) {
 // promptMe asks GET /v1/me?turn=start, with the signal the prompt
 // carries, which opens the turn unless the server finds the signal read.
 func (h *hookCall) promptMe(ctx context.Context, role *provider.PromptRole, seq uint64) (*wire.Me, error) {
-	q := url.Values{"turn": {"start"}}
+	q := url.Values{"turn": {string(wire.TurnStart)}}
 	if seq > 0 {
 		q.Set("signal", strconv.FormatUint(seq, 10))
 	}

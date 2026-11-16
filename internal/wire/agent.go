@@ -126,7 +126,7 @@ type Registered struct {
 // MeQuery is GET /v1/me's query: turn=start opens the turn unless signal
 // names a signal line already read; proc asks for the take-over hint.
 type MeQuery struct {
-	Turn   string `json:"turn,omitempty"`
+	Turn   Turn   `json:"turn,omitempty"`
 	Proc   string `json:"proc,omitempty"`
 	Signal Seq    `json:"signal,omitempty"`
 }

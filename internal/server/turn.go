@@ -73,10 +73,11 @@ func turnStartOf(q *wire.MeQuery) (turnStart, error) {
 	var out turnStart
 	switch q.Turn {
 	case "":
-	case "start":
+	case wire.TurnStart:
 		out.start = true
 	default:
-		return out, badRequest(`turn must be "start" when sent`)
+		return out, fieldRefusal(`turn must be "start" when sent`,
+			wire.FieldError{Field: "turn", Code: wire.FieldOneOf, Allowed: []string{string(wire.TurnStart)}})
 	}
 	if q.Signal != 0 && !out.start {
 		return out, badRequest("signal must be the seq of a signal line, sent with turn=start")
