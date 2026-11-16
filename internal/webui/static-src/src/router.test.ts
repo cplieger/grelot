@@ -317,6 +317,75 @@ describe("startRouter", () => {
     });
   });
 
+  it("gives Forward a link the reader focused just before Back", async () => {
+    history.replaceState(null, "", "/messages");
+    const router = startRouter(stop.signal);
+    router.go({ screen: "statistics", range: "24h", problems: null });
+    link("/agents/kiro").focus({ preventScroll: true });
+
+    const back = popped();
+    history.back();
+    await back;
+    const forward = popped();
+    history.forward();
+    await forward;
+    expect(router.current.value).toMatchObject({
+      route: { screen: "statistics" },
+      cause: "pop",
+      focus: "/agents/kiro",
+    });
+  });
+
+  it("gives Forward the last of several quick focus moves once they settle", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    history.replaceState(null, "", "/messages");
+    const router = startRouter(stop.signal);
+    router.go({ screen: "statistics", range: "24h", problems: null });
+    const first = link("/agents/a");
+    const second = link("/agents/b");
+    first.focus({ preventScroll: true });
+    second.focus({ preventScroll: true });
+    await vi.advanceTimersByTimeAsync(250);
+
+    const back = popped();
+    history.back();
+    await back;
+    const forward = popped();
+    history.forward();
+    await forward;
+    expect(router.current.value).toMatchObject({
+      route: { screen: "statistics" },
+      focus: "/agents/b",
+    });
+  });
+
+  it("keeps a focus move still waiting at Back off the entry Back reached", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    history.replaceState(null, "", "/messages");
+    const router = startRouter(stop.signal);
+    router.go({ screen: "statistics", range: "24h", problems: null });
+    const first = link("/agents/a");
+    const second = link("/agents/b");
+    first.focus({ preventScroll: true });
+    second.focus({ preventScroll: true });
+
+    const back = popped();
+    history.back();
+    await back;
+    await vi.advanceTimersByTimeAsync(250);
+    const forward = popped();
+    history.forward();
+    await forward;
+    const again = popped();
+    history.back();
+    await again;
+    expect(router.current.value).toMatchObject({
+      route: { screen: "messages" },
+      cause: "pop",
+      focus: null,
+    });
+  });
+
   // An engine refuses a page's state writes past a rate (WebKit: 100 in
   // 10 s), and a held Tab key moves focus faster than that.
   it("still follows a link after the reader moved focus 250 times in a row", () => {

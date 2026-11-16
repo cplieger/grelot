@@ -324,7 +324,36 @@ export function startRouter(lifetime: AbortSignal): Router {
   let held: Hold | null = null;
   // Set while history.back() returns to an entry Back had left and the hold let go.
   let released = false;
+
+  // Forward needs the entry Back left, whose state popstate no longer
+  // reaches, so the current entry follows the reader's scroll and focus. An
+  // engine refuses a page's state writes past a rate (WebKit: 100 in 10 s,
+  // which a held Tab key reaches), so an entry's first move, and a move 250 ms
+  // after the last write, writes at once, and the moves inside that window get
+  // one write at its end. Back cannot write the entry it left, so it drops that write.
   let settle: ReturnType<typeof setTimeout> | undefined;
+  let wrote = -Infinity;
+  const record = (): void => {
+    settle = undefined;
+    wrote = performance.now();
+    remember();
+  };
+  const later = (): void => {
+    if (settle !== undefined) {
+      return;
+    }
+    const wait = wrote + 250 - performance.now();
+    if (wait <= 0) {
+      record();
+    } else {
+      settle = setTimeout(record, wait);
+    }
+  };
+  const leave = (): void => {
+    clearTimeout(settle);
+    settle = undefined;
+    wrote = -Infinity;
+  };
 
   const move = (route: Route, opts?: { readonly replace?: boolean }): void => {
     const href = routeHref(route);
@@ -335,7 +364,7 @@ export function startRouter(lifetime: AbortSignal): Router {
       if (href === location.pathname + location.search) {
         return;
       }
-      clearTimeout(settle);
+      leave();
       remember();
       history.pushState(null, "", href);
     }
@@ -380,6 +409,7 @@ export function startRouter(lifetime: AbortSignal): Router {
   window.addEventListener(
     "popstate",
     (event) => {
+      leave();
       const next = here();
       const h = held;
       if (!released && h?.holds(next.route) === true) {
@@ -406,14 +436,6 @@ export function startRouter(lifetime: AbortSignal): Router {
     { signal: lifetime },
   );
 
-  // Forward needs the entry Back left, whose state popstate no longer
-  // reaches, so the current entry is kept up to date as the reader moves,
-  // once they pause: an engine refuses a page's state writes past a rate
-  // (WebKit: 100 in 10 s), which a held Tab key would reach.
-  const later = (): void => {
-    clearTimeout(settle);
-    settle = setTimeout(remember, 250);
-  };
   window.addEventListener("scroll", later, { signal: lifetime, passive: true });
   document.addEventListener("focusin", later, { signal: lifetime });
   lifetime.addEventListener("abort", () => {
