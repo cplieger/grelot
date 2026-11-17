@@ -56,7 +56,7 @@ func TestCursor_everyPagedRowsLongestPositionRoundTrips(t *testing.T) {
 				t.Fatalf("no longest position for the Paged row %s", r.Name)
 			}
 			scope := cursorScope{row: r.Name, query: "path=%2Fworkspace", credential: "key:1"}
-			sealed, err := c.seal(scope, pos)
+			sealed, err := c.seal(&scope, pos)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -66,7 +66,7 @@ func TestCursor_everyPagedRowsLongestPositionRoundTrips(t *testing.T) {
 			if r.Name == "listThreads" && len(sealed) != wantMaxCursor {
 				t.Errorf("a 1024-byte path seals to %d characters, want exactly %d", len(sealed), wantMaxCursor)
 			}
-			got, err := c.open(scope, sealed)
+			got, err := c.open(&scope, sealed)
 			if err != nil || !bytes.Equal(got, pos) {
 				t.Errorf("open = %x, %v; want the sealed position back", got, err)
 			}
@@ -90,7 +90,7 @@ func wireRow(name string) int {
 
 func TestCursor_aPositionPastTheBoundIsNotSealed(t *testing.T) {
 	c := newCursors(testCursorKey, time.Now)
-	_, err := c.seal(cursorScope{row: "listThreads"}, bytes.Repeat([]byte("p"), wantMaxPosition+1))
+	_, err := c.seal(&cursorScope{row: "listThreads"}, bytes.Repeat([]byte("p"), wantMaxPosition+1))
 	if !errors.Is(err, errPositionTooLong) {
 		t.Errorf("seal of %d bytes = %v, want errPositionTooLong", wantMaxPosition+1, err)
 	}
@@ -100,15 +100,15 @@ func TestCursor_refusals(t *testing.T) {
 	now := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
 	clock := now
 	c := newCursors(testCursorKey, func() time.Time { return clock })
-	scope := cursorScope{row: "listThreads", query: "path=%2Fworkspace", credential: "key:1"}
-	sealed, err := c.seal(scope, []byte("/workspace/a"))
+	scope := cursorScope{row: "listThreads", query: "path=%2Fworkspace", credential: "key:1", session: "kiro-cli:a", as: "alpha/w"}
+	sealed, err := c.seal(&scope, []byte("/workspace/a"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	tampered := []byte(sealed)
 	tampered[len(tampered)/2] ^= 'A' ^ 'B'
 	other := newCursors(bytes.Repeat([]byte{9}, 32), time.Now)
-	foreign, err := other.seal(scope, []byte("/workspace/a"))
+	foreign, err := other.seal(&scope, []byte("/workspace/a"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,17 +128,20 @@ func TestCursor_refusals(t *testing.T) {
 		{"another row", cursorScope{row: "getHistory", query: scope.query, credential: scope.credential}, sealed, 0, "cursor_mismatch"},
 		{"another query", cursorScope{row: scope.row, query: "path=%2Fother", credential: scope.credential}, sealed, 0, "cursor_mismatch"},
 		{"another credential", cursorScope{row: scope.row, query: scope.query, credential: "key:2"}, sealed, 0, "cursor_mismatch"},
+		{"another Grelot-Session on the same key", cursorScope{row: scope.row, query: scope.query, credential: scope.credential, session: "kiro-cli:b"}, sealed, 0, "cursor_mismatch"},
+		{"another Grelot-As on the same key", cursorScope{row: scope.row, query: scope.query, credential: scope.credential, session: scope.session, as: "alpha/x"}, sealed, 0, "cursor_mismatch"},
+		{"the session and As run together", cursorScope{row: scope.row, query: scope.query, credential: scope.credential, session: "kiro-cli:", as: "aalpha/w"}, sealed, 0, "cursor_mismatch"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			clock = now.Add(tc.after)
-			_, err := c.open(tc.scope, tc.cursor)
+			_, err := c.open(&tc.scope, tc.cursor)
 			if got := cursorCode(err); got != tc.want {
 				t.Errorf("open = %s, want %s", got, tc.want)
 			}
 		})
 	}
 	clock = now.Add(24 * time.Hour)
-	if _, err := c.open(scope, sealed); err != nil {
+	if _, err := c.open(&scope, sealed); err != nil {
 		t.Errorf("a cursor 24 hours old: %v, want it opened", err)
 	}
 }

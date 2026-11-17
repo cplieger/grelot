@@ -473,6 +473,30 @@ func TestContract_aCursorIsBoundToItsRowQueryAndKey(t *testing.T) {
 	c.t = t
 }
 
+// One machine key carries every session on its machine, so a cursor
+// another session on the same key read is refused, never opened onto the
+// replaying session's mailbox.
+func TestContract_aCursorIsBoundToTheSessionOnItsKey(t *testing.T) {
+	for _, tc := range []struct{ row, path string }{
+		{"readInbox", "/v1/inbox?limit=1"},
+		{"getHistory", "/v1/history?limit=1"},
+	} {
+		t.Run(tc.row, func(t *testing.T) {
+			c := newContract(t)
+			beta := seedDirect(c)
+			alpha := c.agent(beta.key, sessAlpha, "a")
+			cursor := beta.call(http.StatusOK, tc.row, tc.path, nil).str("next_cursor")
+			if cursor == "" {
+				t.Fatalf("beta's first page of %s answered no next_cursor", tc.path)
+			}
+			r := alpha.send(tc.row, withQuery(tc.path, "cursor", cursor), nil, nil)
+			if r.status != http.StatusBadRequest || r.str("code") != "cursor_mismatch" {
+				t.Errorf("beta's cursor replayed as alpha on the same key: %d %s, want 400 cursor_mismatch", r.status, r.raw)
+			}
+		})
+	}
+}
+
 // The cursor bound: a 1024-byte path's cursor fits in 1458
 // characters, and one character more is refused unread.
 const (

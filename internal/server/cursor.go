@@ -52,7 +52,7 @@ var (
 	errCursorInvalid = refusal(wire.ErrCursorInvalid,
 		"the cursor is not one this server minted in the last 24 hours: read the first page again")
 	errCursorMismatch = refusal(wire.ErrCursorMismatch,
-		"the cursor belongs to another list, query or credential: read the first page again")
+		"the cursor belongs to another list, query or caller: read the first page again")
 )
 
 // cursors mints and opens the API's list cursors.
@@ -79,22 +79,25 @@ func newCursors(key []byte, now func() time.Time) *cursors {
 }
 
 // cursorScope is what a cursor is bound to: the row, its canonical query
-// and the caller's credential.
+// and the caller, which is the credential and the identity it acts as,
+// because one machine key carries every session on its machine.
 type cursorScope struct {
 	row        string
 	query      string
 	credential string
+	session    string
+	as         string
 }
 
 func (sc *cursorScope) binding() []byte {
 	h := sha256.New()
-	for _, part := range []string{sc.row, sc.query, sc.credential} {
+	for _, part := range []string{sc.row, sc.query, sc.credential, sc.session, sc.as} {
 		fmt.Fprintf(h, "%d:%s", len(part), part)
 	}
 	return h.Sum(nil)
 }
 
-func (c *cursors) seal(sc cursorScope, position []byte) (string, error) {
+func (c *cursors) seal(sc *cursorScope, position []byte) (string, error) {
 	if len(position) > maxPosition {
 		return "", errPositionTooLong
 	}
@@ -110,7 +113,7 @@ func (c *cursors) seal(sc cursorScope, position []byte) (string, error) {
 
 // open is the position cursor holds, or errCursorInvalid or
 // errCursorMismatch.
-func (c *cursors) open(sc cursorScope, cursor string) ([]byte, error) {
+func (c *cursors) open(sc *cursorScope, cursor string) ([]byte, error) {
 	if len(cursor) > maxCursorBytes {
 		return nil, errCursorInvalid
 	}
@@ -211,7 +214,10 @@ func (s *Server) readPaging(r *http.Request, route *wire.Route) (*paging, error)
 	if err != nil {
 		return nil, err
 	}
-	p := &paging{limit: wire.PageLimitDefault, scope: cursorScope{row: route.Name, credential: credentialOf(r)}}
+	p := &paging{limit: wire.PageLimitDefault, scope: cursorScope{
+		row: route.Name, credential: credentialOf(r),
+		session: r.Header.Get(wire.HeaderSession), as: r.Header.Get(wire.HeaderAs),
+	}}
 	if page.Limit != 0 {
 		p.limit = int(page.Limit)
 	}
@@ -222,7 +228,7 @@ func (s *Server) readPaging(r *http.Request, route *wire.Route) (*paging, error)
 	if page.Cursor == "" {
 		return p, nil
 	}
-	after, err := s.cursors.open(p.scope, page.Cursor)
+	after, err := s.cursors.open(&p.scope, page.Cursor)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +243,7 @@ func (s *Server) next(r *http.Request, more bool, position []byte) (string, erro
 		return "", nil
 	}
 	p := pagingOf(r)
-	c, err := s.cursors.seal(p.scope, position)
+	c, err := s.cursors.seal(&p.scope, position)
 	if err != nil {
 		err = fmt.Errorf("%w: row %s, %d bytes", err, p.scope.row, len(position))
 	}
