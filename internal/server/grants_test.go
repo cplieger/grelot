@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -150,4 +151,82 @@ func TestLifecycle_sessionEndSubagentStopAndTurnEnd(t *testing.T) {
 	if r := life(self, "compact", ""); r.status != http.StatusBadRequest {
 		t.Errorf("an unknown event: %d, want 400", r.status)
 	}
+}
+
+// holdersQuery is the GET /v1/holders target for paths.
+func holdersQuery(paths ...string) string {
+	q := url.Values{"path": paths}
+	return "/v1/holders?" + q.Encode()
+}
+
+func TestHolders_route(t *testing.T) {
+	h := newHarness(t)
+	h.mustRegister(sessA, "holder")
+	h.mustRegister(sessB, "writer")
+	held := repoGrelot + "/internal"
+	if r := h.as(sessA, http.MethodPost, "/v1/reservations", map[string]any{"path": held, "reason": "editing", "ttl": "1h"}); r.status != http.StatusCreated {
+		t.Fatalf("reserve: %d %s", r.status, r.raw)
+	}
+	file, free := held+"/a.go", repoGrelot+"/README.md"
+
+	t.Run("each queried path another identity holds", func(t *testing.T) {
+		r := h.as(sessB, http.MethodGet, holdersQuery(file, free), nil)
+		entries, _ := r.body["holders"].([]any)
+		if r.status != http.StatusOK || len(entries) != 1 {
+			t.Fatalf("GET: %d %s, want 200 and one entry", r.status, r.raw)
+		}
+		e := entries[0].(map[string]any)
+		g, _ := e["held"].(map[string]any)
+		if e["path"] != file || g["holder"] != "holder" || g["path"] != held || g["reason"] != "editing" || g["state"] != "held" ||
+			g["expires_at"] != testNow.Add(time.Hour).Format(time.RFC3339) {
+			t.Errorf("entry %v, want %s held by @holder on %s until %s", e, file, held, testNow.Add(time.Hour).Format(time.RFC3339))
+		}
+		if _, ok := e["queued"]; ok {
+			t.Errorf("entry %v names a queue entry, want none", e)
+		}
+	})
+	t.Run("the caller's own grant is no entry", func(t *testing.T) {
+		r := h.as(sessA, http.MethodGet, holdersQuery(file), nil)
+		if r.status != http.StatusOK || !strings.Contains(r.raw, `"holders":[]`) {
+			t.Errorf("GET as the holder: %d %s, want 200 and an empty list", r.status, r.raw)
+		}
+	})
+	t.Run("the caller's queue entry", func(t *testing.T) {
+		q := h.as(sessB, http.MethodPost, "/v1/reservations", map[string]any{"path": held, "reason": "next", "ttl": "30m", "queue": true})
+		if q.status != http.StatusCreated {
+			t.Fatalf("queue: %d %s", q.status, q.raw)
+		}
+		id := q.body["reservation"].(map[string]any)["id"]
+		r := h.as(sessB, http.MethodGet, holdersQuery(file), nil)
+		entries, _ := r.body["holders"].([]any)
+		if len(entries) != 1 {
+			t.Fatalf("GET: %d %s, want one entry", r.status, r.raw)
+		}
+		queued, _ := entries[0].(map[string]any)["queued"].(map[string]any)
+		if queued["id"] != id || queued["state"] != "queued" || queued["path"] != held {
+			t.Errorf("queued %v, want the caller's queue entry %v on %s", queued, id, held)
+		}
+	})
+	t.Run("refusals", func(t *testing.T) {
+		many := make([]string, 257)
+		for i := range many {
+			many[i] = fmt.Sprintf("%s/f%d", repoGrelot, i)
+		}
+		for name, c := range map[string]struct {
+			session, target string
+			status          int
+		}{
+			"no path":           {sessB, "/v1/holders", http.StatusBadRequest},
+			"over 256 paths":    {sessB, holdersQuery(many...), http.StatusBadRequest},
+			"a relative path":   {sessB, holdersQuery("workspace/grelot"), http.StatusBadRequest},
+			"no identity":       {sessC, holdersQuery(file), http.StatusGone},
+			"no session header": {"", holdersQuery(file), http.StatusBadRequest},
+		} {
+			t.Run(strings.ReplaceAll(name, " ", "_"), func(t *testing.T) {
+				if r := h.as(c.session, http.MethodGet, c.target, nil); r.status != c.status {
+					t.Errorf("GET: %d %s, want %d", r.status, r.raw, c.status)
+				}
+			})
+		}
+	})
 }

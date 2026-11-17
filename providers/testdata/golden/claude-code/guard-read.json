@@ -1,0 +1,16 @@
+{
+  "session_id": "3f0b8c2e-6d41-4a7e-9b15-c2e8a4d7f610",
+  "prompt_id": "8e2d4c61-0f3a-4b9e-a7d2-5c1e9f3b8a04",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-work-grelot\\3f0b8c2e-6d41-4a7e-9b15-c2e8a4d7f610.jsonl",
+  "cwd": "C:\\Users\\user\\work\\grelot",
+  "permission_mode": "default",
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Read",
+  "tool_input": {
+    "file_path": "C:\\Users\\user\\work\\grelot\\engine.go"
+  },
+  "tool_use_id": "toolu_01GuardRead000000000000"
+}

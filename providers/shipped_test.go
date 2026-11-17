@@ -3,6 +3,7 @@ package providers_test
 import (
 	"bytes"
 	"cmp"
+	"encoding/json"
 	"io/fs"
 	"os"
 	"slices"
@@ -133,6 +134,9 @@ func TestShipped_hookTimeoutsHoldTheBudget(t *testing.T) {
 		if hs.SubagentStop != nil {
 			roles[hs.SubagentStop.Event] = &hs.SubagentStop.Role
 		}
+		if hs.Guard != nil {
+			roles[hs.Guard.Event] = &hs.Guard.Role
+		}
 		if len(roles) == 0 {
 			continue
 		}
@@ -149,13 +153,17 @@ func TestShipped_hookTimeoutsHoldTheBudget(t *testing.T) {
 }
 
 // The wiring check fails a hook file that runs another role under an
-// event, or that gives a hook another timeout.
+// event, gives a hook another timeout, runs the guard for other tools or
+// for every tool, or puts a matcher on another event.
 func TestShipped_aMiswiredHookFileFails(t *testing.T) {
 	data := mustRead(t, "claude-code/hooks.json")
 	want := wantWiring(t, "claude-code", nil)
 	for name, edit := range map[string][2]string{
-		"another role at Stop": {"grelot hook claude-code stop", "grelot hook claude-code session_end"},
-		"another timeout":      {`"timeout": 30`, `"timeout": 60`},
+		"another role at Stop":   {"grelot hook claude-code stop", "grelot hook claude-code session_end"},
+		"another timeout":        {`"timeout": 30`, `"timeout": 60`},
+		"a guard for reads too":  {`"matcher": "Edit|Write|NotebookEdit"`, `"matcher": "Edit|Write|NotebookEdit|Read"`},
+		"a guard for every tool": {`"matcher": "Edit|Write|NotebookEdit",`, ``},
+		"a matcher at Stop":      {"\"Stop\": [\n      {\n", "\"Stop\": [\n      {\n        \"matcher\": \"Edit\",\n"},
 	} {
 		t.Run(strings.ReplaceAll(name, " ", "_"), func(t *testing.T) {
 			if !bytes.Contains(data, []byte(edit[0])) {
@@ -166,5 +174,54 @@ func TestShipped_aMiswiredHookFileFails(t *testing.T) {
 				t.Errorf("a hook file with %s passes the check", name)
 			}
 		})
+	}
+}
+
+// Every shipped guard prints only additional context: one JSON object on
+// stdout with exit 0, holding hookSpecificOutput's hookEventName and
+// additionalContext and nothing that decides the call, since a decision
+// (permissionDecision, decision, continue) can deny, ask or stop it
+// (https://code.claude.com/docs/en/hooks, "PreToolUse decision control";
+// parse_pre_tool_use in codex-rs/hooks/src/engine/output_parser.rs at
+// rust-v0.169.0). Only the hosts with such a channel ship one.
+func TestShipped_guardNeverBlocks(t *testing.T) {
+	var guarded []string
+	const text = "grelot: @holder-dev holds /workspace/grelot/engine.go until 2026-11-05 10:00 UTC (it's \"quoted\"); you can still edit it.\nsecond line"
+	for _, name := range shippedNames(t) {
+		g := shipped(t, name).Hooks.Guard
+		if g == nil {
+			continue
+		}
+		guarded = append(guarded, name)
+		t.Run(name, func(t *testing.T) {
+			out := g.Outputs.Context
+			if out == nil {
+				t.Fatal("the guard has no context output")
+			}
+			if out.Stream != provider.StreamStdout || out.Exit != 0 {
+				t.Errorf("stream %s exit %d, want stdout and exit 0", out.Stream, out.Exit)
+			}
+			s, err := out.Render(&provider.Data{Context: text, Reason: text})
+			if err != nil {
+				t.Fatal(err)
+			}
+			dec := json.NewDecoder(strings.NewReader(s))
+			dec.DisallowUnknownFields()
+			var got struct {
+				HookSpecificOutput *struct {
+					HookEventName     string `json:"hookEventName"`
+					AdditionalContext string `json:"additionalContext"`
+				} `json:"hookSpecificOutput"`
+			}
+			if err := dec.Decode(&got); err != nil || dec.More() {
+				t.Fatalf("output %q is not one object of hookSpecificOutput alone: %v", s, err)
+			}
+			if h := got.HookSpecificOutput; h == nil || h.HookEventName != g.Event || h.AdditionalContext != text {
+				t.Errorf("output %q, want hookEventName %s and the text as additionalContext", s, g.Event)
+			}
+		})
+	}
+	if want := []string{"claude-code", "codex"}; !slices.Equal(guarded, want) {
+		t.Errorf("guards ship for %v, want %v: the hosts whose hook adds context without a decision", guarded, want)
 	}
 }

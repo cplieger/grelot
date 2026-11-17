@@ -351,3 +351,73 @@ func TestLoadErrorQuotesNoValue(t *testing.T) {
 		t.Errorf("error %q quotes a header value", err)
 	}
 }
+
+// guardFile is a provider file whose guard role is guard, spelt inline.
+func guardFile(guard string) string {
+	return "name: example\nhooks:\n  guard: " + guard + "\n"
+}
+
+// validGuard is a guard every check accepts; each refusal case changes
+// one key of it.
+const validGuard = `{event: PreToolUse, when: {tool_name: [Edit, Write]}, budget: 1s, context_limit: 10000, ` +
+	`stdin: {agent_id: agent_id, paths: [tool_input.file_path, tool_input.notebook_path], patch: tool_input.command, cwd: cwd}, ` +
+	`outputs: {context: {text: '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":{{json .Context}}}}'}}}`
+
+func TestLoad_guardOutput(t *testing.T) {
+	t.Run("accepted", func(t *testing.T) {
+		p, err := Load("example", []byte(guardFile(validGuard)))
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		g := p.Hooks.Guard
+		if g == nil {
+			t.Fatal("hooks.guard is nil")
+		}
+		if g.Event != "PreToolUse" || g.Budget != time.Second || g.ContextLimit != 10000 || !slices.Equal(g.When["tool_name"], []string{"Edit", "Write"}) {
+			t.Errorf("role = %+v", g)
+		}
+		if g.Stdin.AgentID != "agent_id" || !slices.Equal(g.Stdin.Paths, []string{"tool_input.file_path", "tool_input.notebook_path"}) ||
+			g.Stdin.Patch != "tool_input.command" || g.Stdin.Cwd != "cwd" {
+			t.Errorf("stdin = %+v", g.Stdin)
+		}
+		if out := g.Outputs.Context; out == nil || out.Stream != StreamStdout || out.Exit != 0 {
+			t.Errorf("outputs.context = %+v, want stdout and exit 0", out)
+		}
+	})
+	edit := func(from, to string) string {
+		if !strings.Contains(validGuard, from) {
+			t.Fatalf("validGuard holds no %q", from)
+		}
+		return strings.Replace(validGuard, from, to, 1)
+	}
+	for _, c := range []struct {
+		name, guard string
+		want        []string
+	}{
+		{"an exit that blocks", edit("additionalContext\":{{json .Context}}}}'}", "additionalContext\":{{json .Context}}}}', exit: 2}"), []string{"hooks.guard.outputs.context.exit", "0"}},
+		{"stderr", edit("additionalContext\":{{json .Context}}}}'}", "additionalContext\":{{json .Context}}}}', stream: stderr}"), []string{"hooks.guard.outputs.context.stream", "stdout"}},
+		{"no when", edit("when: {tool_name: [Edit, Write]}, ", ""), []string{"hooks.guard.when", "write tools"}},
+		{"no context output", edit(`outputs: {context: {text: '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":{{json .Context}}}}'}}`, "outputs: {}"), []string{"hooks.guard.outputs.context", "required"}},
+		{"no path and no patch", edit("paths: [tool_input.file_path, tool_input.notebook_path], patch: tool_input.command, cwd: cwd", "agent_id: agent_id"), []string{"hooks.guard.stdin", "paths or patch"}},
+		{"a patch without cwd", edit(", cwd: cwd", ""), []string{"hooks.guard.stdin.cwd", "patch"}},
+		{"a bad path", edit("tool_input.notebook_path", "'a..b'"), []string{"hooks.guard.stdin.paths[1]", "stdin field path"}},
+		{"a negative context_limit", edit("context_limit: 10000", "context_limit: -1"), []string{"hooks.guard.context_limit", "byte count"}},
+		{"a block output", edit("outputs: {context:", "outputs: {block: {text: x}, context:"), []string{`"block"`}},
+	} {
+		t.Run(strings.ReplaceAll(c.name, " ", "_"), func(t *testing.T) {
+			p, err := Load("example", []byte(guardFile(c.guard)))
+			if err == nil {
+				t.Fatalf("Load accepted the guard: %+v", p.Hooks.Guard)
+			}
+			msg := err.Error()
+			at := 0
+			for _, w := range c.want {
+				i := strings.Index(msg[at:], w)
+				if i < 0 {
+					t.Fatalf("error %q lacks %q after offset %d", msg, w, at)
+				}
+				at += i + len(w)
+			}
+		})
+	}
+}

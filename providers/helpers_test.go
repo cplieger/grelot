@@ -228,10 +228,12 @@ func (s *shell) post(target, body string) {
 	s.must(body, "post", target, "Question: shape", "--name", "no change", "--paths", "no change", "--desc", "no change")
 }
 
-// wire is one command a hook file runs for a host event.
+// wire is one command a hook file runs for a host event, and the matcher
+// of its group, "" for none.
 type wire struct {
 	Event   string
 	Command string
+	Matcher string
 	Timeout int
 }
 
@@ -320,14 +322,17 @@ func parseWiring(t *testing.T, name string, data []byte) []wire {
 	var got []wire
 	for _, event := range slices.Sorted(maps.Keys(f.Hooks)) {
 		for _, g := range f.Hooks[event] {
+			var matcher string
 			if g.Matcher != nil {
-				t.Errorf("%s/hooks.json: a %s group has matcher %q, want none, so every %s runs it", name, event, *g.Matcher, event)
+				if matcher = *g.Matcher; matcher == "" {
+					t.Errorf("%s/hooks.json: a %s group has an empty matcher, want none or the tool names", name, event)
+				}
 			}
 			for _, h := range g.Hooks {
 				if h.Type != "command" {
 					t.Errorf("%s/hooks.json: a %s hook has type %q, want command", name, event, h.Type)
 				}
-				got = append(got, wire{Event: event, Command: h.Command, Timeout: h.Timeout})
+				got = append(got, wire{Event: event, Command: h.Command, Matcher: matcher, Timeout: h.Timeout})
 			}
 		}
 	}
@@ -386,7 +391,7 @@ func kiroWiring(t *testing.T, name string, data []byte) []wire {
 // events, whatever their order.
 func sameWiring(got, want []wire) bool {
 	order := func(a, b wire) int {
-		return cmp.Or(strings.Compare(a.Event, b.Event), strings.Compare(a.Command, b.Command), a.Timeout-b.Timeout)
+		return cmp.Or(strings.Compare(a.Event, b.Event), strings.Compare(a.Command, b.Command), strings.Compare(a.Matcher, b.Matcher), a.Timeout-b.Timeout)
 	}
 	return slices.Equal(slices.SortedFunc(slices.Values(got), order), slices.SortedFunc(slices.Values(want), order))
 }
@@ -394,7 +399,8 @@ func sameWiring(got, want []wire) bool {
 // wantWiring is what a provider's hook file must run: grelot hook
 // <provider> <role> under each role's event, for every role the provider
 // spells and no other, with the timeout timeouts names for the event, or
-// 30 s.
+// 30 s. Only the guard's group has a matcher: its when.tool_name joined
+// with "|", which both hosts read as those tool names.
 func wantWiring(t *testing.T, name string, timeouts map[string]int) []wire {
 	t.Helper()
 	set, err := provider.LoadSet(providers.FS)
@@ -427,6 +433,10 @@ func wantWiring(t *testing.T, name string, timeouts map[string]int) []wire {
 	}
 	if hs.SubagentStop != nil {
 		add("subagent_stop", hs.SubagentStop.Event)
+	}
+	if hs.Guard != nil {
+		add("guard", hs.Guard.Event)
+		want[len(want)-1].Matcher = strings.Join(hs.Guard.When["tool_name"], "|")
 	}
 	return want
 }
