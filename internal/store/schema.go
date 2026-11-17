@@ -278,7 +278,7 @@ type tables struct {
 	watchBy    *bolttable.Index[uint64, watchRow]
 	requests   *leased[[]byte, requestRow]
 	file       *bolttable.Table[uint64, fileRow]
-	// leased lists every table above, in the order the sweep walks them.
+	// leased lists every leased table above, in the order the sweep walks them.
 	leased []sweeper
 }
 

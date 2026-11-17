@@ -141,8 +141,9 @@ func Open(path string, o *Options) (*Store, error) {
 }
 
 // FileID is the random id the store file was created with; a reset or a
-// new file has another, because it issues identity, reservation and
-// delivery ids from 1 again.
+// new file has another. A format reset keeps every id sequence above its
+// old high water, but a new file, an invalid one moved aside included,
+// issues identity, reservation and delivery ids from 1 again.
 func (s *Store) FileID() [16]byte { return s.fileID }
 
 // openOptions resets every namespace of another format with no copy kept:
