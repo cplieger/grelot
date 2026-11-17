@@ -296,6 +296,100 @@ func (s *Store) Reservations(ctx context.Context, c Caller, q ReservationQuery) 
 	return out, err
 }
 
+// maxHolderPaths bounds one Holders query: a patch can name many files, and
+// each path costs one index walk inside the read.
+const maxHolderPaths = 256
+
+// Holding is one grant another agent holds over a queried path. Queued is
+// the caller's own oldest queue entry overlapping both, nil for none.
+type Holding struct {
+	Queued *Reservation
+	Path   string
+	Held   Reservation
+}
+
+// Holders lists, per path in the order asked and then in grant id order,
+// each unexpired grant overlapping it whose holder is neither c's identity
+// nor its parent. It reads only: no last-seen touch and no expiry sweep.
+// Refusals: KindInvalid for no path, a bad one or more than maxHolderPaths
+// distinct ones; KindGone with no live identity.
+func (s *Store) Holders(ctx context.Context, c Caller, paths []string) ([]Holding, error) {
+	ps, err := checkHolderPaths(paths)
+	if err != nil {
+		return nil, err
+	}
+	var out []Holding
+	err = s.read(ctx, func(r *bolttable.ReadTx) error {
+		now := s.now()
+		me, found, cerr := s.callerFor(r, c, now)
+		switch {
+		case cerr != nil:
+			return cerr
+		case !found:
+			return noIdentity()
+		case me.State == stateDormant:
+			return s.dormantIdentity(r, &me, now)
+		}
+		for _, p := range ps {
+			held, herr := s.holdersOf(r, &me, p, now)
+			if herr != nil {
+				return herr
+			}
+			out = append(out, held...)
+		}
+		return nil
+	})
+	return out, err
+}
+
+func checkHolderPaths(paths []string) ([]string, error) {
+	var out []string
+	for _, p := range paths {
+		if _, err := checkPaths([]string{p}); err != nil {
+			return nil, err
+		}
+		if !slices.Contains(out, p) {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 || len(out) > maxHolderPaths {
+		return nil, refuse(KindInvalid, fmt.Sprintf("ask for 1 to %d distinct paths", maxHolderPaths))
+	}
+	return out, nil
+}
+
+// holdersOf is Holders' answer for the one path p.
+func (s *Store) holdersOf(r *bolttable.ReadTx, me *identityRow, p string, now time.Time) ([]Holding, error) {
+	ids, err := overlapIDs(r, s.t.resvPath, p)
+	if err != nil {
+		return nil, err
+	}
+	var held, queued []reservationRow
+	for _, id := range ids {
+		v, found, err := s.t.resv.table.Get(r, id)
+		switch {
+		case err != nil:
+			return nil, err
+		case !found:
+		case v.State == reservationQueued && v.Holder == me.ID:
+			queued = append(queued, v)
+		case v.State == reservationHeld && !v.Lease.due(now) && v.Holder != me.ID && v.Holder != me.Parent:
+			held = append(held, v)
+		}
+	}
+	out := make([]Holding, 0, len(held))
+	for i := range held {
+		h := Holding{Path: p, Held: s.reservationView(r, me, &held[i])}
+		// Ids grow with each request, so the first overlapping one is the oldest.
+		if j := slices.IndexFunc(queued, func(q reservationRow) bool { return overlaps(q.Path, held[i].Path) }); j >= 0 {
+			q := s.reservationView(r, me, &queued[j])
+			h.Queued = &q
+		}
+		out = append(out, h)
+	}
+	return out, nil
+}
+
 func (s *Store) scanReservations(r *bolttable.ReadTx, q ReservationQuery, holder uint64, fn func(*reservationRow)) error {
 	visit := func(_ []byte, id uint64, _ []byte) (bool, error) {
 		v, found, err := s.t.resv.table.Get(r, id)
