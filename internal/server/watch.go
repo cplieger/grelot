@@ -8,32 +8,23 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cplieger/go/httpserver"
 	"github.com/cplieger/grelot/internal/store"
-	"github.com/cplieger/grelot/internal/transport"
 	"github.com/cplieger/grelot/internal/wire"
 )
 
 // errSessionEnded answers a standing wait while the session's end is
-// reported; its code is the reason word the watcher's end line carries.
-var errSessionEnded = &apiError{
-	status: http.StatusGone, code: transport.EndEnded,
-	msg: "session ended: its end was reported, so its watcher stops; any other grelot command from this session reopens it",
-}
+// reported. The wait ends' codes are the reasons a watcher's end line
+// carries (transport.EndLine).
+var errSessionEnded = refusal(wire.ErrEnded,
+	"session ended: its end was reported, so its watcher stops; any other grelot command from this session reopens it")
 
 // errReplaced answers a standing wait once a newer one of its session
 // opened, so that each nudge wakes the session once.
-var errReplaced = &apiError{
-	status: http.StatusGone, code: transport.EndReplaced,
-	msg: "replaced: another watcher of this session took over, so this one stops",
-}
+var errReplaced = refusal(wire.ErrReplaced, "replaced: another watcher of this session took over, so this one stops")
 
 // errRestored answers a standing wait once host push takes over from the
 // watcher (pushReading.restoredAt).
-var errRestored = &apiError{
-	status: http.StatusGone, code: transport.EndRestored,
-	msg: "host push works again, so this watcher stops",
-}
+var errRestored = refusal(wire.ErrRestored, "host push works again, so this watcher stops")
 
 // standingWait is POST /v1/events/wait: it holds until a nudge for the
 // caller's identity goes out, sending a due one itself unless host push
@@ -78,10 +69,10 @@ func (s *Server) standingWait(r *http.Request, c store.Caller, _ store.Keyed) (s
 }
 
 // endReasons maps the store's refusal of a session with no live identity
-// to the end reason a watcher's end line carries, which transport owns.
-var endReasons = map[string]httpserver.ErrorCode{
-	stateNone:    transport.EndNone,
-	stateDormant: transport.EndDormant,
+// to the wait end it answers.
+var endReasons = map[string]wire.ErrorCode{
+	stateNone:    wire.ErrNone,
+	stateDormant: wire.ErrDormant,
 }
 
 // waitEnd answers a standing wait the store refused for want of a live
@@ -95,7 +86,7 @@ func waitEnd(err error) error {
 	if !ok {
 		return err
 	}
-	return &apiError{status: http.StatusGone, code: code, msg: se.Msg}
+	return refusal(code, se.Msg)
 }
 
 // watchFor reads a standing wait's request: the identity it holds for and

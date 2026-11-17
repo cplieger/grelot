@@ -20,6 +20,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/cplieger/grelot/internal/accounts"
@@ -55,6 +56,9 @@ type contractOptions struct {
 	maxBytes int64
 	// frozen stops the server's clock, so a bucket refills by nothing.
 	frozen bool
+	// push serves host push to environment a's identities through a door
+	// whose receiver accepts every send, counted in contract.pushes.
+	push bool
 }
 
 // contract is one grelot server composed as serve composes it, over files
@@ -65,7 +69,9 @@ type contract struct {
 	hits map[string]bool
 	// codes, when set, records each refusal code an answer of a row
 	// carries, by row.
-	codes  map[string]map[string]bool
+	codes map[string]map[string]bool
+	// pushes counts the sends a push contract's receiver accepted.
+	pushes atomic.Int32
 	doc    *wiretest.Doc
 	au     *auth.Auth
 	clk    *contractClock
@@ -148,14 +154,19 @@ func newContractWith(t *testing.T, o contractOptions) *contract {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	srv := server.New(&server.Options{
+	c := &contract{t: t, doc: doc, au: au, clk: clk}
+	opts := &server.Options{
 		Store: st, Logger: logger, Now: clk.now, Hub: hub, Events: events, Metrics: metrics, Auth: au,
 		Version: contractVersion, Config: *cfg, Limits: limits, CursorKey: acc.Secrets().CursorKey,
-	})
+	}
+	if o.push {
+		opts.Providers = c.pushDoor()
+	}
+	srv := server.New(opts)
 	t.Cleanup(func() { srv.Release(context.WithoutCancel(t.Context())) })
 	hs := httptest.NewServer(srv.Handler())
 	t.Cleanup(hs.Close)
-	c := &contract{t: t, doc: doc, au: au, clk: clk, client: hs.Client(), url: hs.URL}
+	c.client, c.url = hs.Client(), hs.URL
 	c.setUp()
 	return c
 }
@@ -193,6 +204,34 @@ func (c *contract) mintKey(label string) string {
 		c.t.Fatalf("mint key %s: %v", label, err)
 	}
 	return key
+}
+
+// contractDoorToken is the push door's bearer secret, which the provider
+// file names as door_token.
+const contractDoorToken = "contract-door-test-key"
+
+// pushDoor is a providers folder whose one http door pushes environment
+// a's kiro-cli identities to a receiver of c's that accepts every send.
+func (c *contract) pushDoor() fstest.MapFS {
+	t := c.t
+	t.Setenv("SECRET_DOOR_TOKEN", contractDoorToken)
+	rcv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		if r.Header.Get("Authorization") != "Bearer "+contractDoorToken {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		c.pushes.Add(1)
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	t.Cleanup(rcv.Close)
+	file := "name: contract-host\ndoors:\n  - name: push\n    layer: 1\n    transport: http\n" +
+		"    url: '" + rcv.URL + "/notify/{{path .Session}}'\n" +
+		"    body: '{\"line\": {{json .Line}}}'\n" +
+		"    headers: {Authorization: 'Bearer {{secret \"door_token\"}}'}\n" +
+		"    dedupe_window: 10m\n    gone: [404, 410]\n" +
+		"    match: {provider: kiro-cli, host: host-a}\n"
+	return fstest.MapFS{"contract-host.yaml": &fstest.MapFile{Data: []byte(file)}}
 }
 
 // agentRow is one agent route under /v1: the operation the
@@ -503,6 +542,7 @@ var codeMembers = map[string]members{
 	"link_gone":         {},
 	"ended":             {},
 	"replaced":          {},
+	"restored":          {},
 	"conflict":          {},
 	"reserved":          {},
 	"queued":            {},
@@ -537,7 +577,7 @@ func checkEnvelope(t *testing.T, where string, ans *answer) {
 		m, known = members{optional: []string{"reason", "retry_after_ms"}}, true
 	}
 	if !known {
-		t.Errorf("%s: code %q is not one design 1.4 gives an agent row", where, code)
+		t.Errorf("%s: code %q is not one an agent row answers", where, code)
 		return
 	}
 	for _, k := range m.required {
@@ -547,7 +587,7 @@ func checkEnvelope(t *testing.T, where string, ans *answer) {
 	}
 	for k := range ans.body {
 		if k != "error" && k != "code" && k != "request_id" && !slices.Contains(m.required, k) && !slices.Contains(m.optional, k) {
-			t.Errorf("%s: %s carries %s, which design 1.4 does not give it: %s", where, code, k, ans.raw)
+			t.Errorf("%s: %s carries %s, which that code does not carry: %s", where, code, k, ans.raw)
 		}
 	}
 }

@@ -201,7 +201,7 @@ var specs = map[string]Spec{
 		Summary: "A standing wait, held up to 55s, that returns this identity's next nudge",
 		Request: typeOf[wire.WaitRequest](), Response: typeOf[wire.Nudge](),
 		Successes: []wiregen.Success{{Status: http.StatusNoContent}},
-		Errors:    agent(asIdentity, wire.ErrTooManyWaits, wire.ErrEnded, wire.ErrReplaced),
+		Errors:    agent(asIdentity, wire.ErrTooManyWaits, wire.ErrEnded, wire.ErrReplaced, wire.ErrRestored),
 	},
 	"readInbox": {
 		Summary: "The unread entries oldest first, marking nothing; with wait_ms, held until wake mail arrives",

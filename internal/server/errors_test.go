@@ -110,7 +110,7 @@ func TestErrorMembers(t *testing.T) {
 			}
 			for k := range body {
 				if k != "error" && k != "code" && k != "request_id" && !slices.Contains(m.required, k) && !slices.Contains(m.optional, k) {
-					t.Errorf("carries %s, which design 1.4 does not give %s: %s", k, tc.code, rec.Body)
+					t.Errorf("carries %s, which %s does not carry: %s", k, tc.code, rec.Body)
 				}
 			}
 			if ms, ok := body["retry_after_ms"].(float64); ok {

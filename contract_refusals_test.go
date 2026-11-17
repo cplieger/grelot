@@ -139,6 +139,7 @@ func TestContract_eachAgentRowAnswersEveryCodeItDeclares(t *testing.T) {
 		{name: "the caller's refusals on every row", run: callerRefusals},
 		{name: "each row's own refusals", run: ownRefusals},
 		{name: "a standing wait replaced and ended", run: waitEnds},
+		{name: "a standing wait host push took over from", run: pushRestores, opts: contractOptions{push: true}},
 		{name: "a key past its held waits", run: tooManyWaits, opts: contractOptions{limits: server.Limits{Rate: 1e9, Burst: 1e9, KeyWaits: 1, ServerWaits: 1e6}}},
 		{name: "a nearly full store", run: storeFull, opts: contractOptions{maxBytes: 2 << 20}},
 	}
@@ -363,6 +364,30 @@ func waitEnds(c *contract) {
 	}
 	b.call(http.StatusOK, "lifecycle", "/v1/lifecycle", map[string]any{"event": "session_end"})
 	b.refuses("ended", "waitEvent", wait, nil)
+}
+
+// pushRestores has host push accept a send for alpha, then keeps alpha
+// online through standing waits 80 s apart, inside the 90 s that an
+// identity counts as online after its last wait. Once push has worked for 2
+// minutes of that stretch (docs/providers.md), the next wait ends restored.
+func pushRestores(c *contract) {
+	t := c.t
+	k := c.mintKey("machine")
+	a, b := c.agent(k, sessAlpha, "a"), c.agent(k, sessBeta, "b")
+	a.call(http.StatusCreated, "register", "/v1/register", a.registerBody("alpha", hourMS, repoPath))
+	b.call(http.StatusCreated, "register", "/v1/register", b.registerBody("beta", hourMS, otherPath))
+	b.call(http.StatusCreated, "createPost", "/v1/posts", postBody(map[string]any{"agent": "alpha"}, "hello", "a body"))
+	for deadline := time.Now().Add(10 * time.Second); c.pushes.Load() == 0; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("no push for alpha's mail within 10 s")
+		}
+	}
+	wait := rowRequest{map[string]any{"wait_ms": int64(100)}, "/v1/events/wait"}
+	for range 2 {
+		a.call(http.StatusNoContent, "waitEvent", wait.path, wait.body)
+		c.clk.advance(80 * time.Second)
+	}
+	a.refuses("restored", "waitEvent", wait, nil)
 }
 
 // tooManyWaits holds a key's one wait open with an inbox read, which holds

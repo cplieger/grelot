@@ -90,10 +90,12 @@ var (
 	ErrNoEnvironment = ErrorCode{"no_environment", http.StatusConflict}
 	ErrOtherRepo     = ErrorCode{"other_repository", http.StatusConflict}
 	ErrOtherEnv      = ErrorCode{"other_environment", http.StatusConflict}
-	// ErrEnded and ErrReplaced end a standing wait: its session's end was
-	// reported, or a newer wait of the session took over.
+	// ErrEnded, ErrReplaced and ErrRestored end a standing wait: its
+	// session's end was reported, a newer wait of the session took over, or
+	// host push took over from the watcher.
 	ErrEnded    = ErrorCode{"ended", http.StatusGone}
 	ErrReplaced = ErrorCode{"replaced", http.StatusGone}
+	ErrRestored = ErrorCode{"restored", http.StatusGone}
 )
 
 // Access is who a row admits; the zero value admits no one, which the

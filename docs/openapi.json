@@ -5512,13 +5512,14 @@
                 }
               }
             },
-            "description": "Gone: ended, replaced, none, dormant, delegate_ended",
+            "description": "Gone: ended, replaced, restored, none, dormant, delegate_ended",
             "x-error-codes": {
               "delegate_ended": {},
               "dormant": {},
               "ended": {},
               "none": {},
-              "replaced": {}
+              "replaced": {},
+              "restored": {}
             }
           },
           "413": {
