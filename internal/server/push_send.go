@@ -409,8 +409,7 @@ func doorAttrs(d provider.ServerDoor, status int) []any {
 }
 
 // accepted ends the failing run of id's entry on cur's door and proves
-// push while it is unproven, so a standing wait's hand-back is measured
-// from now.
+// push while it is unproven.
 func (p *hostPush) accepted(id uint64, cur *pushee) {
 	now := p.s.now()
 	p.editOnDoor(id, cur, func(e *pushee) {
