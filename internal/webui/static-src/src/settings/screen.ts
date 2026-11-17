@@ -69,7 +69,7 @@ function notice(tone: "danger" | "warning", words: string, retry?: () => void): 
 }
 
 /**
- * The Settings screen (shape 4): the history retention and the sign-in
+ * The Settings screen: the history retention and the sign-in
  * methods, each category at its own address, saved together with Save.
  * Leaving the screen with unsaved changes asks first.
  */

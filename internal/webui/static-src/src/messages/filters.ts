@@ -105,8 +105,7 @@ interface FilterSheet {
 }
 
 /**
- * The filter sheet below 60rem (design-patterns.md "Dialogs and sheets"):
- * one fast group, so each press applies at once and Close keeps it. While a
+ * The filter sheet below 60rem: one fast group, so each press applies at once and Close keeps it. While a
  * filter is on, the toggle counts it and Clear filters sits beside it.
  */
 export function filterSheet(choose: (show: Show) => void): FilterSheet {

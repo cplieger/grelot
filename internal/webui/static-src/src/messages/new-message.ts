@@ -62,7 +62,7 @@ function option(label: string, end?: string): HTMLElement {
 }
 
 /**
- * The New message dialog (shape 1 item 7): To over the agents and
+ * The New message dialog: To over the agents and
  * Announcements, then Subject and Message. A failed send keeps the text,
  * and a failed or cancelled one keeps its key for the same post.
  */

@@ -171,10 +171,10 @@ function skeleton(): HTMLElement {
 }
 
 /**
- * The Messages list (shape 1): one row per conversation, newest activity
+ * The Messages list: one row per conversation, newest activity
  * first, 50 a page with Show older, its loading, empty, error and first-run
  * states, and the live stream's refreshes, held back while the reader is in
- * the list (design-patterns.md "Lists").
+ * the list.
  */
 export function conversationList(opts: ListOptions): ConversationList {
   const { signal, live } = opts;

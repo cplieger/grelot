@@ -156,7 +156,7 @@ export function checkPost(f: ComposeFields): FieldError[] {
 
 /**
  * Checks a field as the person leaves it after changing it, and clears its
- * error as soon as its value passes (design-patterns.md "Forms" items 2 and 5).
+ * error as soon as its value passes.
  */
 export function checkOnLeave(f: ComposeFields, signal: AbortSignal): void {
   for (const field of [f.subject, f.body]) {

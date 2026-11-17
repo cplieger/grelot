@@ -93,7 +93,7 @@ interface StatisticsOptions {
 }
 
 /**
- * The Statistics tab (shape 3): the range in the address, the delivery
+ * The Statistics tab: the range in the address, the delivery
  * problems, the figures now, the four charts, the ranked tables and the
  * collapsed Server section, read again each minute.
  */

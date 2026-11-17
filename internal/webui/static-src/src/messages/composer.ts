@@ -91,8 +91,7 @@ const same = (a: Draft | null, b: Draft): boolean =>
   a !== null && a.subject === b.subject && a.body === b.body;
 
 /**
- * The open conversation's composer (shape 1 item 7, design-patterns.md
- * "Messages" items 4 and 5): each post shows at once as the user's own
+ * The open conversation's composer: each post shows at once as the user's own
  * entry, sending, then sent or failed with Retry, and what was typed stays
  * until it is stored.
  */

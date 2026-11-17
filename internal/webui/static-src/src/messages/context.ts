@@ -18,7 +18,7 @@ function reason(r: ConversationReservation): (Node | string)[] {
   return r.reason === undefined || r.reason === "" ? [] : [": ", el("bdi", null, r.reason)];
 }
 
-/** The reservation strip (shape 1 item 6): the grants, then the queue in order. */
+/** The reservation strip: the grants, then the queue in order. */
 function reservationItem(r: ConversationReservation): HTMLElement {
   const path = el("code", { className: "cp-mono", dir: "auto" }, r.path);
   if (r.state === "held") {

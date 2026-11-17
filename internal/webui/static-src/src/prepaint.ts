@@ -1,5 +1,5 @@
 // Loaded as a blocking script in <head>, so the first paint already has the
-// stored theme and pointer tier (@cplieger/ui docs/design.md "Set up").
+// stored theme and pointer tier.
 import { applyPointerTier } from "@cplieger/ui/pointer";
 import { applyTheme } from "@cplieger/ui/theme";
 

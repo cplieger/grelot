@@ -78,7 +78,7 @@ function arrivalWords(posts: readonly Post[]): string {
 }
 
 /**
- * The open conversation (shape 1 item 3): its heading, its context, its
+ * The open conversation: its heading, its context, its
  * messages oldest first with Show older, kept current by the live stream
  * and marked read once shown.
  */

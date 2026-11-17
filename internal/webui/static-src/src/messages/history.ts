@@ -65,7 +65,7 @@ const keyOf = (item: Item): string =>
   item.kind === "day" ? `day:${dayStamp(item.at)}` : `post:${String(item.post.id)}`;
 
 /**
- * An agent's history (shape 2): every post it sent or received, newest
+ * An agent's history: every post it sent or received, newest
  * first, each naming its conversation as a link, with Show older at the end.
  */
 export function agentHistory(opts: HistoryOptions): AgentHistory {

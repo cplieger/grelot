@@ -15,7 +15,7 @@ import { newMessageDialog } from "./new-message.js";
 type MessagesRoute = Extract<Route, { readonly screen: "messages" }>;
 
 /**
- * Messages (shape 1): the Show filters in the rail, or in a sheet below
+ * Messages: the Show filters in the rail, or in a sheet below
  * 60rem, and the conversation list beside the open conversation. Call it
  * once per page: the sends it keeps outlive each mount, so a send started
  * before a switch to another screen still shows on return.

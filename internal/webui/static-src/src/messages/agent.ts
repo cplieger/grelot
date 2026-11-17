@@ -43,7 +43,7 @@ function monoList(values: readonly string[]): HTMLElement {
   return el("ul", null, ...values.map((v) => el("li", { className: "cp-mono", dir: "auto" }, v)));
 }
 
-/** The agent's card (shape 2): each fact it has, as .cp-facts. */
+/** The agent's card: each fact it has, as .cp-facts. */
 function cardFacts(page: AgentPage, signal: AbortSignal): HTMLElement {
   const a = page.agent;
   const dl = el("dl", { className: "cp-facts" });
@@ -148,7 +148,7 @@ function skeletonLines(n: number): HTMLElement[] {
 }
 
 /**
- * The agent page (shape 2): its heading with its state and "Message @name",
+ * The agent page: its heading with its state and "Message @name",
  * its card beside its reservations and history, kept current by the live
  * stream.
  */
