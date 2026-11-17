@@ -117,9 +117,10 @@ func (p *hostPush) Reading(id uint64) pushReading {
 }
 
 // registered always installs a new entry, so a forget holding the old one
-// leaves it, and on the same door it keeps a pending retry and its failing
-// run, so a repeated register never sends before the receiver's
-// Retry-After nor restarts the run's grace.
+// leaves it. On the same door it keeps a pending retry and its failing
+// run, and a send in flight answers on the new entry (editOnDoor), so a
+// repeated register never sends before the receiver's Retry-After nor
+// restarts the run's grace.
 func (p *hostPush) registered(id uint64, prov, host string) {
 	d, ok := p.doors.For(prov, host)
 	p.mu.Lock()
@@ -257,14 +258,14 @@ func (p *hostPush) edit(id uint64, fn func(*pushee)) {
 	}
 }
 
-// editIf runs fn on cur, under the lock, while it is still id's entry: an
-// entry a register or revive installed after cur was read is newer than
-// what fn acts on, and stays as it was.
-func (p *hostPush) editIf(id uint64, cur *pushee, fn func(*pushee)) {
+// editOnDoor runs fn, under the lock, on id's entry while it is on cur's
+// door: a send's answer is its door's, so it applies to the entry a
+// same-door register installed meanwhile, and never to one on another door.
+func (p *hostPush) editOnDoor(id uint64, cur *pushee, fn func(*pushee)) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.ids[id] == cur {
-		fn(cur)
+	if e := p.ids[id]; e != nil && e.door.Door == cur.door.Door {
+		fn(e)
 	}
 }
 
@@ -407,12 +408,12 @@ func doorAttrs(d provider.ServerDoor, status int) []any {
 	return []any{"provider", d.File, "door", d.Door.Name, attrStatus, status}
 }
 
-// accepted ends the failing run of cur, the entry id's send went out on,
-// and proves push while it is unproven, so a standing wait's hand-back is
-// measured from now.
+// accepted ends the failing run of id's entry on cur's door and proves
+// push while it is unproven, so a standing wait's hand-back is measured
+// from now.
 func (p *hostPush) accepted(id uint64, cur *pushee) {
 	now := p.s.now()
-	p.editIf(id, cur, func(e *pushee) {
+	p.editOnDoor(id, cur, func(e *pushee) {
 		if e.unproven {
 			e.failing, e.healthy, e.unproven = time.Time{}, now, false
 		}
@@ -420,8 +421,8 @@ func (p *hostPush) accepted(id uint64, cur *pushee) {
 }
 
 // retryLater tries key again after the receiver's Retry-After, and starts
-// the failing run of cur, the entry id's send went out on, unless one is
-// open. Meanwhile push is failing, so id's standing waits may send the
+// the failing run of id's entry on cur's door unless one is open.
+// Meanwhile push is failing, so id's standing waits may send the
 // nudge, which ends the retry.
 func (p *hostPush) retryLater(ctx context.Context, id uint64, cur *pushee, key sendKey, res transport.HTTPResult, attrs []any) {
 	level := slog.LevelWarn
@@ -431,7 +432,7 @@ func (p *hostPush) retryLater(ctx context.Context, id uint64, cur *pushee, key s
 	p.s.log.Log(ctx, level, msgPushFailed, attrs...)
 	now := p.s.now()
 	at := now.Add(res.RetryAfter)
-	p.editIf(id, cur, func(e *pushee) {
+	p.editOnDoor(id, cur, func(e *pushee) {
 		e.retryAt, e.key, e.at, e.unproven = at, key, at, true
 		if e.failing.IsZero() {
 			e.failing = now
@@ -440,12 +441,12 @@ func (p *hostPush) retryLater(ctx context.Context, id uint64, cur *pushee, key s
 	p.s.hub.Woke([]uint64{id})
 }
 
-// identityOff turns push off for id alone on cur, the entry its send went
-// out on, until it registers again or is revived, and hands its nudge to
-// its standing waits.
+// identityOff turns push off for id alone while its entry is on cur's
+// door, until it registers again or is revived, and hands its nudge to its
+// standing waits.
 func (p *hostPush) identityOff(ctx context.Context, id uint64, cur *pushee, level slog.Level, msg string, attrs []any) {
 	p.s.log.Log(ctx, level, msg, attrs...)
-	p.editIf(id, cur, func(e *pushee) { e.off, e.retryAt, e.at = true, time.Time{}, time.Time{} })
+	p.editOnDoor(id, cur, func(e *pushee) { e.off, e.retryAt, e.at = true, time.Time{}, time.Time{} })
 	p.s.hub.Woke([]uint64{id})
 }
 
@@ -466,9 +467,14 @@ func (p *hostPush) doorRefused(d provider.ServerDoor, status int) {
 	p.s.hub.Woke(served)
 }
 
-// forget drops id's entry e, read before a store call.
+// forget drops id's entry e, read before a store call, unless a register
+// has replaced it since.
 func (p *hostPush) forget(id uint64, e *pushee) {
-	p.editIf(id, e, func(*pushee) { delete(p.ids, id) })
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.ids[id] == e {
+		delete(p.ids, id)
+	}
 }
 
 // lookupFailed logs a store read that failed and looks again later; a

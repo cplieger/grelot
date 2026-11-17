@@ -238,17 +238,24 @@ func (h *harness) mustAcceptOnePush(t *testing.T, writer, to, name string, rcv *
 	synctest.Wait()
 }
 
-// heldPushes is a notify endpoint answering every request with reply,
+// heldDoor is a notify endpoint answering every request with one reply,
 // which holds its nth request until release is called, after signalling
 // arrived. Like pushReceiver it lives outside the bubble.
-func heldPushes(t *testing.T, n int32, reply pushReply) (srv *httptest.Server, arrived <-chan struct{}, release func()) {
+type heldDoor struct {
+	srv     *httptest.Server
+	arrived chan struct{}
+	release func()
+	seen    atomic.Int32
+}
+
+func heldPushes(t *testing.T, n int32, reply pushReply) *heldDoor {
 	t.Helper()
-	got, held := make(chan struct{}, 1), make(chan struct{})
-	var seen atomic.Int32
-	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	d := &heldDoor{arrived: make(chan struct{}, 1)}
+	held := make(chan struct{})
+	d.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		_, _ = io.Copy(io.Discard, req.Body)
-		if seen.Add(1) == n {
-			got <- struct{}{}
+		if d.seen.Add(1) == n {
+			d.arrived <- struct{}{}
 			<-held
 		}
 		w.Header().Set("Connection", "close")
@@ -257,29 +264,36 @@ func heldPushes(t *testing.T, n int32, reply pushReply) (srv *httptest.Server, a
 		}
 		w.WriteHeader(reply.status)
 	}))
-	t.Cleanup(srv.Close)
+	t.Cleanup(d.srv.Close)
 	var once sync.Once
-	release = func() { once.Do(func() { close(held) }) }
-	t.Cleanup(release)
-	return srv, got, release
+	d.release = func() { once.Do(func() { close(held) }) }
+	t.Cleanup(d.release)
+	return d
+}
+
+// sends is how many requests the door has had, the held one included.
+func (d *heldDoor) sends() int { return int(d.seen.Load()) }
+
+// kiroDoor is a door file serving the kiro-cli identities of every host.
+func (d *heldDoor) kiroDoor() []string {
+	return []string{"testhost", doorFileAt(d.srv.URL, "testhost", "door_token", "    match: {provider: kiro-cli}\n")}
 }
 
 func TestPush_aRetryInFlightPastTheGraceReadsDown(t *testing.T) {
 	t.Setenv(doorTokenEnv, doorSecret)
 	// The first send fails at 0 s and its retries at 20 s steps, so the
 	// seventh send is the retry at the grace.
-	srv, arrived, release := heldPushes(t, 7, pushReply{status: http.StatusServiceUnavailable, header: map[string]string{"Retry-After": "20"}})
-	door := []string{"testhost", doorFileAt(srv.URL, "testhost", "door_token", "    match: {provider: kiro-cli}\n")}
+	door := heldPushes(t, 7, pushReply{status: http.StatusServiceUnavailable, header: map[string]string{"Retry-After": "20"}})
 	synctest.Test(t, func(t *testing.T) {
-		h := newPushHarness(t, door...)
+		h := newPushHarness(t, door.kiroDoor()...)
 		h.mustRegisterAlone(sessA, "reader")
 		h.mustRegisterAlone(sessB, "writer")
 		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
 		synctest.Wait()
 		time.Sleep(grace)
-		<-arrived
+		<-door.arrived
 		h.mustWake(t, "while the retry at the grace is in flight", sessA, wakeDown)
-		release()
+		door.release()
 		synctest.Wait()
 		if got := h.pushState(sessA); got != string(pushFailing) {
 			t.Errorf("push once the held retry failed = %q, want failing", got)
@@ -307,18 +321,18 @@ func TestPush_aSendInFlightAcrossADoorMoveLeavesTheNewDoorsEntryAlone(t *testing
 		{name: "the old door says gone", reply: pushReply{status: http.StatusNotFound}, pushes: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			oldSrv, arrived, release := heldPushes(t, 1, tc.reply)
+			old := heldPushes(t, 1, tc.reply)
 			rcv := newPushReceiver(t)
 			synctest.Test(t, func(t *testing.T) {
 				h := newPushHarness(t,
-					"olddoor", doorFileAt(oldSrv.URL, "olddoor", "door_token", "    match: {provider: kiro-cli, host: host-a/app}\n"),
+					"olddoor", doorFileAt(old.srv.URL, "olddoor", "door_token", "    match: {provider: kiro-cli, host: host-a/app}\n"),
 					"newdoor", doorFileAt(rcv.srv.URL, "newdoor", "door_token", "    match: {provider: kiro-cli, host: host-b/app}\n"))
 				h.mustRegisterAlone(sessA, "reader")
 				h.registerOn(sessB, "writer", "host-c/app")
 				h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
-				<-arrived
+				<-old.arrived
 				h.takeOverOn(sessC, "reader", "host-b/app")
-				release()
+				old.release()
 				synctest.Wait()
 				released := time.Now()
 
@@ -342,6 +356,86 @@ func TestPush_aSendInFlightAcrossADoorMoveLeavesTheNewDoorsEntryAlone(t *testing
 			})
 		})
 	}
+}
+
+// An answer to a send that was in flight when its identity registered
+// again on the same door is that door's, so it applies to the entry the
+// register installed.
+func TestPush_aSendInFlightAcrossASameDoorRegisterIsAnsweredOnTheNewEntry(t *testing.T) {
+	t.Setenv(doorTokenEnv, doorSecret)
+	// sendHeldAcrossARegister posts to the reader, re-registers it on its
+	// own door while the door holds the push, then lets the door answer.
+	sendHeldAcrossARegister := func(t *testing.T, door *heldDoor) *harness {
+		t.Helper()
+		h := newPushHarness(t, door.kiroDoor()...)
+		h.mustRegisterAlone(sessA, "reader")
+		h.mustRegisterAlone(sessB, "writer")
+		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
+		<-door.arrived
+		h.reRegister(sessA, "reader")
+		door.release()
+		synctest.Wait()
+		return h
+	}
+
+	t.Run("a retry waits for the receiver's Retry-After", func(t *testing.T) {
+		door := heldPushes(t, 1, pushReply{status: http.StatusServiceUnavailable, header: map[string]string{"Retry-After": "20"}})
+		synctest.Test(t, func(t *testing.T) {
+			h := sendHeldAcrossARegister(t, door)
+			if got := h.pushState(sessA); got != string(pushFailing) {
+				t.Errorf("push = %q, want failing", got)
+			}
+			h.mustWake(t, "after the one failed send", sessA, wakePush)
+			time.Sleep(19 * time.Second)
+			synctest.Wait()
+			if n := door.sends(); n != 1 {
+				t.Errorf("%d pushes a second before Retry-After, want 1", n)
+			}
+			time.Sleep(time.Second)
+			synctest.Wait()
+			if n := door.sends(); n != 2 {
+				t.Errorf("%d pushes at Retry-After, want the retry", n)
+			}
+		})
+	})
+
+	t.Run("an accepted send proves push", func(t *testing.T) {
+		door := heldPushes(t, 1, pushReply{status: http.StatusAccepted})
+		synctest.Test(t, func(t *testing.T) {
+			h := sendHeldAcrossARegister(t, door)
+			accepted := time.Now()
+			h.ack(sessA, h.newestWake(sessA))
+			synctest.Wait()
+			if got := h.pushState(sessA); got != string(pushOK) {
+				t.Errorf("push = %q, want ok", got)
+			}
+			end, at := h.watchUntilEnd(t, sessA, 5)
+			if end == nil || end.str("code") != "restored" {
+				t.Fatalf("end = %v, want a 410 restored", end)
+			}
+			if d := at.Sub(accepted); d != grace {
+				t.Errorf("the watcher ended %v after the accepted send, want %v", d, grace)
+			}
+			if n := door.sends(); n != 1 {
+				t.Errorf("%d pushes, want the accepted one", n)
+			}
+		})
+	})
+
+	t.Run("a gone answer turns push off", func(t *testing.T) {
+		door := heldPushes(t, 1, pushReply{status: http.StatusNotFound})
+		synctest.Test(t, func(t *testing.T) {
+			h := sendHeldAcrossARegister(t, door)
+			if got := h.pushState(sessA); got != string(pushOff) {
+				t.Errorf("push = %q, want off", got)
+			}
+			time.Sleep(3 * time.Minute)
+			synctest.Wait()
+			if n := door.sends(); n != 1 {
+				t.Errorf("%d pushes, want none after the gone answer", n)
+			}
+		})
+	})
 }
 
 // takeOverOn moves the live identity name to session, on host.
