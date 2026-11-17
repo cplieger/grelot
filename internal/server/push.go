@@ -13,7 +13,8 @@ type pushState string
 const (
 	// pushNone is an identity no door serves.
 	pushNone pushState = "none"
-	// pushOK is a served identity with push on and no retry pending.
+	// pushOK is a served identity with push on and no retry waiting on its
+	// Retry-After; a failing run may still be open (pushReading.failing).
 	pushOK pushState = "ok"
 	// pushFailing is a served identity whose last send is to be retried;
 	// its standing waits may send the nudge meanwhile.
@@ -29,7 +30,8 @@ const (
 // long push must have worked before it takes over from a watcher again.
 const pushGrace = 2 * time.Minute
 
-// pushReading is an identity's push state and the instants its runs began.
+// pushReading is an identity's push state, its open failing run, and
+// whether an accepted send has proven push.
 type pushReading struct {
 	// failing is the first failed send of the retry run now open, zero for
 	// none. The run ends at an accepted send, and at a retry a read or a
@@ -53,9 +55,10 @@ func (r pushReading) wakes(now time.Time) bool {
 
 // restoredAt is when push takes over from a watcher whose online stretch
 // began at watched: pushGrace after the later of that and healthy. ok is
-// false while push is not ok or no accepted send has proven it.
+// false while no accepted send has proven push; the caller reads it only
+// while push is ok.
 func (r pushReading) restoredAt(watched time.Time) (at time.Time, ok bool) {
-	if r.state != pushOK || r.unproven {
+	if r.unproven {
 		return time.Time{}, false
 	}
 	if watched.After(r.healthy) {
