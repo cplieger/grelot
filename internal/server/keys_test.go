@@ -90,7 +90,7 @@ func TestKeys_aKeyMintedInTheWebUIOpensTheAgentAPIUntilItIsRevoked(t *testing.T)
 
 func TestKeys_theAdminSocketsKeysAreInTheWebUIsList(t *testing.T) {
 	h := newSignedIn(t)
-	if _, err := h.srv.auth.CreateKey(t.Context(), "desktop"); err != nil {
+	if _, err := h.srv.auth.CreateKey(t.Context(), "desktop", wire.ScopeAgent); err != nil {
 		t.Fatal(err)
 	}
 	if r := h.createKey("laptop"); r.status != http.StatusCreated {
@@ -152,7 +152,7 @@ func TestKeys_anAPIKeyCannotMintAnother(t *testing.T) {
 func TestKeys_anotherKeyCannotActAsAnIdentity(t *testing.T) {
 	h := newSignedIn(t)
 	h.mustRegister(sessA, "alpha")
-	stolen, err := h.srv.auth.CreateKey(t.Context(), "other")
+	stolen, err := h.srv.auth.CreateKey(t.Context(), "other", wire.ScopeAgent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,11 +184,11 @@ func (h *harness) accessLines(path string) []map[string]string {
 
 func TestKeys_eachAgentRequestsAccessLineNamesItsKeysLabel(t *testing.T) {
 	h := newSignedIn(t)
-	laptop, err := h.srv.auth.CreateKey(t.Context(), "laptop")
+	laptop, err := h.srv.auth.CreateKey(t.Context(), "laptop", wire.ScopeAgent)
 	if err != nil {
 		t.Fatal(err)
 	}
-	desk, err := h.srv.auth.CreateKey(t.Context(), "desk.2")
+	desk, err := h.srv.auth.CreateKey(t.Context(), "desk.2", wire.ScopeAgent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,7 +312,7 @@ func TestKeys_aSessionKeepsItsIdentityUnderItsMachinesNewKey(t *testing.T) {
 func TestKeys_aLabelNamesOneKeyOnEveryMintRoute(t *testing.T) {
 	h := newSignedIn(t)
 	h.mintKey("laptop")
-	if _, err := h.srv.auth.CreateKey(t.Context(), "desktop"); err != nil {
+	if _, err := h.srv.auth.CreateKey(t.Context(), "desktop", wire.ScopeAgent); err != nil {
 		t.Fatal(err)
 	}
 
@@ -328,7 +328,7 @@ func TestKeys_aLabelNamesOneKeyOnEveryMintRoute(t *testing.T) {
 	if r := h.createKey(""); r.status != http.StatusBadRequest || r.str("code") != "auth_bad_request" {
 		t.Errorf("web mint of an empty label: %d %s, want 400 auth_bad_request", r.status, r.raw)
 	}
-	if _, err := h.srv.auth.CreateKey(t.Context(), "laptop"); err == nil || !strings.Contains(err.Error(), "revoke or rotate it") {
+	if _, err := h.srv.auth.CreateKey(t.Context(), "laptop", wire.ScopeAgent); err == nil || !strings.Contains(err.Error(), "revoke or rotate it") {
 		t.Errorf("socket create of the web-minted label: %v, want the label refused", err)
 	}
 	if err := h.srv.auth.RevokeKey(t.Context(), "laptop"); err != nil {

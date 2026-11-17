@@ -19,6 +19,7 @@ import (
 	"github.com/cplieger/access/account"
 	"github.com/cplieger/grelot/internal/accounts"
 	"github.com/cplieger/grelot/internal/auth"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 const (
@@ -108,7 +109,7 @@ func TestNew_keepsOneOwner(t *testing.T) {
 	if !ok || pe.Reason != account.ReasonSingleOwner {
 		t.Errorf("CreateUser of a second account = %v, want the single-owner refusal", err)
 	}
-	if _, err := a.CreateKey(t.Context(), "laptop"); err != nil {
+	if _, err := a.CreateKey(t.Context(), "laptop", wire.ScopeAgent); err != nil {
 		t.Errorf("CreateKey for the owner: %v", err)
 	}
 }
@@ -148,13 +149,13 @@ func TestRecovery(t *testing.T) {
 func TestCreateKey(t *testing.T) {
 	a, db := newAuth(t)
 	t.Run("no account yet is refused, naming setup-token", func(t *testing.T) {
-		if _, err := a.CreateKey(t.Context(), "laptop"); err == nil || !strings.Contains(err.Error(), "grelot setup-token") {
+		if _, err := a.CreateKey(t.Context(), "laptop", wire.ScopeAgent); err == nil || !strings.Contains(err.Error(), "grelot setup-token") {
 			t.Errorf("CreateKey before setup = %v, want a refusal naming grelot setup-token", err)
 		}
 	})
 	setUp(t, a)
 	t.Run("the key authenticates as the admin account", func(t *testing.T) {
-		key, err := a.CreateKey(t.Context(), "laptop")
+		key, err := a.CreateKey(t.Context(), "laptop", wire.ScopeAgent)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -170,21 +171,21 @@ func TestCreateKey(t *testing.T) {
 	// and case folding.
 	for _, label := range []string{"laptop", "LAPTOP"} {
 		t.Run("a label in use is refused as "+label, func(t *testing.T) {
-			if _, err := a.CreateKey(t.Context(), label); err == nil || !strings.Contains(err.Error(), "revoke or rotate it") {
+			if _, err := a.CreateKey(t.Context(), label, wire.ScopeAgent); err == nil || !strings.Contains(err.Error(), "revoke or rotate it") {
 				t.Errorf("CreateKey(%s) with laptop in use = %v, want the label-taken refusal", label, err)
 			}
 		})
 	}
 	for _, label := range []string{"", "tab\there", "two\nlines"} {
 		t.Run("label "+strings.NewReplacer("\t", `\t`, "\n", `\n`).Replace(label)+" is refused", func(t *testing.T) {
-			if _, err := a.CreateKey(t.Context(), label); err == nil {
+			if _, err := a.CreateKey(t.Context(), label, wire.ScopeAgent); err == nil {
 				t.Errorf("CreateKey(%q) = a key, want the label rule's refusal", label)
 			}
 		})
 	}
 	for _, label := range []string{"ci.runner-2_b", "two words", "été"} {
 		t.Run("label "+label+" is accepted", func(t *testing.T) {
-			if _, err := a.CreateKey(t.Context(), label); err != nil {
+			if _, err := a.CreateKey(t.Context(), label, wire.ScopeAgent); err != nil {
 				t.Errorf("CreateKey(%q) = %v, want a key", label, err)
 			}
 		})
@@ -199,11 +200,11 @@ func TestKeys_listsOldestFirstWithLastUse(t *testing.T) {
 	setUp(t, a)
 	before := time.Now()
 	for _, label := range []string{"zeta", "alpha"} {
-		if _, err := a.CreateKey(t.Context(), label); err != nil {
+		if _, err := a.CreateKey(t.Context(), label, wire.ScopeAgent); err != nil {
 			t.Fatal(err)
 		}
 	}
-	used, err := a.CreateKey(t.Context(), "used")
+	used, err := a.CreateKey(t.Context(), "used", wire.ScopeAgent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +231,7 @@ func TestKeys_listsOldestFirstWithLastUse(t *testing.T) {
 func TestRotateKey_theOldSecretWorksUntilTheNewOnesFirstUse(t *testing.T) {
 	a, db := newAuth(t)
 	setUp(t, a)
-	old, err := a.CreateKey(t.Context(), "laptop")
+	old, err := a.CreateKey(t.Context(), "laptop", wire.ScopeAgent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,11 +264,11 @@ func TestRotateKey_theOldSecretWorksUntilTheNewOnesFirstUse(t *testing.T) {
 func TestRevokeKey(t *testing.T) {
 	a, db := newAuth(t)
 	setUp(t, a)
-	gone, err := a.CreateKey(t.Context(), "gone")
+	gone, err := a.CreateKey(t.Context(), "gone", wire.ScopeAgent)
 	if err != nil {
 		t.Fatal(err)
 	}
-	kept, err := a.CreateKey(t.Context(), "kept")
+	kept, err := a.CreateKey(t.Context(), "kept", wire.ScopeAgent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +294,7 @@ func TestRevokeKey(t *testing.T) {
 func TestRevokeKey_findsTheLabelAsAccessComparesIt(t *testing.T) {
 	a, db := newAuth(t)
 	setUp(t, a)
-	live, err := a.CreateKey(t.Context(), "Laptop")
+	live, err := a.CreateKey(t.Context(), "Laptop", wire.ScopeAgent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +383,7 @@ func TestKeyLive(t *testing.T) {
 	a, db := newAuth(t)
 	setUp(t, a)
 	for _, label := range []string{"live", "gone"} {
-		if _, err := a.CreateKey(t.Context(), label); err != nil {
+		if _, err := a.CreateKey(t.Context(), label, wire.ScopeAgent); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -151,11 +151,13 @@ func newDevice(t *testing.T) *accesstest.PasskeyDevice {
 	return d
 }
 
-// putMethods replaces the sign-in methods, keeping the retention.
+// putMethods replaces the sign-in methods at the stored revision, keeping
+// the retention.
 func (h *harness) putMethods(m wire.Methods) *response {
 	h.t.Helper()
+	rev := webGet[wire.Settings](h, "/api/settings").Revision
 	return h.request(http.MethodPut, "/api/settings",
-		wire.SettingsRequest{Methods: m, RetentionMS: (72 * time.Hour).Milliseconds()}, noKey)
+		wire.SettingsRequest{Revision: rev, Methods: m, RetentionMS: (72 * time.Hour).Milliseconds()}, noKey)
 }
 
 // follow sends the browser to location on the harness's server, as a
@@ -399,7 +401,10 @@ func TestSettings_aMethodChangeNeedsARecentSignIn(t *testing.T) {
 	if r := h.putMethods(wire.Methods{Password: true}); r.status != http.StatusForbidden || r.str("code") != "recent_auth_required" {
 		t.Errorf("a method change 11 minutes after sign-in: %d %s, want 403 recent_auth_required", r.status, r.raw)
 	}
-	retention := wire.SettingsRequest{Methods: wire.Methods{Password: true, Passkeys: true, OIDC: true}, RetentionMS: (5 * time.Hour).Milliseconds()}
+	retention := wire.SettingsRequest{
+		Revision: webGet[wire.Settings](h, "/api/settings").Revision,
+		Methods:  wire.Methods{Password: true, Passkeys: true, OIDC: true}, RetentionMS: (5 * time.Hour).Milliseconds(),
+	}
 	if r := h.request(http.MethodPut, "/api/settings", retention, noKey); r.status != http.StatusOK {
 		t.Errorf("a retention change 11 minutes after sign-in: %d %s, want 200", r.status, r.raw)
 	}
@@ -428,7 +433,7 @@ func TestSettings_storeTheRetentionWithinItsBounds(t *testing.T) {
 		t.Fatalf("retention 36h: %d %s", r.status, r.raw)
 	}
 	want := wire.Settings{
-		Methods: all, RetentionMS: (36 * time.Hour).Milliseconds(),
+		Revision: 1, Methods: all, RetentionMS: (36 * time.Hour).Milliseconds(),
 		RetentionMinMS: time.Hour.Milliseconds(), RetentionMaxMS: (90 * 24 * time.Hour).Milliseconds(),
 	}
 	if got := webGet[wire.Settings](h, "/api/settings"); got != want {
@@ -436,16 +441,16 @@ func TestSettings_storeTheRetentionWithinItsBounds(t *testing.T) {
 	}
 }
 
-func TestWeb_anAPIKeyOrAForeignOriginIsRefused(t *testing.T) {
+func TestWeb_anAgentKeyOrAForeignOriginIsRefused(t *testing.T) {
 	h := newSignedIn(t)
-	key, err := h.srv.auth.CreateKey(t.Context(), "laptop")
+	key, err := h.srv.auth.CreateKey(t.Context(), "laptop", wire.ScopeAgent)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Run("an API key", func(t *testing.T) {
+	t.Run("an agent key", func(t *testing.T) {
 		r := h.request(http.MethodGet, "/api/agents", nil, map[string]string{"Authorization": "Bearer " + key, "Cookie": ""})
-		if r.status != http.StatusForbidden || r.str("code") != "auth_session_required" {
-			t.Errorf("GET /api/agents with a machine key: %d %s, want 403 auth_session_required", r.status, r.raw)
+		if r.status != http.StatusForbidden || r.str("code") != "auth_scope_required" {
+			t.Errorf("GET /api/agents with an agent key: %d %s, want 403 auth_scope_required", r.status, r.raw)
 		}
 	})
 	t.Run("a cross-site write", func(t *testing.T) {

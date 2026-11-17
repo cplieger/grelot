@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -142,8 +143,8 @@ func TestGet_beforeAnyPutAnswersTheDefaults(t *testing.T) {
 func TestPut_keepsTheValuesAcrossAReopen(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "accounts.db")
 	db := open(t, path)
-	want := accounts.Settings{Retention: 36*time.Hour + 30*time.Minute, Methods: accounts.Methods{Passkeys: true}}
-	if err := db.Put(t.Context(), want); err != nil {
+	put := accounts.Settings{Retention: 36*time.Hour + 30*time.Minute, Methods: accounts.Methods{Passkeys: true}}
+	if err := db.Put(t.Context(), put); err != nil {
 		t.Fatal(err)
 	}
 	closeDB(t, db)
@@ -152,8 +153,81 @@ func TestPut_keepsTheValuesAcrossAReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	want := put
+	want.Revision = 1
 	if got != want {
 		t.Errorf("Get after reopen = %+v, want %+v", got, want)
+	}
+}
+
+func TestPut_bumpsTheRevisionItWasGiven(t *testing.T) {
+	db := open(t, filepath.Join(t.TempDir(), "accounts.db"))
+	for rev := uint64(0); rev < 3; rev++ {
+		got, err := db.Get(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Revision != rev || db.Current().Revision != rev {
+			t.Fatalf("before save %d: Get revision %d, Current revision %d; want %d", rev, got.Revision, db.Current().Revision, rev)
+		}
+		if err := db.Put(t.Context(), accounts.Settings{Revision: rev, Retention: time.Duration(rev+2) * time.Hour}); err != nil {
+			t.Fatalf("Put of revision %d: %v", rev, err)
+		}
+	}
+	if got := db.Current(); got.Revision != 3 || got.Retention != 4*time.Hour {
+		t.Errorf("Current after three saves = %+v, want revision 3 and the last retention, 4h", got)
+	}
+}
+
+func TestPut_refusesAStaleRevisionAndKeepsTheStoredSettings(t *testing.T) {
+	db := open(t, filepath.Join(t.TempDir(), "accounts.db"))
+	first := accounts.Settings{Retention: 5 * time.Hour, Methods: accounts.Methods{Password: true}}
+	if err := db.Put(t.Context(), first); err != nil {
+		t.Fatal(err)
+	}
+	for _, rev := range []uint64{0, 2} {
+		err := db.Put(t.Context(), accounts.Settings{Revision: rev, Retention: 9 * time.Hour})
+		if !errors.Is(err, accounts.ErrStaleRevision) {
+			t.Errorf("Put of revision %d over revision 1 = %v, want ErrStaleRevision", rev, err)
+		}
+	}
+	want := first
+	want.Revision = 1
+	if got, err := db.Get(t.Context()); err != nil || got != want {
+		t.Errorf("Get after the refused saves = %+v, %v; want %+v", got, err, want)
+	}
+	if got := db.Current(); got != want {
+		t.Errorf("Current after the refused saves = %+v, want %+v", got, want)
+	}
+}
+
+func TestPut_ConcurrentSavesOfOneRevisionStoreOne(t *testing.T) {
+	db := open(t, filepath.Join(t.TempDir(), "accounts.db"))
+	const savers = 8
+	errs := make([]error, savers)
+	var wg sync.WaitGroup
+	for i := range savers {
+		wg.Go(func() {
+			errs[i] = db.Put(t.Context(), accounts.Settings{Retention: time.Duration(i+1) * time.Hour})
+		})
+	}
+	wg.Wait()
+	stored, stale := 0, 0
+	for i, err := range errs {
+		switch {
+		case err == nil:
+			stored++
+		case errors.Is(err, accounts.ErrStaleRevision):
+			stale++
+		default:
+			t.Errorf("saver %d: %v, want nil or ErrStaleRevision", i, err)
+		}
+	}
+	if stored != 1 || stale != savers-1 {
+		t.Errorf("%d saves of revision 0: %d stored and %d stale, want 1 and %d", savers, stored, stale, savers-1)
+	}
+	if got := db.Current().Revision; got != 1 {
+		t.Errorf("revision after the race = %d, want 1", got)
 	}
 }
 
@@ -161,7 +235,7 @@ func TestPut_storesARetentionAtEitherBound(t *testing.T) {
 	db := open(t, filepath.Join(t.TempDir(), "accounts.db"))
 	for _, retention := range []time.Duration{time.Hour, 90 * 24 * time.Hour} {
 		t.Run(retention.String(), func(t *testing.T) {
-			if err := db.Put(t.Context(), accounts.Settings{Retention: retention}); err != nil {
+			if err := db.Put(t.Context(), accounts.Settings{Revision: db.Current().Revision, Retention: retention}); err != nil {
 				t.Fatalf("Put: %v", err)
 			}
 			got, err := db.Get(t.Context())
@@ -177,13 +251,21 @@ func TestPut_storesARetentionAtEitherBound(t *testing.T) {
 
 func TestPut_refusesARetentionOutOfBounds(t *testing.T) {
 	db := open(t, filepath.Join(t.TempDir(), "accounts.db"))
-	for _, retention := range []time.Duration{
-		time.Hour - time.Minute, 90*24*time.Hour + time.Minute, 2*time.Hour + 30*time.Second, 0, -time.Hour,
+	for _, c := range []struct {
+		retention time.Duration
+		whole     bool
+	}{
+		{time.Hour - time.Minute, false}, {90*24*time.Hour + time.Minute, false}, {0, false}, {-time.Hour, false},
+		{2*time.Hour + 30*time.Second, true}, {90*24*time.Hour - time.Millisecond, true},
 	} {
-		t.Run(retention.String(), func(t *testing.T) {
-			err := db.Put(t.Context(), accounts.Settings{Retention: retention})
-			if !errors.Is(err, accounts.ErrInvalid) {
-				t.Errorf("Put = %v, want ErrInvalid", err)
+		t.Run(c.retention.String(), func(t *testing.T) {
+			err := db.Put(t.Context(), accounts.Settings{Retention: c.retention})
+			var re *accounts.RangeError
+			if !errors.As(err, &re) {
+				t.Fatalf("Put = %v, want a *RangeError", err)
+			}
+			if want := (accounts.RangeError{Min: time.Hour, Max: 90 * 24 * time.Hour, Whole: c.whole}); *re != want {
+				t.Errorf("RangeError = %+v, want %+v", *re, want)
 			}
 			got, gerr := db.Get(t.Context())
 			if gerr != nil {
@@ -208,8 +290,9 @@ func TestRetention_followsTheStoredSettings(t *testing.T) {
 	if got := db.Retention(); got != 5*time.Hour {
 		t.Errorf("Retention after Put = %v, want 5h", got)
 	}
-	if err := db.Put(t.Context(), accounts.Settings{Retention: time.Minute}); !errors.Is(err, accounts.ErrInvalid) {
-		t.Fatalf("Put of 1m = %v, want ErrInvalid", err)
+	var re *accounts.RangeError
+	if err := db.Put(t.Context(), accounts.Settings{Revision: 1, Retention: time.Minute}); !errors.As(err, &re) {
+		t.Fatalf("Put of 1m = %v, want a *RangeError", err)
 	}
 	if got := db.Retention(); got != 5*time.Hour {
 		t.Errorf("Retention after a refused Put = %v, want 5h kept", got)
@@ -283,6 +366,7 @@ func TestOpen_aStoreResetLeavesTheAccountsFile(t *testing.T) {
 	if err := db.Put(t.Context(), want); err != nil {
 		t.Fatal(err)
 	}
+	want.Revision = 1
 	secrets := db.Secrets()
 	closeDB(t, db)
 
@@ -339,6 +423,7 @@ func TestCurrent_followsTheStoredSettings(t *testing.T) {
 	if err := db.Put(t.Context(), want); err != nil {
 		t.Fatal(err)
 	}
+	want.Revision = 1
 	if got := db.Current(); got != want {
 		t.Errorf("Current after Put = %+v, want %+v", got, want)
 	}

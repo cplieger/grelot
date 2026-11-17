@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cplieger/access"
 	"github.com/cplieger/grelot/internal/accounts"
@@ -55,6 +57,7 @@ func socketPath(t *testing.T) string {
 // running is a server answering on path until stop.
 type running struct {
 	srv  *admin.Server
+	db   *accounts.DB
 	logs *syncBuffer
 	path string
 	stop func() error
@@ -72,7 +75,7 @@ func start(t *testing.T, configure func(*admin.Server)) *running {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = a.Close(context.Background()) })
-	r := &running{logs: &syncBuffer{}, path: socketPath(t)}
+	r := &running{db: db, logs: &syncBuffer{}, path: socketPath(t)}
 	r.srv = admin.NewServer(a, slog.New(slog.NewJSONHandler(r.logs, nil)))
 	if configure != nil {
 		configure(r.srv)
@@ -221,6 +224,39 @@ func TestServe_refusesWhatItCannotRun(t *testing.T) {
 			t.Errorf("the next request: %v", err)
 		}
 	})
+}
+
+func TestServe_mintsAKeyOfTheScopeItIsAsked(t *testing.T) {
+	r := start(t, nil)
+	if err := r.db.Access().CreateInitialUser(t.Context(), &access.User{
+		Username: "owner", Role: access.RoleAdmin, Enabled: true, CreatedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ label, scope string }{{"laptop", "agent"}, {"ops", "owner"}} {
+		if resp, err := admin.Call(t.Context(), r.path, admin.Request{Verb: admin.VerbKeyCreate, Arg: c.label, Scope: c.scope}); err != nil || resp.Secret == "" {
+			t.Fatalf("key-create %s of scope %s = %+v, %v; want a key", c.label, c.scope, resp, err)
+		}
+	}
+	for _, scope := range []string{"", "admin"} {
+		if _, err := admin.Call(t.Context(), r.path, admin.Request{Verb: admin.VerbKeyCreate, Arg: "x" + scope, Scope: scope}); err == nil {
+			t.Errorf("key-create of scope %q answered a key, want a refusal", scope)
+		}
+	}
+	if _, err := admin.Call(t.Context(), r.path, admin.Request{Verb: admin.VerbKeyRotate, Arg: "ops"}); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := admin.Call(t.Context(), r.path, admin.Request{Verb: admin.VerbKeyList})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, k := range resp.Keys {
+		got[k.Label] = k.Scope
+	}
+	if want := map[string]string{"laptop": "agent", "ops": "owner"}; !maps.Equal(got, want) {
+		t.Errorf("key-list's scopes after rotating ops = %v, want %v", got, want)
+	}
 }
 
 // testAuthOptions serves the sign-in at an https origin, its refusals

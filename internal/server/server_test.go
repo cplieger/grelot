@@ -109,7 +109,7 @@ func TestHealthz_aReleaseAnswers503AtOnceAndForGood(t *testing.T) {
 
 func TestGate_refusesARequestWithNoValidMachineKey(t *testing.T) {
 	h := newSignedIn(t)
-	revoked, err := h.srv.auth.CreateKey(t.Context(), "retired")
+	revoked, err := h.srv.auth.CreateKey(t.Context(), "retired", wire.ScopeAgent)
 	if err != nil {
 		t.Fatal(err)
 	}

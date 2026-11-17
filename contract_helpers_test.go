@@ -30,6 +30,7 @@ import (
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/server"
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 	"github.com/cplieger/grelot/internal/wire/wiretest"
 )
 
@@ -72,11 +73,38 @@ type contract struct {
 	codes map[string]map[string]bool
 	// pushes counts the sends a push contract's receiver accepted.
 	pushes atomic.Int32
-	doc    *wiretest.Doc
-	au     *auth.Auth
-	clk    *contractClock
-	client *http.Client
-	url    string
+	// authAhead moves the account service's clock past the server's, so a
+	// sign-in stops being recent.
+	authAhead atomic.Int64
+	doc       *wiretest.Doc
+	au        *auth.Auth
+	acc       *accounts.DB
+	clk       *contractClock
+	client    *http.Client
+	// owner is the browser that set the first account up, signed in.
+	owner *browser
+	url   string
+}
+
+// browser is a signed-in browser's cookies.
+type browser struct {
+	cookies map[string]string
+}
+
+func (b *browser) add(r *http.Request) {
+	for name, value := range b.cookies {
+		r.AddCookie(&http.Cookie{Name: name, Value: value})
+	}
+}
+
+func (b *browser) keep(resp *http.Response) {
+	for _, ck := range resp.Cookies() {
+		if ck.MaxAge < 0 || ck.Value == "" {
+			delete(b.cookies, ck.Name)
+		} else {
+			b.cookies[ck.Name] = ck.Value
+		}
+	}
 }
 
 // contractClock is the server's and the store's clock: the wall clock
@@ -137,8 +165,10 @@ func newContractWith(t *testing.T, o contractOptions) *contract {
 	}
 	t.Cleanup(func() { _ = acc.Close() })
 	metrics := obs.New()
+	c := &contract{t: t, doc: doc, acc: acc, clk: clk, owner: &browser{cookies: map[string]string{}}}
 	au, err := auth.New(t.Context(), acc, &auth.Options{
 		Logger: logger, PublicURL: cfg.PublicURL, Errors: server.AuthErrors(logger, metrics),
+		Now: func() time.Time { return time.Now().Add(time.Duration(c.authAhead.Load())) },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -154,7 +184,7 @@ func newContractWith(t *testing.T, o contractOptions) *contract {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	c := &contract{t: t, doc: doc, au: au, clk: clk}
+	c.au = au
 	opts := &server.Options{
 		Store: st, Logger: logger, Now: clk.now, Hub: hub, Events: events, Metrics: metrics, Auth: au,
 		Version: contractVersion, Config: *cfg, Limits: limits, CursorKey: acc.Secrets().CursorKey,
@@ -171,7 +201,8 @@ func newContractWith(t *testing.T, o contractOptions) *contract {
 	return c
 }
 
-// setUp creates the owner account through access's setup route.
+// setUp creates the owner account through access's setup route, which
+// signs c.owner in.
 func (c *contract) setUp() {
 	c.t.Helper()
 	tok, err := c.au.SetupToken(c.t.Context())
@@ -194,14 +225,21 @@ func (c *contract) setUp() {
 		raw, _ := io.ReadAll(resp.Body)
 		c.t.Fatalf("setup: %d %s", resp.StatusCode, raw)
 	}
+	c.owner.keep(resp)
 }
 
 // mintKey mints an agent key through the admin socket's call.
 func (c *contract) mintKey(label string) string {
 	c.t.Helper()
-	key, err := c.au.CreateKey(c.t.Context(), label)
+	return c.mintScoped(label, wire.ScopeAgent)
+}
+
+// mintScoped mints a key of scope through the admin socket's call.
+func (c *contract) mintScoped(label, scope string) string {
+	c.t.Helper()
+	key, err := c.au.CreateKey(c.t.Context(), label, scope)
 	if err != nil {
-		c.t.Fatalf("mint key %s: %v", label, err)
+		c.t.Fatalf("mint key %s of scope %s: %v", label, scope, err)
 	}
 	return key
 }
@@ -529,7 +567,7 @@ type members struct {
 	required, optional []string
 }
 
-// codeMembers is the members table for the codes the agent rows answer.
+// codeMembers is the members table for the codes the rows answer.
 var codeMembers = map[string]members{
 	"invalid":           {optional: []string{"fields"}},
 	"cursor_invalid":    {},
@@ -561,6 +599,12 @@ var codeMembers = map[string]members{
 	"shutting_down":     {},
 	"upgrade_required":  {},
 	"internal_error":    {},
+
+	// The owner rows' own.
+	"stale_revision":       {},
+	"recent_auth_required": {},
+	"person_reserved":      {required: []string{"fields"}},
+	"would_lock_out":       {},
 }
 
 // checkEnvelope holds a refusal to the members codeMembers gives its code.
@@ -577,7 +621,7 @@ func checkEnvelope(t *testing.T, where string, ans *answer) {
 		m, known = members{optional: []string{"reason", "retry_after_ms"}}, true
 	}
 	if !known {
-		t.Errorf("%s: code %q is not one an agent row answers", where, code)
+		t.Errorf("%s: code %q is not one a row answers", where, code)
 		return
 	}
 	for _, k := range m.required {

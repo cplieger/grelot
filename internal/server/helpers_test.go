@@ -383,7 +383,7 @@ func (h *harness) machineKey() (string, error) {
 	h.machineMu.Lock()
 	defer h.machineMu.Unlock()
 	if h.machine == "" {
-		key, err := h.srv.auth.CreateKey(context.Background(), harnessKeyLabel)
+		key, err := h.srv.auth.CreateKey(context.Background(), harnessKeyLabel, wire.ScopeAgent)
 		if err != nil {
 			return "", fmt.Errorf("mint the harness's machine key: %w", err)
 		}

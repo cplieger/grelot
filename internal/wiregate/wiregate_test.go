@@ -24,18 +24,19 @@ var (
 
 func TestRoute_mapsEachAccessToItsClass(t *testing.T) {
 	cases := []struct {
+		scope  string
 		access wire.Access
 		class  gate.Class
 	}{
-		{wire.AccessAgent, gate.Key},
-		{wire.AccessOwner, gate.Session},
-		{wire.AccessPublic, gate.Public},
+		{"agent", wire.AccessAgent, gate.Key},
+		{"owner", wire.AccessOwner, gate.Scoped},
+		{"", wire.AccessPublic, gate.Public},
 	}
 	for _, c := range cases {
 		r := &wire.Route{Name: "row", Method: http.MethodPost, Path: "/v1/row/{id}", Access: c.access}
 		got := wiregate.Route(r)
-		if got.Class != c.class || got.Scope != "" {
-			t.Errorf("Access %d: class %d scope %q, want class %d and no scope", c.access, got.Class, got.Scope, c.class)
+		if got.Class != c.class || got.Scope != c.scope {
+			t.Errorf("Access %d: class %d scope %q, want class %d and scope %q", c.access, got.Class, got.Scope, c.class, c.scope)
 		}
 		if got.Name != "POST /v1/row/{id}" || got.Method != http.MethodPost || got.Path != "/v1/row/{id}" {
 			t.Errorf("Access %d: %+v, want the row's method and path, named by its pattern", c.access, got)
@@ -59,10 +60,10 @@ func TestCodes_isTheGatesCodesThenTheMounts(t *testing.T) {
 		method string
 		want   []string
 	}{
-		{"agent read", wire.AccessAgent, http.MethodGet, slices.Concat(authenticating, []string{"auth_key_required"}, mount)},
-		{"agent write", wire.AccessAgent, http.MethodPost, slices.Concat(authenticating, []string{"auth_key_required"}, mount)},
-		{"owner read", wire.AccessOwner, http.MethodGet, slices.Concat(authenticating, mount)},
-		{"owner write", wire.AccessOwner, http.MethodPut, slices.Concat(authenticating, []string{"auth_cross_origin"}, mount)},
+		{"agent read", wire.AccessAgent, http.MethodGet, slices.Concat(authenticating, []string{"auth_key_required", "auth_scope_required"}, mount)},
+		{"agent write", wire.AccessAgent, http.MethodPost, slices.Concat(authenticating, []string{"auth_key_required", "auth_scope_required"}, mount)},
+		{"owner read", wire.AccessOwner, http.MethodGet, slices.Concat(authenticating, []string{"auth_scope_required", "auth_forbidden"}, mount)},
+		{"owner write", wire.AccessOwner, http.MethodPut, slices.Concat(authenticating, []string{"auth_scope_required", "auth_forbidden", "auth_cross_origin"}, mount)},
 		{"public read", wire.AccessPublic, http.MethodGet, slices.Concat([]string{"auth_method_not_allowed"}, mount)},
 	}
 	for _, c := range cases {

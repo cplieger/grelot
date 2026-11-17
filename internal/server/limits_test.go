@@ -52,7 +52,7 @@ func TestLimits_aKeyPastItsBurstIs429UntilATokenIsBack(t *testing.T) {
 	if got := h.scrape()[`grelot_requests_limited_total{limit="rate"}`]; got != 1 {
 		t.Errorf(`grelot_requests_limited_total{limit="rate"} = %v, want 1`, got)
 	}
-	key, err := h.srv.auth.CreateKey(t.Context(), "other-machine")
+	key, err := h.srv.auth.CreateKey(t.Context(), "other-machine", wire.ScopeAgent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestLimits_theServerCapsTheWaitsOfEveryKeyTogether(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		second, err := h.srv.auth.CreateKey(t.Context(), "second-machine")
+		second, err := h.srv.auth.CreateKey(t.Context(), "second-machine", wire.ScopeAgent)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -227,7 +227,7 @@ func TestAuthFailures_countACredentialPresentedAndRefused(t *testing.T) {
 		}
 	})
 	t.Run("another key's identity is wrong_key_identity", func(t *testing.T) {
-		other, err := h.srv.auth.CreateKey(t.Context(), "other-machine")
+		other, err := h.srv.auth.CreateKey(t.Context(), "other-machine", wire.ScopeAgent)
 		if err != nil {
 			t.Fatal(err)
 		}
