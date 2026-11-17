@@ -35,9 +35,10 @@ const (
 
 	keyDedupeWindow = "dedupe_window"
 
-	problemRequired = "required"
-	problemEnvName  = "not an environment variable name"
-	problemNotEmpty = "must not be empty"
+	problemRequired  = "required"
+	problemEnvName   = "not an environment variable name"
+	problemNotEmpty  = "must not be empty"
+	problemStdinPath = "not a stdin field path"
 )
 
 var (
@@ -248,7 +249,7 @@ func (s *Session) check() error {
 		return &LoadError{Key: "session.env", Problem: problemEnvName}
 	}
 	if s.Stdin != "" && !stdinPathRE.MatchString(s.Stdin) {
-		return &LoadError{Key: "session.stdin", Problem: "not a stdin field path"}
+		return &LoadError{Key: "session.stdin", Problem: problemStdinPath}
 	}
 	if s.HooksWithoutEnv && (s.Env == "" || s.Stdin == "") {
 		return &LoadError{Key: "session.hooks_without_env", Problem: "needs session.env and session.stdin"}
@@ -419,6 +420,7 @@ func (h *Hooks) check() error {
 		{key: "turn_end", check: h.TurnEnd},
 		{key: "session_end", check: h.SessionEnd},
 		{key: "subagent_stop", check: h.SubagentStop},
+		{key: "guard", check: h.Guard},
 	}
 	if h.LostFix != "" && (strings.TrimSpace(h.LostFix) == "" || strings.ContainsFunc(h.LostFix, unicode.IsControl)) {
 		return &LoadError{Key: "hooks.lost_fix", Problem: "must be one line of text"}
@@ -468,6 +470,47 @@ func (r *SubagentStopRole) check() error {
 		return nil
 	}
 	return firstErr(r.checkRole(), checkPath("stdin.agent_id", r.Stdin.AgentID), checkPath("stdin.session", r.Stdin.Session))
+}
+
+func (r *GuardRole) check() error {
+	if r == nil {
+		return nil
+	}
+	if len(r.When) == 0 {
+		return &LoadError{Key: "when", Problem: "required, the stdin values that mark the host's file-write tools"}
+	}
+	if r.ContextLimit < 0 {
+		return &LoadError{Key: "context_limit", Problem: "must be a byte count, or 0 for no limit"}
+	}
+	if err := firstErr(r.checkRole(), r.Stdin.check(), checkOutput("outputs.context", r.Outputs.Context)); err != nil {
+		return err
+	}
+	// The guard only informs: a host stops or prompts for a tool call on a
+	// hook's non-zero exit or stderr.
+	switch o := r.Outputs.Context; {
+	case o == nil:
+		return &LoadError{Key: "outputs.context", Problem: problemRequired}
+	case o.Exit != 0:
+		return &LoadError{Key: "outputs.context.exit", Problem: "must be 0, since the guard never stops the write"}
+	case o.Stream == StreamStderr:
+		return &LoadError{Key: "outputs.context.stream", Problem: "must be stdout, since the guard never stops the write"}
+	}
+	return nil
+}
+
+func (s GuardStdin) check() error {
+	if len(s.Paths) == 0 && s.Patch == "" {
+		return &LoadError{Key: "stdin", Problem: "needs paths or patch, where the written files are"}
+	}
+	for i, p := range s.Paths {
+		if !stdinPathRE.MatchString(p) {
+			return &LoadError{Key: fmt.Sprintf("stdin.paths[%d]", i), Problem: problemStdinPath}
+		}
+	}
+	if (s.Patch == "") != (s.Cwd == "") {
+		return &LoadError{Key: "stdin.cwd", Problem: "goes with patch, the directory its relative paths are under"}
+	}
+	return firstErr(checkPath("stdin.agent_id", s.AgentID), checkPath("stdin.patch", s.Patch), checkPath("stdin.cwd", s.Cwd))
 }
 
 func (r *PromptRole) check() error {
@@ -524,7 +567,7 @@ func (s *Source) check() error {
 
 func checkPath(key, path string) error {
 	if path != "" && !stdinPathRE.MatchString(path) {
-		return &LoadError{Key: key, Problem: "not a stdin field path"}
+		return &LoadError{Key: key, Problem: problemStdinPath}
 	}
 	return nil
 }
@@ -604,6 +647,9 @@ func (h *Hooks) outputs() []roleOutput {
 	}
 	if r := h.Stop; r != nil {
 		out = append(out, roleOutput{r.Outputs.Block, "stop.outputs.block"}, roleOutput{r.Outputs.Notice, "stop.outputs.notice"})
+	}
+	if r := h.Guard; r != nil {
+		out = append(out, roleOutput{r.Outputs.Context, "guard.outputs.context"})
 	}
 	return slices.DeleteFunc(out, func(o roleOutput) bool { return o.Output == nil })
 }

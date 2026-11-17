@@ -58,6 +58,16 @@ func TestPatchPaths(t *testing.T) {
 			want:  []string{"a.go"},
 		},
 		{
+			name:  "a second move line",
+			patch: "*** Begin Patch\n*** Update File: a.go\n*** Move to: b.go\n*** Move to: c.go\n@@\n-a\n+b\n*** End Patch\n",
+			want:  []string{"a.go", "b.go"},
+		},
+		{
+			name:  "a header after the end",
+			patch: "*** Begin Patch\n*** Add File: a.txt\n+a\n*** End Patch\n*** Add File: after.txt\n",
+			want:  []string{"a.txt"},
+		},
+		{
 			name:  "a header with no path",
 			patch: "*** Begin Patch\n*** Add File: \n*** Delete File:\n*** Update File: kept.go\n*** End Patch\n",
 			want:  []string{"kept.go"},
