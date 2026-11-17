@@ -214,58 +214,24 @@ describe("the Settings screen", () => {
     expect(sent.map((b) => b.revision)).toEqual([3, 4]);
   });
 
-  it("says the settings changed elsewhere, keeps the changes, and loads the stored ones on Retry", async () => {
-    const stored = settings({
-      revision: 9,
-      retention_ms: 96 * hour,
-      methods: { password: true, passkeys: false, oidc: false },
-    });
-    let reads = 0;
-    const sent: SettingsRequest[] = [];
-    worker.use(
-      http.get("/api/settings", () => {
-        reads++;
-        return HttpResponse.json(reads === 1 ? settings() : stored);
-      }),
-      http.put("/api/settings", async ({ request }) => {
-        const body = (await request.json()) as SettingsRequest;
-        sent.push(body);
-        return body.revision === stored.revision
-          ? HttpResponse.json({ ...stored, revision: 10, retention_ms: body.retention_ms })
-          : HttpResponse.json({ code: "stale_revision", error: "refused" }, { status: 409 });
-      }),
+  it("says a stale save as any refused save and keeps the changes", async () => {
+    const sent = serve(
+      settings(),
+      refusal(409, "stale_revision", "the settings changed since they were read: read them again"),
     );
     await open();
 
     await type(retention(), "168");
     await userEvent.click(button("Save changes"));
 
-    const notice = await until(() => {
-      const n = h.root.querySelector<HTMLElement>("form .cp-notice");
-      expect(n?.textContent).toBe(
-        "The settings were changed somewhere else. Retry loads them in place of your changes.Retry",
+    await until(() => {
+      expect(h.root.querySelector("form .cp-notice")?.textContent).toBe(
+        "Settings were not saved. the settings changed since they were read: read them againRetry",
       );
-      return n;
     });
     expect(retention().value).toBe("168");
     expect(savebar()?.textContent).toMatch(/^1 unsaved change/);
-
-    await userEvent.click(button("Retry", notice ?? undefined));
-
-    await until(() => {
-      expect(retention().value).toBe("96");
-    });
-    expect(box("passkeys").checked).toBe(false);
-    expect(savebar()?.hidden).toBe(true);
-    expect(h.root.querySelector("form .cp-notice")).toBeNull();
-    expect(document.activeElement?.textContent).toBe("History");
-
-    await type(retention(), "100");
-    await userEvent.click(button("Save changes"));
-    await until(() => {
-      expect(savebar()?.hidden).toBe(true);
-    });
-    expect(sent.map((b) => b.revision)).toEqual([3, 9]);
+    expect(sent.map((b) => b.revision)).toEqual([3]);
   });
 
   it("sends Enter in the retention field as Save", async () => {
