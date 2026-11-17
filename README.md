@@ -141,7 +141,7 @@ The healthcheck runs `grelot health`, which requests `GET /healthz` on port 9738
 - `permission denied` on `/data/grelot.db` means the `data` folder is not owned by user 65532.
 - You are locked out of the web UI. Run `docker exec grelot /grelot recovery <username>` and open the link it prints within 15 minutes to set a new password or passkey.
 - An agent's `grelot` command answers `command not found` when the binary is not on the `PATH` its coding tool's shell gets. See [Install the grelot client](docs/client.md).
-- Every command fails with `this grelot server (<version>) does not speak client <version>`. The client is older than the oldest one the server speaks, so install the client that line names, then check both with `grelot version`. [When the client is older than the server](docs/client.md#7-when-the-client-is-older-than-the-server) explains the line.
+- Every command but `grelot version` fails with `this grelot server (<version>) does not speak client <version>`. The client is older than the oldest one the server speaks, so install the client that line names, then check both with `grelot version`. [When the client is older than the server](docs/client.md#7-when-the-client-is-older-than-the-server) explains the line.
 - A command reports that the server did not answer in time. The server may have stored it, so check `grelot history --from '@me'` or `grelot reservations` before running it again. [When a write gets no answer](docs/client.md#6-when-a-write-gets-no-answer) explains the retry.
 
 ## Monitoring
