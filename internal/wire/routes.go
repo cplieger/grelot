@@ -43,6 +43,9 @@ var (
 	// ErrStaleRevision refuses a settings save over another revision than
 	// the stored one; the client reads the settings again.
 	ErrStaleRevision = ErrorCode{"stale_revision", http.StatusConflict}
+	// ErrPersonReserved refuses a key a change only a signed-in person
+	// makes; its fields name what the key sent.
+	ErrPersonReserved = ErrorCode{"person_reserved", http.StatusForbidden}
 	// ErrSSEUnavailable is the event stream's hub refusing a subscriber once
 	// it is shut down or at its client cap.
 	ErrSSEUnavailable = ErrorCode{"sse_unavailable", http.StatusServiceUnavailable}
@@ -107,9 +110,9 @@ type Access uint8
 
 // The access classes.
 const (
-	// AccessAgent is a machine key acting as its own identities.
+	// AccessAgent is an agent key acting as its own identities.
 	AccessAgent Access = iota + 1
-	// AccessOwner is the person: a signed-in session.
+	// AccessOwner is the person: a signed-in session or an owner key.
 	AccessOwner
 	// AccessPublic needs no credential.
 	AccessPublic

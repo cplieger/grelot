@@ -17,9 +17,9 @@ func Route(r *wire.Route) gate.Route {
 	g := gate.Route{Name: r.Pattern(), Method: r.Method, Path: r.Path}
 	switch r.Access {
 	case wire.AccessAgent:
-		g.Class = gate.Key
+		g.Class, g.Scope = gate.Key, wire.ScopeAgent
 	case wire.AccessOwner:
-		g.Class = gate.Session
+		g.Class, g.Scope = gate.Scoped, wire.ScopeOwner
 	case wire.AccessPublic:
 		g.Class = gate.Public
 	default:

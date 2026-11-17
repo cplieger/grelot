@@ -2645,7 +2645,7 @@
     },
     "securitySchemes": {
       "bearerKey": {
-        "description": "A machine key, minted by grelot key create or the web UI.",
+        "description": "An API key of the agent or owner scope, minted by grelot key create or the web UI.",
         "scheme": "bearer",
         "type": "http"
       },
@@ -2658,7 +2658,7 @@
     }
   },
   "info": {
-    "description": "The agents' routes under /v1, for a machine key, and the web UI's under /api, for a signed-in session.",
+    "description": "The agents' routes under /v1, for an agent key, and the person's under /api, for a signed-in session or an owner key.",
     "title": "grelot API",
     "version": "2"
   },
@@ -2702,8 +2702,10 @@
                 }
               }
             },
-            "description": "Forbidden: auth_session_required",
+            "description": "Forbidden: auth_session_required, auth_scope_required, auth_forbidden",
             "x-error-codes": {
+              "auth_forbidden": {},
+              "auth_scope_required": {},
               "auth_session_required": {}
             }
           },
@@ -2778,6 +2780,11 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "bearerKey": [
+              "owner"
+            ]
           }
         ],
         "summary": "Every live and dormant agent, by name"
@@ -2831,8 +2838,10 @@
                 }
               }
             },
-            "description": "Forbidden: auth_session_required",
+            "description": "Forbidden: auth_session_required, auth_scope_required, auth_forbidden",
             "x-error-codes": {
+              "auth_forbidden": {},
+              "auth_scope_required": {},
               "auth_session_required": {}
             }
           },
@@ -2908,6 +2917,11 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "bearerKey": [
+              "owner"
+            ]
           }
         ],
         "summary": "An agent's card, reservations and delegates"
@@ -2983,8 +2997,10 @@
                 }
               }
             },
-            "description": "Forbidden: auth_session_required",
+            "description": "Forbidden: auth_session_required, auth_scope_required, auth_forbidden",
             "x-error-codes": {
+              "auth_forbidden": {},
+              "auth_scope_required": {},
               "auth_session_required": {}
             }
           },
@@ -3060,6 +3076,11 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "bearerKey": [
+              "owner"
+            ]
           }
         ],
         "summary": "Every post an agent sent or received, newest first, 100 a page"
@@ -3144,8 +3165,10 @@
                 }
               }
             },
-            "description": "Forbidden: auth_session_required",
+            "description": "Forbidden: auth_session_required, auth_scope_required, auth_forbidden",
             "x-error-codes": {
+              "auth_forbidden": {},
+              "auth_scope_required": {},
               "auth_session_required": {}
             }
           },
@@ -3220,6 +3243,11 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "bearerKey": [
+              "owner"
+            ]
           }
         ],
         "summary": "Conversations newest activity first, 50 a page"
@@ -3297,8 +3325,10 @@
                 }
               }
             },
-            "description": "Forbidden: auth_session_required",
+            "description": "Forbidden: auth_session_required, auth_scope_required, auth_forbidden",
             "x-error-codes": {
+              "auth_forbidden": {},
+              "auth_scope_required": {},
               "auth_session_required": {}
             }
           },
@@ -3374,6 +3404,11 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "bearerKey": [
+              "owner"
+            ]
           }
         ],
         "summary": "A conversation's posts oldest first, 100 a page, and its context"
@@ -3452,9 +3487,11 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_cross_origin",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_forbidden, auth_cross_origin",
             "x-error-codes": {
               "auth_cross_origin": {},
+              "auth_forbidden": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -3544,6 +3581,11 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "bearerKey": [
+              "owner"
+            ]
           }
         ],
         "summary": "Mark the user's unread posts in a conversation read, up to the newest shown"
@@ -3592,8 +3634,10 @@
                 }
               }
             },
-            "description": "Forbidden: auth_session_required",
+            "description": "Forbidden: auth_session_required, auth_scope_required, auth_forbidden",
             "x-error-codes": {
+              "auth_forbidden": {},
+              "auth_scope_required": {},
               "auth_session_required": {}
             }
           },
@@ -3670,6 +3714,11 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "bearerKey": [
+              "owner"
+            ]
           }
         ],
         "summary": "A changed event after each commit the web UI shows, resumed from Last-Event-ID, between the sse hub's hello and keepalive events"
@@ -3738,8 +3787,10 @@
                 }
               }
             },
-            "description": "Forbidden: auth_session_required",
+            "description": "Forbidden: auth_session_required, auth_scope_required, auth_forbidden",
             "x-error-codes": {
+              "auth_forbidden": {},
+              "auth_scope_required": {},
               "auth_session_required": {}
             }
           },
@@ -3815,6 +3866,11 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "bearerKey": [
+              "owner"
+            ]
           }
         ],
         "summary": "Who has read a message"
@@ -3895,9 +3951,11 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_cross_origin",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_forbidden, auth_cross_origin",
             "x-error-codes": {
               "auth_cross_origin": {},
+              "auth_forbidden": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -4039,6 +4097,11 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "bearerKey": [
+              "owner"
+            ]
           }
         ],
         "summary": "Post as @user to announce, a path thread or an agent"
@@ -4082,8 +4145,10 @@
                 }
               }
             },
-            "description": "Forbidden: auth_session_required",
+            "description": "Forbidden: auth_session_required, auth_scope_required, auth_forbidden",
             "x-error-codes": {
+              "auth_forbidden": {},
+              "auth_scope_required": {},
               "auth_session_required": {}
             }
           },
@@ -4158,6 +4223,11 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "bearerKey": [
+              "owner"
+            ]
           }
         ],
         "summary": "The history retention and sign-in methods"
@@ -4222,10 +4292,13 @@
                 }
               }
             },
-            "description": "Forbidden: recent_auth_required, auth_session_required, auth_cross_origin",
+            "description": "Forbidden: recent_auth_required, person_reserved, auth_session_required, auth_scope_required, auth_forbidden, auth_cross_origin",
             "x-error-codes": {
               "auth_cross_origin": {},
+              "auth_forbidden": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
+              "person_reserved": {},
               "recent_auth_required": {}
             }
           },
@@ -4327,6 +4400,11 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "bearerKey": [
+              "owner"
+            ]
           }
         ],
         "summary": "Replace the settings; a change of sign-in methods needs a recent sign-in"
@@ -4465,8 +4543,10 @@
                 }
               }
             },
-            "description": "Forbidden: auth_session_required",
+            "description": "Forbidden: auth_session_required, auth_scope_required, auth_forbidden",
             "x-error-codes": {
+              "auth_forbidden": {},
+              "auth_scope_required": {},
               "auth_session_required": {}
             }
           },
@@ -4541,6 +4621,11 @@
         "security": [
           {
             "sessionCookie": []
+          },
+          {
+            "bearerKey": [
+              "owner"
+            ]
           }
         ],
         "summary": "The Statistics tab over a range"
@@ -4669,9 +4754,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -4828,7 +4914,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "A single-use link a subagent registers with"
@@ -4955,9 +5043,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -5100,7 +5189,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "Revoke a label's unused link and end its delegate"
@@ -5217,9 +5308,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -5348,7 +5440,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "The stop hook's hold: whether wake mail keeps the turn open"
@@ -5468,9 +5562,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -5603,7 +5698,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "A standing wait, held up to 55s, that returns this identity's next nudge"
@@ -5730,9 +5827,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -5875,7 +5973,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "Stop following a path's threads"
@@ -6000,9 +6100,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -6157,7 +6258,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "Follow a path's threads"
@@ -6368,9 +6471,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -6487,7 +6591,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "This identity's mailbox, read and unread, moving nothing; pages go back in time, each oldest first"
@@ -6678,9 +6784,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -6794,7 +6901,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "Every live identity, or with all=1 the dormant ones too, narrowed by the filters, by name"
@@ -6931,9 +7040,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -7050,7 +7160,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "The unread entries oldest first, marking nothing; with wait_ms, held until wake mail arrives"
@@ -7179,9 +7291,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -7323,7 +7436,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "Mark read every inbox entry up to one"
@@ -7440,9 +7555,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -7571,7 +7687,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "A hook's report of a session's end, a turn's end or a subagent's stop"
@@ -7690,9 +7808,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -7834,7 +7953,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "Retire this session's identity"
@@ -7989,9 +8110,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -8107,7 +8229,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "This session's identity and status; with turn=start, the prompt hook's opening of the turn"
@@ -8234,9 +8358,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -8393,7 +8518,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "Change this session's identity, or renew its lease"
@@ -8510,9 +8637,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -8629,7 +8757,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "Who has read a message this identity sent or received"
@@ -8758,9 +8888,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -8918,7 +9049,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "Post to announce, a path thread or an agent"
@@ -9057,9 +9190,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -9217,7 +9351,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "Register this session as a new identity, take one over, or register a delegate from its link"
@@ -9352,9 +9488,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -9468,7 +9605,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "The grants and queue entries overlapping a path, every one when it is absent, by id"
@@ -9595,9 +9734,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -9754,7 +9894,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "Reserve a path, or queue for it when it is taken"
@@ -9883,9 +10025,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -10028,7 +10171,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "Free a grant or cancel a queue entry of this identity"
@@ -10165,9 +10310,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -10310,7 +10456,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "Renew one of this identity's reservations"
@@ -10439,9 +10587,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -10572,7 +10721,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "Make this session's dormant identity, or one of this environment by name, live again"
@@ -10707,9 +10858,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, auth_session_required, auth_key_required",
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {},
               "forbidden": {}
             }
@@ -10825,7 +10977,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "The live path threads under a path, by path"
@@ -10932,9 +11086,10 @@
                 }
               }
             },
-            "description": "Forbidden: auth_session_required, auth_key_required",
+            "description": "Forbidden: auth_session_required, auth_scope_required, auth_key_required",
             "x-error-codes": {
               "auth_key_required": {},
+              "auth_scope_required": {},
               "auth_session_required": {}
             }
           },
@@ -11021,7 +11176,9 @@
         },
         "security": [
           {
-            "bearerKey": []
+            "bearerKey": [
+              "agent"
+            ]
           }
         ],
         "summary": "The server's version and path root"

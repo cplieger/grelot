@@ -258,6 +258,8 @@ func (s *Server) putSettings(r *http.Request, _ store.Keyed) (body any, err erro
 			f.Code = wire.FieldNotWholeMinutes
 		}
 		return nil, fieldRefusal(re.Error(), f)
+	case errors.Is(err, auth.ErrPersonReserved):
+		return nil, personReserved("only a signed-in person changes the sign-in methods, never a key", "methods")
 	case errors.Is(err, accounts.ErrStaleRevision):
 		return nil, refusal(wire.ErrStaleRevision, err.Error())
 	case errors.Is(err, auth.ErrRecentAuth):

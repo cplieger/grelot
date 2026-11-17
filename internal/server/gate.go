@@ -7,6 +7,7 @@ import (
 
 	"github.com/cplieger/access"
 	"github.com/cplieger/access/gate"
+	"github.com/cplieger/grelot/internal/auth"
 	"github.com/cplieger/grelot/internal/obs"
 )
 
@@ -30,7 +31,8 @@ func (t *table) add(row gate.Route, h http.Handler) { //nolint:gocritic // hugeP
 // gate, which answers it 405 with Allow.
 func (s *Server) mount(mux *http.ServeMux, t *table, prefixes ...string) {
 	g, err := gate.New(gate.Config{
-		Authenticator: s.auth.Authenticator(), Errors: AuthErrors(s.log, s.metrics), Audit: s.audit, Logger: s.log,
+		Authenticator: s.auth.Authenticator(), Allow: auth.Allow,
+		Errors: AuthErrors(s.log, s.metrics), Audit: s.audit, Logger: s.log,
 	}, t.rows, t.handlers)
 	if err != nil {
 		panic("server: " + err.Error())

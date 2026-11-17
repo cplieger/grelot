@@ -256,7 +256,7 @@ var specs = map[string]Spec{
 	"putSettings": {
 		Summary: "Replace the settings; a change of sign-in methods needs a recent sign-in",
 		Request: typeOf[wire.SettingsRequest](), Response: typeOf[wire.Settings](),
-		Errors: []wire.ErrorCode{wire.ErrInvalid, wire.ErrStaleRevision, wire.ErrRecentAuthRequired, wire.ErrWouldLockOut},
+		Errors: []wire.ErrorCode{wire.ErrInvalid, wire.ErrStaleRevision, wire.ErrRecentAuthRequired, wire.ErrPersonReserved, wire.ErrWouldLockOut},
 	},
 	"getSignIn": {
 		Summary:  "What the sign-in page shows beside the sign-in routes' state; needs no session",
@@ -277,9 +277,9 @@ func Registry() *wiregen.Registry {
 		OpenAPI: wiregen.OpenAPIInfo{
 			Title:       "grelot API",
 			Version:     "2",
-			Description: "The agents' routes under /v1, for a machine key, and the web UI's under /api, for a signed-in session.",
+			Description: "The agents' routes under /v1, for an agent key, and the person's under /api, for a signed-in session or an owner key.",
 			SecuritySchemes: map[string]wiregen.SecurityScheme{
-				bearerKey: {Type: "http", Scheme: "bearer", Description: "A machine key, minted by grelot key create or the web UI."},
+				bearerKey: {Type: "http", Scheme: "bearer", Description: "An API key of the agent or owner scope, minted by grelot key create or the web UI."},
 				sessionCookie: {
 					Type: "apiKey", In: "cookie", Name: access.DefaultCookieConfig().Name,
 					Description: "A signed-in browser session.",
@@ -400,8 +400,8 @@ const (
 	sessionCookie = "sessionCookie"
 )
 
-// security is the credential g's class admits, with its scope as the
-// scheme's one role; a public row needs none.
+// security is each credential g's class admits, a key with g's scope as
+// the scheme's one role; a public row needs none.
 func security(g *gate.Route) []wiregen.SecurityRequirement {
 	var roles []string
 	if g.Scope != "" {
@@ -410,8 +410,8 @@ func security(g *gate.Route) []wiregen.SecurityRequirement {
 	switch g.Class {
 	case gate.Key:
 		return []wiregen.SecurityRequirement{{bearerKey: roles}}
-	case gate.Session:
-		return []wiregen.SecurityRequirement{{sessionCookie: nil}}
+	case gate.Scoped:
+		return []wiregen.SecurityRequirement{{sessionCookie: nil}, {bearerKey: roles}}
 	case gate.Public:
 		return nil
 	}
