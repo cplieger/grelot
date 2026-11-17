@@ -1,5 +1,5 @@
-github.com/cplieger/bolttable v1.2.0-dev.3 h1:gMMi6NdYnU5UvgP2dwWENrmcPSGB7rCZnJX9Fa0RDG0=
-github.com/cplieger/bolttable v1.2.0-dev.3/go.mod h1:KaCpwjysir78upGR3sp+d8STs21PdngmSXrgMBe/aVQ=
+github.com/cplieger/bolttable v1.2.0-dev.4 h1:0d2JY5QA+ob5LaLxDVRzBx3hR+4eitvtVL/Abun8uWY=
+github.com/cplieger/bolttable v1.2.0-dev.4/go.mod h1:KaCpwjysir78upGR3sp+d8STs21PdngmSXrgMBe/aVQ=
 github.com/cplieger/go/envx v1.1.0 h1:AfJm5r7oR3zHmpplYwpNQL6yB7b50bmNAaOAijeG9aM=
 github.com/cplieger/go/envx v1.1.0/go.mod h1:USzzGAzdJGsU8ZYRmVaMGvKzgEGDDhXvUUsckSv4VfM=
 github.com/cplieger/go/filesafe v1.1.0 h1:zCInOHIkszZQKNxIQvPgaFg592E5J27+/2hfbPmzEfA=
