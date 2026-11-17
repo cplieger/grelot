@@ -34,8 +34,7 @@ const pushGrace = 2 * time.Minute
 // whether an accepted send has proven push.
 type pushReading struct {
 	// failing is the first failed send of the retry run now open, zero for
-	// none. The run ends at an accepted send, and at a retry a read or a
-	// standing wait made obsolete, so the next failure gets its own grace.
+	// none; pushee.endRetry ends the run.
 	failing time.Time
 	// healthy is the accepted send that ended unproven, zero before one.
 	healthy time.Time

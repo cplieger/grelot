@@ -305,6 +305,138 @@ func TestPush_aRetryInFlightPastTheGraceReadsDown(t *testing.T) {
 	})
 }
 
+// A turn open when the retry is due holds the nudge for the hooks
+// (Server.deferred), so no send carries the failing run on.
+func TestPush_aRetryHeldForAnOpenTurnEndsTheFailingRun(t *testing.T) {
+	t.Setenv(doorTokenEnv, doorSecret)
+	rcv := newPushReceiver(t,
+		pushReply{status: http.StatusServiceUnavailable, header: map[string]string{"Retry-After": "20"}},
+		pushReply{status: http.StatusAccepted},
+	)
+	synctest.Test(t, func(t *testing.T) {
+		h := newPushHarness(t, rcv.kiroDoor()...)
+		h.mustRegisterAlone(sessA, "reader")
+		h.mustRegisterAlone(sessB, "writer")
+		// A stop hook seen, so the server tracks the reader's turns.
+		h.self(sessA, http.MethodPost, "/v1/events/hold", map[string]any{"for": "stop", "last": true})
+		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
+		synctest.Wait()
+		h.prompt(sessA, "turn=start")
+		time.Sleep(grace + 30*time.Second)
+		synctest.Wait()
+
+		h.mustWake(t, "past the grace in the open turn", sessA, wakePush)
+		if got := h.pushState(sessA); got != string(pushOK) {
+			t.Errorf("push = %q, want ok", got)
+		}
+		if got := h.self(sessA, http.MethodPost, "/v1/events/hold", map[string]any{"for": "stop"}).str("wake"); got != wakePush {
+			t.Errorf("stop hook: wake %q, want %q", got, wakePush)
+		}
+		if n := len(rcv.requests()); n != 1 {
+			t.Errorf("%d pushes, want only the failed first one", n)
+		}
+	})
+}
+
+// Each row is one site that starts, carries or ends a failing run. The
+// first send, at 0 s, fails; at runs 10 s on, before the first retry at
+// 20 s. An open run reads host push for the grace from its first failed
+// send and down after; an ended one reads host push again.
+func TestPush_theFailingRunStartsAtTheFirstFailureAndEndsWithItsRetry(t *testing.T) {
+	t.Setenv(doorTokenEnv, doorSecret)
+	retry := func(after string) pushReply {
+		return pushReply{status: http.StatusServiceUnavailable, header: map[string]string{"Retry-After": after}}
+	}
+	accepted := pushReply{status: http.StatusAccepted}
+	stopSeen := func(h *harness) {
+		h.self(sessA, http.MethodPost, "/v1/events/hold", map[string]any{"for": "stop", "last": true})
+	}
+	for _, tc := range []struct {
+		name    string
+		replies []pushReply
+		// first runs before the post, at 10 s after it.
+		first, at func(*harness)
+		// before and after are the wake a second either side of the
+		// grace, push the state after it.
+		before, after string
+		push          pushState
+	}{
+		{
+			name: "a failed retry keeps the run open", replies: []pushReply{retry("20")},
+			before: wakePush, after: wakeDown, push: pushFailing,
+		},
+		{
+			name: "a same-session register carries the run", replies: []pushReply{retry("20")},
+			at:     func(h *harness) { h.reRegister(sessA, "reader") },
+			before: wakePush, after: wakeDown, push: pushFailing,
+		},
+		{
+			name: "an accepted retry ends the run", replies: []pushReply{retry("20"), accepted, retry("600")},
+			before: wakePush, after: wakePush, push: pushOK,
+		},
+		{
+			name: "a read of the mail ends the run", replies: []pushReply{retry("600")},
+			at:     stopSeen,
+			before: wakePush, after: wakePush, push: pushOK,
+		},
+		{
+			name: "an ack ends the run", replies: []pushReply{retry("600")},
+			at:     func(h *harness) { h.ack(sessA, h.newestWake(sessA)) },
+			before: wakePush, after: wakePush, push: pushOK,
+		},
+		// The ack moves the read past the first mail, so the nudge still
+		// due for the second is a new send, whose failure starts a new run.
+		{
+			name: "a new send of the nudge ends the run", replies: []pushReply{retry("600")},
+			at: func(h *harness) {
+				first := h.newestWake(sessA)
+				h.mustPost(sessB, map[string]any{"agent": "reader"}, "again")
+				synctest.Wait()
+				h.ack(sessA, first)
+			},
+			before: wakePush, after: wakePush, push: pushFailing,
+		},
+		{
+			name: "a retry held for an open turn ends the run", replies: []pushReply{retry("20"), accepted},
+			first: stopSeen, at: func(h *harness) { h.prompt(sessA, "turn=start") },
+			before: wakePush, after: wakePush, push: pushOK,
+		},
+		{
+			name: "push off ends the run, and a register starts afresh", replies: []pushReply{retry("5"), {status: http.StatusNotFound}, accepted},
+			at:     func(h *harness) { h.reRegister(sessA, "reader") },
+			before: wakePush, after: wakePush, push: pushOK,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rcv := newPushReceiver(t, tc.replies...)
+			synctest.Test(t, func(t *testing.T) {
+				h := newPushHarness(t, rcv.kiroDoor()...)
+				h.mustRegisterAlone(sessA, "reader")
+				h.mustRegisterAlone(sessB, "writer")
+				if tc.first != nil {
+					tc.first(h)
+				}
+				h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
+				synctest.Wait()
+				time.Sleep(10 * time.Second)
+				if tc.at != nil {
+					tc.at(h)
+				}
+				synctest.Wait()
+				time.Sleep(grace - 11*time.Second)
+				synctest.Wait()
+				h.mustWake(t, "a second before the grace", sessA, tc.before)
+				time.Sleep(2 * time.Second)
+				synctest.Wait()
+				h.mustWake(t, "a second after the grace", sessA, tc.after)
+				if got := h.pushState(sessA); got != string(tc.push) {
+					t.Errorf("push after the grace = %q, want %q", got, tc.push)
+				}
+			})
+		})
+	}
+}
+
 // forgetNow drops session's push entry, as the sweeper's beat drops a
 // lapsed identity's. A lapse needs the bubble's clock to move, which it
 // cannot while a send is held on a socket, so the test calls the writer.

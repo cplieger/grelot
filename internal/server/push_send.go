@@ -70,6 +70,19 @@ type pushee struct {
 	unproven bool
 }
 
+// endRetry ends e's pending retry and its failing run, so the next failure
+// gets its own grace.
+func (e *pushee) endRetry() {
+	e.retryAt = time.Time{}
+	e.failing = time.Time{}
+}
+
+// sendRetry takes e's pending retry for the send going out now. Push reads
+// ok while it is in flight, as for a first send, so standing waits do not
+// send the nudge beside it; the failing run stays open, so a door failing
+// every retry reads down past the grace.
+func (e *pushee) sendRetry() { e.retryAt = time.Time{} }
+
 // sendKey is what a send's dedupe key is made of besides the identity.
 type sendKey struct {
 	read    uint64
@@ -297,7 +310,7 @@ func (p *hostPush) look(ctx context.Context, id uint64) bool {
 			p.forget(id, cur)
 			return true
 		case st.Due == nil:
-			p.edit(id, func(e *pushee) { e.retryAt, e.failing, e.at = time.Time{}, time.Time{}, st.Next })
+			p.edit(id, func(e *pushee) { e.endRetry(); e.at = st.Next })
 			return true
 		}
 		key := sendKey{read: st.Due.Read, attempt: st.Due.Attempt}
@@ -313,23 +326,24 @@ func (p *hostPush) look(ctx context.Context, id uint64) bool {
 
 // waits reports whether due, whose send is key, is not to go out yet, and
 // sets when to look again: a failed send waits for its retry time, and a
-// first nudge for the hooks (Server.deferred). Any other send due ends a
-// pending retry and its failing run, since a standing wait or a read moved
-// the nudge on.
+// first nudge for the hooks (Server.deferred). A nudge a standing wait or a
+// read moved on, or one held for the hooks, ends the pending retry.
 func (p *hostPush) waits(id uint64, e *pushee, due *store.Nudge, key sendKey) bool {
+	retry := !e.retryAt.IsZero() || !e.failing.IsZero()
 	switch {
-	case e.retryAt.IsZero() && e.failing.IsZero():
-	case key != e.key:
-		p.edit(id, func(e *pushee) { e.retryAt, e.failing = time.Time{}, time.Time{} })
-	case p.s.now().Before(e.retryAt):
+	case retry && key != e.key:
+		p.edit(id, (*pushee).endRetry)
+		retry = false
+	case retry && p.s.now().Before(e.retryAt):
 		p.edit(id, func(e *pushee) { e.at = e.retryAt })
 		return true
-	default:
-		p.edit(id, func(e *pushee) { e.retryAt = time.Time{} })
 	}
 	until, deferred := p.s.deferred(id, due)
-	if deferred {
-		p.edit(id, func(e *pushee) { e.at = until })
+	switch {
+	case deferred:
+		p.edit(id, func(e *pushee) { e.endRetry(); e.at = until })
+	case retry:
+		p.edit(id, (*pushee).sendRetry)
 	}
 	return deferred
 }
@@ -424,8 +438,9 @@ func doorAttrs(d provider.ServerDoor, status int) []any {
 func (p *hostPush) accepted(id uint64, cur *pushee) {
 	now := p.s.now()
 	p.editOnReceiver(id, cur, func(e *pushee) {
+		e.endRetry()
 		if e.unproven {
-			e.failing, e.healthy, e.unproven = time.Time{}, now, false
+			e.healthy, e.unproven = now, false
 		}
 	})
 }
@@ -451,11 +466,15 @@ func (p *hostPush) retryLater(ctx context.Context, id uint64, cur *pushee, key s
 	p.s.hub.Woke([]uint64{id})
 }
 
-// identityOff turns push off for cur's receiver alone, until id registers
-// again or is revived, and hands its nudge to its standing waits.
+// identityOff turns push off for cur's receiver alone, ending its retry,
+// until id registers again or is revived, and hands its nudge to its
+// standing waits.
 func (p *hostPush) identityOff(ctx context.Context, id uint64, cur *pushee, level slog.Level, msg string, attrs []any) {
 	p.s.log.Log(ctx, level, msg, attrs...)
-	p.editOnReceiver(id, cur, func(e *pushee) { e.off, e.retryAt, e.at = true, time.Time{}, time.Time{} })
+	p.editOnReceiver(id, cur, func(e *pushee) {
+		e.endRetry()
+		e.off, e.at = true, time.Time{}
+	})
 	p.s.hub.Woke([]uint64{id})
 }
 
