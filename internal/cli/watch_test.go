@@ -143,3 +143,29 @@ func TestWatch_aRunEndingErrorDeliversTheEnd(t *testing.T) {
 		})
 	}
 }
+
+// Host push working again ends the watcher with nothing failed: exit 0
+// whatever the door's end_exit.
+func TestWatch_aRestoredEndSaysHostPushWorksAndExits0(t *testing.T) {
+	const end = "[grelot:end] grelot (automated, not the user): this watcher stopped (host push working again); run grelot me"
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusGone)
+		_, _ = w.Write([]byte(`{"error":"host push works again, so this watcher stops","code":"restored"}`))
+	}))
+	defer fake.Close()
+	for _, c := range []struct{ door, wantOut string }{
+		{door: "once", wantOut: end + "\n"},
+		{door: "tray", wantOut: "tray s-1 " + end + "\n"},
+		{door: "poll", wantOut: "end " + end + "\n"},
+	} {
+		t.Run(c.door, func(t *testing.T) {
+			a := newAgent(t, &testServer{URL: fake.URL}, "s-1", "")
+			a.env.Providers = providerSet(t, "alpha", alphaDoors)
+			code, out, errOut := a.run("--provider", "alpha", "watch", "--door", c.door)
+			if code != 0 || out != c.wantOut {
+				t.Errorf("exit %d, stdout %q, want 0, %q; stderr %q", code, out, c.wantOut, errOut)
+			}
+		})
+	}
+}

@@ -38,11 +38,11 @@ Each tool's API is described by a door in a provider file. A door says which ide
 Push never loses mail. It only changes how soon an agent is woken.
 
 - **A file that fails to load** is skipped with one `"msg":"provider invalid"` line naming the file and the key or secret at fault, and `grelot_providers_invalid` counts it. The server starts without that file's doors.
-- **A busy or unreachable tool**, a 429, a 5xx or a timeout, is retried after the tool's `Retry-After`, or after 15 seconds without one. Every retry carries the same dedupe key, so the tool can drop a repeat.
+- **A busy or unreachable tool**, a 429, a 5xx or a timeout, is retried after the tool's `Retry-After`, or after 15 seconds without one. Every retry carries the same dedupe key, so the tool can drop a repeat. The status line keeps reading `wake: host push` until one nudge's retries have failed for 2 minutes. A read or a watcher's nudge that moves the mail on ends those retries, as does a retry that comes due during the agent's turn, which the server leaves to the turn's hooks to show. The next failure starts its own 2 minutes. Past them, the line reads `wake: watcher` when a watcher is connected, or `wake: down` and names the watcher when none is.
 - **A session the tool no longer has**, a status the door lists under `gone`, turns push off for that one identity.
 - **A refused credential**, a 401 or a 403, turns the door off for every identity it serves until the server restarts. The server logs one `"msg":"push refused"` line, and `grelot_push_door_up` reads 0.
 
-While push is off for an identity, its status line reads `wake: down` and names its watcher. The agent then starts one, and mail wakes it the usual way. The `GrelotPushFailing`, `GrelotPushDoorOff` and `GrelotProviderInvalid` rules in [Monitoring and alerts](monitoring.md#alerting) fire for these cases.
+While push is off for an identity, its status line reads `wake: down` and names its watcher. The agent then starts one, and mail wakes it the usual way. Once the tool accepts a push and push keeps working for 2 minutes, that watcher stops on its own with the end line `(host push working again)`, and push wakes the agent. A server restart alone never stops it, because the server keeps no record of past pushes. The `GrelotPushFailing`, `GrelotPushDoorOff` and `GrelotProviderInvalid` rules in [Monitoring and alerts](monitoring.md#alerting) fire for these cases.
 
 ## Write a door for another tool
 

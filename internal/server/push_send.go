@@ -47,6 +47,8 @@ type hostPush struct {
 	marks   map[uint64]struct{}
 	mu      sync.Mutex
 	once    sync.Once
+	// receivers is the last pushee.receiver number handed out.
+	receivers uint64
 }
 
 var _ Pusher = (*hostPush)(nil)
@@ -57,10 +59,29 @@ type pushee struct {
 	at time.Time
 	// retryAt is when the failed send key is tried again, zero for none.
 	retryAt time.Time
+	// failing, healthy and unproven are pushReading's.
+	failing time.Time
+	healthy time.Time
 	door    provider.ServerDoor
 	key     sendKey
-	off     bool
+	// receiver numbers the door and session the entry pushes to.
+	receiver uint64
+	off      bool
+	unproven bool
 }
+
+// endRetry ends e's pending retry and its failing run, so the next failure
+// gets its own grace.
+func (e *pushee) endRetry() {
+	e.retryAt = time.Time{}
+	e.failing = time.Time{}
+}
+
+// sendRetry takes e's pending retry for the send going out now. Push reads
+// ok while it is in flight, as for a first send, so standing waits do not
+// send the nudge beside it; the failing run stays open, so a door failing
+// every retry reads down past the grace.
+func (e *pushee) sendRetry() { e.retryAt = time.Time{} }
 
 // sendKey is what a send's dedupe key is made of besides the identity.
 type sendKey struct {
@@ -83,7 +104,7 @@ func startHostPush(s *Server, doors *provider.ServerDoors) *hostPush {
 		s.log.Error(msgPushLookupFailed, "error", err.Error())
 	}
 	for i := range all {
-		p.registered(all[i].ID, all[i].Provider, all[i].Host)
+		p.registered(all[i].ID, all[i].Provider, all[i].Host, false)
 	}
 	for _, d := range doors.All() {
 		s.metrics.PushDoorUp.Set(1, doorLabel(d))
@@ -95,31 +116,42 @@ func startHostPush(s *Server, doors *provider.ServerDoors) *hostPush {
 	return p
 }
 
-func (p *hostPush) State(id uint64) pushState {
+func (p *hostPush) Reading(id uint64) pushReading {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	e := p.ids[id]
 	switch {
 	case e == nil:
-		return pushNone
+		return pushReading{state: pushNone}
 	case e.off || p.doorOff[e.door.Door]:
-		return pushOff
-	case !e.retryAt.IsZero():
-		return pushFailing
+		return pushReading{state: pushOff}
 	}
-	return pushOK
+	r := pushReading{failing: e.failing, healthy: e.healthy, state: pushOK, unproven: e.unproven}
+	if !e.retryAt.IsZero() {
+		r.state = pushFailing
+	}
+	return r
 }
 
 // registered always installs a new entry, so a forget holding the old one
-// leaves it, and on the same door it keeps a pending retry, so a repeated
-// register never sends before the receiver's Retry-After.
-func (p *hostPush) registered(id uint64, prov, host string) {
+// leaves it. A register of the same session on the same door keeps the
+// receiver, its pending retry and its failing run, so a repeated register
+// never sends before the receiver's Retry-After nor restarts the run's
+// grace; any other starts a new receiver with nothing carried
+// (editOnReceiver).
+func (p *hostPush) registered(id uint64, prov, host string, moved bool) {
 	d, ok := p.doors.For(prov, host)
 	p.mu.Lock()
 	if ok {
-		fresh := &pushee{door: d}
-		if e := p.ids[id]; e != nil && e.door.Door == d.Door {
-			fresh.retryAt, fresh.key, fresh.at = e.retryAt, e.key, e.at
+		fresh := &pushee{door: d, unproven: true}
+		if e := p.ids[id]; e != nil && e.door.Door == d.Door && !moved {
+			fresh.receiver, fresh.retryAt, fresh.key, fresh.at = e.receiver, e.retryAt, e.key, e.at
+			if !e.off {
+				fresh.failing, fresh.healthy, fresh.unproven = e.failing, e.healthy, e.unproven
+			}
+		} else {
+			p.receivers++
+			fresh.receiver = p.receivers
 		}
 		p.ids[id] = fresh
 		p.marks[id] = struct{}{}
@@ -247,6 +279,20 @@ func (p *hostPush) edit(id uint64, fn func(*pushee)) {
 	}
 }
 
+// editOnReceiver runs fn, under the lock, on id's entry while it pushes to
+// cur's receiver, the door and session a send from cur went to: the send's
+// answer applies to cur or a same-session register's successor of it, and
+// is dropped once the receiver changed (a take-over, a revive from another
+// session, another door) or the identity was forgotten, even if it has
+// registered again since.
+func (p *hostPush) editOnReceiver(id uint64, cur *pushee, fn func(*pushee)) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if e := p.ids[id]; e != nil && e.receiver == cur.receiver {
+		fn(e)
+	}
+}
+
 // look sends id's due nudge, or sets when to look again. A send accepted
 // whose record a standing wait beat reads again, so the loop is bounded
 // by the few sends that can race. It reports false once the sender stops.
@@ -264,7 +310,7 @@ func (p *hostPush) look(ctx context.Context, id uint64) bool {
 			p.forget(id, cur)
 			return true
 		case st.Due == nil:
-			p.edit(id, func(e *pushee) { e.retryAt, e.at = time.Time{}, st.Next })
+			p.edit(id, func(e *pushee) { e.endRetry(); e.at = st.Next })
 			return true
 		}
 		key := sendKey{read: st.Due.Read, attempt: st.Due.Attempt}
@@ -280,19 +326,24 @@ func (p *hostPush) look(ctx context.Context, id uint64) bool {
 
 // waits reports whether due, whose send is key, is not to go out yet, and
 // sets when to look again: a failed send waits for its retry time, and a
-// first nudge for the hooks (Server.deferred). Any other send due ends a
-// pending retry, since a standing wait or a read moved the nudge on.
+// first nudge for the hooks (Server.deferred). A nudge a standing wait or a
+// read moved on, or one held for the hooks, ends the pending retry.
 func (p *hostPush) waits(id uint64, e *pushee, due *store.Nudge, key sendKey) bool {
-	if !e.retryAt.IsZero() {
-		if key == e.key && p.s.now().Before(e.retryAt) {
-			p.edit(id, func(e *pushee) { e.at = e.retryAt })
-			return true
-		}
-		p.edit(id, func(e *pushee) { e.retryAt = time.Time{} })
+	retry := !e.retryAt.IsZero() || !e.failing.IsZero()
+	switch {
+	case retry && key != e.key:
+		p.edit(id, (*pushee).endRetry)
+		retry = false
+	case retry && p.s.now().Before(e.retryAt):
+		p.edit(id, func(e *pushee) { e.at = e.retryAt })
+		return true
 	}
 	until, deferred := p.s.deferred(id, due)
-	if deferred {
-		p.edit(id, func(e *pushee) { e.at = until })
+	switch {
+	case deferred:
+		p.edit(id, func(e *pushee) { e.endRetry(); e.at = until })
+	case retry:
+		p.edit(id, (*pushee).sendRetry)
 	}
 	return deferred
 }
@@ -320,25 +371,26 @@ func (p *hostPush) send(ctx context.Context, id uint64, cur *pushee, due *store.
 			return false, false
 		}
 		p.counted(d, obs.SendGaveUp)
-		p.identityOff(ctx, id, slog.LevelError, msgPushFailed, p.lineAttrs(d, to.Name, 0, err))
+		p.identityOff(ctx, id, cur, slog.LevelError, msgPushFailed, p.lineAttrs(d, to.Name, 0, err))
 		return false, true
 	}
 	p.counted(d, sendOutcome(res.Outcome))
 	switch res.Outcome {
 	case transport.Accepted:
+		p.accepted(id, cur)
 		if _, _, err := p.s.store.RecordNudge(ctx, due, store.NudgeByPush); err != nil {
 			return false, p.lookupFailed(ctx, id, err)
 		}
 		return true, true
 	case transport.RetryLater:
-		p.retryLater(ctx, id, key, res, p.lineAttrs(d, to.Name, res.Status, res.Err))
+		p.retryLater(ctx, id, cur, key, res, p.lineAttrs(d, to.Name, res.Status, res.Err))
 	case transport.Gone:
-		p.identityOff(ctx, id, slog.LevelInfo, msgPushGone, p.lineAttrs(d, to.Name, res.Status, nil))
+		p.identityOff(ctx, id, cur, slog.LevelInfo, msgPushGone, p.lineAttrs(d, to.Name, res.Status, nil))
 	default:
 		if res.Status == http.StatusUnauthorized || res.Status == http.StatusForbidden {
 			p.doorRefused(d, res.Status)
 		} else {
-			p.identityOff(ctx, id, slog.LevelError, msgPushFailed, p.lineAttrs(d, to.Name, res.Status, nil))
+			p.identityOff(ctx, id, cur, slog.LevelError, msgPushFailed, p.lineAttrs(d, to.Name, res.Status, nil))
 		}
 	}
 	return false, true
@@ -381,25 +433,48 @@ func doorAttrs(d provider.ServerDoor, status int) []any {
 	return []any{"provider", d.File, "door", d.Door.Name, attrStatus, status}
 }
 
-// retryLater tries key again after the receiver's Retry-After. Meanwhile
-// push is failing, so id's standing waits may send the nudge, which ends
-// the retry.
-func (p *hostPush) retryLater(ctx context.Context, id uint64, key sendKey, res transport.HTTPResult, attrs []any) {
+// accepted ends the failing run of cur's receiver and proves push while it
+// is unproven.
+func (p *hostPush) accepted(id uint64, cur *pushee) {
+	now := p.s.now()
+	p.editOnReceiver(id, cur, func(e *pushee) {
+		e.endRetry()
+		if e.unproven {
+			e.healthy, e.unproven = now, false
+		}
+	})
+}
+
+// retryLater tries key again after the receiver's Retry-After, and starts
+// the failing run of cur's receiver unless one is open.
+// Meanwhile push is failing, so id's standing waits may send the
+// nudge, which ends the retry.
+func (p *hostPush) retryLater(ctx context.Context, id uint64, cur *pushee, key sendKey, res transport.HTTPResult, attrs []any) {
 	level := slog.LevelWarn
 	if res.Status != 0 && res.Status != http.StatusTooManyRequests && res.Status != http.StatusServiceUnavailable {
 		level = slog.LevelError
 	}
 	p.s.log.Log(ctx, level, msgPushFailed, attrs...)
-	at := p.s.now().Add(res.RetryAfter)
-	p.edit(id, func(e *pushee) { e.retryAt, e.key, e.at = at, key, at })
+	now := p.s.now()
+	at := now.Add(res.RetryAfter)
+	p.editOnReceiver(id, cur, func(e *pushee) {
+		e.retryAt, e.key, e.at, e.unproven = at, key, at, true
+		if e.failing.IsZero() {
+			e.failing = now
+		}
+	})
 	p.s.hub.Woke([]uint64{id})
 }
 
-// identityOff turns push off for id alone, until it registers again or is
-// revived, and hands its nudge to its standing waits.
-func (p *hostPush) identityOff(ctx context.Context, id uint64, level slog.Level, msg string, attrs []any) {
+// identityOff turns push off for cur's receiver alone, ending its retry,
+// until id registers again or is revived, and hands its nudge to its
+// standing waits.
+func (p *hostPush) identityOff(ctx context.Context, id uint64, cur *pushee, level slog.Level, msg string, attrs []any) {
 	p.s.log.Log(ctx, level, msg, attrs...)
-	p.edit(id, func(e *pushee) { e.off, e.retryAt, e.at = true, time.Time{}, time.Time{} })
+	p.editOnReceiver(id, cur, func(e *pushee) {
+		e.endRetry()
+		e.off, e.at = true, time.Time{}
+	})
 	p.s.hub.Woke([]uint64{id})
 }
 
@@ -420,8 +495,8 @@ func (p *hostPush) doorRefused(d provider.ServerDoor, status int) {
 	p.s.hub.Woke(served)
 }
 
-// forget drops id's entry e, read before a store call; an entry a register
-// or revive installed meanwhile is newer than that read and stays.
+// forget drops id's entry e, read before a store call, unless a register
+// has replaced it since.
 func (p *hostPush) forget(id uint64, e *pushee) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
