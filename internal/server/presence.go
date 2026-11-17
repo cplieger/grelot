@@ -161,11 +161,17 @@ func (p *presence) handOff(t waitTicket, n nudgeJSON) (handed, replaced bool) {
 	return true, true
 }
 
-func (p *presence) closed(t waitTicket, now time.Time) {
+// closed ends t's standing wait at now. A wait that ended restored leaves
+// no onlineFor bridge: its watcher exits for good, so once no wait is open
+// the identity reads offline and a door off or failing reads down.
+func (p *presence) closed(t waitTicket, now time.Time, restored bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	m := p.m[t.id]
 	m.open, m.closed = m.open-1, now
+	if restored {
+		m.closed = time.Time{}
+	}
 	p.m[t.id] = m
 	sw := p.sessions[t.session]
 	sw.open--
@@ -177,7 +183,7 @@ func (p *presence) closed(t waitTicket, now time.Time) {
 }
 
 // online reports whether id holds a standing wait, or closed one under
-// onlineFor ago. A session the SessionEnd report closed is offline, which
+// onlineFor ago (presence.closed). A session the SessionEnd report closed is offline, which
 // Server.onlineAt checks.
 func (p *presence) online(id uint64, now time.Time) bool {
 	m := p.get(id)

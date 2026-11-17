@@ -158,8 +158,8 @@ func TestWho_filtersCombineWithAnd(t *testing.T) {
 	h := whoHarness(t)
 	now := h.clk.now()
 	ui, server := h.idOf(sessOf("wtk-ui")), h.idOf(sessOf("wtk-server"))
-	h.srv.presence.closed(h.srv.presence.opened(ui, sessOf("wtk-ui"), now), now.Add(-91*time.Second))
-	h.srv.presence.closed(h.srv.presence.opened(server, sessOf("wtk-server"), now), now.Add(-30*time.Second))
+	h.srv.presence.closed(h.srv.presence.opened(ui, sessOf("wtk-ui"), now), now.Add(-91*time.Second), false)
+	h.srv.presence.closed(h.srv.presence.opened(server, sessOf("wtk-server"), now), now.Add(-30*time.Second), false)
 	for _, tc := range []struct {
 		name, query string
 		want        []string

@@ -170,7 +170,7 @@ func TestWait_aNudgeTheReplacedWaitSentReachesTheNewest(t *testing.T) {
 		if d := time.Since(start); d != 0 {
 			t.Errorf("the newer wait returned %v after the hand-off, want at once", d)
 		}
-		h.srv.presence.closed(older, time.Now())
+		h.srv.presence.closed(older, time.Now(), false)
 	})
 }
 
@@ -189,7 +189,7 @@ func TestWait_aNudgeSentBeforeTheNewerWaitOpenedIsTheOlderWaitsAlone(t *testing.
 		if r := h.watch(sessA, 55*time.Second); r.status != http.StatusNoContent || time.Since(before) != 55*time.Second {
 			t.Errorf("the newer wait = %d %s after %v, want 204 after the whole 55s: the older wait returns that nudge", r.status, r.raw, time.Since(before))
 		}
-		h.srv.presence.closed(older, time.Now())
+		h.srv.presence.closed(older, time.Now(), false)
 	})
 }
 

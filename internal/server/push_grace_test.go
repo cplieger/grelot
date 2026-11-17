@@ -814,3 +814,43 @@ func TestWait_aWatcherNeverEndsAsRestoredWithoutWorkingPush(t *testing.T) {
 		})
 	})
 }
+
+// A restored watcher exits for good, so a door gone after its end reads
+// down at once, while a watcher's ordinary end still reads watcher for
+// onlineFor, the bridge to its restart.
+func TestPush_aDoorGoneAfterARestoredEndReadsDown(t *testing.T) {
+	t.Setenv(doorTokenEnv, doorSecret)
+	for _, tc := range []struct {
+		end  func(t *testing.T, h *harness)
+		name string
+		want string
+	}{
+		{name: "restored", want: wakeDown, end: func(t *testing.T, h *harness) {
+			if end, _ := h.watchUntilEnd(t, sessA, 5); end == nil || end.str("code") != "restored" {
+				t.Fatalf("end = %v, want a 410 restored", end)
+			}
+		}},
+		{name: "ordinary", want: wakeWatcher, end: func(t *testing.T, h *harness) {
+			if r := h.watch(sessA, time.Second); r.status != http.StatusNoContent {
+				t.Fatalf("standing wait = %d %s, want 204", r.status, r.raw)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rcv := newPushReceiver(t, pushReply{status: http.StatusAccepted}, pushReply{status: http.StatusNotFound})
+			synctest.Test(t, func(t *testing.T) {
+				h := newPushHarness(t, rcv.kiroDoor()...)
+				h.mustRegisterAlone(sessA, "reader")
+				h.mustRegisterAlone(sessB, "writer")
+				h.mustAcceptOnePush(t, sessB, sessA, "reader", rcv)
+				tc.end(t, h)
+				h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
+				synctest.Wait()
+				if got := h.pushState(sessA); got != string(pushOff) {
+					t.Fatalf("push after the 404 = %q, want off", got)
+				}
+				h.mustWakeAll(t, "the door gone after a "+tc.name+" end", sessA, tc.want, true)
+			})
+		})
+	}
+}

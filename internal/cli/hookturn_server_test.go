@@ -4,6 +4,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -919,16 +920,7 @@ func TestHookPrompt_aFailingPushNamesNoStartLineForTwoMinutes(t *testing.T) {
 	b, _ := registerAt(t, ts, "s-2", "bee-dev")
 	pushReads := func(want string, n int32) {
 		t.Helper()
-		for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-			var me map[string]any
-			ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodGet, Path: "/v1/me"}, &me)
-			if me["push"] == want && tries.Load() >= n {
-				return
-			}
-			if time.Now().After(deadline) {
-				t.Fatalf("push never read %s: %d tries, me %v", want, tries.Load(), me)
-			}
-		}
+		mustPushRead(t, ts, &tries, want, n)
 	}
 	b.postTo("@toolbelt-dev", "a question")
 	pushReads("failing", 1)
@@ -960,6 +952,71 @@ func TestHookPrompt_aFailingPushNamesNoStartLineForTwoMinutes(t *testing.T) {
 	want := "wake: down, start: grelot watch --door tray"
 	if _, out := a.prompt("go on"); !strings.Contains(out, want) {
 		t.Errorf("turn line %q after 2 min of failed retries, want %q", out, want)
+	}
+}
+
+// mustPushRead waits up to 10 s until alpha:s-1's push reads want and the
+// door has had n tries.
+func mustPushRead(t *testing.T, ts *testServer, tries *atomic.Int32, want string, n int32) {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		var me map[string]any
+		ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodGet, Path: "/v1/me"}, &me)
+		if me["push"] == want && tries.Load() >= n {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("push never read %s: %d tries, me %v", want, tries.Load(), me)
+		}
+	}
+}
+
+// A watcher that ended because push works again does not come back, so a
+// door gone right after its end names the start line at the next turn.
+func TestHookPrompt_aDoorGoneAfterARestoredEndNamesTheStartLine(t *testing.T) {
+	var tries atomic.Int32
+	door := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if tries.Add(1) == 1 {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer door.Close()
+	ts := newPushServer(t, pushDoors(door.URL))
+	file := hookTurnFile + "doors:\n  - {name: tray, layer: 2, transport: stdout, start: grelot watch --door tray}\n"
+	a := turnAgent(t, ts, file)
+	b, _ := registerAt(t, ts, "s-2", "bee-dev")
+	b.postTo("@toolbelt-dev", "a question")
+	mustPushRead(t, ts, &tries, "ok", 1)
+	a.must("inbox")
+	api, err := client.NewAPI(&client.Config{Server: ts.URL, Token: "test-token"}, "v1.1.0", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	api.Session, api.Self = "alpha:s-1", true
+	wait := func() error {
+		_, err := api.Do(t.Context(), &client.Request{Method: http.MethodPost, Path: "/v1/events/wait", Body: map[string]string{"wait": "10ms"}, Once: true}, nil)
+		return err
+	}
+	// Two waits 80 s apart keep one online stretch, under onlineFor's 90 s,
+	// so the third, 160 s in, is past the 2 minutes of working push.
+	ts.clock.run()
+	for range 2 {
+		if err := wait(); err != nil {
+			t.Fatalf("standing wait: %v, want 204", err)
+		}
+		ts.clock.advance(80 * time.Second)
+	}
+	var end *client.APIError
+	if err := wait(); !errors.As(err, &end) || end.Code != "restored" {
+		t.Fatalf("standing wait: %v, want the restored end", err)
+	}
+	b.postTo("@toolbelt-dev", "another question")
+	mustPushRead(t, ts, &tries, "off", 2)
+	want := "wake: down, start: grelot watch --door tray"
+	if _, out := a.prompt("go on"); !strings.Contains(out, want) {
+		t.Errorf("turn line %q with the door gone after the restored end, want %q", out, want)
 	}
 }
 

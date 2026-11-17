@@ -19,11 +19,11 @@ func TestPresence_onlineWhileAWaitIsOpenAndFor90sAfter(t *testing.T) {
 		t.Error("offline while a wait is open")
 	}
 	newer := p.opened(id, sessA, testNow)
-	p.closed(older, testNow)
+	p.closed(older, testNow, false)
 	if !p.online(id, testNow.Add(time.Hour)) {
 		t.Error("offline while the newer wait still holds after the replaced one closed")
 	}
-	p.closed(newer, testNow)
+	p.closed(newer, testNow, false)
 	if !p.online(id, testNow.Add(89*time.Second)) {
 		t.Error("offline 89 s after the last wait closed")
 	}
@@ -32,6 +32,25 @@ func TestPresence_onlineWhileAWaitIsOpenAndFor90sAfter(t *testing.T) {
 	}
 	if p.online(id+1, testNow) {
 		t.Error("another identity online")
+	}
+}
+
+func TestPresence_aRestoredCloseLeavesNoOnlineBridge(t *testing.T) {
+	p := newPresence()
+	const id = 7
+	older := p.opened(id, sessA, testNow)
+	newer := p.opened(id, sessA, testNow)
+	p.closed(newer, testNow, true)
+	if !p.online(id, testNow.Add(time.Hour)) {
+		t.Error("offline while the older wait still holds after the restored one closed")
+	}
+	p.closed(older, testNow, false)
+	if !p.online(id, testNow.Add(89*time.Second)) {
+		t.Error("offline 89 s after an ordinary close that followed a restored one")
+	}
+	p.closed(p.opened(id, sessA, testNow), testNow, true)
+	if p.online(id, testNow) {
+		t.Error("online at the instant its last wait closed restored")
 	}
 }
 
@@ -84,14 +103,14 @@ func TestPresence_theDownNoticeIsOncePerEpisodeAfterAStandingWait(t *testing.T) 
 	if p.tellDown(id) {
 		t.Error("owed to an identity that never held a standing wait")
 	}
-	p.closed(p.opened(id, sessA, testNow), testNow)
+	p.closed(p.opened(id, sessA, testNow), testNow, false)
 	if !p.tellDown(id) {
 		t.Fatal("not owed once its standing wait is gone")
 	}
 	if p.tellDown(id) {
 		t.Error("owed twice in one down episode")
 	}
-	p.closed(p.opened(id, sessA, testNow), testNow)
+	p.closed(p.opened(id, sessA, testNow), testNow, false)
 	if !p.tellDown(id) {
 		t.Error("not owed in the episode after the next standing wait")
 	}
@@ -107,7 +126,7 @@ func TestPresence_theDownNoticeIsOncePerEpisodeAfterAStandingWait(t *testing.T) 
 // markStopAndWait gives id a seen stop hook and a held standing wait.
 func markStopAndWait(p *presence, id uint64) {
 	p.sawStop(id)
-	p.closed(p.opened(id, "test:session", testNow), testNow)
+	p.closed(p.opened(id, "test:session", testNow), testNow, false)
 }
 
 func TestPresence_aNewerStandingWaitReplacesItsSessionsOlderOnes(t *testing.T) {
@@ -148,7 +167,7 @@ func TestPresence_aNewerStandingWaitReplacesItsSessionsOlderOnes(t *testing.T) {
 		t.Errorf("the newest wait took the handed nudge twice: %v", got)
 	}
 	for _, w := range []waitTicket{first, second, third, other} {
-		p.closed(w, testNow)
+		p.closed(w, testNow, false)
 	}
 	if len(p.sessions) != 0 {
 		t.Errorf("%d session entries after every wait closed, want none", len(p.sessions))

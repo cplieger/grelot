@@ -58,7 +58,7 @@ func (s *Server) standingWait(r *http.Request, c store.Caller) (status int, body
 		return 0, nil, err
 	}
 	t := s.presence.opened(id, c.Session, s.now())
-	defer func() { s.presence.closed(t, s.now()) }()
+	defer func() { s.presence.closed(t, s.now(), errors.Is(err, errRestored)) }()
 	deadline := s.now().Add(wait)
 	for {
 		wake, release := s.hub.take(id)
