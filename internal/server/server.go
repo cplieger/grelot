@@ -174,10 +174,15 @@ func (s *Server) Handler() http.Handler {
 	))
 	mux.Handle("GET /metrics", s.metrics.Handler())
 	s.routes(mux)
-	return httpserver.Chain(mux,
+	return s.middleware(mux)
+}
+
+// middleware wraps h in the access log and the panic recoverer.
+func (s *Server) middleware(h http.Handler) http.Handler {
+	return httpserver.Chain(h,
 		httpserver.Logging(httpserver.WithLogger(s.log), httpserver.WithProbeLogLevel("/healthz", "/metrics"),
 			httpserver.WithRecordRouteMetric(s.metrics.RecordHTTP)),
-		httpserver.Recoverer(httpserver.WithRecoverLogger(s.log)))
+		httpserver.Recoverer(httpserver.WithRecoverLogger(s.log), httpserver.WithRecoverResponder(s.panicked)))
 }
 
 // routes registers every /v1 route on the one mux the access log reads

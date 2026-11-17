@@ -109,3 +109,12 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	}
 	httpserver.WriteJSONStatus(w, status, body)
 }
+
+// panicked answers a recovered panic in grelot's error body, the one fail
+// writes for an internal error; Recoverer has already logged the panic.
+func (s *Server) panicked(w http.ResponseWriter, r *http.Request, status int, _ httpserver.ErrorCode, _ string) {
+	httpserver.WriteJSONStatus(w, status, errorBody{
+		Error: "internal server error", Code: "internal_error",
+		RequestID: httpserver.RequestIDFromContext(r.Context()), PathRoot: s.cfg.PathRoot,
+	})
+}
