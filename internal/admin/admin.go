@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/cplieger/grelot/internal/auth"
-	"github.com/cplieger/grelot/internal/wire"
 )
 
 // The verbs a Request names.
@@ -34,10 +33,12 @@ const (
 	VerbKeyRotate  = "key-rotate"
 )
 
-// Request is one command: its verb and the username or label it names.
+// Request is one command: its verb, the username or label it names, and
+// for key-create the new key's scope.
 type Request struct {
-	Verb string `json:"verb"`
-	Arg  string `json:"arg,omitempty"`
+	Verb  string `json:"verb"`
+	Arg   string `json:"arg,omitempty"`
+	Scope string `json:"scope,omitempty"`
 }
 
 // Response is a command's answer: Error set on a refusal, else the fields
@@ -56,6 +57,7 @@ type Key struct {
 	Created  time.Time `json:"created"`
 	LastUsed time.Time `json:"last_used,omitzero"`
 	Label    string    `json:"label"`
+	Scope    string    `json:"scope"`
 }
 
 const (
@@ -121,7 +123,8 @@ func NewServer(a *auth.Auth, logger *slog.Logger) *Server {
 
 // Serve answers ln's connections one at a time until ctx ends, then closes
 // ln, which removes the socket, and returns once the connection in hand is
-// answered. It logs each command's verb and argument, never its secret.
+// answered. It logs each command's verb, argument and scope, never its
+// secret.
 func (s *Server) Serve(ctx context.Context, ln *net.UnixListener) error {
 	defer ln.Close()
 	stop := context.AfterFunc(ctx, func() { _ = ln.Close() })
@@ -155,10 +158,10 @@ func (s *Server) answer(ctx context.Context, conn *net.UnixConn) Response {
 	}
 	resp, err := s.run(ctx, req)
 	if err != nil {
-		s.logger.Info("admin command refused", "verb", req.Verb, "arg", req.Arg, "error", err)
+		s.logger.Info("admin command refused", "verb", req.Verb, "arg", req.Arg, "scope", req.Scope, "error", err)
 		return Response{Error: err.Error()}
 	}
-	s.logger.Info("admin command", "verb", req.Verb, "arg", req.Arg)
+	s.logger.Info("admin command", "verb", req.Verb, "arg", req.Arg, "scope", req.Scope)
 	return resp
 }
 
@@ -169,13 +172,13 @@ func (s *Server) run(ctx context.Context, req Request) (Response, error) {
 	case VerbRecovery:
 		return token(s.auth.Recovery(ctx, req.Arg))
 	case VerbKeyCreate:
-		key, err := s.auth.CreateKey(ctx, req.Arg, wire.ScopeAgent)
+		key, err := s.auth.CreateKey(ctx, req.Arg, req.Scope)
 		return Response{Secret: key}, err
 	case VerbKeyList:
 		keys, err := s.auth.Keys(ctx)
 		resp := Response{Keys: make([]Key, len(keys))}
 		for i, k := range keys {
-			resp.Keys[i] = Key{Label: k.Label, Created: k.Created, LastUsed: k.LastUsed}
+			resp.Keys[i] = Key{Label: k.Label, Scope: k.Scope, Created: k.Created, LastUsed: k.LastUsed}
 		}
 		return resp, err
 	case VerbKeyRevoke:

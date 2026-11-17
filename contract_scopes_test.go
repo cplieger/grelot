@@ -482,7 +482,9 @@ func TestPutSettings_aRetentionOutOfRangeNamesItsField(t *testing.T) {
 		code string
 		ms   int64
 	}{
-		{"out_of_range", halfMS}, {"out_of_range", maxMS + 60_000}, {"out_of_range", -1},
+		{"out_of_range", halfMS},
+		{"out_of_range", maxMS + 60_000},
+		{"out_of_range", -1},
 		{"not_whole_minutes", hourMS + 30_000},
 	} {
 		body := m.settingsBody(false)

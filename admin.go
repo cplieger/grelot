@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os/signal"
+	"strings"
 	"syscall"
 	"text/tabwriter"
 	"time"
@@ -15,9 +16,10 @@ import (
 	"github.com/cplieger/grelot/internal/admin"
 	"github.com/cplieger/grelot/internal/auth"
 	"github.com/cplieger/grelot/internal/server"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
-const keyUsage = "grelot key create <label> | grelot key list | grelot key rotate <label> | grelot key revoke <label>"
+const keyUsage = "grelot key create <label> [--scope=agent|owner] | grelot key list | grelot key rotate <label> | grelot key revoke <label>"
 
 // adminCommand sends one command to the running server's admin socket and
 // prints its answer: exit 0 on success, 1 on a refusal or no server, 2 on a
@@ -58,9 +60,15 @@ func adminRequest(cmd string, args []string) (req admin.Request, usage string) {
 		}
 		return admin.Request{}, "grelot recovery <username>"
 	}
+	return keyRequest(args)
+}
+
+func keyRequest(args []string) (req admin.Request, usage string) {
 	switch {
-	case len(args) == 2 && args[0] == "create":
-		return admin.Request{Verb: admin.VerbKeyCreate, Arg: args[1]}, ""
+	case len(args) >= 2 && len(args) <= 3 && args[0] == "create":
+		if scope, ok := createScope(args[2:]); ok && !strings.HasPrefix(args[1], "-") {
+			return admin.Request{Verb: admin.VerbKeyCreate, Arg: args[1], Scope: scope}, ""
+		}
 	case len(args) == 1 && args[0] == "list":
 		return admin.Request{Verb: admin.VerbKeyList}, ""
 	case len(args) == 2 && args[0] == "revoke":
@@ -69,6 +77,17 @@ func adminRequest(cmd string, args []string) (req admin.Request, usage string) {
 		return admin.Request{Verb: admin.VerbKeyRotate, Arg: args[1]}, ""
 	}
 	return admin.Request{}, keyUsage
+}
+
+// createScope is the scope key create's flags name, agent when none. Only
+// the parse-safe --scope= form is read: a separate value word is a usage
+// error.
+func createScope(flags []string) (scope string, ok bool) {
+	if len(flags) == 0 {
+		return wire.ScopeAgent, true
+	}
+	scope, found := strings.CutPrefix(flags[0], "--scope=")
+	return scope, found && (scope == wire.ScopeAgent || scope == wire.ScopeOwner)
 }
 
 // printAnswer prints a secret alone on the first line, so a script can
@@ -97,13 +116,13 @@ func printKeys(w io.Writer, keys []admin.Key) {
 		return
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "LABEL\tCREATED\tLAST USED")
+	fmt.Fprintln(tw, "LABEL\tSCOPE\tCREATED\tLAST USED")
 	for _, k := range keys {
 		used := "never"
 		if !k.LastUsed.IsZero() {
 			used = k.LastUsed.UTC().Format(time.RFC3339)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", k.Label, k.Created.UTC().Format(time.RFC3339), used)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", k.Label, k.Scope, k.Created.UTC().Format(time.RFC3339), used)
 	}
 	_ = tw.Flush()
 }
