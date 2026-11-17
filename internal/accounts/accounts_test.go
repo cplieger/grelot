@@ -162,7 +162,7 @@ func TestPut_keepsTheValuesAcrossAReopen(t *testing.T) {
 
 func TestPut_bumpsTheRevisionItWasGiven(t *testing.T) {
 	db := open(t, filepath.Join(t.TempDir(), "accounts.db"))
-	for rev := uint64(0); rev < 3; rev++ {
+	for rev := range uint64(3) {
 		got, err := db.Get(t.Context())
 		if err != nil {
 			t.Fatal(err)
@@ -255,8 +255,12 @@ func TestPut_refusesARetentionOutOfBounds(t *testing.T) {
 		retention time.Duration
 		whole     bool
 	}{
-		{time.Hour - time.Minute, false}, {90*24*time.Hour + time.Minute, false}, {0, false}, {-time.Hour, false},
-		{2*time.Hour + 30*time.Second, true}, {90*24*time.Hour - time.Millisecond, true},
+		{time.Hour - time.Minute, false},
+		{90*24*time.Hour + time.Minute, false},
+		{0, false},
+		{-time.Hour, false},
+		{2*time.Hour + 30*time.Second, true},
+		{90*24*time.Hour - time.Millisecond, true},
 	} {
 		t.Run(c.retention.String(), func(t *testing.T) {
 			err := db.Put(t.Context(), accounts.Settings{Retention: c.retention})

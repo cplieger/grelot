@@ -18,6 +18,7 @@ import type {
   ConversationRow,
   ConversationsPage,
   ConversationThread,
+  Settings,
 } from "../../wire/types.gen.js";
 import { mountAgent } from "../agent.js";
 import { messagesScreen } from "../screen.js";
@@ -84,6 +85,18 @@ export function pageOf(
 
 export function answer(...pages: ConversationsPage[]): void {
   h.answers = pages.map((p) => () => HttpResponse.json(p));
+}
+
+export function settingsOf(over: Partial<Settings> = {}): Settings {
+  return {
+    revision: 0,
+    retention_ms: 72 * hour,
+    retention_min_ms: hour,
+    retention_max_ms: 2160 * hour,
+    methods: { password: true, passkeys: true, oidc: false },
+    oidc_configured: false,
+    ...over,
+  };
 }
 
 /** A conversation with nothing around it, for the thread of row id. */
@@ -191,15 +204,7 @@ export function useMessagesHarness(): void {
     worker.resetHandlers();
     worker.use(
       http.get("/api/auth/me", () => HttpResponse.json(meAnswer("mika"))),
-      http.get("/api/settings", () =>
-        HttpResponse.json({
-          retention_ms: 72 * hour,
-          retention_min_ms: hour,
-          retention_max_ms: 2160 * hour,
-          methods: { password: true, passkeys: true, oidc: false },
-          oidc_configured: false,
-        }),
-      ),
+      http.get("/api/settings", () => HttpResponse.json(settingsOf())),
       http.get("/api/agents", () =>
         HttpResponse.json({
           agents: [

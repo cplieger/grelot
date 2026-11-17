@@ -7,6 +7,7 @@ import {
   button,
   h,
   hour,
+  settingsOf,
   start,
   useMessagesHarness,
   worker,
@@ -334,15 +335,7 @@ describe("the Statistics tab", () => {
 
   it("offers only the ranges history keeps, moving an address past them to the longest", async () => {
     worker.use(
-      http.get("/api/settings", () =>
-        HttpResponse.json({
-          retention_ms: 12 * hour,
-          retention_min_ms: hour,
-          retention_max_ms: 2160 * hour,
-          methods: { password: true, passkeys: true, oidc: false },
-          oidc_configured: false,
-        }),
-      ),
+      http.get("/api/settings", () => HttpResponse.json(settingsOf({ retention_ms: 12 * hour }))),
     );
     const asked = answerStats(json(stats()));
     open("/statistics?range=72h");

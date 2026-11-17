@@ -142,8 +142,13 @@ func TestAllow_admitsTheRolesEachScopeNames(t *testing.T) {
 		name string
 		p    access.Principal
 	}{
-		{"session", ps.session}, {"recovery", ps.recovery}, {"owner key", ps.owner}, {"agent key", ps.agent},
-		{"both-scope key", ps.both}, {"scopeless key", ps.scopeless}, {"external", ps.external},
+		{"session", ps.session},
+		{"recovery", ps.recovery},
+		{"owner key", ps.owner},
+		{"agent key", ps.agent},
+		{"both-scope key", ps.both},
+		{"scopeless key", ps.scopeless},
+		{"external", ps.external},
 	}
 	admits := map[string][]string{
 		wire.ScopeOwner:        {"session", "owner key", "both-scope key"},
