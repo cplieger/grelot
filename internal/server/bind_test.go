@@ -55,6 +55,18 @@ func asSent(fv reflect.Value) string {
 	return fmt.Sprint(fv.Interface())
 }
 
+// leafFields is typ's fields as the document publishes them, an embedded
+// struct's fields in its place.
+func leafFields(typ reflect.Type) []reflect.StructField {
+	var out []reflect.StructField
+	for _, f := range reflect.VisibleFields(typ) {
+		if !f.Anonymous {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 // jsonName is the name the generated client sends a field under.
 func jsonName(f *reflect.StructField) string {
 	name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
@@ -65,15 +77,15 @@ func TestBind_everyRouteInputIsFilledByItsJSONTags(t *testing.T) {
 	for name, typ := range routeInputs() {
 		t.Run(name, func(t *testing.T) {
 			query := map[string]string{}
-			for f := range typ.Fields() {
+			for _, f := range leafFields(typ) {
 				query[jsonName(&f)] = sent(f.Type)
 			}
 			v := reflect.New(typ).Elem()
 			if err := bindFields(v, func(k string) string { return query[k] }); err != nil {
 				t.Fatalf("bind %v: %v", query, err)
 			}
-			for f, fv := range v.Fields() {
-				if got, want := asSent(fv), sent(f.Type); got != want {
+			for _, f := range leafFields(typ) {
+				if got, want := asSent(v.FieldByIndex(f.Index)), sent(f.Type); got != want {
 					t.Errorf("%s (sent as %q) = %q, want %q", f.Name, jsonName(&f), got, want)
 				}
 			}
@@ -86,7 +98,7 @@ var rangedType = reflect.TypeFor[ranged]()
 
 func TestBind_aNumberThatIsNotWholeIsRefusedByItsJSONName(t *testing.T) {
 	for name, typ := range routeInputs() {
-		for f := range typ.Fields() {
+		for _, f := range leafFields(typ) {
 			if k := f.Type.Kind(); k != reflect.Uint64 && k != reflect.Int || f.Type.Implements(rangedType) {
 				continue
 			}
@@ -109,7 +121,7 @@ func TestBind_aNumberThatIsNotWholeIsRefusedByItsJSONName(t *testing.T) {
 func TestBind_anInstantThatIsNotRFC3339IsRefusedByItsJSONName(t *testing.T) {
 	cases := 0
 	for name, typ := range routeInputs() {
-		for f := range typ.Fields() {
+		for _, f := range leafFields(typ) {
 			if f.Type != instant {
 				continue
 			}
@@ -136,7 +148,7 @@ func TestBind_anInstantThatIsNotRFC3339IsRefusedByItsJSONName(t *testing.T) {
 func TestBind_aRangedNumberOutsideItsBoundsIsRefusedWithItsFieldError(t *testing.T) {
 	cases := 0
 	for name, typ := range routeInputs() {
-		for f := range typ.Fields() {
+		for _, f := range leafFields(typ) {
 			if !f.Type.Implements(rangedType) {
 				continue
 			}

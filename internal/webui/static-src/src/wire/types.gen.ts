@@ -422,7 +422,6 @@ export interface HistoryQuery {
   since?: string;
   /** Until is an RFC 3339 instant, the newest entry's latest time. */
   until?: string;
-  cursor?: string;
   path?: string;
   with?: string;
   from?: string;
@@ -430,8 +429,9 @@ export interface HistoryQuery {
   announce?: Flag;
   full?: Flag;
   last_read?: Flag;
-  thread?: number;
+  cursor?: string;
   limit?: number;
+  thread?: number;
 }
 
 /**
@@ -445,7 +445,6 @@ export interface HoldRequest {
 
 /** IdentitiesQuery is GET /v1/identities' query. */
 export interface IdentitiesQuery {
-  cursor?: string;
   path?: string;
   repo?: string;
   holds?: string;
@@ -454,6 +453,7 @@ export interface IdentitiesQuery {
   online?: Flag;
   here?: Flag;
   all?: Flag;
+  cursor?: string;
   limit?: number;
 }
 

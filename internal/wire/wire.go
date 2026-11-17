@@ -75,6 +75,13 @@ type PageLimit int
 // Range is the limits the server takes, which the document states.
 func (PageLimit) Range() (lo, hi int64) { return 1, PageLimitMax }
 
+// Page is a list read's paging, which every Paged row's query embeds:
+// Cursor is the next_cursor of the page before, absent for the first.
+type Page struct {
+	Cursor string    `json:"cursor,omitempty"`
+	Limit  PageLimit `json:"limit,omitempty"`
+}
+
 // The query parameters a list read pages with.
 const (
 	QueryCursor = "cursor"

@@ -287,7 +287,6 @@ export function deleteMe(args: DeleteMeArgs, opts?: ClientOpts): globalThis.Prom
 }
 
 export interface ListIdentitiesArgs {
-  readonly cursor?: string;
   readonly path?: string;
   readonly repo?: string;
   readonly holds?: string;
@@ -296,6 +295,7 @@ export interface ListIdentitiesArgs {
   readonly online?: Flag;
   readonly here?: Flag;
   readonly all?: Flag;
+  readonly cursor?: string;
   readonly limit?: number;
   /** The client's version, which the server answers 426 below its floor. */
   readonly grelotVersion: string;
@@ -330,7 +330,7 @@ export const listIdentitiesEndpoint = {
     }
     return {
       method: "GET",
-      path: "/v1/identities" + qs([["cursor", args.cursor], ["path", args.path], ["repo", args.repo], ["holds", args.holds], ["queued", args.queued], ["q", args.q], ["online", args.online], ["here", args.here], ["all", args.all], ["limit", args.limit]]),
+      path: "/v1/identities" + qs([["path", args.path], ["repo", args.repo], ["holds", args.holds], ["queued", args.queued], ["q", args.q], ["online", args.online], ["here", args.here], ["all", args.all], ["cursor", args.cursor], ["limit", args.limit]]),
       headers,
       codes: listIdentitiesCodes,
     };
@@ -543,7 +543,6 @@ export interface GetHistoryArgs {
   readonly since?: string;
   /** Until is an RFC 3339 instant, the newest entry's latest time. */
   readonly until?: string;
-  readonly cursor?: string;
   readonly path?: string;
   readonly with?: string;
   readonly from?: string;
@@ -551,8 +550,9 @@ export interface GetHistoryArgs {
   readonly announce?: Flag;
   readonly full?: Flag;
   readonly last_read?: Flag;
-  readonly thread?: number;
+  readonly cursor?: string;
   readonly limit?: number;
+  readonly thread?: number;
   /** The client's version, which the server answers 426 below its floor. */
   readonly grelotVersion: string;
   /** <provider>:<host session id>, the session the request acts as. */
@@ -584,7 +584,7 @@ export const getHistoryEndpoint = {
     }
     return {
       method: "GET",
-      path: "/v1/history" + qs([["since", args.since], ["until", args.until], ["cursor", args.cursor], ["path", args.path], ["with", args.with], ["from", args.from], ["grep", args.grep], ["announce", args.announce], ["full", args.full], ["last_read", args.last_read], ["thread", args.thread], ["limit", args.limit]]),
+      path: "/v1/history" + qs([["since", args.since], ["until", args.until], ["path", args.path], ["with", args.with], ["from", args.from], ["grep", args.grep], ["announce", args.announce], ["full", args.full], ["last_read", args.last_read], ["cursor", args.cursor], ["limit", args.limit], ["thread", args.thread]]),
       headers,
       codes: getHistoryCodes,
     };

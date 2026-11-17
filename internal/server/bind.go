@@ -31,12 +31,19 @@ func bind[T any](get func(string) string) (T, error) {
 }
 
 // bindFields fills each field of the struct v from get, keyed by the
-// field's json tag name; an empty value leaves the field zero, so an
-// optional instant is a pointer that stays nil. It panics
-// on a field kind setField cannot fill, so a wire type it misses fails
-// the server's tests rather than a request.
+// field's json tag name, and an embedded struct's fields as its own, as
+// encoding/json and the document flatten them; an empty value leaves the
+// field zero, so an optional instant is a pointer that stays nil. It
+// panics on a field kind setField cannot fill, so a wire type it misses
+// fails the server's tests rather than a request.
 func bindFields(v reflect.Value, get func(string) string) error {
 	for f, fv := range v.Fields() {
+		if f.Anonymous && f.Type.Kind() == reflect.Struct {
+			if err := bindFields(fv, get); err != nil {
+				return err
+			}
+			continue
+		}
 		name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
 		s := get(name)
 		if s == "" {

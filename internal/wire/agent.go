@@ -232,16 +232,15 @@ type Retired struct {
 
 // IdentitiesQuery is GET /v1/identities' query.
 type IdentitiesQuery struct {
-	Cursor string    `json:"cursor,omitempty"`
-	Path   string    `json:"path,omitempty"`
-	Repo   string    `json:"repo,omitempty"`
-	Holds  string    `json:"holds,omitempty"`
-	Queued string    `json:"queued,omitempty"`
-	Q      string    `json:"q,omitempty"`
-	Online Flag      `json:"online,omitempty"`
-	Here   Flag      `json:"here,omitempty"`
-	All    Flag      `json:"all,omitempty"`
-	Limit  PageLimit `json:"limit,omitempty"`
+	Path   string `json:"path,omitempty"`
+	Repo   string `json:"repo,omitempty"`
+	Holds  string `json:"holds,omitempty"`
+	Queued string `json:"queued,omitempty"`
+	Q      string `json:"q,omitempty"`
+	Online Flag   `json:"online,omitempty"`
+	Here   Flag   `json:"here,omitempty"`
+	All    Flag   `json:"all,omitempty"`
+	Page
 }
 
 // Peers is GET /v1/identities: the identities by name.
@@ -343,9 +342,8 @@ type PathQuery struct {
 
 // ThreadsQuery is GET /v1/threads' query.
 type ThreadsQuery struct {
-	Path   string    `json:"path,omitempty"`
-	Cursor string    `json:"cursor,omitempty"`
-	Limit  PageLimit `json:"limit,omitempty"`
+	Path string `json:"path,omitempty"`
+	Page
 }
 
 // Threads is GET /v1/threads: the live path threads under the path, by
@@ -388,7 +386,6 @@ type HistoryQuery struct {
 	Since *time.Time `json:"since,omitempty"`
 	// Until is an RFC 3339 instant, the newest entry's latest time.
 	Until    *time.Time `json:"until,omitempty"`
-	Cursor   string     `json:"cursor,omitempty"`
 	Path     string     `json:"path,omitempty"`
 	With     string     `json:"with,omitempty"`
 	From     string     `json:"from,omitempty"`
@@ -396,8 +393,8 @@ type HistoryQuery struct {
 	Announce Flag       `json:"announce,omitempty"`
 	Full     Flag       `json:"full,omitempty"`
 	LastRead Flag       `json:"last_read,omitempty"`
-	Thread   ThreadID   `json:"thread,omitempty"`
-	Limit    PageLimit  `json:"limit,omitempty"`
+	Page
+	Thread ThreadID `json:"thread,omitempty"`
 }
 
 // ThreadID names a thread; ids start at 1.
@@ -440,8 +437,7 @@ type Entry struct {
 // InboxQuery is GET /v1/inbox's query; WaitMS, up to MaxWaitMS, holds the
 // read until wake mail arrives.
 type InboxQuery struct {
-	Cursor string      `json:"cursor,omitempty"`
-	Limit  PageLimit   `json:"limit,omitempty"`
+	Page
 	WaitMS InboxWaitMS `json:"wait_ms,omitempty"`
 }
 
@@ -481,9 +477,8 @@ type Reserved struct {
 
 // ReservationsQuery is GET /v1/reservations' query.
 type ReservationsQuery struct {
-	Path   string    `json:"path,omitempty"`
-	Cursor string    `json:"cursor,omitempty"`
-	Limit  PageLimit `json:"limit,omitempty"`
+	Path string `json:"path,omitempty"`
+	Page
 }
 
 // Reservations is GET /v1/reservations: the grants and queue entries by

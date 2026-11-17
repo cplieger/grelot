@@ -207,24 +207,22 @@ func pagingOf(r *http.Request) *paging {
 
 // readPaging reads r's limit and opens its cursor for route.
 func (s *Server) readPaging(r *http.Request, route *wire.Route) (*paging, error) {
-	q := r.URL.Query()
-	p := &paging{limit: wire.PageLimitDefault, scope: cursorScope{row: route.Name, credential: credentialOf(r)}}
-	if v := q.Get(wire.QueryLimit); v != "" {
-		lo, hi := wire.PageLimit(0).Range()
-		n, err := strconv.ParseInt(v, 10, 64)
-		if err != nil || n < lo || n > hi {
-			return nil, rangeRefusal(wire.QueryLimit, lo, hi)
-		}
-		p.limit = int(n)
+	page, err := queryParams[wire.Page](r)
+	if err != nil {
+		return nil, err
 	}
-	cursor := q.Get(wire.QueryCursor)
+	p := &paging{limit: wire.PageLimitDefault, scope: cursorScope{row: route.Name, credential: credentialOf(r)}}
+	if page.Limit != 0 {
+		p.limit = int(page.Limit)
+	}
+	q := r.URL.Query()
 	q.Del(wire.QueryCursor)
 	q.Del(wire.QueryLimit)
 	p.scope.query = q.Encode()
-	if cursor == "" {
+	if page.Cursor == "" {
 		return p, nil
 	}
-	after, err := s.cursors.open(p.scope, cursor)
+	after, err := s.cursors.open(p.scope, page.Cursor)
 	if err != nil {
 		return nil, err
 	}

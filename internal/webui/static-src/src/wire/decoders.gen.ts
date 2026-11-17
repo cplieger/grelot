@@ -579,10 +579,6 @@ export const decodeHistoryQuery: Decoder<HistoryQuery> = (v) => {
     if ($v !== undefined && $v !== null) out.until = reqStr(o, "until", "$.history_query");
   }
   {
-    const $v = own(o, "cursor");
-    if ($v !== undefined && $v !== null) out.cursor = reqStr(o, "cursor", "$.history_query");
-  }
-  {
     const $v = own(o, "path");
     if ($v !== undefined && $v !== null) out.path = reqStr(o, "path", "$.history_query");
   }
@@ -611,12 +607,16 @@ export const decodeHistoryQuery: Decoder<HistoryQuery> = (v) => {
     if ($v !== undefined && $v !== null) out.last_read = reqOneOf(o, "last_read", FLAGS, "$.history_query");
   }
   {
-    const $v = own(o, "thread");
-    if ($v !== undefined && $v !== null) out.thread = checkRange(reqNum(o, "thread", "$.history_query"), 1, 9223372036854775807, "$.history_query.thread");
+    const $v = own(o, "cursor");
+    if ($v !== undefined && $v !== null) out.cursor = reqStr(o, "cursor", "$.history_query");
   }
   {
     const $v = own(o, "limit");
     if ($v !== undefined && $v !== null) out.limit = checkRange(reqNum(o, "limit", "$.history_query"), 1, 200, "$.history_query.limit");
+  }
+  {
+    const $v = own(o, "thread");
+    if ($v !== undefined && $v !== null) out.thread = checkRange(reqNum(o, "thread", "$.history_query"), 1, 9223372036854775807, "$.history_query.thread");
   }
   return out;
 };
@@ -634,10 +634,6 @@ export const decodeIdentitiesQuery: Decoder<IdentitiesQuery> = (v) => {
   const o = asObject(v, "$.identities_query");
   const out: IdentitiesQuery = {
   };
-  {
-    const $v = own(o, "cursor");
-    if ($v !== undefined && $v !== null) out.cursor = reqStr(o, "cursor", "$.identities_query");
-  }
   {
     const $v = own(o, "path");
     if ($v !== undefined && $v !== null) out.path = reqStr(o, "path", "$.identities_query");
@@ -669,6 +665,10 @@ export const decodeIdentitiesQuery: Decoder<IdentitiesQuery> = (v) => {
   {
     const $v = own(o, "all");
     if ($v !== undefined && $v !== null) out.all = reqOneOf(o, "all", FLAGS, "$.identities_query");
+  }
+  {
+    const $v = own(o, "cursor");
+    if ($v !== undefined && $v !== null) out.cursor = reqStr(o, "cursor", "$.identities_query");
   }
   {
     const $v = own(o, "limit");
