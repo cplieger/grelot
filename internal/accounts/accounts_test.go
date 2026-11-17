@@ -64,9 +64,10 @@ func TestOpen_generatesSecretsOnceAndKeepsThem(t *testing.T) {
 
 // TestOpen_aPreB1FileIsAFormatFile opens a copy of testdata/accounts-pre-b1.db,
 // written at e1b8499 by a main that calls accounts.Open on the path and
-// closes it, then cut to its meta pages' high-water page (10 pages of 4096
-// bytes), which bbolt reads unchanged. Its secrets are the bytes 1, 2 and 3
-// repeated, so gitleaks reads no key in the file.
+// closes it, with newSecret patched to return the bytes 1, 2 and 3
+// repeated so gitleaks reads no key in the file, then cut to its meta
+// pages' high-water page (10 pages of 4096 bytes), which bbolt reads
+// unchanged.
 func TestOpen_aPreB1FileIsAFormatFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "accounts.db")
 	if err := os.WriteFile(path, readFile(t, filepath.Join("testdata", "accounts-pre-b1.db")), 0o600); err != nil {
