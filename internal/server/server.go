@@ -208,6 +208,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	handle("POST /v1/inbox/ack", s.keyed(s.ack))
 	handle("POST /v1/reservations", s.keyed(s.reserve))
 	handle("GET /v1/reservations", s.identity(s.reservations))
+	handle("GET /v1/holders", s.identity(s.holders))
 	handle("PATCH /v1/reservations/{id}", s.keyed(s.renewReservation))
 	handle("DELETE /v1/reservations/{id}", s.keyed(s.release))
 	handle("POST /v1/delegates", s.keyed(s.grant))

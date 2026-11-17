@@ -95,6 +95,14 @@ type Reservation struct {
 	ID       uint64    `json:"id"`
 }
 
+// Holding is one grant another agent holds over the queried Path; Queued
+// is the caller's own oldest queue entry overlapping both, nil for none.
+type Holding struct {
+	Queued *Reservation `json:"queued"`
+	Path   string       `json:"path"`
+	Held   Reservation  `json:"held"`
+}
+
 // Delegate is one of the identity's delegates.
 type Delegate struct {
 	Expires     time.Time `json:"expires_at"`
