@@ -15,10 +15,11 @@ import (
 
 // The guard's lines, each naming one grant another agent holds over a
 // written file, and the last line when the rest would pass the host's
-// context limit.
+// context limit. A host may show them after the write's result, so they
+// read true before and after it.
 const (
-	lineGuardHeld     = "grelot: @%s holds %s until %s (%s); you can still edit it. Coordinate with grelot post '@%s' or reserve it after them."
-	lineGuardQueued   = "grelot: @%s holds %s until %s (%s); you can still edit it. You are queued for %s (reservation %d): coordinate with grelot post '@%s' or wait for the grant, which reaches you as mail."
+	lineGuardHeld     = "grelot: @%s holds %s until %s (%s); your write goes ahead. Coordinate with grelot post '@%s' or reserve it after them."
+	lineGuardQueued   = "grelot: @%s holds %s until %s (%s); your write goes ahead. You are queued for %s (reservation %d): coordinate with grelot post '@%s' or wait for the grant, which reaches you as mail."
 	lineGuardOverflow = "grelot: %d more paths in this write are held by other agents; grelot reservations lists them."
 )
 

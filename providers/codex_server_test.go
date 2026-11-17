@@ -365,7 +365,7 @@ func TestCodexGuard_checksEveryFileOfThePatchInOneRequest(t *testing.T) {
 		"*** Add File: ../outside.txt\n+x\n" +
 		"*** End Patch\n"
 	got := sc.writer.hook("guard", sc.patch(patch, sc.clone))
-	docsLine := "grelot: @docs-dev holds /workspace/grelot/b until 2026-11-05 10:00 UTC (moving the docs); you can still edit it. " +
+	docsLine := "grelot: @docs-dev holds /workspace/grelot/b until 2026-11-05 10:00 UTC (moving the docs); your write goes ahead. " +
 		"Coordinate with grelot post '@docs-dev' or reserve it after them."
 	if want := wantContext(t, holderLine, docsLine); got.Code != 0 || got.Stdout != want || got.Stderr != "" {
 		t.Errorf("exit %d, stdout %q, stderr %q; want 0 and %q", got.Code, got.Stdout, got.Stderr, want)

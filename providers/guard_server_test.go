@@ -19,7 +19,7 @@ import (
 // scene reserves an hour from the server's 09:00 UTC start.
 const (
 	heldFile   = "/workspace/grelot/engine.go"
-	holderLine = "grelot: @holder-dev holds " + heldFile + " until 2026-11-05 10:00 UTC (splitting the engine); you can still edit it. " +
+	holderLine = "grelot: @holder-dev holds " + heldFile + " until 2026-11-05 10:00 UTC (splitting the engine); your write goes ahead. " +
 		"Coordinate with grelot post '@holder-dev' or reserve it after them."
 )
 
@@ -293,7 +293,7 @@ func TestGuard_namesTheCallersQueuedWait(t *testing.T) {
 	if m == nil {
 		t.Fatalf("reserve --queue printed no queued id:\n%s", out)
 	}
-	want := "grelot: @holder-dev holds " + heldFile + " until 2026-11-05 10:00 UTC (splitting the engine); you can still edit it. " +
+	want := "grelot: @holder-dev holds " + heldFile + " until 2026-11-05 10:00 UTC (splitting the engine); your write goes ahead. " +
 		"You are queued for " + heldFile + " (reservation " + m[1] + "): coordinate with grelot post '@holder-dev' or wait for the grant, which reaches you as mail."
 	got := sc.writer.hook("guard", sc.write(sc.file))
 	if got.Code != 0 || got.Stdout != wantContext(t, want) {

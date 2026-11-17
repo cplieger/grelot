@@ -42,9 +42,9 @@ hooks:
 // The lines the guard prints for @holder-dev's grants, reserved for an hour
 // from the server's 09:00 UTC start.
 const (
-	guardInternal = "grelot: @holder-dev holds /workspace/toolbelt/internal until 2026-11-05 10:00 UTC (splitting internal); you can still edit it. " +
+	guardInternal = "grelot: @holder-dev holds /workspace/toolbelt/internal until 2026-11-05 10:00 UTC (splitting internal); your write goes ahead. " +
 		"Coordinate with grelot post '@holder-dev' or reserve it after them."
-	guardReadme = "grelot: @holder-dev holds /workspace/toolbelt/README.md until 2026-11-05 10:00 UTC (rewriting the docs); you can still edit it. " +
+	guardReadme = "grelot: @holder-dev holds /workspace/toolbelt/README.md until 2026-11-05 10:00 UTC (rewriting the docs); your write goes ahead. " +
 		"Coordinate with grelot post '@holder-dev' or reserve it after them."
 )
 

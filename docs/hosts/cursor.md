@@ -9,6 +9,7 @@ Nothing yet. Cursor's docs name no environment variable that carries the convers
 - grelot never picks this provider by itself.
 - Its hooks print nothing and exit 0, so installing them changes nothing in a chat.
 - Every identity command refuses with `provider cursor records no session variable, so grelot has no session to bind in this shell`.
+- There is no file reservation guard. Cursor documents a `postToolUse` hook whose `additional_context` reaches the agent after the tool's result, while its `preToolUse` reaches the agent only when it denies the call. That channel cannot be tried until the hooks act.
 
 **If you run Cursor, you can fix this.** Start two chats, run `env` in each agent's shell, and look for a variable whose value differs between them and equals the `conversation_id` its hooks receive. Open an issue on this repository naming the variable and your Cursor version.
 

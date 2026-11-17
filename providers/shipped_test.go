@@ -186,7 +186,7 @@ func TestShipped_aMiswiredHookFileFails(t *testing.T) {
 // rust-v0.169.0). Only the hosts with such a channel ship one.
 func TestShipped_guardNeverBlocks(t *testing.T) {
 	var guarded []string
-	const text = "grelot: @holder-dev holds /workspace/grelot/engine.go until 2026-11-05 10:00 UTC (it's \"quoted\"); you can still edit it.\nsecond line"
+	const text = "grelot: @holder-dev holds /workspace/grelot/engine.go until 2026-11-05 10:00 UTC (it's \"quoted\"); your write goes ahead.\nsecond line"
 	for _, name := range shippedNames(t) {
 		g := shipped(t, name).Hooks.Guard
 		if g == nil {
