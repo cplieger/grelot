@@ -18,6 +18,7 @@ useMessagesHarness();
 
 function settings(over: Partial<Settings> = {}): Settings {
   return {
+    revision: 3,
     retention_ms: 72 * hour,
     retention_min_ms: hour,
     retention_max_ms: 2160 * hour,
@@ -27,7 +28,8 @@ function settings(over: Partial<Settings> = {}): Settings {
   };
 }
 
-/** GET /api/settings answers s; each PUT answers the next of puts, the last repeating, and is recorded. */
+/** GET /api/settings answers s; each PUT is recorded and answers the next of puts, the last
+ * repeating, or with none the body saved at the next revision. */
 function serve(s: Settings, ...puts: (() => Response)[]): SettingsRequest[] {
   const sent: SettingsRequest[] = [];
   worker.use(
@@ -37,7 +39,12 @@ function serve(s: Settings, ...puts: (() => Response)[]): SettingsRequest[] {
       sent.push(body);
       const next = puts.length > 1 ? puts.shift() : puts[0];
       return next === undefined
-        ? HttpResponse.json({ ...s, retention_ms: body.retention_ms, methods: body.methods })
+        ? HttpResponse.json({
+            ...s,
+            revision: body.revision + 1,
+            retention_ms: body.retention_ms,
+            methods: body.methods,
+          })
         : next();
     }),
   );
@@ -178,11 +185,87 @@ describe("the Settings screen", () => {
       expect(savebar()?.hidden).toBe(true);
     });
     expect(sent).toEqual([
-      { retention_ms: 168 * hour, methods: { password: true, passkeys: false, oidc: false } },
+      {
+        revision: 3,
+        retention_ms: 168 * hour,
+        methods: { password: true, passkeys: false, oidc: false },
+      },
     ]);
     expect(document.body.textContent).toContain("Settings saved.");
     expect(navLink("History").textContent).toBe("History");
     expect(document.activeElement?.textContent).toBe("History");
+  });
+
+  it("saves the next change over the revision the last save answered", async () => {
+    const sent = serve(settings());
+    await open();
+
+    await type(retention(), "168");
+    await userEvent.click(button("Save changes"));
+    await until(() => {
+      expect(savebar()?.hidden).toBe(true);
+    });
+    await type(retention(), "24");
+    await userEvent.click(button("Save changes"));
+
+    await until(() => {
+      expect(sent).toHaveLength(2);
+    });
+    expect(sent.map((b) => b.revision)).toEqual([3, 4]);
+  });
+
+  it("says the settings changed elsewhere, keeps the changes, and loads the stored ones on Retry", async () => {
+    const stored = settings({
+      revision: 9,
+      retention_ms: 96 * hour,
+      methods: { password: true, passkeys: false, oidc: false },
+    });
+    let reads = 0;
+    const sent: SettingsRequest[] = [];
+    worker.use(
+      http.get("/api/settings", () => {
+        reads++;
+        return HttpResponse.json(reads === 1 ? settings() : stored);
+      }),
+      http.put("/api/settings", async ({ request }) => {
+        const body = (await request.json()) as SettingsRequest;
+        sent.push(body);
+        return body.revision === stored.revision
+          ? HttpResponse.json({ ...stored, revision: 10, retention_ms: body.retention_ms })
+          : HttpResponse.json({ code: "stale_revision", error: "refused" }, { status: 409 });
+      }),
+    );
+    await open();
+
+    await type(retention(), "168");
+    await userEvent.click(button("Save changes"));
+
+    const notice = await until(() => {
+      const n = h.root.querySelector<HTMLElement>("form .cp-notice");
+      expect(n?.textContent).toBe(
+        "The settings were changed somewhere else. Retry loads them in place of your changes.Retry",
+      );
+      return n;
+    });
+    expect(retention().value).toBe("168");
+    expect(savebar()?.textContent).toMatch(/^1 unsaved change/);
+
+    await userEvent.click(button("Retry", notice ?? undefined));
+
+    await until(() => {
+      expect(retention().value).toBe("96");
+    });
+    expect(box("passkeys").checked).toBe(false);
+    expect(savebar()?.hidden).toBe(true);
+    expect(h.root.querySelector("form .cp-notice")).toBeNull();
+    expect(document.activeElement?.textContent).toBe("History");
+
+    await type(retention(), "100");
+    await userEvent.click(button("Save changes"));
+    await until(() => {
+      expect(savebar()?.hidden).toBe(true);
+    });
+    expect(sent.map((b) => b.revision)).toEqual([3, 9]);
   });
 
   it("sends Enter in the retention field as Save", async () => {

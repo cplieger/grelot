@@ -34,6 +34,8 @@ const methodRows: readonly (readonly [keyof Methods, string, string])[] = [
 const oidcUnset = "Set OIDC_ISSUER, OIDC_CLIENT_ID and OIDC_CLIENT_SECRET to offer it.";
 const lockOutWords = "You would have no way to sign in. Turn on another method first.";
 const recentAuthWords = "Sign in again to change sign-in methods.";
+const staleWords =
+  "The settings were changed somewhere else. Retry loads them in place of your changes.";
 
 function changesWords(n: number): string {
   return n === 1 ? "1 unsaved change" : `${String(n)} unsaved changes`;
@@ -363,6 +365,14 @@ export const mountSettings: ScreenMount<"settings"> = (host, first, ctx) => {
         formNotice.replaceChildren(notice("warning", recentAuthWords));
         announce(recentAuthWords);
         return;
+      case "stale_revision":
+        formNotice.replaceChildren(
+          notice("warning", staleWords, () => {
+            void reload();
+          }),
+        );
+        announce(staleWords);
+        return;
       default: {
         const words = `Settings were not saved. ${failureWords(result)}`;
         formNotice.replaceChildren(
@@ -393,6 +403,7 @@ export const mountSettings: ScreenMount<"settings"> = (host, first, ctx) => {
       methods[key] = box.checked;
     }
     const body: SettingsRequest = {
+      revision: base.revision,
       retention_ms: retentionChanged()
         ? (typedRetention() ?? base.retention_ms)
         : base.retention_ms,
@@ -477,6 +488,14 @@ export const mountSettings: ScreenMount<"settings"> = (host, first, ctx) => {
     },
   });
   void settings.load();
+
+  /** Reads the stored settings into the form; focus left on the removed Retry goes to the heading. */
+  async function reload(): Promise<void> {
+    await settings.retry();
+    if (!host.contains(document.activeElement)) {
+      headings.get(open())?.focus();
+    }
+  }
 
   show();
   return {
