@@ -58,8 +58,8 @@ func (h *harness) mustWakeAll(t *testing.T, when, session, want string, stop boo
 }
 
 // waitForRequests sleeps on the bubble's clock, a second at a time for at
-// most limit, until rcv has had n requests, and answers when the nth came.
-func waitForRequests(t *testing.T, rcv *pushReceiver, n int, limit time.Duration) time.Time {
+// most limit, until rcv has had n requests.
+func waitForRequests(t *testing.T, rcv *pushReceiver, n int, limit time.Duration) {
 	t.Helper()
 	for end := time.Now().Add(limit); len(rcv.requests()) < n; {
 		if time.Now().After(end) {
@@ -68,7 +68,6 @@ func waitForRequests(t *testing.T, rcv *pushReceiver, n int, limit time.Duration
 		time.Sleep(time.Second)
 		synctest.Wait()
 	}
-	return time.Now()
 }
 
 func TestPush_aFailingSendStillReadsHostPushForTwoMinutes(t *testing.T) {
