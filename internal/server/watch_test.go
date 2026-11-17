@@ -151,7 +151,7 @@ func TestWait_aNudgeTheReplacedWaitSentReachesTheNewest(t *testing.T) {
 		id := h.idOf(sessA)
 		// The test is the older wait, whose look reached the send as the
 		// newer one opened.
-		older := h.srv.presence.opened(id, sessA)
+		older := h.srv.presence.opened(id, sessA, time.Now())
 		h.srv.presence.inTurnOpened(id)
 		newer := h.watchAsync(sessA, 55*time.Second)
 		synctest.Wait()
@@ -171,7 +171,7 @@ func TestWait_aNudgeTheReplacedWaitSentReachesTheNewest(t *testing.T) {
 		if d := time.Since(start); d != 0 {
 			t.Errorf("the newer wait returned %v after the hand-off, want at once", d)
 		}
-		h.srv.presence.closed(older, time.Now())
+		h.srv.presence.closed(older, time.Now(), false)
 	})
 }
 
@@ -181,7 +181,7 @@ func TestWait_aNudgeSentBeforeTheNewerWaitOpenedIsTheOlderWaitsAlone(t *testing.
 		h.mustRegisterAlone(sessA, "reader")
 		h.mustRegisterAlone(sessB, "writer")
 		id := h.idOf(sessA)
-		older := h.srv.presence.opened(id, sessA)
+		older := h.srv.presence.opened(id, sessA, time.Now())
 		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
 		if h.srv.handOff(older, h.sendAsWait(id)) {
 			t.Error("handOff answered the older wait as replaced before a newer one opened")
@@ -190,7 +190,7 @@ func TestWait_aNudgeSentBeforeTheNewerWaitOpenedIsTheOlderWaitsAlone(t *testing.
 		if r := h.watch(sessA, 55*time.Second); r.status != http.StatusNoContent || time.Since(before) != 55*time.Second {
 			t.Errorf("the newer wait = %d %s after %v, want 204 after the whole 55s: the older wait returns that nudge", r.status, r.raw, time.Since(before))
 		}
-		h.srv.presence.closed(older, time.Now())
+		h.srv.presence.closed(older, time.Now(), false)
 	})
 }
 

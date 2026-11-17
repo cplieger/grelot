@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -201,10 +202,31 @@ func TestHTTPRedirectNotFollowed(t *testing.T) {
 	}
 }
 
+// droppingURL is the base URL of a listener that closes each connection
+// unread, so every request through it ends in a network error. It stays
+// bound until the test ends: a closed server's freed port is any process's
+// to take, and one that answers turns the error into a status.
+func droppingURL(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+	return "http://" + ln.Addr().String()
+}
+
 func TestHTTPNetworkError(t *testing.T) {
-	srv, _ := statusServer(t, 200, "")
-	door := loadDoor(t, httpFile(srv.URL, ""))
-	srv.Close()
+	door := loadDoor(t, httpFile(droppingURL(t), ""))
 	res, err := NewHTTP().Send(t.Context(), door, nudgeData())
 	if err != nil {
 		t.Fatalf("Send: %v", err)

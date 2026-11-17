@@ -293,7 +293,7 @@ func TestWeb_anAgentIsOnlineWhileItHoldsAStandingWait(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.srv.presence.opened(card.ID, sessA)
+	h.srv.presence.opened(card.ID, sessA, h.clk.now())
 
 	if page := webGet[wire.AgentPage](h, "/api/agents/alpha"); !page.Agent.Online {
 		t.Error("alpha's page: offline while its wait is open")

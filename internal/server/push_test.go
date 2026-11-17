@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -101,6 +102,30 @@ func (r *pushReceiver) keys(t *testing.T) []string {
 // kiroDoor is a door file serving the kiro-cli identities of every host.
 func (r *pushReceiver) kiroDoor() []string {
 	return []string{"testhost", doorFileAt(r.srv.URL, "testhost", "door_token", "    match: {provider: kiro-cli}\n")}
+}
+
+// droppingDoor is kiroDoor for a listener that closes each connection
+// unread, so every push through it ends in a network error. Like
+// pushReceiver it lives outside the bubble, and it stays bound until the
+// test ends: a closed server's freed port is any process's to take, and
+// one that answers turns the error into a status.
+func droppingDoor(t *testing.T) []string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+	return []string{"testhost", doorFileAt("http://"+ln.Addr().String(), "testhost", "door_token", "    match: {provider: kiro-cli}\n")}
 }
 
 // newPushHarness is a bubble harness pushing through files, a providers

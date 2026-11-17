@@ -126,7 +126,7 @@ func TestMarotteNotify_outcomes(t *testing.T) {
 		want       transport.Outcome
 		wantAfter  time.Duration
 	}{
-		{name: "delivered", status: 200, body: `{"delivered":"steer"}`, want: transport.Accepted},
+		{name: "delivered", status: 200, body: `{"delivered":"accepted"}`, want: transport.Accepted},
 		{name: "duplicate", status: 200, body: `{"duplicate":true}`, want: transport.Accepted},
 		{name: "unknown session", status: 404, want: transport.Gone},
 		{name: "busy", status: 503, retryAfter: "30", want: transport.RetryLater, wantAfter: 30 * time.Second},

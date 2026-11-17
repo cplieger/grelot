@@ -61,7 +61,7 @@ func (s *Server) register(r *http.Request, c store.Caller, k store.Keyed) (statu
 			s.presence.registered(got.Identity.ID)
 		}
 		if req.Delegate == "" {
-			s.push.registered(got.Identity.ID, got.Identity.Provider, got.Identity.Host)
+			s.push.registered(got.Identity.ID, got.Identity.Provider, got.Identity.Host, got.Moved)
 		}
 		if got.Moved {
 			s.rewait(got.Identity.ID)
@@ -91,7 +91,7 @@ func (s *Server) revive(r *http.Request, c store.Caller, k store.Keyed) (status 
 	}
 	if !replayed {
 		s.presence.registered(got.Identity.ID)
-		s.push.registered(got.Identity.ID, got.Identity.Provider, got.Identity.Host)
+		s.push.registered(got.Identity.ID, got.Identity.Provider, got.Identity.Host, got.Moved)
 		if got.Moved {
 			s.rewait(got.Identity.ID)
 		}
@@ -182,7 +182,7 @@ func (s *Server) meLive(r *http.Request, c store.Caller, out *wire.Me, id uint64
 	now := s.now()
 	counts := countsOut(st.Unread)
 	out.Unread, out.Wake = &counts, s.wakeState(&st, now)
-	out.Push = string(s.push.State(id))
+	out.Push = string(s.push.Reading(id).state)
 	out.Online = s.onlineAt(now)(&st.Identity)
 	for i := range resv.Items {
 		out.Reservations = append(out.Reservations, reservationOut(&resv.Items[i]))

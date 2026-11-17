@@ -4,13 +4,16 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/cplieger/grelot/internal/client"
@@ -893,4 +896,136 @@ func TestHookSubagentStop_readsTheSubagentsSessionAtItsPath(t *testing.T) {
 	if me.State != wire.StateLive {
 		t.Errorf("the parent after the stop: %+v, want it live", me)
 	}
+}
+
+// pushDoors is a server providers folder whose one door pushes every alpha
+// identity's nudge to url.
+func pushDoors(url string) fstest.MapFS {
+	door := "name: alpha\ndoors:\n  - name: push\n    layer: 1\n    transport: http\n" +
+		"    url: '" + url + "/notify/{{path .Session}}'\n" +
+		"    body: '{\"line\": {{json .Line}}}'\n    match: {provider: alpha}\n"
+	return fstest.MapFS{"alpha.yaml": &fstest.MapFile{Data: []byte(door)}}
+}
+
+// A push that waits on its retry still wakes the session, so the turn line
+// names no start line until one nudge's retries have failed for 2 minutes.
+// Reading the mail ends the retries, and with them the failing run.
+func TestHookPrompt_aFailingPushNamesNoStartLineForTwoMinutes(t *testing.T) {
+	var tries atomic.Int32
+	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		tries.Add(1)
+		w.Header().Set("Retry-After", "600")
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer failing.Close()
+	ts := newPushServer(t, pushDoors(failing.URL))
+	file := hookTurnFile + "doors:\n  - {name: tray, layer: 2, transport: stdout, start: grelot watch --door tray}\n"
+	a := turnAgent(t, ts, file)
+	b, _ := registerAt(t, ts, "s-2", "bee-dev")
+	pushReads := func(want string, n int32) {
+		t.Helper()
+		mustPushRead(t, ts, &tries, want, n)
+	}
+	b.postTo("@toolbelt-dev", "a question")
+	pushReads("failing", 1)
+
+	if out := a.must("me"); !strings.Contains(statusOf(out), "wake: host push") {
+		t.Errorf("me status %q one failed push in, want wake: host push", statusOf(out))
+	}
+	if _, out := a.prompt("go on"); !strings.Contains(out, "grelot: @toolbelt-dev") || strings.Contains(out, "wake: down") {
+		t.Errorf("turn line %q one failed push in, want the turn line with no start line", out)
+	}
+	if out := a.must("inbox"); !strings.Contains(statusOf(out), "wake: host push") {
+		t.Errorf("inbox status %q one failed push in, want wake: host push", statusOf(out))
+	}
+	pushReads("ok", 1)
+	ts.clock.advance(2 * time.Minute)
+	if _, out := a.prompt("go on"); !strings.Contains(out, "grelot: @toolbelt-dev") || strings.Contains(out, "wake: down") {
+		t.Errorf("turn line %q 2 min after the read ended the retry, want the turn line with no start line", out)
+	}
+	if out := a.must("me"); !strings.Contains(statusOf(out), "wake: host push") {
+		t.Errorf("me status %q 2 min after the read ended the retry, want wake: host push", statusOf(out))
+	}
+
+	b.postTo("@toolbelt-dev", "another question")
+	pushReads("failing", 2)
+	ts.clock.advance(2 * time.Minute)
+	if out := a.must("me"); !strings.Contains(statusOf(out), "wake: down") {
+		t.Errorf("me status %q after 2 min of failed retries, want wake: down", statusOf(out))
+	}
+	want := "wake: down, start: grelot watch --door tray"
+	if _, out := a.prompt("go on"); !strings.Contains(out, want) {
+		t.Errorf("turn line %q after 2 min of failed retries, want %q", out, want)
+	}
+}
+
+// mustPushRead waits up to 10 s until alpha:s-1's push reads want and the
+// door has had n tries.
+func mustPushRead(t *testing.T, ts *testServer, tries *atomic.Int32, want string, n int32) {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		var me map[string]any
+		ts.call(t, "alpha:s-1", true, &client.Request{Method: http.MethodGet, Path: "/v1/me"}, &me)
+		if me["push"] == want && tries.Load() >= n {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("push never read %s: %d tries, me %v", want, tries.Load(), me)
+		}
+	}
+}
+
+// A watcher that ended because push works again does not come back, so a
+// door gone right after its end names the start line at the next turn.
+func TestHookPrompt_aDoorGoneAfterARestoredEndNamesTheStartLine(t *testing.T) {
+	var tries atomic.Int32
+	door := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if tries.Add(1) == 1 {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer door.Close()
+	ts := newPushServer(t, pushDoors(door.URL))
+	file := hookTurnFile + "doors:\n  - {name: tray, layer: 2, transport: stdout, start: grelot watch --door tray}\n"
+	a := turnAgent(t, ts, file)
+	b, _ := registerAt(t, ts, "s-2", "bee-dev")
+	b.postTo("@toolbelt-dev", "a question")
+	mustPushRead(t, ts, &tries, "ok", 1)
+	a.must("inbox")
+	api, err := client.NewAPI(&client.Config{Server: ts.URL, Token: ts.Key}, "v2.0.0", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	api.Session, api.Self = "alpha:s-1", true
+	wait := func() error {
+		_, err := api.Do(t.Context(), &client.Request{Method: http.MethodPost, Path: "/v1/events/wait", Body: wire.WaitRequest{WaitMS: 10}, Once: true}, nil)
+		return err
+	}
+	// Two waits 80 s apart keep one online stretch, under onlineFor's 90 s,
+	// so the third, 160 s in, is past the 2 minutes of working push.
+	ts.clock.run()
+	for range 2 {
+		if err := wait(); err != nil {
+			t.Fatalf("standing wait: %v, want 204", err)
+		}
+		ts.clock.advance(80 * time.Second)
+	}
+	var end *client.APIError
+	if err := wait(); !errors.As(err, &end) || end.Code != "restored" {
+		t.Fatalf("standing wait: %v, want the restored end", err)
+	}
+	b.postTo("@toolbelt-dev", "another question")
+	mustPushRead(t, ts, &tries, "off", 2)
+	want := "wake: down, start: grelot watch --door tray"
+	if _, out := a.prompt("go on"); !strings.Contains(out, want) {
+		t.Errorf("turn line %q with the door gone after the restored end, want %q", out, want)
+	}
+}
+
+// statusOf is the first line of a command's stdout, its status line.
+func statusOf(out string) string {
+	line, _, _ := strings.Cut(out, "\n")
+	return line
 }

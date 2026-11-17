@@ -28,11 +28,19 @@ var errReplaced = &apiError{
 	msg: "replaced: another watcher of this session took over, so this one stops",
 }
 
+// errRestored answers a standing wait once host push takes over from the
+// watcher (pushReading.restoredAt).
+var errRestored = &apiError{
+	status: http.StatusGone, code: transport.EndRestored,
+	msg: "host push works again, so this watcher stops",
+}
+
 // standingWait is POST /v1/events/wait: it holds until a nudge for the
 // caller's identity goes out, sending a due one itself unless host push
-// works, and returns it; 204 when wait passes with none, 410 replaced
-// once a newer standing wait of the caller's session opens, and 429 past
-// a held-wait cap.
+// works, and returns it; 204 when wait passes with none, 410 replaced once
+// a newer standing wait of the caller's session opens, 410 restored once
+// host push takes over (pushReading.restoredAt), and 429 past a held-wait
+// cap.
 func (s *Server) standingWait(r *http.Request, c store.Caller, _ store.Keyed) (status int, body any, err error) {
 	ctx := r.Context()
 	id, wait, err := s.watchFor(r, c)
@@ -44,8 +52,8 @@ func (s *Server) standingWait(r *http.Request, c store.Caller, _ store.Keyed) (s
 		return 0, nil, err
 	}
 	defer free()
-	t := s.presence.opened(id, c.Session)
-	defer func() { s.presence.closed(t, s.now()) }()
+	t := s.presence.opened(id, c.Session, s.now())
+	defer func() { s.presence.closed(t, s.now(), errors.Is(err, errRestored)) }()
 	deadline := s.now().Add(wait)
 	for {
 		wake, release := s.hub.take(id)
@@ -146,7 +154,8 @@ func (s *Server) look(ctx context.Context, c store.Caller, t waitTicket) (watchS
 // due is look's read: the nudge a standing wait t is to send or return
 // now, or the step to take when there is none. A wait whose identity is
 // gone, while its session holds another identity, ends with none: the next
-// wait holds for that one.
+// wait holds for that one. While push is ok, push sends every due nudge,
+// so a wait ending as restored leaves none behind.
 func (s *Server) due(ctx context.Context, c store.Caller, t waitTicket) (watchStep, *store.Nudge, error) {
 	me, err := s.store.Watcher(ctx, c)
 	switch {
@@ -163,8 +172,15 @@ func (s *Server) due(ctx context.Context, c store.Caller, t waitTicket) (watchSt
 		return watchStep{nudge: handed}, nil, nil
 	}
 	id := t.id
-	if s.push.State(id) == pushOK {
-		return watchStep{}, nil, nil
+	if r := s.push.Reading(id); r.state == pushOK {
+		at, ok := r.restoredAt(s.presence.watched(id))
+		switch {
+		case !ok:
+			return watchStep{}, nil, nil
+		case !s.now().Before(at):
+			return watchStep{}, nil, errRestored
+		}
+		return watchStep{until: at}, nil, nil
 	}
 	st, found, err := s.store.Nudging(ctx, id)
 	switch {

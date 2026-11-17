@@ -480,7 +480,15 @@ func TestKiroCLIWorkflowDoor_aPollThatDoesNotLapse(t *testing.T) {
 		_, _ = w.Write([]byte(`{"error":"refused","code":"unauthorized"}`))
 	}))
 	defer refusing.Close()
+	restoring := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusGone)
+		_, _ = w.Write([]byte(`{"error":"host push works again","code":"restored"}`))
+	}))
+	defer restoring.Close()
 	stopped := transport.EndLine("error")
+	// The terminal state stops the recipe's repeats, a normal end of the run.
+	restored := "[grelot:end] grelot (automated, not the user): this watcher stopped (host push working again); run grelot me"
 	cases := []struct {
 		want   map[string]any
 		server string
@@ -489,6 +497,7 @@ func TestKiroCLIWorkflowDoor_aPollThatDoesNotLapse(t *testing.T) {
 	}{
 		{name: "cut short", server: newSilentServer(t).URL, cut: true, want: map[string]any{"outcome": "idle", "cursor": nil}},
 		{name: "a refused token", server: refusing.URL, want: map[string]any{"outcome": "terminal-state", "cursor": nil, "payload": stopped}},
+		{name: "host push working again", server: restoring.URL, want: map[string]any{"outcome": "terminal-state", "cursor": nil, "payload": restored}},
 	}
 	for _, c := range cases {
 		t.Run(strings.ReplaceAll(c.name, " ", "_"), func(t *testing.T) {
