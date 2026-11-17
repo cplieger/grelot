@@ -20,6 +20,7 @@ import (
 	"github.com/cplieger/access"
 	"github.com/cplieger/grelot/internal/accounts"
 	"github.com/cplieger/grelot/internal/auth"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // PublicURL is the origin of the service New builds.
@@ -101,10 +102,10 @@ func New(t testing.TB, errs access.ErrorWriter) *auth.Auth {
 	return a
 }
 
-// Key mints a machine key labelled label on a, owned by its first admin.
+// Key mints an agent key labelled label on a, owned by its first admin.
 func Key(t testing.TB, a *auth.Auth, label string) string {
 	t.Helper()
-	key, err := a.CreateKey(context.WithoutCancel(t.Context()), label)
+	key, err := a.CreateKey(context.WithoutCancel(t.Context()), label, wire.ScopeAgent)
 	if err != nil {
 		t.Fatal(err)
 	}

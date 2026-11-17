@@ -28,6 +28,7 @@ import (
 	"github.com/cplieger/access/ratelimit"
 	"github.com/cplieger/access/webauthn"
 	"github.com/cplieger/grelot/internal/accounts"
+	"github.com/cplieger/grelot/internal/wire"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
 )
@@ -82,11 +83,13 @@ type Token struct {
 }
 
 // Key is a machine's API key as the operator lists it; LastUsed is zero for
-// a key never used.
+// a key never used. Scope is wire.ScopeAgent or wire.ScopeOwner, as RoleOf
+// reads the key's scopes.
 type Key struct {
 	Created  time.Time
 	LastUsed time.Time
 	Label    string
+	Scope    string
 }
 
 // Options are what New needs beside the accounts file.
@@ -228,19 +231,22 @@ func (a *Auth) Recovery(ctx context.Context, username string) (Token, error) {
 	return Token{Value: issued.Plaintext.Reveal(), Expires: issued.ExpiresAt, Link: a.link("recover", issued.Plaintext.Reveal())}, nil
 }
 
-// CreateKey mints a key labelled label for the account and returns its
-// plaintext, which nothing stores. access refuses an empty label and one
-// another unexpired key carries.
-func (a *Auth) CreateKey(ctx context.Context, label string) (string, error) {
+// CreateKey mints a key labelled label with the one scope scope,
+// wire.ScopeAgent or wire.ScopeOwner, for the account and returns its
+// plaintext, which nothing stores. access refuses an empty label, one
+// another unexpired key carries, and any other scope.
+func (a *Auth) CreateKey(ctx context.Context, label, scope string) (string, error) {
 	owner, err := a.owner(ctx)
 	if err != nil {
 		return "", err
 	}
-	created, err := a.svc.CreateAPIKey(ctx, operator, owner, account.NewKey{Label: label})
-	if errors.Is(err, account.ErrKeyLabelTaken) {
+	created, err := a.svc.CreateAPIKey(ctx, operator, owner, account.NewKey{Label: label, Scopes: []string{scope}})
+	switch {
+	case errors.Is(err, account.ErrKeyLabelTaken):
 		return "", fmt.Errorf("a key labelled %s exists: revoke or rotate it, or pick another label", label)
-	}
-	if err != nil {
+	case errors.Is(err, account.ErrUnknownScope):
+		return "", fmt.Errorf("a key's scope is %s or %s, not %q", wire.ScopeAgent, wire.ScopeOwner, scope)
+	case err != nil:
 		return "", err
 	}
 	return created.Plaintext.Reveal(), nil
@@ -279,7 +285,7 @@ func (a *Auth) Keys(ctx context.Context) ([]Key, error) {
 	out := make([]Key, len(listed))
 	for i := range listed {
 		k := &listed[i].Key
-		out[i] = Key{Label: k.Label, Created: k.CreatedAt, LastUsed: k.LastUsedAt}
+		out[i] = Key{Label: k.Label, Scope: keyScope(k.Scopes), Created: k.CreatedAt, LastUsed: k.LastUsedAt}
 	}
 	return out, nil
 }

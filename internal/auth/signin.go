@@ -52,6 +52,9 @@ var (
 	// ErrWouldLockOut: the change leaves the signed-in account no method
 	// it can sign in with.
 	ErrWouldLockOut = errors.New("auth: the change leaves no way to sign in")
+	// ErrPersonReserved: only a session changes the sign-in methods, never
+	// a key, so a leaked key cannot weaken sign-in.
+	ErrPersonReserved = errors.New("auth: only a signed-in person changes the sign-in methods")
 )
 
 func signInRoutes(svc *account.Service, errs access.ErrorWriter, pending *access.Sealer, logger *slog.Logger) ([]accesshttp.Route, error) {
@@ -96,7 +99,9 @@ func clientVia(res httpserver.ClientResolution) access.ClientAddr {
 
 // rulesFor is access's rules with the methods m leaves on.
 func rulesFor(m accounts.Methods) account.Rules {
-	return account.Rules{KeyPrefix: keyPrefix, DisablePasswordLogin: !m.Password}
+	return account.Rules{
+		KeyPrefix: keyPrefix, DisablePasswordLogin: !m.Password, Scopes: []string{wire.ScopeAgent, wire.ScopeOwner},
+	}
 }
 
 func (a *Auth) rules() account.Rules { return rulesFor(a.db.Current().Methods) }
@@ -210,15 +215,19 @@ func (a *Auth) Settings() Settings {
 	return Settings{Settings: a.db.Current(), OIDCConfigured: a.oidcConfigured}
 }
 
-// PutSettings stores s for the session p. A change of method needs a
-// recent sign-in (ErrRecentAuth) and must leave p's account a method it
-// can sign in with (ErrWouldLockOut); accounts.DB.Put owns the retention's
-// and the revision's refusals. Calls run one at a time, so two changes
-// never both pass the lock-out check.
+// PutSettings stores s for p, a session or an owner key. A change of
+// method is a session's alone (ErrPersonReserved), needs its recent
+// sign-in (ErrRecentAuth) and must leave its account a method it can sign
+// in with (ErrWouldLockOut); accounts.DB.Put owns the retention's and the
+// revision's refusals. Calls run one at a time, so two changes never both
+// pass the lock-out check.
 func (a *Auth) PutSettings(ctx context.Context, p *access.Principal, s accounts.Settings) error {
 	a.putMu.Lock()
 	defer a.putMu.Unlock()
 	if s.Methods != a.db.Current().Methods {
+		if !p.IsSession() {
+			return ErrPersonReserved
+		}
 		if err := a.svc.RequireRecentAuth(*p); err != nil {
 			if errors.Is(err, access.ErrRecentAuthRequired) {
 				return ErrRecentAuth

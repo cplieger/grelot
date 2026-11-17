@@ -115,6 +115,14 @@ const (
 	AccessPublic
 )
 
+// The key scopes: a key holds ScopeAgent or ScopeOwner. ScopeAgentOrOwner
+// is a row's rule, never a key's scope, so no key is minted with it.
+const (
+	ScopeAgent        = "agent"
+	ScopeOwner        = "owner"
+	ScopeAgentOrOwner = "agent-or-owner"
+)
+
 // Route is one row the server binds: what it reads at run time. Each row's
 // types, summary and refusals are internal/wirespec's, under the same Name.
 type Route struct {

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/cplieger/grelot/internal/auth"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // The verbs a Request names.
@@ -168,7 +169,7 @@ func (s *Server) run(ctx context.Context, req Request) (Response, error) {
 	case VerbRecovery:
 		return token(s.auth.Recovery(ctx, req.Arg))
 	case VerbKeyCreate:
-		key, err := s.auth.CreateKey(ctx, req.Arg)
+		key, err := s.auth.CreateKey(ctx, req.Arg, wire.ScopeAgent)
 		return Response{Secret: key}, err
 	case VerbKeyList:
 		keys, err := s.auth.Keys(ctx)
