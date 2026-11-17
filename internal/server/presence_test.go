@@ -45,8 +45,8 @@ func TestPresence_aRestoredCloseLeavesNoOnlineBridge(t *testing.T) {
 		t.Error("offline while the older wait still holds after the restored one closed")
 	}
 	p.closed(older, testNow, false)
-	if !p.online(id, testNow.Add(89*time.Second)) {
-		t.Error("offline 89 s after an ordinary close that followed a restored one")
+	if p.online(id, testNow) {
+		t.Error("online once the replaced older wait closed after the restored newer one")
 	}
 	p.closed(p.opened(id, sessA, testNow), testNow, true)
 	if p.online(id, testNow) {

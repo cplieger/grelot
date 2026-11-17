@@ -56,7 +56,8 @@ type waitTicket struct {
 }
 
 type mark struct {
-	// closed is when the last standing wait closed.
+	// closed is when the identity's newest standing wait closed, zero
+	// after a restored close (presence.closed).
 	closed time.Time
 	// turnAt is when the open turn was last set, zero when none is.
 	turnAt time.Time
@@ -163,17 +164,21 @@ func (p *presence) handOff(t waitTicket, n nudgeJSON) (handed, replaced bool) {
 
 // closed ends t's standing wait at now. A wait that ended restored leaves
 // no onlineFor bridge: its watcher exits for good, so once no wait is open
-// the identity reads offline and a door off or failing reads down.
+// the identity reads offline. A wait replaced by a newer one of its
+// identity leaves the bridge as that newer wait's close sets it.
 func (p *presence) closed(t waitTicket, now time.Time, restored bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	sw := p.sessions[t.session]
 	m := p.m[t.id]
-	m.open, m.closed = m.open-1, now
-	if restored {
+	m.open--
+	switch {
+	case restored:
 		m.closed = time.Time{}
+	case sw.newest == t.replaced || sw.id != t.id:
+		m.closed = now
 	}
 	p.m[t.id] = m
-	sw := p.sessions[t.session]
 	sw.open--
 	if sw.open == 0 {
 		delete(p.sessions, t.session)
