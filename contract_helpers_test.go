@@ -195,7 +195,7 @@ func (c *contract) mintKey(label string) string {
 	return key
 }
 
-// agentRow is one agent route of design section 1.2: the operation the
+// agentRow is one agent route under /v1: the operation the
 // contract must declare for it, and whether it takes an Idempotency-Key.
 type agentRow struct {
 	name, method, path string
@@ -384,7 +384,7 @@ func (a *agent) send(row, path string, body any, headers map[string]string) *ans
 }
 
 // call is send checked against the contract and the paired assertions,
-// with want the status the design gives the case.
+// with want the status the case expects.
 func (a *agent) call(want int, row, path string, body any) *answer {
 	a.c.t.Helper()
 	return a.callWith(want, row, path, body, nil)
@@ -407,8 +407,8 @@ func (a *agent) callWith(want int, row, path string, body any, headers map[strin
 	return ans
 }
 
-// check holds ans to its operation in the contract and to the forms the
-// design gives every answer.
+// check holds ans to its operation in the contract and to the wire forms
+// every answer takes.
 func (c *contract) check(method, path, row string, ans *answer) {
 	t := c.t
 	t.Helper()
@@ -452,8 +452,9 @@ func templateMatches(template, path string) bool {
 // instantMembers are the members, beside every *_at, that carry an instant.
 var instantMembers = []string{"since", "until", "dormant_since", "last_seen", "written"}
 
-// checkForms walks v for design 1.1's wire forms: no duration string
-// (ttl, wait), every *_ms an integer, every instant RFC 3339.
+// checkForms walks v for the wire forms docs/client.md names: no
+// duration string (ttl, wait), every *_ms an integer, every instant
+// RFC 3339.
 func checkForms(t *testing.T, where, at string, v any) {
 	t.Helper()
 	switch v := v.(type) {
@@ -484,12 +485,12 @@ func checkForms(t *testing.T, where, at string, v any) {
 }
 
 // members is what a refusal's code carries beside error, code and
-// request_id (design 1.4): each required member and the optional ones.
+// request_id: each required member and the optional ones.
 type members struct {
 	required, optional []string
 }
 
-// codeMembers is design 1.4's table for the codes the agent rows answer.
+// codeMembers is the members table for the codes the agent rows answer.
 var codeMembers = map[string]members{
 	"invalid":           {optional: []string{"fields"}},
 	"cursor_invalid":    {},
@@ -522,7 +523,7 @@ var codeMembers = map[string]members{
 	"internal_error":    {},
 }
 
-// checkEnvelope holds a refusal to the members design 1.4 gives its code.
+// checkEnvelope holds a refusal to the members codeMembers gives its code.
 func checkEnvelope(t *testing.T, where string, ans *answer) {
 	t.Helper()
 	code := ans.str("code")
@@ -551,7 +552,7 @@ func checkEnvelope(t *testing.T, where string, ans *answer) {
 	}
 }
 
-// checkHeaders holds an admitted answer to design 2.1's headers: the
+// checkHeaders holds an admitted answer to its headers: the
 // server's Grelot-Version always, a status line when the request named a
 // session the chain read, and a whole-seconds Retry-After on a 429 with
 // retry_after_ms equal to it.

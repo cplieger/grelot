@@ -14,16 +14,16 @@ import (
 	"github.com/cplieger/grelot/internal/wire"
 )
 
-// The cursor layout of design 1.1: a 12-byte nonce, a 16-byte tag, a
+// The cursor layout: a 12-byte nonce, a 16-byte tag, a
 // format byte, an 8-byte issue time and a 32-byte binding around the
-// position, unpadded base64url, so row 9's 1024-byte path seals to 1458
+// position, unpadded base64url, so a thread's 1024-byte path seals to 1458
 // characters.
 const (
 	wantMaxCursor   = 1458
 	wantMaxPosition = 1024
 )
 
-// longestPosition is each Paged row's longest position, from design 1.1:
+// longestPosition is each Paged row's longest position:
 // a name or delegate handle of 97 bytes, a thread path of 1024, a
 // reservation id or a delivery seq of 8, and a history entry's key of 28
 // (its written instant of 12, message and seq; an own post carries no

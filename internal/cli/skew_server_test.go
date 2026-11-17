@@ -140,7 +140,7 @@ func TestHookStop_aOneShotRunGetsNoCannotAckNotice(t *testing.T) {
 }
 
 // belowFloor is a released v1 client, below the server's floor, and the
-// 426 line design 1.6 gives a v2.0.0-dev.1 server's refusal of it.
+// 426 line a v2.0.0-dev.1 server's refusal of it carries.
 const (
 	belowFloor    = "v1.1.2"
 	belowFloor426 = "grelot: this grelot server (v2.0.0-dev.1) does not speak client v1.1.2; install grelot v2.0.0 from " +

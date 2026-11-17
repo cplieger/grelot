@@ -166,7 +166,7 @@ func TestGate_aFailingAccountsFileAnswers503(t *testing.T) {
 	}
 }
 
-// testUpgradeLine is design 1.6's 426 line from the harness's server, a
+// testUpgradeLine is the 426 line from the harness's server, a
 // development build of v2.0.0, to a client sending client.
 func testUpgradeLine(client string) string {
 	if client == "" {

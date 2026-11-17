@@ -84,7 +84,7 @@ func TestWire(t *testing.T) {
 	}
 }
 
-// release and development are design 1.6's two install lines, the only
+// release and development are the two install lines, the only
 // forms a version takes at any major.
 func release(v string) string {
 	return "install grelot " + v + " from https://github.com/cplieger/grelot/releases/tag/" + v + ", then check both with grelot version"

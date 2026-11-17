@@ -21,7 +21,7 @@ import (
 	"github.com/cplieger/grelot/internal/wire"
 )
 
-// errorMembers is design 1.4's table for the agent rows' codes: the
+// errorMembers is the members table for the agent rows' codes: the
 // members each carries beyond error, code and request_id, those it must
 // carry first and then those it may.
 var errorMembers = map[string]struct{ required, optional []string }{
@@ -141,7 +141,7 @@ func TestFail_aRateLimitRoundsItsWaitUp(t *testing.T) {
 	}
 }
 
-// TestAuthErrors_carriesTheEnvelope holds access's refusals to design 1.1's
+// TestAuthErrors_carriesTheEnvelope holds access's refusals to grelot's
 // envelope: the code and request id always, and retry_after_ms, the
 // whole seconds of the Retry-After access sets, only when a wait helps.
 func TestAuthErrors_carriesTheEnvelope(t *testing.T) {

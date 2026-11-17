@@ -12,8 +12,8 @@ import (
 	"github.com/cplieger/grelot/internal/wiregate"
 )
 
-// The codes every authenticating row answers (design 1.1, from access's
-// refusal.go) and the mount's code for a path no row matches.
+// The codes every authenticating row answers (from access's refusal.go)
+// and the mount's code for a path no row matches.
 var (
 	authenticating = []string{
 		"auth_method_not_allowed", "auth_required", "auth_session_expired", "auth_invalid_credentials",

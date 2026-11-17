@@ -35,7 +35,7 @@ const (
 	maxBodyKB = 128
 )
 
-// scenario is design section 7 proof 1's state: two keys, the identities
+// scenario is the agent scenario's state: two keys, the identities
 // acting under them and what earlier steps made.
 type scenario struct {
 	c                         *contract
@@ -295,8 +295,8 @@ type pagedRow struct {
 	order []string
 }
 
-// pagedRows are the agent list rows of design 1.2 (C), each with five
-// items seeded out of the row's order and that order (gate note B1).
+// pagedRows are the agent list rows, each with five items seeded out of
+// the row's order and that order.
 var pagedRows = []pagedRow{
 	{
 		row: "listIdentities", path: "/v1/identities", key: "name", order: []string{"alpha", "bravo", "charlie", "delta", "echo"},
@@ -322,7 +322,7 @@ var pagedRows = []pagedRow{
 			return a
 		},
 	},
-	// History pages go back in time, each page oldest first (gate note B1).
+	// History pages go back in time, each page oldest first.
 	{row: "getHistory", path: "/v1/history", key: "subject", order: []string{"h4", "h5", "h2", "h3", "h1"}, seed: seedDirect},
 	{row: "readInbox", path: "/v1/inbox", key: "subject", order: []string{"h1", "h2", "h3", "h4", "h5"}, seed: seedDirect},
 	{
@@ -473,7 +473,7 @@ func TestContract_aCursorIsBoundToItsRowQueryAndKey(t *testing.T) {
 	c.t = t
 }
 
-// The cursor bound of design 1.1: a 1024-byte path's cursor fits in 1458
+// The cursor bound: a 1024-byte path's cursor fits in 1458
 // characters, and one character more is refused unread.
 const (
 	maxCursorChars = 1458
@@ -529,8 +529,9 @@ type v1ErrorBody struct {
 	PathRoot string `json:"path_root"`
 }
 
-// upgradeSentence is design 1.6's 426 line from a release server of
-// version contractVersion to a client sending sent ("" for none).
+// upgradeSentence is the 426 line docs/client.md section 7 shows, from
+// a release server of version contractVersion to a client sending sent
+// ("" for none).
 func upgradeSentence(sent string) string {
 	client := sent
 	if sent == "" {
@@ -620,8 +621,8 @@ func TestOpenAPICoversAgentRoutes(t *testing.T) {
 }
 
 // TestOpenAPIErrorRequiresItsMembers holds the document's envelope to
-// design 1.1: error, code and request_id are on every refusal, the rest
-// only when they carry something.
+// docs/client.md section 8: error, code and request_id are on every
+// refusal, the rest only when they carry something.
 func TestOpenAPIErrorRequiresItsMembers(t *testing.T) {
 	raw, err := os.ReadFile(contractDoc)
 	if err != nil {
@@ -769,7 +770,7 @@ func deref(p *int64) any {
 }
 
 // notYetCovered are the wire.Routes rows the suite has no case for yet:
-// the owner rows (B3) and the stream (B4).
+// the owner rows and the event stream.
 var notYetCovered = []string{
 	"listConversations", "getConversation", "markConversationRead", "getUserReceipts", "createUserPost",
 	"listAgents", "getAgent", "getAgentHistory", "getStats", "getSettings", "putSettings", "getSignIn", "events",

@@ -34,7 +34,7 @@ func TestSpecCoversEveryRow(t *testing.T) {
 	}
 }
 
-// TestPagedRowsAnswerAList holds design 1.3's rule: a Paged row answers a
+// TestPagedRowsAnswerAList holds the list rule: a Paged row answers a
 // named struct whose one embedded field is a wire.List instantiation and
 // its query embeds wire.Page, and no other row's answer embeds a List or
 // query embeds a Page.
@@ -96,7 +96,7 @@ func endpoint(t *testing.T, reg *wiregen.Registry, name string) *wiregen.Endpoin
 
 // Every row's declared auth_ codes are exactly the gate's for that row,
 // each with access's status, so the generated union and the running gate
-// cannot drift (design 1.1).
+// cannot drift.
 func TestRowsDeclareTheGatesCodes(t *testing.T) {
 	reg := Registry()
 	for i := range wire.Routes {
@@ -122,7 +122,7 @@ func TestRowsDeclareTheGatesCodes(t *testing.T) {
 // Every row's union holds grelot's common codes: a deadline passed, the
 // server stopping, a failure of its own, and on every row the gate
 // authenticates the key bucket's 429; a list row adds the cursor's two
-// refusals (design 1.1).
+// refusals.
 func TestRowsDeclareTheCommonCodes(t *testing.T) {
 	reg := Registry()
 	for i := range wire.Routes {
@@ -153,7 +153,7 @@ func TestRowsDeclareTheCommonCodes(t *testing.T) {
 }
 
 // Each row names the credential its Access admits: an agent row a bearer
-// key, an owner row the session cookie, a public row none (design 2).
+// key, an owner row the session cookie, a public row none.
 func TestRowsDeclareTheirCredential(t *testing.T) {
 	reg := Registry()
 	if s := reg.OpenAPI.SecuritySchemes["bearerKey"]; s.Type != "http" || s.Scheme != "bearer" {
