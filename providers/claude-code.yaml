@@ -88,6 +88,28 @@ hooks:
     # Keeps quitting quick: Claude Code gives its SessionEnd hooks 1.5
     # seconds between them unless a hook's own timeout is longer.
     budget: 1s
+  guard:
+    event: PreToolUse
+    # Claude Code's file-write tools
+    # (https://code.claude.com/docs/en/tools-reference). hooks.json's
+    # matcher names the same tools, so a read, a search or a shell command
+    # never runs the guard.
+    when: {tool_name: [Edit, Write, NotebookEdit]}
+    # A slow server holds the write for at most this long, and the guard
+    # then says nothing.
+    budget: 1s
+    # As session_start's.
+    context_limit: 10000
+    # A subagent's hooks carry its agent_id, and the guard stays silent there.
+    stdin: {agent_id: agent_id, paths: [tool_input.file_path, tool_input.notebook_path]}
+    outputs:
+      # additionalContext with no permissionDecision puts the text beside the
+      # tool result and leaves the call to the normal permission flow, while
+      # exit 2, deny or ask would stop or prompt for it
+      # (https://code.claude.com/docs/en/hooks, "PreToolUse decision
+      # control"). Measured on Windows: the model read the text right after
+      # the write, which ran with no prompt and no hook error.
+      context: {text: '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":{{json .Context}}}}'}
 # No subagent_stop: a subagent's hooks carry its parent's session, so grelot
 # has no delegate of its own to end there. No turn_end: StopFailure is not
 # wired, so a turn an API error ends stays open until the server's

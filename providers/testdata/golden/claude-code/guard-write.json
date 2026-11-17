@@ -1,17 +1,17 @@
 {
-  "session_id": "3f0b8c2e-6d41-4a7e-9b15-c2e8a4d7f610",
-  "prompt_id": "8e2d4c61-0f3a-4b9e-a7d2-5c1e9f3b8a04",
-  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-work-grelot\\3f0b8c2e-6d41-4a7e-9b15-c2e8a4d7f610.jsonl",
-  "cwd": "C:\\Users\\user\\work\\grelot",
-  "permission_mode": "default",
+  "session_id": "c7c9f051-5a2c-4a93-8ebf-32e253f05809",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-work\\c7c9f051-5a2c-4a93-8ebf-32e253f05809.jsonl",
+  "cwd": "C:\\Users\\user\\work",
+  "prompt_id": "7cf7f30a-8646-4696-a016-fedb55e605ee",
+  "permission_mode": "auto",
   "effort": {
-    "level": "high"
+    "level": "xhigh"
   },
   "hook_event_name": "PreToolUse",
   "tool_name": "Write",
   "tool_input": {
-    "file_path": "C:\\Users\\user\\work\\grelot\\engine.go",
-    "content": "package grelot\n"
+    "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\guard-probe\\guard-probe-claude.txt",
+    "content": "probe\n"
   },
-  "tool_use_id": "toolu_01GuardWrite00000000000"
+  "tool_use_id": "toolu_bdrk_0197ud68jyW3fMumcTmDZnBp"
 }

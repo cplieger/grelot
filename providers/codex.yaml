@@ -95,6 +95,30 @@ hooks:
     # (subagent_hook_context in
     # https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/core/src/hook_runtime.rs).
     stdin: {agent_id: agent_id, session: agent_id}
+  guard:
+    event: PreToolUse
+    # apply_patch is Codex's one file-write tool and the name its hooks see
+    # (codex-rs/core/src/tools/hook_names.rs at rust-v0.169.0). hooks.json's
+    # matcher names it alone, so a read or a shell command never runs the
+    # guard.
+    when: {tool_name: [apply_patch]}
+    # A slow server holds the patch for at most this long, and the guard
+    # then says nothing.
+    budget: 1s
+    # As session_start's.
+    context_limit: 10000
+    # tool_input.command is the patch text; its file headers are relative
+    # to cwd unless absolute (codex-rs/core/src/tools/handlers/apply_patch.rs).
+    # A subagent's hooks carry its agent_id, and the guard stays silent there.
+    stdin: {agent_id: agent_id, patch: tool_input.command, cwd: cwd}
+    outputs:
+      # Exit 0 with additionalContext and no decision adds the text as a
+      # developer message and runs the patch. Exit 2 or a deny blocks it,
+      # and an allow with no updatedInput marks the hook failed
+      # (parse_pre_tool_use in codex-rs/hooks/src/engine/output_parser.rs
+      # and parse_completed in codex-rs/hooks/src/events/pre_tool_use.rs at
+      # rust-v0.169.0).
+      context: {text: '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":{{json .Context}}}}'}
 # No turn_end: Interrupt is not wired, so a turn the user stops with Esc
 # stays open until the server's five-minute lapse.
 notes: docs/hosts/codex.md

@@ -62,8 +62,8 @@ func TestClaudeCodeHookEvents(t *testing.T) {
 	for _, w := range want {
 		events = append(events, w.Event)
 	}
-	if !slices.Equal(events, []string{"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd"}) {
-		t.Errorf("the provider spells events %v, want SessionStart, UserPromptSubmit, Stop and SessionEnd", events)
+	if !slices.Equal(events, []string{"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd", "PreToolUse"}) {
+		t.Errorf("the provider spells events %v, want SessionStart, UserPromptSubmit, Stop, SessionEnd and PreToolUse", events)
 	}
 }
 

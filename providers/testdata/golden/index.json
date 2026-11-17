@@ -3,7 +3,7 @@
   "antigravity/stop.json": "documented: the Stop input example of https://antigravity.google/docs/hooks/, verbatim",
   "claude-code/guard-read.json": "derived from guard-write.json: tool_name Read and its tool_input of file_path alone",
   "claude-code/guard-subagent.json": "derived from guard-write.json: the agent_id and agent_type a hook inside a subagent carries (https://code.claude.com/docs/en/hooks, \"Common input fields\")",
-  "claude-code/guard-write.json": "documented: the PreToolUse input of https://code.claude.com/docs/en/hooks (\"Common input fields\" and the Write tool_input of file_path and content), with Windows paths in the shape of the measured payloads",
+  "claude-code/guard-write.json": "windows interactive session, version not reported, auto permission mode, a Write under a PreToolUse hook; user and working directory renamed in its paths, its backslashes escaped again as JSON needs after the relayed copy lost them",
   "claude-code/prompt-monitor-event.json": "linux 2.1.318 Monitor event, its line replaced by a grelot signal line in the current wording; working directory renamed in its paths, prompt and task text replaced with neutral text",
   "claude-code/prompt-task-notification.json": "windows 2.1.316 Monitor wake; working directory renamed in its paths, prompt and task text replaced with neutral text",
   "claude-code/prompt-typed.json": "windows 2.1.316 TUI; working directory renamed in its paths, prompt and task text replaced with neutral text",

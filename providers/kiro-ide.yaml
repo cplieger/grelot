@@ -29,4 +29,6 @@ session:
 # The IDE runs no one-shot chats, and kiro-cli's one_shot reads arguments of
 # a session.process this session does not name.
 one_shot: {}
+# No guard, for kiro-cli's reason: the IDE's agent server is kiro-cli's,
+# whose tool hooks reach the model only by blocking the call.
 notes: docs/hosts/kiro-ide.md
