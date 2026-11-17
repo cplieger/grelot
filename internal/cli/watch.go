@@ -211,7 +211,7 @@ func (ws *watcher) run(ctx context.Context, data *provider.Data) error {
 		case got.end != "":
 			data.Line, data.Seq = transport.EndLine(got.end), 0
 			step, err = ws.w.End(ctx, data)
-			if got.end == transport.EndReplaced || got.end == transport.EndRestored {
+			if got.end == wire.ErrReplaced.Code || got.end == wire.ErrRestored.Code {
 				// Another watcher of the session runs on, or host push wakes
 				// it, so nothing failed.
 				step.Code = 0

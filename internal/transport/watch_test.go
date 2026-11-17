@@ -262,7 +262,7 @@ func TestExecEnd(t *testing.T) {
 	var out bytes.Buffer
 	var logs logLines
 	w := newWatch(t, f.door, &out, &logs)
-	end := EndLine(EndDormant)
+	end := EndLine("dormant")
 	if got := ok(t)(w.End(t.Context(), watchData(end))); !got.Exit || got.Code != 1 {
 		t.Errorf("End = %+v, want an exit with code 1", got)
 	}
@@ -312,7 +312,7 @@ func TestExitNudge(t *testing.T) {
 }
 
 func TestLineEnd(t *testing.T) {
-	end := EndLine(EndEnded)
+	end := EndLine("ended")
 	cases := []struct {
 		name, transport, extra, want string
 		code                         int
