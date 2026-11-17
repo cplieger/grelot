@@ -1,6 +1,6 @@
 @import url("@cplieger/ui/css/system");
 
-/* grelot's seeds, checked with the ui-design skill's seeds.py. */
+/* grelot's accent and neutral seeds for the @cplieger/ui palette. */
 :root {
   --cp-accent-h: 200;
   --cp-accent-c: 0.09;

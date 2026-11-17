@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { until } from "./__test-helpers__/until.js";
 import { parseRoute, routeHref, signInHref, startRouter, type Route } from "./router.js";
 
-// The addresses shape.md gives each screen, with the state each opens.
+// Each screen's address, with the state it opens.
 const addresses: readonly (readonly [string, Route])[] = [
   ["/messages", { screen: "messages", show: "all", conversation: null }],
   ["/messages?show=threads", { screen: "messages", show: "threads", conversation: null }],
