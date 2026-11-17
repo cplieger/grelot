@@ -103,10 +103,7 @@ func (s *Server) revive(r *http.Request, c store.Caller, k store.Keyed) (status 
 	return http.StatusOK, out, nil
 }
 
-const (
-	stateNone    = "none"
-	stateDormant = "dormant"
-)
+const stateNone = "none"
 
 // me is GET /v1/me, which every session may call, a dormant one included;
 // with turn=start it is the prompt hook's, which opens the turn.
