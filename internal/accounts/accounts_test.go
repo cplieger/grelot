@@ -62,15 +62,16 @@ func TestOpen_generatesSecretsOnceAndKeepsThem(t *testing.T) {
 	}
 }
 
-// TestOpen_aPreB1FileIsAFormatFile opens a copy of testdata/accounts-pre-b1.db,
-// written at e1b8499 by a main that calls accounts.Open on the path and
-// closes it, with newSecret patched to return the bytes 1, 2 and 3
-// repeated so gitleaks reads no key in the file, then cut to its meta
-// pages' high-water page (10 pages of 4096 bytes), which bbolt reads
-// unchanged.
-func TestOpen_aPreB1FileIsAFormatFile(t *testing.T) {
+// TestOpen_aVersion1SecretsFileIsAFormatFile opens a copy of
+// testdata/accounts-secrets-v1.db, a file whose secrets row is version 1
+// (no cursor key). It was written at e1b8499 by a main that calls
+// accounts.Open on the path and closes it, with newSecret patched to
+// return the bytes 1, 2 and 3 repeated so gitleaks reads no key in the
+// file, then cut to its meta pages' high-water page (10 pages of 4096
+// bytes), which bbolt reads unchanged.
+func TestOpen_aVersion1SecretsFileIsAFormatFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "accounts.db")
-	if err := os.WriteFile(path, readFile(t, filepath.Join("testdata", "accounts-pre-b1.db")), 0o600); err != nil {
+	if err := os.WriteFile(path, readFile(t, filepath.Join("testdata", "accounts-secrets-v1.db")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	before := sha256.Sum256(readFile(t, path))
@@ -78,7 +79,7 @@ func TestOpen_aPreB1FileIsAFormatFile(t *testing.T) {
 	_, err := accounts.Open(path)
 
 	if !errors.Is(err, bolttable.ErrFormat) {
-		t.Errorf("Open of a pre-B1 file = %v, want bolttable.ErrFormat", err)
+		t.Errorf("Open of a version 1 secrets file = %v, want bolttable.ErrFormat", err)
 	}
 	if sha256.Sum256(readFile(t, path)) != before {
 		t.Error("the refused file changed")
