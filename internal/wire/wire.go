@@ -412,6 +412,9 @@ type Methods struct {
 // Settings are what the Settings screen changes, and the bounds it holds
 // the history retention to.
 type Settings struct {
+	// Revision counts the stored saves, 0 before the first; a save sends
+	// it back.
+	Revision uint64 `json:"revision"`
 	// RetentionMS is how long a thread, post or event lives after it is
 	// written.
 	RetentionMS    int64   `json:"retention_ms"`
@@ -426,8 +429,11 @@ type Settings struct {
 // SettingsRequest replaces the settings. A change of methods needs a
 // sign-in or step-up of the last 10 minutes.
 type SettingsRequest struct {
-	Methods     Methods `json:"methods"`
-	RetentionMS int64   `json:"retention_ms"`
+	Methods Methods `json:"methods"`
+	// Revision is the Settings revision the change was made over; any
+	// other is stale_revision.
+	Revision    uint64 `json:"revision"`
+	RetentionMS int64  `json:"retention_ms"`
 }
 
 // SignIn is what the sign-in page shows beside access's state.

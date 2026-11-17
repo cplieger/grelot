@@ -40,6 +40,9 @@ var (
 	ErrRecentAuthRequired = ErrorCode{"recent_auth_required", http.StatusForbidden}
 	// ErrWouldLockOut refuses a change leaving the account no way to sign in.
 	ErrWouldLockOut = ErrorCode{"would_lock_out", http.StatusConflict}
+	// ErrStaleRevision refuses a settings save over another revision than
+	// the stored one; the client reads the settings again.
+	ErrStaleRevision = ErrorCode{"stale_revision", http.StatusConflict}
 	// ErrSSEUnavailable is the event stream's hub refusing a subscriber once
 	// it is shut down or at its client cap.
 	ErrSSEUnavailable = ErrorCode{"sse_unavailable", http.StatusServiceUnavailable}

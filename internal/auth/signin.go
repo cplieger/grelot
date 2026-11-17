@@ -212,9 +212,9 @@ func (a *Auth) Settings() Settings {
 
 // PutSettings stores s for the session p. A change of method needs a
 // recent sign-in (ErrRecentAuth) and must leave p's account a method it
-// can sign in with (ErrWouldLockOut); a retention out of bounds is
-// accounts.ErrInvalid. Calls run one at a time, so two changes never both
-// pass the lock-out check.
+// can sign in with (ErrWouldLockOut); accounts.DB.Put owns the retention's
+// and the revision's refusals. Calls run one at a time, so two changes
+// never both pass the lock-out check.
 func (a *Auth) PutSettings(ctx context.Context, p *access.Principal, s accounts.Settings) error {
 	a.putMu.Lock()
 	defer a.putMu.Unlock()

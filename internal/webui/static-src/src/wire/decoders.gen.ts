@@ -1363,6 +1363,7 @@ export const decodeSample: Decoder<Sample> = (v) => {
 export const decodeSettings: Decoder<Settings> = (v) => {
   const o = asObject(v, "$.settings");
   const out: Settings = {
+    revision: reqNum(o, "revision", "$.settings"),
     retention_ms: reqNum(o, "retention_ms", "$.settings"),
     retention_min_ms: reqNum(o, "retention_min_ms", "$.settings"),
     retention_max_ms: reqNum(o, "retention_max_ms", "$.settings"),
@@ -1376,6 +1377,7 @@ export const decodeSettingsRequest: Decoder<SettingsRequest> = (v) => {
   const o = asObject(v, "$.settings_request");
   const out: SettingsRequest = {
     methods: decodeMethods(reqRaw(o, "methods", "$.settings_request")),
+    revision: reqNum(o, "revision", "$.settings_request"),
     retention_ms: reqNum(o, "retention_ms", "$.settings_request"),
   };
   return out;

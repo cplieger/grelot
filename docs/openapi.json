@@ -2254,9 +2254,14 @@
           },
           "retention_ms": {
             "type": "integer"
+          },
+          "revision": {
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
+          "revision",
           "retention_ms",
           "retention_min_ms",
           "retention_max_ms",
@@ -2272,10 +2277,15 @@
           },
           "retention_ms": {
             "type": "integer"
+          },
+          "revision": {
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
           "methods",
+          "revision",
           "retention_ms"
         ],
         "type": "object"
@@ -4212,11 +4222,10 @@
                 }
               }
             },
-            "description": "Forbidden: forbidden, recent_auth_required, auth_session_required, auth_cross_origin",
+            "description": "Forbidden: recent_auth_required, auth_session_required, auth_cross_origin",
             "x-error-codes": {
               "auth_cross_origin": {},
               "auth_session_required": {},
-              "forbidden": {},
               "recent_auth_required": {}
             }
           },
@@ -4254,8 +4263,9 @@
                 }
               }
             },
-            "description": "Conflict: would_lock_out",
+            "description": "Conflict: stale_revision, would_lock_out",
             "x-error-codes": {
+              "stale_revision": {},
               "would_lock_out": {}
             }
           },

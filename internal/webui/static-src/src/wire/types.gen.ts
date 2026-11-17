@@ -951,6 +951,11 @@ export interface Sample {
  */
 export interface Settings {
   /**
+   * Revision counts the stored saves, 0 before the first; a save sends
+   * it back.
+   */
+  revision: number;
+  /**
    * RetentionMS is how long a thread, post or event lives after it is
    * written.
    */
@@ -971,6 +976,11 @@ export interface Settings {
  */
 export interface SettingsRequest {
   methods: Methods;
+  /**
+   * Revision is the Settings revision the change was made over; any
+   * other is stale_revision.
+   */
+  revision: number;
   retention_ms: number;
 }
 

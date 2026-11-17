@@ -256,7 +256,7 @@ var specs = map[string]Spec{
 	"putSettings": {
 		Summary: "Replace the settings; a change of sign-in methods needs a recent sign-in",
 		Request: typeOf[wire.SettingsRequest](), Response: typeOf[wire.Settings](),
-		Errors: []wire.ErrorCode{wire.ErrInvalid, wire.ErrForbidden, wire.ErrRecentAuthRequired, wire.ErrWouldLockOut},
+		Errors: []wire.ErrorCode{wire.ErrInvalid, wire.ErrStaleRevision, wire.ErrRecentAuthRequired, wire.ErrWouldLockOut},
 	},
 	"getSignIn": {
 		Summary:  "What the sign-in page shows beside the sign-in routes' state; needs no session",

@@ -1534,7 +1534,7 @@ export interface PutSettingsArgs {
   readonly body: SettingsRequest;
 }
 
-const putSettingsCodes = ["invalid", "forbidden", "recent_auth_required", "would_lock_out", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_cross_origin", "auth_method_not_allowed", "auth_not_found", "too_large"] as const;
+const putSettingsCodes = ["invalid", "stale_revision", "recent_auth_required", "would_lock_out", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_cross_origin", "auth_method_not_allowed", "auth_not_found", "too_large"] as const;
 
 export type PutSettingsError = (typeof putSettingsCodes)[number];
 

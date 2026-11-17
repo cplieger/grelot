@@ -11,15 +11,30 @@ import (
 	"github.com/cplieger/grelot/internal/store"
 )
 
-// The bounds Put holds the history retention to; its refusal names them in
-// words.
+// The bounds Put holds the history retention to; RangeError's sentence
+// names them.
 const (
 	MinRetention = time.Hour
 	MaxRetention = 90 * 24 * time.Hour
 )
 
-// ErrInvalid reports settings Put refuses, in words a user can act on.
-var ErrInvalid = errors.New("the history retention must be a whole number of minutes from 1 hour to 90 days")
+// ErrStaleRevision refuses a Put whose Revision is not the stored one,
+// leaving the stored settings as they were.
+var ErrStaleRevision = errors.New("the settings changed since they were read: read them again")
+
+// RangeError refuses a retention outside Min to Max, or, when Whole, one
+// within them that is not a whole number of minutes.
+type RangeError struct {
+	Min, Max time.Duration
+	Whole    bool
+}
+
+func (e *RangeError) Error() string {
+	if e.Whole {
+		return "the history retention must be a whole number of minutes"
+	}
+	return "the history retention must be from 1 hour to 90 days"
+}
 
 // Methods are the sign-in methods the operator has left on.
 type Methods struct {
@@ -30,6 +45,9 @@ type Methods struct {
 
 // Settings are what the operator changes in the web UI.
 type Settings struct {
+	// Revision counts the stored saves, 0 before the first; Put stores
+	// only over the revision it is given.
+	Revision uint64
 	// Retention is how long a thread, post or event lives after it is
 	// written.
 	Retention time.Duration
@@ -44,9 +62,12 @@ func DefaultSettings() Settings {
 	}
 }
 
+// settingsRow's Revision is absent from a row written before it, which
+// reads as 0.
 type settingsRow struct {
 	RetentionMS int64
 	Methods     Methods
+	Revision    uint64
 }
 
 // Get returns the stored settings, or DefaultSettings when none are.
@@ -55,27 +76,41 @@ func (d *DB) Get(ctx context.Context) (Settings, error) {
 	err := d.db.View(ctx, func(r *bolttable.ReadTx) error {
 		row, found, err := d.t.settings.Get(r, rowKey)
 		if found {
-			s = Settings{Retention: time.Duration(row.RetentionMS) * time.Millisecond, Methods: row.Methods}
+			s = Settings{Revision: row.Revision, Retention: time.Duration(row.RetentionMS) * time.Millisecond, Methods: row.Methods}
 		}
 		return err
 	})
 	return s, err
 }
 
-// Put stores s, refusing with ErrInvalid a retention outside MinRetention
-// and MaxRetention or not a whole number of minutes.
+// Put stores s as revision s.Revision+1. It refuses with *RangeError a
+// retention outside MinRetention and MaxRetention or not a whole number
+// of minutes, and with ErrStaleRevision an s.Revision that is not the
+// stored one; the revision is compared in the update that writes, so of
+// two Puts of one revision only the first stores.
 func (d *DB) Put(ctx context.Context, s Settings) error {
-	if s.Retention < MinRetention || s.Retention > MaxRetention || s.Retention%time.Minute != 0 {
-		return ErrInvalid
+	switch {
+	case s.Retention < MinRetention || s.Retention > MaxRetention:
+		return &RangeError{Min: MinRetention, Max: MaxRetention}
+	case s.Retention%time.Minute != 0:
+		return &RangeError{Min: MinRetention, Max: MaxRetention, Whole: true}
 	}
-	row := settingsRow{RetentionMS: s.Retention.Milliseconds(), Methods: s.Methods}
+	row := settingsRow{RetentionMS: s.Retention.Milliseconds(), Methods: s.Methods, Revision: s.Revision + 1}
 	d.putMu.Lock()
 	defer d.putMu.Unlock()
 	if err := d.db.Update(ctx, func(tx *bolttable.Tx) error {
+		stored, _, err := d.t.settings.Get(tx.Read(), rowKey)
+		switch {
+		case err != nil:
+			return err
+		case stored.Revision != s.Revision:
+			return ErrStaleRevision
+		}
 		return d.t.settings.Put(tx, rowKey, &row)
 	}); err != nil {
 		return err
 	}
+	s.Revision = row.Revision
 	d.current.Store(&s)
 	return nil
 }

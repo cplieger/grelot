@@ -6,7 +6,6 @@ import (
 	"cmp"
 	"context"
 	"errors"
-	"math"
 	"net/http"
 	"slices"
 	"time"
@@ -245,16 +244,22 @@ func (s *Server) putSettings(r *http.Request, _ store.Keyed) (body any, err erro
 	if derr := decode(r, &req); derr != nil {
 		return nil, derr
 	}
-	// Clamped, so no retention_ms overflows into a duration Put accepts.
-	ms := min(max(req.RetentionMS, 0), math.MaxInt64/int64(time.Millisecond))
 	m := req.Methods
 	err = s.auth.PutSettings(r.Context(), principal(r), accounts.Settings{
-		Retention: time.Duration(ms) * time.Millisecond,
+		Revision:  req.Revision,
+		Retention: durationMS(req.RetentionMS),
 		Methods:   accounts.Methods{Password: m.Password, Passkeys: m.Passkeys, OIDC: m.OIDC},
 	})
+	var re *accounts.RangeError
 	switch {
-	case errors.Is(err, accounts.ErrInvalid):
-		return nil, badRequest(err.Error())
+	case errors.As(err, &re):
+		f := wire.FieldError{Field: "retention_ms", Code: wire.FieldOutOfRange, Min: new(re.Min.Milliseconds()), Max: new(re.Max.Milliseconds())}
+		if re.Whole {
+			f.Code = wire.FieldNotWholeMinutes
+		}
+		return nil, fieldRefusal(re.Error(), f)
+	case errors.Is(err, accounts.ErrStaleRevision):
+		return nil, refusal(wire.ErrStaleRevision, err.Error())
 	case errors.Is(err, auth.ErrRecentAuth):
 		return nil, refusal(wire.ErrRecentAuthRequired, "confirm it is you (sign in again) to change the sign-in methods")
 	case errors.Is(err, auth.ErrWouldLockOut):
@@ -268,7 +273,7 @@ func (s *Server) putSettings(r *http.Request, _ store.Keyed) (body any, err erro
 func wireSettings(st auth.Settings) wire.Settings {
 	m := st.Methods
 	return wire.Settings{
-		Methods:     wire.Methods{Password: m.Password, Passkeys: m.Passkeys, OIDC: m.OIDC},
+		Revision: st.Revision, Methods: wire.Methods{Password: m.Password, Passkeys: m.Passkeys, OIDC: m.OIDC},
 		RetentionMS: st.Retention.Milliseconds(), OIDCConfigured: st.OIDCConfigured,
 		RetentionMinMS: accounts.MinRetention.Milliseconds(), RetentionMaxMS: accounts.MaxRetention.Milliseconds(),
 	}
