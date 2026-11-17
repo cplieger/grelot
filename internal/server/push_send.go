@@ -47,6 +47,8 @@ type hostPush struct {
 	marks   map[uint64]struct{}
 	mu      sync.Mutex
 	once    sync.Once
+	// receivers is the last pushee.receiver number handed out.
+	receivers uint64
 }
 
 var _ Pusher = (*hostPush)(nil)
@@ -58,10 +60,12 @@ type pushee struct {
 	// retryAt is when the failed send key is tried again, zero for none.
 	retryAt time.Time
 	// failing, healthy and unproven are pushReading's.
-	failing  time.Time
-	healthy  time.Time
-	door     provider.ServerDoor
-	key      sendKey
+	failing time.Time
+	healthy time.Time
+	door    provider.ServerDoor
+	key     sendKey
+	// receiver numbers the door and session the entry pushes to.
+	receiver uint64
 	off      bool
 	unproven bool
 }
@@ -87,7 +91,7 @@ func startHostPush(s *Server, doors *provider.ServerDoors) *hostPush {
 		s.log.Error(msgPushLookupFailed, "error", err.Error())
 	}
 	for i := range all {
-		p.registered(all[i].ID, all[i].Provider, all[i].Host)
+		p.registered(all[i].ID, all[i].Provider, all[i].Host, false)
 	}
 	for _, d := range doors.All() {
 		s.metrics.PushDoorUp.Set(1, doorLabel(d))
@@ -117,20 +121,24 @@ func (p *hostPush) Reading(id uint64) pushReading {
 }
 
 // registered always installs a new entry, so a forget holding the old one
-// leaves it. On the same door it keeps a pending retry and its failing
-// run, and a send in flight answers on the new entry (editOnDoor), so a
-// repeated register never sends before the receiver's Retry-After nor
-// restarts the run's grace.
-func (p *hostPush) registered(id uint64, prov, host string) {
+// leaves it. A register of the same session on the same door keeps the
+// receiver, its pending retry and its failing run, so a repeated register
+// never sends before the receiver's Retry-After nor restarts the run's
+// grace; any other starts a new receiver with nothing carried
+// (editOnReceiver).
+func (p *hostPush) registered(id uint64, prov, host string, moved bool) {
 	d, ok := p.doors.For(prov, host)
 	p.mu.Lock()
 	if ok {
 		fresh := &pushee{door: d, unproven: true}
-		if e := p.ids[id]; e != nil && e.door.Door == d.Door {
-			fresh.retryAt, fresh.key, fresh.at = e.retryAt, e.key, e.at
+		if e := p.ids[id]; e != nil && e.door.Door == d.Door && !moved {
+			fresh.receiver, fresh.retryAt, fresh.key, fresh.at = e.receiver, e.retryAt, e.key, e.at
 			if !e.off {
 				fresh.failing, fresh.healthy, fresh.unproven = e.failing, e.healthy, e.unproven
 			}
+		} else {
+			p.receivers++
+			fresh.receiver = p.receivers
 		}
 		p.ids[id] = fresh
 		p.marks[id] = struct{}{}
@@ -258,13 +266,16 @@ func (p *hostPush) edit(id uint64, fn func(*pushee)) {
 	}
 }
 
-// editOnDoor runs fn, under the lock, on id's entry while it is on cur's
-// door: a send's answer is its door's, so it applies to the entry a
-// same-door register installed meanwhile, and never to one on another door.
-func (p *hostPush) editOnDoor(id uint64, cur *pushee, fn func(*pushee)) {
+// editOnReceiver runs fn, under the lock, on id's entry while it pushes to
+// cur's receiver, the door and session a send from cur went to: the send's
+// answer applies to cur or a same-session register's successor of it, and
+// is dropped once the receiver changed (a take-over, a revive from another
+// session, another door) or the identity was forgotten, even if it has
+// registered again since.
+func (p *hostPush) editOnReceiver(id uint64, cur *pushee, fn func(*pushee)) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if e := p.ids[id]; e != nil && e.door.Door == cur.door.Door {
+	if e := p.ids[id]; e != nil && e.receiver == cur.receiver {
 		fn(e)
 	}
 }
@@ -408,11 +419,11 @@ func doorAttrs(d provider.ServerDoor, status int) []any {
 	return []any{"provider", d.File, "door", d.Door.Name, attrStatus, status}
 }
 
-// accepted ends the failing run of id's entry on cur's door and proves
-// push while it is unproven.
+// accepted ends the failing run of cur's receiver and proves push while it
+// is unproven.
 func (p *hostPush) accepted(id uint64, cur *pushee) {
 	now := p.s.now()
-	p.editOnDoor(id, cur, func(e *pushee) {
+	p.editOnReceiver(id, cur, func(e *pushee) {
 		if e.unproven {
 			e.failing, e.healthy, e.unproven = time.Time{}, now, false
 		}
@@ -420,7 +431,7 @@ func (p *hostPush) accepted(id uint64, cur *pushee) {
 }
 
 // retryLater tries key again after the receiver's Retry-After, and starts
-// the failing run of id's entry on cur's door unless one is open.
+// the failing run of cur's receiver unless one is open.
 // Meanwhile push is failing, so id's standing waits may send the
 // nudge, which ends the retry.
 func (p *hostPush) retryLater(ctx context.Context, id uint64, cur *pushee, key sendKey, res transport.HTTPResult, attrs []any) {
@@ -431,7 +442,7 @@ func (p *hostPush) retryLater(ctx context.Context, id uint64, cur *pushee, key s
 	p.s.log.Log(ctx, level, msgPushFailed, attrs...)
 	now := p.s.now()
 	at := now.Add(res.RetryAfter)
-	p.editOnDoor(id, cur, func(e *pushee) {
+	p.editOnReceiver(id, cur, func(e *pushee) {
 		e.retryAt, e.key, e.at, e.unproven = at, key, at, true
 		if e.failing.IsZero() {
 			e.failing = now
@@ -440,12 +451,11 @@ func (p *hostPush) retryLater(ctx context.Context, id uint64, cur *pushee, key s
 	p.s.hub.Woke([]uint64{id})
 }
 
-// identityOff turns push off for id alone while its entry is on cur's
-// door, until it registers again or is revived, and hands its nudge to its
-// standing waits.
+// identityOff turns push off for cur's receiver alone, until id registers
+// again or is revived, and hands its nudge to its standing waits.
 func (p *hostPush) identityOff(ctx context.Context, id uint64, cur *pushee, level slog.Level, msg string, attrs []any) {
 	p.s.log.Log(ctx, level, msg, attrs...)
-	p.editOnDoor(id, cur, func(e *pushee) { e.off, e.retryAt, e.at = true, time.Time{}, time.Time{} })
+	p.editOnReceiver(id, cur, func(e *pushee) { e.off, e.retryAt, e.at = true, time.Time{}, time.Time{} })
 	p.s.hub.Woke([]uint64{id})
 }
 

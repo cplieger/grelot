@@ -238,9 +238,10 @@ func (h *harness) mustAcceptOnePush(t *testing.T, writer, to, name string, rcv *
 	synctest.Wait()
 }
 
-// heldDoor is a notify endpoint answering every request with one reply,
-// which holds its nth request until release is called, after signalling
-// arrived. Like pushReceiver it lives outside the bubble.
+// heldDoor is a notify endpoint answering its kth request with
+// replies[k-1], the last one repeating, which holds its nth request until
+// release is called, after signalling arrived. Like pushReceiver it lives
+// outside the bubble.
 type heldDoor struct {
 	srv     *httptest.Server
 	arrived chan struct{}
@@ -248,16 +249,18 @@ type heldDoor struct {
 	seen    atomic.Int32
 }
 
-func heldPushes(t *testing.T, n int32, reply pushReply) *heldDoor {
+func heldPushes(t *testing.T, n int32, replies ...pushReply) *heldDoor {
 	t.Helper()
 	d := &heldDoor{arrived: make(chan struct{}, 1)}
 	held := make(chan struct{})
 	d.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		_, _ = io.Copy(io.Discard, req.Body)
-		if d.seen.Add(1) == n {
+		nth := d.seen.Add(1)
+		if nth == n {
 			d.arrived <- struct{}{}
 			<-held
 		}
+		reply := replies[min(int(nth), len(replies))-1]
 		w.Header().Set("Connection", "close")
 		for k, v := range reply.header {
 			w.Header().Set(k, v)
@@ -302,26 +305,93 @@ func TestPush_aRetryInFlightPastTheGraceReadsDown(t *testing.T) {
 	})
 }
 
-// An answer to a send that was in flight when a take-over moved its
-// identity onto another door is the old door's, so it leaves the new
-// door's entry as the register made it: unproven, with no failing run, and
-// on.
-func TestPush_aSendInFlightAcrossADoorMoveLeavesTheNewDoorsEntryAlone(t *testing.T) {
+// forgetNow drops session's push entry, as the sweeper's beat drops a
+// lapsed identity's. A lapse needs the bubble's clock to move, which it
+// cannot while a send is held on a socket, so the test calls the writer.
+func (h *harness) forgetNow(session string) {
+	h.t.Helper()
+	p := h.srv.push.(*hostPush)
+	id := h.idOf(session)
+	p.mu.Lock()
+	e := p.ids[id]
+	p.mu.Unlock()
+	p.forget(id, e)
+}
+
+// A send's answer belongs to its receiver, the door and the session it
+// went to. Each row holds a push to @reader through the door serving
+// host-a while a writer changes its entry, then lets the door answer;
+// every later push through either door is accepted. doorRefused and
+// identityOff run only on the sender goroutine, one send at a time, so
+// they never interleave with another send's answer.
+func TestPush_anAnswerAppliesOnlyToTheReceiverItsSendWentTo(t *testing.T) {
 	t.Setenv(doorTokenEnv, doorSecret)
+	accepted := pushReply{status: http.StatusAccepted}
+	retry := pushReply{status: http.StatusServiceUnavailable, header: map[string]string{"Retry-After": "20"}}
+	gone := pushReply{status: http.StatusNotFound}
+	gaveUp := pushReply{status: http.StatusBadRequest}
+	refused := pushReply{status: http.StatusUnauthorized}
+
+	// A writer runs while the push is held and answers the session
+	// @reader is on after it.
+	sameSession := func(h *harness) string { h.reRegister(sessA, "reader"); return sessA }
+	takeOver := func(h *harness) string { h.takeOverOn(sessC, "reader", "host-a/app"); return sessC }
+	doorMove := func(h *harness) string { h.takeOverOn(sessC, "reader", "host-b/app"); return sessC }
+	forget := func(h *harness) string { h.forgetNow(sessA); return sessA }
+	forgetThenRegister := func(h *harness) string {
+		h.forgetNow(sessA)
+		h.reRegister(sessA, "reader")
+		return sessA
+	}
+
+	// A watcher started 20 s after the answer ends restored a grace after
+	// the later of its start and the receiver's first accepted push.
+	// proved is that for a push accepted by then, reNudged for the
+	// re-nudge accepted 3 minutes after the nudge was recorded.
+	const proved, reNudged = 20*time.Second + grace, 3*time.Minute + grace
 	for _, tc := range []struct {
 		name   string
+		writer func(*harness) string
 		reply  pushReply
-		pushes int
+		push   pushState
+		// sends counts the pushes after the held one, through either door,
+		// at the answer, 19 s on and at the Retry-After, 20 s on.
+		sends [3]int
+		// restored is when after the answer the watcher ends restored,
+		// zero for not within its six waits.
+		restored time.Duration
 	}{
-		// The old door's 2xx recorded the nudge, so the new door's first
-		// send is the re-nudge, which its watcher's hand-back counts from.
-		{name: "the old door accepts", reply: pushReply{status: http.StatusAccepted}},
-		// The new door sends the nudge at its register's look.
-		{name: "the old door asks to retry", reply: pushReply{status: http.StatusServiceUnavailable, header: map[string]string{"Retry-After": "20"}}, pushes: 1},
-		{name: "the old door says gone", reply: pushReply{status: http.StatusNotFound}, pushes: 1},
+		{"same-session register, accepted", sameSession, accepted, pushOK, [3]int{}, proved},
+		{"same-session register, retry", sameSession, retry, pushFailing, [3]int{0, 0, 1}, proved},
+		{"same-session register, gone", sameSession, gone, pushOff, [3]int{}, 0},
+		{"same-session register, gave up", sameSession, gaveUp, pushOff, [3]int{}, 0},
+		{"same-session register, refused", sameSession, refused, pushOff, [3]int{}, 0},
+		// The old chat's 2xx still records the nudge as pushed, so the new
+		// chat is pushed the mail at the re-nudge.
+		{"take-over on the same door, accepted", takeOver, accepted, pushOK, [3]int{}, reNudged},
+		// A dropped answer leaves the nudge due, which the new receiver is
+		// pushed at once.
+		{"take-over on the same door, retry", takeOver, retry, pushOK, [3]int{1, 1, 1}, proved},
+		{"take-over on the same door, gone", takeOver, gone, pushOK, [3]int{1, 1, 1}, proved},
+		{"take-over on the same door, gave up", takeOver, gaveUp, pushOK, [3]int{1, 1, 1}, proved},
+		{"door move, accepted", doorMove, accepted, pushOK, [3]int{}, reNudged},
+		{"door move, retry", doorMove, retry, pushOK, [3]int{1, 1, 1}, proved},
+		{"door move, gone", doorMove, gone, pushOK, [3]int{1, 1, 1}, proved},
+		{"door move, gave up", doorMove, gaveUp, pushOK, [3]int{1, 1, 1}, proved},
+		// A refused credential turns off the old door, which no longer
+		// serves the identity.
+		{"door move, refused", doorMove, refused, pushOK, [3]int{1, 1, 1}, proved},
+		{"forget, accepted", forget, accepted, pushNone, [3]int{}, 0},
+		{"forget, retry", forget, retry, pushNone, [3]int{}, 0},
+		{"forget, gone", forget, gone, pushNone, [3]int{}, 0},
+		{"forget, gave up", forget, gaveUp, pushNone, [3]int{}, 0},
+		{"forget then register, accepted", forgetThenRegister, accepted, pushOK, [3]int{}, reNudged},
+		{"forget then register, retry", forgetThenRegister, retry, pushOK, [3]int{1, 1, 1}, proved},
+		{"forget then register, gone", forgetThenRegister, gone, pushOK, [3]int{1, 1, 1}, proved},
+		{"forget then register, gave up", forgetThenRegister, gaveUp, pushOK, [3]int{1, 1, 1}, proved},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			old := heldPushes(t, 1, tc.reply)
+			old := heldPushes(t, 1, tc.reply, accepted)
 			rcv := newPushReceiver(t)
 			synctest.Test(t, func(t *testing.T) {
 				h := newPushHarness(t,
@@ -331,111 +401,36 @@ func TestPush_aSendInFlightAcrossADoorMoveLeavesTheNewDoorsEntryAlone(t *testing
 				h.registerOn(sessB, "writer", "host-c/app")
 				h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
 				<-old.arrived
-				h.takeOverOn(sessC, "reader", "host-b/app")
+				session := tc.writer(h)
 				old.release()
 				synctest.Wait()
-				released := time.Now()
+				answered := time.Now()
 
-				if got := h.pushState(sessC); got != string(pushOK) {
-					t.Errorf("push = %q, want ok, the new door's entry untouched", got)
+				if got := h.pushState(session); got != string(tc.push) {
+					t.Errorf("push after the answer = %q, want %q", got, tc.push)
 				}
-				if n := len(rcv.requests()); n != tc.pushes {
-					t.Errorf("%d pushes through the new door, want %d", n, tc.pushes)
+				var sends [3]int
+				for i, step := range []time.Duration{0, 19 * time.Second, time.Second} {
+					time.Sleep(step)
+					synctest.Wait()
+					sends[i] = old.sends() + len(rcv.requests()) - 1
 				}
-				end, at := h.watchUntilEnd(t, sessC, 9)
-				if end == nil || end.str("code") != "restored" {
-					t.Fatalf("end = %v, want a 410 restored", end)
+				if sends != tc.sends {
+					t.Errorf("pushes after the held one at 0 s, 19 s and 20 s = %v, want %v", sends, tc.sends)
 				}
-				want := grace
-				if tc.pushes == 0 {
-					want = 3*time.Minute + grace
+				var restored time.Duration
+				if end, at := h.watchUntilEnd(t, session, 6); end != nil {
+					restored = at.Sub(answered)
+					if end.str("code") != "restored" {
+						t.Errorf("the watcher ended %s, want restored or no end", end.raw)
+					}
 				}
-				if d := at.Sub(released); d != want {
-					t.Errorf("the watcher ended %v after the old door answered, want %v, a grace after the new door's first accepted send", d, want)
+				if restored != tc.restored {
+					t.Errorf("the watcher ended restored %v after the answer, want %v (0 is never)", restored, tc.restored)
 				}
 			})
 		})
 	}
-}
-
-// An answer to a send that was in flight when its identity registered
-// again on the same door is that door's, so it applies to the entry the
-// register installed.
-func TestPush_aSendInFlightAcrossASameDoorRegisterIsAnsweredOnTheNewEntry(t *testing.T) {
-	t.Setenv(doorTokenEnv, doorSecret)
-	// sendHeldAcrossARegister posts to the reader, re-registers it on its
-	// own door while the door holds the push, then lets the door answer.
-	sendHeldAcrossARegister := func(t *testing.T, door *heldDoor) *harness {
-		t.Helper()
-		h := newPushHarness(t, door.kiroDoor()...)
-		h.mustRegisterAlone(sessA, "reader")
-		h.mustRegisterAlone(sessB, "writer")
-		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
-		<-door.arrived
-		h.reRegister(sessA, "reader")
-		door.release()
-		synctest.Wait()
-		return h
-	}
-
-	t.Run("a retry waits for the receiver's Retry-After", func(t *testing.T) {
-		door := heldPushes(t, 1, pushReply{status: http.StatusServiceUnavailable, header: map[string]string{"Retry-After": "20"}})
-		synctest.Test(t, func(t *testing.T) {
-			h := sendHeldAcrossARegister(t, door)
-			if got := h.pushState(sessA); got != string(pushFailing) {
-				t.Errorf("push = %q, want failing", got)
-			}
-			h.mustWake(t, "after the one failed send", sessA, wakePush)
-			time.Sleep(19 * time.Second)
-			synctest.Wait()
-			if n := door.sends(); n != 1 {
-				t.Errorf("%d pushes a second before Retry-After, want 1", n)
-			}
-			time.Sleep(time.Second)
-			synctest.Wait()
-			if n := door.sends(); n != 2 {
-				t.Errorf("%d pushes at Retry-After, want the retry", n)
-			}
-		})
-	})
-
-	t.Run("an accepted send proves push", func(t *testing.T) {
-		door := heldPushes(t, 1, pushReply{status: http.StatusAccepted})
-		synctest.Test(t, func(t *testing.T) {
-			h := sendHeldAcrossARegister(t, door)
-			accepted := time.Now()
-			h.ack(sessA, h.newestWake(sessA))
-			synctest.Wait()
-			if got := h.pushState(sessA); got != string(pushOK) {
-				t.Errorf("push = %q, want ok", got)
-			}
-			end, at := h.watchUntilEnd(t, sessA, 5)
-			if end == nil || end.str("code") != "restored" {
-				t.Fatalf("end = %v, want a 410 restored", end)
-			}
-			if d := at.Sub(accepted); d != grace {
-				t.Errorf("the watcher ended %v after the accepted send, want %v", d, grace)
-			}
-			if n := door.sends(); n != 1 {
-				t.Errorf("%d pushes, want the accepted one", n)
-			}
-		})
-	})
-
-	t.Run("a gone answer turns push off", func(t *testing.T) {
-		door := heldPushes(t, 1, pushReply{status: http.StatusNotFound})
-		synctest.Test(t, func(t *testing.T) {
-			h := sendHeldAcrossARegister(t, door)
-			if got := h.pushState(sessA); got != string(pushOff) {
-				t.Errorf("push = %q, want off", got)
-			}
-			time.Sleep(3 * time.Minute)
-			synctest.Wait()
-			if n := door.sends(); n != 1 {
-				t.Errorf("%d pushes, want none after the gone answer", n)
-			}
-		})
-	})
 }
 
 // takeOverOn moves the live identity name to session, on host.

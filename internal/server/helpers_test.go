@@ -250,7 +250,7 @@ func (f *fakePush) Reading(id uint64) pushReading {
 	return pushReading{state: pushNone}
 }
 
-func (*fakePush) registered(uint64, string, string) {}
+func (*fakePush) registered(uint64, string, string, bool) {}
 
 func (*fakePush) beat(context.Context) {}
 

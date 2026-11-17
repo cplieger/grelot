@@ -105,7 +105,7 @@ func (s *Server) register(r *http.Request, c store.Caller, k store.Keyed) (statu
 			s.presence.registered(got.Identity.ID)
 		}
 		if req.Delegate == "" {
-			s.push.registered(got.Identity.ID, got.Identity.Provider, got.Identity.Host)
+			s.push.registered(got.Identity.ID, got.Identity.Provider, got.Identity.Host, got.Moved)
 		}
 		if got.Moved {
 			s.rewait(got.Identity.ID)
@@ -151,7 +151,7 @@ func (s *Server) revive(r *http.Request, c store.Caller, k store.Keyed) (status 
 	}
 	if !replayed {
 		s.presence.registered(got.Identity.ID)
-		s.push.registered(got.Identity.ID, got.Identity.Provider, got.Identity.Host)
+		s.push.registered(got.Identity.ID, got.Identity.Provider, got.Identity.Host, got.Moved)
 		if got.Moved {
 			s.rewait(got.Identity.ID)
 		}

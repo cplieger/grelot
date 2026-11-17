@@ -303,6 +303,28 @@ func TestPush_registeringAgainKeepsAPendingRetryToItsRetryAfter(t *testing.T) {
 	})
 }
 
+func TestPush_aTakeOverOnTheSameDoorCarriesNoPendingRetry(t *testing.T) {
+	t.Setenv(doorTokenEnv, doorSecret)
+	rcv := newPushReceiver(t, pushReply{status: http.StatusServiceUnavailable, header: map[string]string{"Retry-After": "20"}}, pushReply{status: http.StatusAccepted})
+	synctest.Test(t, func(t *testing.T) {
+		h := newPushHarness(t, rcv.kiroDoor()...)
+		h.mustRegisterAlone(sessA, "reader")
+		h.mustRegisterAlone(sessB, "writer")
+		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
+		synctest.Wait()
+
+		time.Sleep(5 * time.Second)
+		h.takeOverOn(sessC, "reader", "host-a/app")
+		synctest.Wait()
+		if n := len(rcv.requests()); n != 2 {
+			t.Errorf("%d pushes after the take-over, want the nudge pushed to the new session at once", n)
+		}
+		if got := h.pushState(sessC); got != string(pushOK) {
+			t.Errorf("push after the take-over = %q, want ok", got)
+		}
+	})
+}
+
 func TestPush_aStandingWaitSendsANudgeWhosePushFailedAndTheRetryStops(t *testing.T) {
 	t.Setenv(doorTokenEnv, doorSecret)
 	rcv := newPushReceiver(t, pushReply{status: http.StatusServiceUnavailable, header: map[string]string{"Retry-After": "20"}})

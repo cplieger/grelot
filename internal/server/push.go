@@ -76,8 +76,9 @@ type Pusher interface {
 	// Reading is id's push state now.
 	Reading(id uint64) pushReading
 	// registered maps id, which registered, took over or was revived on
-	// provider and host, to its door afresh, clearing its own off.
-	registered(id uint64, provider, host string)
+	// provider and host, to its door afresh, clearing its own off; moved
+	// is true when it came from another session.
+	registered(id uint64, provider, host string, moved bool)
 	// beat forgets every identity no longer live.
 	beat(ctx context.Context)
 	// stop ends host push and waits for it, cancelling a send in flight.
@@ -91,7 +92,7 @@ var _ Pusher = noPush{}
 
 func (noPush) Reading(uint64) pushReading { return pushReading{state: pushNone} }
 
-func (noPush) registered(uint64, string, string) {}
+func (noPush) registered(uint64, string, string, bool) {}
 
 func (noPush) beat(context.Context) {}
 
