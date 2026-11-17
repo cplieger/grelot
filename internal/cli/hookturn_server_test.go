@@ -936,16 +936,16 @@ func TestHookPrompt_aFailingPushNamesNoStartLineForTwoMinutes(t *testing.T) {
 	if out := a.must("me"); !strings.Contains(statusOf(out), "wake: host push") {
 		t.Errorf("me status %q one failed push in, want wake: host push", statusOf(out))
 	}
-	if _, out := a.prompt("go on"); strings.Contains(out, "wake: down") {
-		t.Errorf("turn line %q names the start line one failed push in", out)
+	if _, out := a.prompt("go on"); !strings.Contains(out, "grelot: @toolbelt-dev") || strings.Contains(out, "wake: down") {
+		t.Errorf("turn line %q one failed push in, want the turn line with no start line", out)
 	}
 	if out := a.must("inbox"); !strings.Contains(statusOf(out), "wake: host push") {
 		t.Errorf("inbox status %q one failed push in, want wake: host push", statusOf(out))
 	}
 	pushReads("ok", 1)
 	ts.clock.advance(2 * time.Minute)
-	if _, out := a.prompt("go on"); strings.Contains(out, "wake: down") {
-		t.Errorf("turn line %q names the start line 2 min after the read ended the retry", out)
+	if _, out := a.prompt("go on"); !strings.Contains(out, "grelot: @toolbelt-dev") || strings.Contains(out, "wake: down") {
+		t.Errorf("turn line %q 2 min after the read ended the retry, want the turn line with no start line", out)
 	}
 	if out := a.must("me"); !strings.Contains(statusOf(out), "wake: host push") {
 		t.Errorf("me status %q 2 min after the read ended the retry, want wake: host push", statusOf(out))

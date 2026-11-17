@@ -20,10 +20,9 @@ const grace = 2 * time.Minute
 
 // wakes is the wake state each status reader reports for session: the
 // status line on GET /v1/me and on GET /v1/inbox, GET /v1/me's wake field,
-// the turn-start read's and, when stop, the stop hook's. The stop hook
-// shows the mail, which ends a pending retry, and closes the turn the
-// turn-start read opened; without it no turn is open, since no stop hook
-// was seen.
+// the turn-start read's and, when stop, the stop hook's. The turn-start
+// read opens a turn once a stop hook was seen; when stop, the stop hook
+// shows the mail, which ends a pending retry, and closes that turn.
 func (h *harness) wakes(session string, stop bool) map[string]string {
 	h.t.Helper()
 	fromLine := func(r *response) string {
