@@ -6,6 +6,7 @@ package canon
 
 import (
 	"context"
+	"iter"
 	"os"
 	"path"
 	"path/filepath"
@@ -106,6 +107,45 @@ func (r *Resolver) Path(ctx context.Context, local string) (Location, error) {
 	}
 	r.clones.record(c.Remote, c.Toplevel)
 	return Location{Canonical: path.Join(r.root, c.Repo, wt.Prefix, tail), Clone: &c}, nil
+}
+
+// Paths yields Path of each local in order, a failing one's error in its
+// place, asking git about each directory once.
+func (r *Resolver) Paths(ctx context.Context, locals []string) iter.Seq2[Location, error] {
+	return func(yield func(Location, error) bool) {
+		once := *r
+		once.git = &onceGit{git: r.git, seen: map[string]onceAnswer{}}
+		for _, local := range locals {
+			if !yield(once.Path(ctx, local)) {
+				return
+			}
+		}
+	}
+}
+
+// onceGit answers each directory's WorkTree from git's first answer there.
+type onceGit struct {
+	git  gitReader
+	seen map[string]onceAnswer
+}
+
+var _ gitReader = (*onceGit)(nil)
+
+type onceAnswer struct {
+	wt workTree
+	ok bool
+}
+
+func (g *onceGit) WorkTree(ctx context.Context, dir string) (workTree, bool, error) {
+	if a, ok := g.seen[dir]; ok {
+		return a.wt, a.ok, nil
+	}
+	wt, ok, err := g.git.WorkTree(ctx, dir)
+	if err != nil {
+		return workTree{}, false, err
+	}
+	g.seen[dir] = onceAnswer{wt: wt, ok: ok}
+	return wt, ok, nil
 }
 
 func (r *Resolver) clone(wt workTree) Clone {

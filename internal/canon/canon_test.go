@@ -1,9 +1,12 @@
 package canon
 
 import (
+	"context"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/cplieger/grelot/internal/where"
@@ -287,4 +290,55 @@ func TestPath_checkoutPerWorktreeAndCopy(t *testing.T) {
 	if got := where.Checkout(t.Context(), loc.Clone.GitDir, loc.Clone.Toplevel); got == "" || got == ids[primaryGit] {
 		t.Errorf("copy: id %q, original %q", got, ids[primaryGit])
 	}
+}
+
+// countingGit answers WorkTree from wts, an error for any other directory,
+// and counts the calls per directory.
+type countingGit struct {
+	wts   fakeGit
+	calls map[string]int
+}
+
+func (g *countingGit) WorkTree(_ context.Context, dir string) (workTree, bool, error) {
+	g.calls[dir]++
+	wt, ok := g.wts[dir]
+	if !ok {
+		return workTree{}, false, errors.New("git rev-parse failed")
+	}
+	return wt, true, nil
+}
+
+func TestPaths_asksGitOncePerDirectory(t *testing.T) {
+	wt := workTree{Toplevel: "C:/src/toolbelt", GitDir: "C:/src/toolbelt/.git", Remote: "git@github.com:cplieger/toolbelt.git"}
+	sub := wt
+	sub.Prefix = "internal/"
+	g := &countingGit{wts: fakeGit{"C:/src/toolbelt": wt, "C:/src/toolbelt/internal": sub}, calls: map[string]int{}}
+	r := windowsResolver("/workspace", nil, []string{"C:/", "C:/src", "C:/src/toolbelt", "C:/src/toolbelt/internal", "C:/broken"}, nil)
+	r.git = g
+	locals := []string{`C:\src\toolbelt\a.go`, `C:\broken\x.go`, `C:\src\toolbelt\internal\b.go`, `C:\src\toolbelt\c.go`, `C:\src\toolbelt\internal\d.go`}
+	var got []string
+	for loc, err := range r.Paths(t.Context(), locals) {
+		if err != nil {
+			got = append(got, "error")
+			continue
+		}
+		got = append(got, loc.Canonical)
+	}
+	want := []string{"/workspace/toolbelt/a.go", "error", "/workspace/toolbelt/internal/b.go", "/workspace/toolbelt/c.go", "/workspace/toolbelt/internal/d.go"}
+	if !slices.Equal(got, want) {
+		t.Errorf("Paths = %q, want %q", got, want)
+	}
+	if want := map[string]int{"C:/src/toolbelt": 1, "C:/src/toolbelt/internal": 1, "C:/broken": 1}; !maps.Equal(g.calls, want) {
+		t.Errorf("git asked %v, want each directory once", g.calls)
+	}
+	t.Run("a stop ends the walk", func(t *testing.T) {
+		n := 0
+		for range r.Paths(t.Context(), locals) {
+			n++
+			break
+		}
+		if n != 1 {
+			t.Errorf("yielded %d after a break, want 1", n)
+		}
+	})
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/protopath"
 )
 
 const (
@@ -976,18 +977,18 @@ func TestHolders_refusesTooManyPaths(t *testing.T) {
 	s, _, _ := openIdentityStore(t)
 	regAt(t, s, "me")
 	me := Caller{Session: sess("me")}
-	paths := make([]string, 0, maxHolderPaths+1)
-	for i := range maxHolderPaths + 1 {
+	paths := make([]string, 0, protopath.MaxHolderPaths+1)
+	for i := range protopath.MaxHolderPaths + 1 {
 		paths = append(paths, pathMarotte+"/f"+strconv.Itoa(i))
 	}
-	if _, err := s.Holders(t.Context(), me, paths[:maxHolderPaths]); err != nil {
-		t.Errorf("Holders of %d paths: %v", maxHolderPaths, err)
+	if _, err := s.Holders(t.Context(), me, paths[:protopath.MaxHolderPaths]); err != nil {
+		t.Errorf("Holders of %d paths: %v", protopath.MaxHolderPaths, err)
 	}
 	_, err := s.Holders(t.Context(), me, paths)
-	wantRefusal(t, err, KindInvalid, "", strconv.Itoa(maxHolderPaths))
-	twice := append(slices.Clone(paths[:maxHolderPaths]), paths[0])
+	wantRefusal(t, err, KindInvalid, "", strconv.Itoa(protopath.MaxHolderPaths))
+	twice := append(slices.Clone(paths[:protopath.MaxHolderPaths]), paths[0])
 	if _, err := s.Holders(t.Context(), me, twice); err != nil {
-		t.Errorf("Holders of %d distinct paths, one asked twice: %v", maxHolderPaths, err)
+		t.Errorf("Holders of %d distinct paths, one asked twice: %v", protopath.MaxHolderPaths, err)
 	}
 	for _, bad := range [][]string{nil, {"workspace/marotte"}, {pathMarotte + "/../x"}} {
 		_, err := s.Holders(t.Context(), me, bad)

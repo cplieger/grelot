@@ -140,6 +140,7 @@ const (
 	roleTurnEnd      = "turn_end"
 	roleSessionEnd   = "session_end"
 	roleSubagentStop = "subagent_stop"
+	roleGuard        = "guard"
 )
 
 // role runs the named role when the provider spells it and its when
@@ -161,6 +162,10 @@ func (h *hookCall) role(ctx context.Context, name string) error {
 		}
 	case roleTurnEnd, roleSessionEnd, roleSubagentStop:
 		h.report(ctx, name)
+	case roleGuard:
+		if hs.Guard != nil && h.in.Matches(hs.Guard.When) {
+			h.guard(ctx, hs.Guard)
+		}
 	}
 	return nil
 }

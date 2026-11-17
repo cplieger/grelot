@@ -316,8 +316,9 @@ func (a *API) Me(ctx context.Context, q url.Values, header http.Header) (*Me, Re
 	return &me, resp, nil
 }
 
-// Holders sends one GET /v1/holders for paths, canonical and 1 to 256 of
-// them, and answers each grant another agent holds over one, in path order.
+// Holders sends one GET /v1/holders for paths, canonical and 1 to
+// [protopath.MaxHolderPaths] of them, and answers each grant another agent
+// holds over one, in path order.
 func (a *API) Holders(ctx context.Context, paths []string) ([]Holding, error) {
 	var out struct {
 		Holders []Holding `json:"holders"`

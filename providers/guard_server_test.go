@@ -294,7 +294,7 @@ func TestGuard_namesTheCallersQueuedWait(t *testing.T) {
 		t.Fatalf("reserve --queue printed no queued id:\n%s", out)
 	}
 	want := "grelot: @holder-dev holds " + heldFile + " until 2026-11-05 10:00 UTC (splitting the engine); you can still edit it. " +
-		"You are queued for " + heldFile + " (reservation " + m[1] + "), and the grant reaches you as mail. Coordinate with grelot post '@holder-dev'."
+		"You are queued for " + heldFile + " (reservation " + m[1] + "): coordinate with grelot post '@holder-dev' or wait for the grant, which reaches you as mail."
 	got := sc.writer.hook("guard", sc.write(sc.file))
 	if got.Code != 0 || got.Stdout != wantContext(t, want) {
 		t.Errorf("exit %d, stdout %q; want %q", got.Code, got.Stdout, wantContext(t, want))

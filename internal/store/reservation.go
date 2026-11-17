@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/protopath"
 )
 
 const maxReason = 280
@@ -296,10 +297,6 @@ func (s *Store) Reservations(ctx context.Context, c Caller, q ReservationQuery) 
 	return out, err
 }
 
-// maxHolderPaths bounds one Holders query: a patch can name many files, and
-// each path costs one index walk inside the read.
-const maxHolderPaths = 256
-
 // Holding is one grant another agent holds over a queried path. Queued is
 // the caller's own oldest queue entry overlapping both, nil for none.
 type Holding struct {
@@ -311,7 +308,7 @@ type Holding struct {
 // Holders lists, per path in the order asked and then in grant id order,
 // each unexpired grant overlapping it whose holder is neither c's identity
 // nor its parent. It reads only: no last-seen touch and no expiry sweep.
-// Refusals: KindInvalid for no path, a bad one or more than maxHolderPaths
+// Refusals: KindInvalid for no path, a bad one or more than protopath.MaxHolderPaths
 // distinct ones; KindGone with no live identity.
 func (s *Store) Holders(ctx context.Context, c Caller, paths []string) ([]Holding, error) {
 	ps, err := checkHolderPaths(paths)
@@ -352,8 +349,8 @@ func checkHolderPaths(paths []string) ([]string, error) {
 			out = append(out, p)
 		}
 	}
-	if len(out) == 0 || len(out) > maxHolderPaths {
-		return nil, refuse(KindInvalid, fmt.Sprintf("ask for 1 to %d distinct paths", maxHolderPaths))
+	if len(out) == 0 || len(out) > protopath.MaxHolderPaths {
+		return nil, refuse(KindInvalid, fmt.Sprintf("ask for 1 to %d distinct paths", protopath.MaxHolderPaths))
 	}
 	return out, nil
 }
