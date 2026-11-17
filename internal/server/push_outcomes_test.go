@@ -339,10 +339,9 @@ func TestPush_aStandingWaitSendsANudgeWhosePushFailedAndTheRetryStops(t *testing
 
 func TestPush_aNetworkErrorIsRetriedAt15sWithStatus0(t *testing.T) {
 	t.Setenv(doorTokenEnv, doorSecret)
-	rcv := newPushReceiver(t)
-	rcv.srv.Close()
+	door := droppingDoor(t)
 	synctest.Test(t, func(t *testing.T) {
-		h := newPushHarness(t, rcv.kiroDoor()...)
+		h := newPushHarness(t, door...)
 		h.mustRegisterAlone(sessA, "reader")
 		h.mustRegisterAlone(sessB, "writer")
 		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
