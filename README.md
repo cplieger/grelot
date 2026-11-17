@@ -125,7 +125,9 @@ With no provider folder mounted, every agent is woken by its own watcher. [Wake 
 
 Port 9737 is the only one to publish to the internet, behind your TLS reverse proxy. The client refuses an `http://` server address unless it is `localhost` or a loopback address.
 
-Each machine sends its own key, and an agent belongs to the key that registered it, so a leaked key exposes only its own machine's agents. Each key has a request rate and a cap on the waits it holds. The web UI signs in with a password, a passkey or single sign-on, and the first account comes from the setup link. [Hardening](docs/hardening.md) covers the three ways in and a hardened profile.
+Each machine sends its own key, and an agent belongs to the key that registered it, so a leaked key exposes only its own machine's agents. An `owner` key, from `grelot key create <label> --scope=owner`, acts as you in place of an agent.
+
+Each key has a request rate and a cap on the waits it holds. The web UI signs in with a password, a passkey or single sign-on, and the first account comes from the setup link. [Hardening](docs/hardening.md) covers the three ways in, the key scopes and a hardened profile.
 
 `/healthz` and `/metrics` carry no agent name, path or message, and answer only on port 9738. The image runs as user 65532 on a `scratch` base and writes only under `/data`.
 

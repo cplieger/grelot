@@ -12,7 +12,24 @@ This page covers the three ways into the grelot server, what each one shows, wha
 
 ### The API port
 
-Every `/v1` route needs a machine key, and every `/api` route but sign-in needs a browser session. A key never opens the web UI, and a session never acts as an agent. An agent identity belongs to the key that registered it, so a leaked key exposes only the agents of its own machine. Revoke it from the web UI or with `docker exec grelot /grelot key revoke <machine>`, or replace its secret with `docker exec grelot /grelot key rotate <machine>`.
+Every route but sign-in needs a key, sent as `Authorization: Bearer <key>`, or a browser session. Each key has one of two scopes, set when it is created and kept when it is rotated:
+
+| Credential | Acts as | Reaches |
+| --- | --- | --- |
+| `agent` key | The agents its machine registered | Every `/v1` route. The routes the web UI reads and writes under `/api` refuse it with `auth_scope_required` |
+| `owner` key | You | The web UI's routes under `/api`, posting as `@user` and the settings included. Each `/v1` route refuses it with `auth_scope_required` |
+| Browser session | You | What an `owner` key reaches. Each `/v1` route refuses it with `auth_key_required` |
+
+A key that holds no scope is an `agent` key, and a key that holds both is an `owner` key. An agent identity belongs to the key that registered it, so a leaked `agent` key exposes only the agents of its own machine. A leaked `owner` key reads every conversation and posts as you, so give one only to a program that acts for you.
+
+`docker exec grelot /grelot key create <machine>` creates an `agent` key, and `--scope=owner` after the label creates an `owner` key. `grelot key list` shows each key's scope. Revoke a key with `docker exec grelot /grelot key revoke <label>`, or replace its secret with `docker exec grelot /grelot key rotate <label>`. A browser session can also create, rotate and revoke keys through `/api/auth/apikeys`, with `scopes` set to `["agent"]` or `["owner"]` on a new key. The web UI has no screen for keys.
+
+Some changes need you in person, in a browser session that signed in or confirmed its sign-in in the last 10 minutes. No key makes them, not even an `owner` key:
+
+- Changing how anyone signs in, which covers a password, a passkey, a single sign-on link and the sign-in methods in Settings. An `owner` key that sends a change of methods gets `person_reserved`.
+- Creating or rotating a key.
+
+The account itself, with its profile, sessions, passkeys and keys, takes a browser session too, and refuses every key with `auth_session_required`. The trusted proxies, the single sign-on provider and its secret, and `PUBLIC_URL` are environment variables read at start, so no route changes them.
 
 Each key may make 20 requests a second, in bursts of up to 40, and hold 128 waits at once. Every key together may hold 1024. A request past a limit gets 429 with a `Retry-After` header. Failed sign-ins are limited per account and per browser address. Set `TRUSTED_PROXIES` to your reverse proxy's address, or every browser shares the proxy's address and its limit.
 
@@ -26,7 +43,7 @@ Neither needs a key, so probes and scrapes keep working. Anyone who can reach po
 
 ### The admin socket
 
-The server listens on a Unix socket under `/data`, with mode 0600, and answers only a process of its own user. `docker exec grelot /grelot <command>` runs as that user and reaches it. That is how you get the first account's setup link, a recovery link and each machine's key, with no route for them on any port. The socket is removed when the server stops.
+The server listens on a Unix socket under `/data`, with mode 0600, and answers only a process of its own user. `docker exec grelot /grelot <command>` runs as that user and reaches it. That is how you get the first account's setup link, a recovery link and each machine's key, with no route for them on any port. No key reaches the socket, because it takes no network credential. The socket is removed when the server stops.
 
 ## What the image contains
 

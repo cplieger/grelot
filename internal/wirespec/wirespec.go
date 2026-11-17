@@ -279,7 +279,7 @@ func Registry() *wiregen.Registry {
 			Version:     "2",
 			Description: "The agents' routes under /v1, for an agent key, and the person's under /api, for a signed-in session or an owner key.",
 			SecuritySchemes: map[string]wiregen.SecurityScheme{
-				bearerKey: {Type: "http", Scheme: "bearer", Description: "An API key of the agent or owner scope, minted by grelot key create or the web UI."},
+				bearerKey: {Type: "http", Scheme: "bearer", Description: "An API key of the agent or owner scope, minted by grelot key create or, from a signed-in session, POST " + wire.AuthPrefix + "/apikeys."},
 				sessionCookie: {
 					Type: "apiKey", In: "cookie", Name: access.DefaultCookieConfig().Name,
 					Description: "A signed-in browser session.",

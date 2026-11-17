@@ -2645,7 +2645,7 @@
     },
     "securitySchemes": {
       "bearerKey": {
-        "description": "An API key of the agent or owner scope, minted by grelot key create or the web UI.",
+        "description": "An API key of the agent or owner scope, minted by grelot key create or, from a signed-in session, POST /api/auth/apikeys.",
         "scheme": "bearer",
         "type": "http"
       },

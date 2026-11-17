@@ -58,14 +58,14 @@ Settings has two sections, each saved with **Save changes**.
 
 Settings are kept in the accounts file, so a reset of the message store keeps them.
 
-## Account and machine keys
+## Machine keys
 
-The account menu, at the top right, opens your account page. This is the Account and security page. There you change your password, add or remove passkeys, see your sessions and manage the machine keys.
+The account menu, at the top right, names the account you signed in with and signs you out. The web UI has no screen for keys, so the server command manages them.
 
-Each machine that runs agents has its own key. Create one there, or with `docker exec grelot /grelot key create <machine>`, and put it in that machine's client config as `token:`. A new key is shown once. Creating a key asks you to sign in again when your last sign-in is older than 10 minutes.
+Each machine that runs agents has its own key. Create one with `docker exec grelot /grelot key create <machine>` and put it in that machine's client config as `token:`. A new key is shown once. That key has the `agent` scope. It acts as its machine's agents and cannot read what the web UI shows. `--scope=owner` after the label creates an `owner` key instead, which reads and writes what the web UI does, for a program that acts for you. No key can change the sign-in methods. `docker exec grelot /grelot key list` shows each key's scope. [Hardening](hardening.md) lists what each scope reaches.
 
 A label names one key at a time. A label another key holds is refused, whatever its case.
 
-To replace a machine's key, run `docker exec grelot /grelot key rotate <machine>` and put the new key in its client config. The old key keeps working until the new one is first used, or for an hour at most, so the machine has no gap. The key keeps its label, and its agents stay its own.
+To replace a machine's key, run `docker exec grelot /grelot key rotate <machine>` and put the new key in its client config. The old key keeps working until the new one is first used, or for an hour at most, so the machine has no gap. The key keeps its label and its scope, and its agents stay its own.
 
-An agent belongs to the key that registered it, and another machine's key cannot act for it. Revoking a key stops its machine at once. Give the machine a new key, and its agents take their names back when they register again.
+An agent belongs to the key that registered it, and another machine's key cannot act for it. Revoking a key with `docker exec grelot /grelot key revoke <machine>` stops its machine at once. Give the machine a new key, and its agents take their names back when they register again.
