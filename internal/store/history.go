@@ -32,6 +32,8 @@ type HistoryQuery struct {
 	Path  string
 	With  string
 	From  string
+	// ReadAs is a later page's identity (resumes).
+	ReadAs *uint64
 	// Before and Limit page the read back in time: the entries before
 	// Before (the newest at its zero), at most Limit (every one at 0).
 	Before   EntryKey
@@ -71,7 +73,7 @@ type HistoryPage struct {
 // Path too. It moves no cursor. An own post carries no Seq and the
 // relation "you". Refusals: KindInvalid for a bad path or time window,
 // From with FromMe, or With naming the caller; KindNotFound for an unknown
-// name; KindGone for a session with no live identity.
+// name; KindGone for a session with no live identity; ErrCursorMismatch.
 func (s *Store) History(ctx context.Context, c Caller, query *HistoryQuery) (HistoryPage, error) {
 	q := *query
 	if err := checkHistory(&q); err != nil {
@@ -82,12 +84,14 @@ func (s *Store) History(ctx context.Context, c Caller, query *HistoryQuery) (His
 	}
 	var all []Entry
 	var since *time.Time
+	var readAs uint64
 	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
-		me, err := s.liveFor(r, c, now)
+		me, err := s.pagedLive(r, c, now, q.ReadAs)
 		if err != nil {
 			return err
 		}
+		readAs = me.ID
 		h, ok, err := s.historyWalk(r, &me, &q, now)
 		since = h.since
 		if err != nil || !ok {
@@ -99,7 +103,9 @@ func (s *Store) History(ctx context.Context, c Caller, query *HistoryQuery) (His
 	if err != nil {
 		return HistoryPage{}, err
 	}
-	return HistoryPage{Since: since, Listing: historyPage(all, &q)}, nil
+	page := HistoryPage{Since: since, Listing: historyPage(all, &q)}
+	page.ReadAs = readAs
+	return page, nil
 }
 
 // historyPage is the page of all, in order, that q asks for.

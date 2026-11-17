@@ -22,7 +22,7 @@ func (s *Server) who(r *http.Request, c store.Caller, _ store.Keyed) (status int
 	p := pagingOf(r)
 	wq := store.WhoQuery{
 		Path: q.Path, Repo: q.Repo, Holds: q.Holds, Queued: q.Queued, Text: q.Q,
-		After: string(p.after), Limit: p.limit,
+		ReadAs: p.readAs, After: string(p.after), Limit: p.limit,
 	}
 	var online bool
 	for _, f := range []struct {
@@ -48,7 +48,7 @@ func (s *Server) who(r *http.Request, c store.Caller, _ store.Keyed) (status int
 		out.Items = append(out.Items, whoOut(&got.Items[i], isOnline, now))
 	}
 	if n := len(got.Items); n > 0 {
-		out.NextCursor, err = s.next(r, got.More, []byte(got.Items[n-1].Name))
+		out.NextCursor, err = s.next(r, got.More, got.ReadAs, []byte(got.Items[n-1].Name))
 	}
 	return http.StatusOK, out, err
 }

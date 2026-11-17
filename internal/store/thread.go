@@ -4,6 +4,7 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"time"
 
@@ -30,6 +31,9 @@ func directKey(a, b uint64) string {
 // identity at the store's first start.
 func (s *Store) ensureServerRows(ctx context.Context) error {
 	return s.update(ctx, func(w *wtx) error {
+		if err := w.ensureFile(); err != nil {
+			return err
+		}
 		if err := w.ensureUser(); err != nil {
 			return err
 		}
@@ -48,6 +52,19 @@ func (s *Store) ensureServerRows(ctx context.Context) error {
 		}
 		return nil
 	})
+}
+
+// ensureFile reads the file's id into the store, creating it with the
+// file.
+func (w *wtx) ensureFile() error {
+	row, found, err := w.s.t.file.Get(w.r, 1)
+	if err != nil || found {
+		w.s.fileID = row.ID
+		return err
+	}
+	_, _ = rand.Read(row.ID[:]) // crypto/rand.Read never returns an error.
+	w.s.fileID = row.ID
+	return w.s.t.file.Put(w.tx, 1, &row)
 }
 
 // ensureUser creates @user's row: live under a zero lease, so it never
@@ -96,16 +113,18 @@ type PathThread struct {
 
 // ThreadQuery is a Threads read: the threads at or under Root, every one
 // when it is "", paged past the path After, at most Limit of them (every
-// one at 0).
+// one at 0), read as ReadAs (resumes).
 type ThreadQuery struct {
-	Root  string
-	After string
-	Limit int
+	ReadAs *uint64
+	Root   string
+	After  string
+	Limit  int
 }
 
 // Threads lists, by path, the live path threads q names. Like any request
 // it clears ended (Seen). Refusals: KindInvalid for a path that is not
-// canonical; KindGone for a session with no live identity.
+// canonical; KindGone for a session with no live identity;
+// ErrCursorMismatch.
 func (s *Store) Threads(ctx context.Context, c Caller, q ThreadQuery) (Listing[PathThread], error) {
 	root := q.Root
 	prefix := "/"
@@ -119,11 +138,14 @@ func (s *Store) Threads(ctx context.Context, c Caller, q ThreadQuery) (Listing[P
 		return Listing[PathThread]{}, err
 	}
 	out := []PathThread{}
+	var readAs uint64
 	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
-		if _, err := s.liveFor(r, c, now); err != nil {
+		me, err := s.pagedLive(r, c, now, q.ReadAs)
+		if err != nil {
 			return err
 		}
+		readAs = me.ID
 		return s.t.threadKey.Scan(r, bolttable.Range{Prefix: []byte(prefix)}, func(_ []byte, id uint64, _ []byte) (bool, error) {
 			th, found, err := s.t.threads.table.Get(r, id)
 			if err != nil || !found || th.Kind != kindPath || !th.Lease.Expires.After(now) {
@@ -135,5 +157,7 @@ func (s *Store) Threads(ctx context.Context, c Caller, q ThreadQuery) (Listing[P
 			return true, nil
 		})
 	})
-	return listing(out, pastKey(q.After, func(t *PathThread) string { return t.Path }), q.Limit), err
+	l := listing(out, pastKey(q.After, func(t *PathThread) string { return t.Path }), q.Limit)
+	l.ReadAs = readAs
+	return l, err
 }

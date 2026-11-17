@@ -2,15 +2,40 @@
 
 package store
 
-import "cmp"
+import (
+	"cmp"
+
+	"github.com/cplieger/grelot/internal/wire"
+)
 
 // Listing is one page of a list read: Items in the read's order past its
 // position, at most its limit; Total the items matching over every page,
-// counted in the same read; More set when an item past the page matches.
+// counted in the same read; More set when an item past the page matches;
+// ReadAs the identity the read answered as, which a later page's query
+// passes back (resumes).
 type Listing[T any] struct {
-	Items []T
-	Total int
-	More  bool
+	Items  []T
+	Total  int
+	ReadAs uint64
+	More   bool
+}
+
+// ErrCursorMismatch refuses a later page that is not this caller's.
+var ErrCursorMismatch = &Error{
+	Kind: KindInvalid, Why: wire.ErrCursorMismatch.Code,
+	Msg: "the cursor belongs to another list, query or caller: read the first page again",
+}
+
+// resumes refuses a later page whose position was read as readAs when
+// the caller is now id, 0 for none: a retire and a registration on one
+// session make a new id whose seqs start again. A nil readAs is a first
+// page. Each read checks it inside the transaction that applies the
+// position, so no retire lands between the check and the read.
+func resumes(readAs *uint64, id uint64) error {
+	if readAs != nil && *readAs != id {
+		return ErrCursorMismatch
+	}
+	return nil
 }
 
 // pastKey is listing's past for a read ordered by key, the items whose key

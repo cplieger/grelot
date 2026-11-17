@@ -254,6 +254,28 @@ func (s *Store) liveFor(r *bolttable.ReadTx, c Caller, now time.Time) (identityR
 	return row, nil
 }
 
+// pagedLive is liveFor for a paged read, which resumes only a position
+// read as that identity.
+func (s *Store) pagedLive(r *bolttable.ReadTx, c Caller, now time.Time, readAs *uint64) (identityRow, error) {
+	me, err := s.liveFor(r, c, now)
+	if err == nil {
+		err = resumes(readAs, me.ID)
+	}
+	return me, err
+}
+
+// pagedCaller is the identity a paged read open to every caller answers
+// as: the caller's live identity, or the zero row for a caller with none.
+func (s *Store) pagedCaller(r *bolttable.ReadTx, c Caller, now time.Time, readAs *uint64) (identityRow, error) {
+	var me identityRow
+	if v, found, err := s.callerFor(r, c, now); err != nil {
+		return me, err
+	} else if found && v.State == stateLive {
+		me = v
+	}
+	return me, resumes(readAs, me.ID)
+}
+
 func checkCaller(c Caller) error {
 	switch {
 	case c.User && (c.Session != "" || c.As != "" || c.Self):

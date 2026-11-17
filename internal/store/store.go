@@ -103,6 +103,8 @@ type Store struct {
 	dormantTTL time.Duration
 	maxBytes   int64
 	seenMu     sync.Mutex
+	// fileID is set at Open and never changes (FileID).
+	fileID [16]byte
 }
 
 // Open opens or creates the store file at path. A file another process
@@ -137,6 +139,11 @@ func Open(path string, o *Options) (*Store, error) {
 	}
 	return s, nil
 }
+
+// FileID is the random id the store file was created with; a reset or a
+// new file has another, because it issues identity, reservation and
+// delivery ids from 1 again.
+func (s *Store) FileID() [16]byte { return s.fileID }
 
 // openOptions resets every namespace of another format with no copy kept:
 // the rows all expire within days and agents register again, so a format

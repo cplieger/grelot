@@ -23,6 +23,8 @@ import (
 // those that share the caller's environment.
 type WhoQuery struct {
 	Online func(*Identity) bool
+	// ReadAs is a later page's identity (resumes).
+	ReadAs *uint64
 	// After and Limit page the list: the names past After, at most Limit
 	// (every one at 0).
 	After  string
@@ -65,10 +67,11 @@ type PeerQueued struct {
 
 // Who lists live identities but @user, by name, as c's identity sees them, each
 // live parent's delegates nested under it and nowhere else; q filters the
-// parents. A session with no live identity sees every relation as unknown.
-// Refusals: those of every route, the delegate gate (KindConflict) and an
-// As naming no delegate (KindGone) included; KindInvalid for a filter path
-// that is not canonical or a repo that is not one path segment.
+// parents. A session with no live identity sees every relation as unknown
+// and reads as 0. Refusals: those of every route, the delegate gate
+// (KindConflict) and an As naming no delegate (KindGone) included;
+// KindInvalid for a filter path that is not canonical or a repo that is
+// not one path segment; ErrCursorMismatch.
 func (s *Store) Who(ctx context.Context, c Caller, query *WhoQuery) (Listing[Peer], error) {
 	q := *query
 	if err := s.checkWho(&q); err != nil {
@@ -78,14 +81,15 @@ func (s *Store) Who(ctx context.Context, c Caller, query *WhoQuery) (Listing[Pee
 		return Listing[Peer]{}, err
 	}
 	var out []Peer
+	var readAs uint64
 	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
-		var caller party
-		if me, found, err := s.callerFor(r, c, now); err != nil {
+		me, err := s.pagedCaller(r, c, now, q.ReadAs)
+		if err != nil {
 			return err
-		} else if found && me.State == stateLive {
-			caller = party{where: me.Where, id: me.ID}
 		}
+		caller := party{where: me.Where, id: me.ID}
+		readAs = me.ID
 		held, queued, err := s.reservationsByHolder(r, now)
 		if err != nil {
 			return err
@@ -106,7 +110,9 @@ func (s *Store) Who(ctx context.Context, c Caller, query *WhoQuery) (Listing[Pee
 		return err
 	})
 	slices.SortFunc(out, func(a, b Peer) int { return strings.Compare(a.Name, b.Name) })
-	return listing(out, pastKey(q.After, func(p *Peer) string { return p.Name }), q.Limit), err
+	l := listing(out, pastKey(q.After, func(p *Peer) string { return p.Name }), q.Limit)
+	l.ReadAs = readAs
+	return l, err
 }
 
 // whoPeers is each of shown that text matches as caller sees it, with

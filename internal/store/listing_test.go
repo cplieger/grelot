@@ -3,6 +3,7 @@
 package store
 
 import (
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -82,5 +83,92 @@ func TestReservations_pagesById(t *testing.T) {
 	}, func(v *Reservation) string { return v.Path })
 	if !slices.Equal(got, want) {
 		t.Errorf("the walk read %v, want %v (id order)", got, want)
+	}
+}
+
+// Each paged read reports the identity it read as, and refuses a later
+// page whose position was read as another identity than the caller's now,
+// 0 standing for a caller with none.
+func TestPagedReads_refuseAPositionReadAsAnotherIdentity(t *testing.T) {
+	s, _ := openClockStore(t)
+	beta := regAt(t, s, "beta", "/workspace/b")
+	regAt(t, s, "alpha", "/workspace/a")
+	say(t, s, "alpha", Target{Agent: "beta"}, "hello")
+	say(t, s, "alpha", Target{Path: "/workspace/a/x"}, "on x")
+	mustReserve(t, s, Reserving{Caller: Caller{Session: sess("alpha")}, Path: "/workspace/a/x", Reason: "a change", TTL: time.Hour})
+	none := uint64(0)
+	other := beta.ID + 100
+	read := map[string]func(c Caller, readAs *uint64) (uint64, error){
+		"Who": func(c Caller, readAs *uint64) (uint64, error) {
+			l, err := s.Who(t.Context(), c, &WhoQuery{ReadAs: readAs})
+			return l.ReadAs, err
+		},
+		"Threads": func(c Caller, readAs *uint64) (uint64, error) {
+			l, err := s.Threads(t.Context(), c, ThreadQuery{ReadAs: readAs})
+			return l.ReadAs, err
+		},
+		"Reservations": func(c Caller, readAs *uint64) (uint64, error) {
+			l, err := s.Reservations(t.Context(), c, ReservationQuery{ReadAs: readAs})
+			return l.ReadAs, err
+		},
+		"Inbox": func(c Caller, readAs *uint64) (uint64, error) {
+			p, err := s.Inbox(t.Context(), c, InboxQuery{ReadAs: readAs})
+			return p.ReadAs, err
+		},
+		"History": func(c Caller, readAs *uint64) (uint64, error) {
+			p, err := s.History(t.Context(), c, &HistoryQuery{ReadAs: readAs})
+			return p.ReadAs, err
+		},
+	}
+	me := Caller{Session: sess("beta")}
+	for name, read := range read {
+		t.Run(name, func(t *testing.T) {
+			if got, err := read(me, nil); err != nil || got != beta.ID {
+				t.Errorf("a first page read as %d, %v; want %d", got, err, beta.ID)
+			}
+			if _, err := read(me, &beta.ID); err != nil {
+				t.Errorf("a later page read as the caller: %v, want it read", err)
+			}
+			for _, as := range []*uint64{&other, &none} {
+				if _, err := read(me, as); !errors.Is(err, ErrCursorMismatch) {
+					t.Errorf("a later page read as %d: %v, want ErrCursorMismatch", *as, err)
+				}
+			}
+		})
+	}
+	nobody := Caller{Session: sess("nobody")}
+	for _, name := range []string{"Who", "Reservations"} {
+		t.Run(name+" with no identity", func(t *testing.T) {
+			if got, err := read[name](nobody, nil); err != nil || got != 0 {
+				t.Errorf("a first page read as %d, %v; want 0", got, err)
+			}
+			if _, err := read[name](nobody, &none); err != nil {
+				t.Errorf("a later page read as no identity: %v, want it read", err)
+			}
+			if _, err := read[name](nobody, &beta.ID); !errors.Is(err, ErrCursorMismatch) {
+				t.Errorf("a later page read as %d by a caller with none: %v, want ErrCursorMismatch", beta.ID, err)
+			}
+		})
+	}
+}
+
+// A retire and a registration on the same session make a new identity
+// whose seqs start again, so the old identity's inbox position is refused
+// rather than applied to the new mailbox.
+func TestInbox_aRetireAndRegisterOnTheSessionRefusesTheOldPosition(t *testing.T) {
+	s, _ := openClockStore(t)
+	beta := regAt(t, s, "beta", "/workspace/b")
+	regAt(t, s, "alpha", "/workspace/a")
+	c := Caller{Session: sess("beta")}
+	if _, _, err := s.Retire(t.Context(), Keyed{}, c); err != nil {
+		t.Fatal(err)
+	}
+	gamma := mustRegister(t, s, registration(sess("beta"), "gamma", envA(), "/workspace/b"))
+	say(t, s, "alpha", Target{Agent: "gamma"}, "hello")
+	if gamma.ID == beta.ID {
+		t.Fatalf("gamma took beta's id %d", beta.ID)
+	}
+	if _, err := s.Inbox(t.Context(), c, InboxQuery{ReadAs: &beta.ID, After: 1}); !errors.Is(err, ErrCursorMismatch) {
+		t.Errorf("beta's position read on gamma's session: %v, want ErrCursorMismatch", err)
 	}
 }

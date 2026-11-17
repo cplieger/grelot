@@ -30,6 +30,7 @@ const (
 	prefixLinks        byte = 6
 	prefixWatches      byte = 7
 	prefixRequests     byte = 8
+	prefixFile         byte = 9
 )
 
 // Identity states.
@@ -221,6 +222,11 @@ type reservationRow struct {
 	TTL    time.Duration `json:"ttl"`
 }
 
+// fileRow is the store file's one row, written when the file is created.
+type fileRow struct {
+	ID [16]byte `json:"id"`
+}
+
 // watchRow is one receipt watch, keyed by its id: the recipients of a
 // post still to read it, and how many have read or retired since.
 type watchRow struct {
@@ -271,6 +277,7 @@ type tables struct {
 	watches    *leased[uint64, watchRow]
 	watchBy    *bolttable.Index[uint64, watchRow]
 	requests   *leased[[]byte, requestRow]
+	file       *bolttable.Table[uint64, fileRow]
 	// leased lists every table above, in the order the sweep walks them.
 	leased []sweeper
 }
@@ -316,23 +323,21 @@ func newSchema() (*bolttable.Schema, *tables, error) {
 		func(_ uint64, v *threadRow) []bolttable.Entry { return keyEntries(v.Key) }); err != nil {
 		return nil, nil, err
 	}
-	if err := defineMessageIndexes(&t, messages, deliveries); err != nil {
-		return nil, nil, err
-	}
-	if err := defineCoreLeases(&t, ids, threads, messages, deliveries); err != nil {
-		return nil, nil, err
-	}
-	if err := defineReservations(ns, &t); err != nil {
-		return nil, nil, err
-	}
-	if err := defineLinks(ns, ids, &t); err != nil {
-		return nil, nil, err
-	}
-	if err := defineWatches(ns, &t); err != nil {
-		return nil, nil, err
-	}
-	if err := defineRequests(s, &t); err != nil {
-		return nil, nil, err
+	for _, define := range []func() error{
+		func() error { return defineMessageIndexes(&t, messages, deliveries) },
+		func() error { return defineCoreLeases(&t, ids, threads, messages, deliveries) },
+		func() error { return defineReservations(ns, &t) },
+		func() error { return defineLinks(ns, ids, &t) },
+		func() error { return defineWatches(ns, &t) },
+		func() (derr error) {
+			t.file, derr = bolttable.Define(ns, prefixFile, "file", bolttable.Uint64Key{}, bolttable.JSON[fileRow](1), silent)
+			return derr
+		},
+		func() error { return defineRequests(s, &t) },
+	} {
+		if derr := define(); derr != nil {
+			return nil, nil, derr
+		}
 	}
 	// Identities go first: an identity's expiry hands off its grants and
 	// deletes its links itself, before their own sweeps would reach them

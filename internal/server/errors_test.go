@@ -60,7 +60,7 @@ func TestErrorMembers(t *testing.T) {
 		}, "invalid"},
 		{func() error { return &store.Error{Kind: store.KindInvalid, Msg: "no field"} }, "invalid"},
 		{func() error { return errCursorInvalid }, "cursor_invalid"},
-		{func() error { return errCursorMismatch }, "cursor_mismatch"},
+		{func() error { return store.ErrCursorMismatch }, "cursor_mismatch"},
 		{func() error {
 			return &store.Error{Kind: store.KindNotFound, Reason: wire.ReasonMessage, Msg: "no message"}
 		}, "not_found"},

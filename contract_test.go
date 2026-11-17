@@ -473,34 +473,95 @@ func TestContract_aCursorIsBoundToItsRowQueryAndKey(t *testing.T) {
 	c.t = t
 }
 
-// One machine key carries every session on its machine, so a cursor
-// another session on the same key read is refused, never opened onto the
-// replaying session's mailbox.
-func TestContract_aCursorIsBoundToTheSessionOnItsKey(t *testing.T) {
-	for _, tc := range []struct{ row, path string }{
-		{"readInbox", "/v1/inbox?limit=1"},
-		{"getHistory", "/v1/history?limit=1"},
-	} {
-		t.Run(tc.row, func(t *testing.T) {
-			c := newContract(t)
-			beta := seedDirect(c)
-			alpha := c.agent(beta.key, sessAlpha, "a")
-			cursor := beta.call(http.StatusOK, tc.row, tc.path, nil).str("next_cursor")
-			if cursor == "" {
-				t.Fatalf("beta's first page of %s answered no next_cursor", tc.path)
-			}
-			r := alpha.send(tc.row, withQuery(tc.path, "cursor", cursor), nil, nil)
-			if r.status != http.StatusBadRequest || r.str("code") != "cursor_mismatch" {
-				t.Errorf("beta's cursor replayed as alpha on the same key: %d %s, want 400 cursor_mismatch", r.status, r.raw)
-			}
-		})
+// cursorSeed is a scenario in which beta's first page of every Paged
+// row has a next_cursor: alpha and beta share a key, delta has another.
+type cursorSeed struct {
+	c                  *contract
+	alpha, beta, delta *agent
+}
+
+func seedCursors(c *contract) *cursorSeed {
+	k := c.mintKey("machine-1")
+	s := &cursorSeed{
+		c: c, alpha: c.agent(k, sessAlpha, "a"), beta: c.agent(k, sessBeta, "a"),
+		delta: c.agent(c.mintKey("machine-2"), sessDelta, "b"),
+	}
+	s.alpha.call(http.StatusCreated, "register", "/v1/register", s.alpha.registerBody("alpha", hourMS, "/workspace/a"))
+	s.beta.call(http.StatusCreated, "register", "/v1/register", s.beta.registerBody("beta", shortMS, "/workspace/b"))
+	s.delta.call(http.StatusCreated, "register", "/v1/register", s.delta.registerBody("delta", hourMS, "/workspace/d"))
+	for _, p := range []string{"/workspace/a/x", "/workspace/a/y"} {
+		s.alpha.call(http.StatusCreated, "createPost", "/v1/posts", postBody(map[string]any{"path": p}, "on "+p, "a body"))
+		s.alpha.call(http.StatusCreated, "reserve", "/v1/reservations", map[string]any{"path": p, "reason": "a change", "ttl_ms": hourMS})
+	}
+	s.mail("beta")
+	return s
+}
+
+// mail sends three direct posts from alpha to name.
+func (s *cursorSeed) mail(name string) {
+	for i := 1; i <= 3; i++ {
+		s.alpha.call(http.StatusCreated, "createPost", "/v1/posts", postBody(map[string]any{"agent": name}, fmt.Sprintf("m%d", i), "a body"))
 	}
 }
 
-// The cursor bound: a 1024-byte path's cursor fits in 1458
+// A cursor resumes the walk of the identity it was read as, never the
+// header text that named it: a retire and re-register on the same
+// session, another session on the same key and another key each read as
+// another identity and are refused, and the same identity revived keeps
+// its cursor.
+func TestContract_aCursorIsBoundToTheIdentityItWasReadAs(t *testing.T) {
+	rows := []struct{ row, path string }{
+		{"listIdentities", "/v1/identities?limit=1"},
+		{"listThreads", "/v1/threads?limit=1"},
+		{"getHistory", "/v1/history?limit=1"},
+		{"listReservations", "/v1/reservations?limit=1"},
+		{"readInbox", "/v1/inbox?limit=1"},
+	}
+	cases := []struct {
+		replayer func(*cursorSeed) *agent
+		name     string
+		status   int
+	}{
+		{name: "a retire and re-register on the same session", status: http.StatusBadRequest, replayer: func(s *cursorSeed) *agent {
+			s.beta.call(http.StatusOK, "deleteMe", "/v1/me", nil)
+			s.beta.call(http.StatusCreated, "register", "/v1/register", s.beta.registerBody("gamma", hourMS, "/workspace/b"))
+			s.mail("gamma")
+			return s.beta
+		}},
+		{name: "another session on the same key", status: http.StatusBadRequest, replayer: func(s *cursorSeed) *agent { return s.alpha }},
+		{name: "another key", status: http.StatusBadRequest, replayer: func(s *cursorSeed) *agent { return s.delta }},
+		{name: "the same identity revived", status: http.StatusOK, replayer: func(s *cursorSeed) *agent {
+			s.c.clk.advance(time.Duration(shortMS)*time.Millisecond + time.Minute)
+			s.beta.call(http.StatusOK, "revive", "/v1/revive", map[string]any{
+				"name": "beta", "host": "host-a", "os": "linux", "arch": "amd64", "where": s.beta.where(), "ttl_ms": hourMS,
+			})
+			return s.beta
+		}},
+	}
+	for _, rc := range rows {
+		for _, tc := range cases {
+			t.Run(rc.row+"/"+tc.name, func(t *testing.T) {
+				s := seedCursors(newContract(t))
+				cursor := s.beta.call(http.StatusOK, rc.row, rc.path, nil).str("next_cursor")
+				if cursor == "" {
+					t.Fatalf("beta's first page of %s answered no next_cursor", rc.path)
+				}
+				r := tc.replayer(s).send(rc.row, withQuery(rc.path, "cursor", cursor), nil, nil)
+				if tc.status == http.StatusOK && r.status != http.StatusOK {
+					t.Errorf("beta's cursor replayed: %d %s, want 200", r.status, r.raw)
+				}
+				if tc.status == http.StatusBadRequest && (r.status != http.StatusBadRequest || r.str("code") != "cursor_mismatch") {
+					t.Errorf("beta's cursor replayed: %d %s, want 400 cursor_mismatch", r.status, r.raw)
+				}
+			})
+		}
+	}
+}
+
+// The cursor bound: a 1024-byte path's cursor fits in 1468
 // characters, and one character more is refused unread.
 const (
-	maxCursorChars = 1458
+	maxCursorChars = 1468
 	maxPathBytes   = 1024
 )
 

@@ -78,7 +78,7 @@ func (s *Server) reservations(r *http.Request, c store.Caller, _ store.Keyed) (s
 		return 0, nil, err
 	}
 	p := pagingOf(r)
-	q := store.ReservationQuery{Path: rq.Path, Limit: p.limit}
+	q := store.ReservationQuery{ReadAs: p.readAs, Path: rq.Path, Limit: p.limit}
 	if p.after != nil {
 		if q.After, err = afterSeq(p.after); err != nil {
 			return 0, nil, err
@@ -93,7 +93,7 @@ func (s *Server) reservations(r *http.Request, c store.Caller, _ store.Keyed) (s
 		out.Items = append(out.Items, reservationOut(&got.Items[i]))
 	}
 	if n := len(got.Items); n > 0 {
-		out.NextCursor, err = s.next(r, got.More, seqPosition(got.Items[n-1].ID))
+		out.NextCursor, err = s.next(r, got.More, got.ReadAs, seqPosition(got.Items[n-1].ID))
 	}
 	return http.StatusOK, out, err
 }

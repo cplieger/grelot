@@ -98,10 +98,11 @@ func (d *deliveryRow) wakes() bool {
 }
 
 // InboxQuery pages an inbox read: the deliveries past the seq After, at
-// most Limit of them (every one at 0).
+// most Limit of them (every one at 0), read as ReadAs (resumes).
 type InboxQuery struct {
-	After uint64
-	Limit int
+	ReadAs *uint64
+	After  uint64
+	Limit  int
 }
 
 // InboxPage is an inbox read: a page of the unread deliveries oldest
@@ -133,7 +134,7 @@ type Held struct {
 
 // Inbox returns a page of c's unexpired deliveries past read, oldest
 // first, and moves no cursor: the caller acks what it printed. Refusals:
-// KindGone for a session with no live identity.
+// KindGone for a session with no live identity; ErrCursorMismatch.
 func (s *Store) Inbox(ctx context.Context, c Caller, q InboxQuery) (InboxPage, error) {
 	if _, err := s.Seen(ctx, c); err != nil {
 		return InboxPage{}, err
@@ -141,10 +142,11 @@ func (s *Store) Inbox(ctx context.Context, c Caller, q InboxQuery) (InboxPage, e
 	var out InboxPage
 	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
-		me, err := s.liveFor(r, c, now)
+		me, err := s.pagedLive(r, c, now, q.ReadAs)
 		if err != nil {
 			return err
 		}
+		out.ReadAs = me.ID
 		u, err := s.pastRead(r, &me, now)
 		if err != nil {
 			return err

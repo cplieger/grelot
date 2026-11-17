@@ -30,7 +30,7 @@ func entriesOut(es []store.Entry) []wire.Entry {
 // wait.
 func (s *Server) inbox(r *http.Request, c store.Caller, _ store.Keyed) (status int, body any, err error) {
 	p := pagingOf(r)
-	q := store.InboxQuery{Limit: p.limit}
+	q := store.InboxQuery{ReadAs: p.readAs, Limit: p.limit}
 	if p.after != nil {
 		if q.After, err = afterSeq(p.after); err != nil {
 			return 0, nil, err
@@ -46,7 +46,7 @@ func (s *Server) inbox(r *http.Request, c store.Caller, _ store.Keyed) (status i
 	}
 	out := wire.Inbox{List: wire.List[wire.Entry]{Items: entriesOut(page.Items), Total: page.Total}, Unread: countsOut(page.Unread)}
 	if n := len(page.Items); n > 0 {
-		out.NextCursor, err = s.next(r, page.More, seqPosition(page.Items[n-1].Seq))
+		out.NextCursor, err = s.next(r, page.More, page.ReadAs, seqPosition(page.Items[n-1].Seq))
 	}
 	return http.StatusOK, out, err
 }
@@ -75,7 +75,7 @@ func (s *Server) history(r *http.Request, c store.Caller, _ store.Keyed) (status
 		return 0, nil, err
 	}
 	p := pagingOf(r)
-	hq.Limit = p.limit
+	hq.ReadAs, hq.Limit = p.readAs, p.limit
 	if p.after != nil {
 		// The sealed bound is the one page 1 resolved; an explicit since is
 		// in the cursor's bound query, so it seals as itself.
@@ -89,7 +89,7 @@ func (s *Server) history(r *http.Request, c store.Caller, _ store.Keyed) (status
 	}
 	out := wire.History{List: wire.List[wire.Entry]{Items: entriesOut(got.Items), Total: got.Total}}
 	if len(got.Items) > 0 {
-		out.NextCursor, err = s.next(r, got.More, historyPosition(got.Items[0].Key(), got.Since))
+		out.NextCursor, err = s.next(r, got.More, got.ReadAs, historyPosition(got.Items[0].Key(), got.Since))
 	}
 	return http.StatusOK, out, err
 }
@@ -128,7 +128,7 @@ func (s *Server) threads(r *http.Request, c store.Caller, _ store.Keyed) (status
 		return 0, nil, err
 	}
 	p := pagingOf(r)
-	got, err := s.store.Threads(r.Context(), c, store.ThreadQuery{Root: q.Path, After: string(p.after), Limit: p.limit})
+	got, err := s.store.Threads(r.Context(), c, store.ThreadQuery{ReadAs: p.readAs, Root: q.Path, After: string(p.after), Limit: p.limit})
 	if err != nil {
 		return 0, nil, err
 	}
@@ -137,7 +137,7 @@ func (s *Server) threads(r *http.Request, c store.Caller, _ store.Keyed) (status
 		out.Items = append(out.Items, wire.Thread{Expires: t.Expires.UTC(), Path: t.Path, ID: t.ID})
 	}
 	if n := len(got.Items); n > 0 {
-		out.NextCursor, err = s.next(r, got.More, []byte(got.Items[n-1].Path))
+		out.NextCursor, err = s.next(r, got.More, got.ReadAs, []byte(got.Items[n-1].Path))
 	}
 	return http.StatusOK, out, err
 }

@@ -51,12 +51,14 @@ type Reserved struct {
 
 // ReservationQuery filters Reservations. Path keeps the rows at, above or
 // under it; Mine keeps the caller's own. After and Limit page the list:
-// the ids past After, at most Limit of them (every one at 0).
+// the ids past After, at most Limit of them (every one at 0), read as
+// ReadAs (resumes).
 type ReservationQuery struct {
-	Path  string
-	After uint64
-	Limit int
-	Mine  bool
+	ReadAs *uint64
+	Path   string
+	After  uint64
+	Limit  int
+	Mine   bool
 }
 
 // Reserve grants r.Path to r.Caller's identity for r.TTL, or queues the
@@ -264,8 +266,8 @@ func (w *wtx) ownReservation(c Caller, id uint64) (identityRow, reservationRow, 
 
 // Reservations lists the unexpired grants and the queue entries, in id
 // order, as c's identity sees them; a session with no live
-// identity sees every relation as unknown. Refusals: KindInvalid for a bad
-// path.
+// identity sees every relation as unknown and reads as 0. Refusals:
+// KindInvalid for a bad path; ErrCursorMismatch.
 func (s *Store) Reservations(ctx context.Context, c Caller, q ReservationQuery) (Listing[Reservation], error) {
 	if q.Path != "" {
 		if _, err := checkPaths([]string{q.Path}); err != nil {
@@ -276,14 +278,14 @@ func (s *Store) Reservations(ctx context.Context, c Caller, q ReservationQuery) 
 		return Listing[Reservation]{}, err
 	}
 	var out []Reservation
+	var readAs uint64
 	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
-		var me identityRow
-		if v, found, err := s.callerFor(r, c, now); err != nil {
+		me, err := s.pagedCaller(r, c, now, q.ReadAs)
+		if err != nil {
 			return err
-		} else if found && v.State == stateLive {
-			me = v
 		}
+		readAs = me.ID
 		if q.Mine && me.ID == 0 {
 			return nil
 		}
@@ -293,7 +295,9 @@ func (s *Store) Reservations(ctx context.Context, c Caller, q ReservationQuery) 
 			}
 		})
 	})
-	return listing(out, pastKey(q.After, func(v *Reservation) uint64 { return v.ID }), q.Limit), err
+	l := listing(out, pastKey(q.After, func(v *Reservation) uint64 { return v.ID }), q.Limit)
+	l.ReadAs = readAs
+	return l, err
 }
 
 func (s *Store) scanReservations(r *bolttable.ReadTx, q ReservationQuery, holder uint64, fn func(*reservationRow)) error {
