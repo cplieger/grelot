@@ -1161,7 +1161,10 @@ describe("the open conversation", () => {
         "The store is busy.",
       );
     });
-    expect(detail().querySelector("h2")?.textContent).toBe("/workspace/r1");
+    // The list names the conversation when it lands, which can be after the failure.
+    await until(() => {
+      expect(detail().querySelector("h2")?.textContent).toBe("/workspace/r1");
+    });
     button("Retry", detail()).click();
     await shown(1);
     expect(detail().querySelector(".cp-notice:not([hidden])")).toBeNull();

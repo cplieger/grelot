@@ -435,7 +435,12 @@ describe("the Messages list", () => {
     await rowsShown(["/workspace/r2", "/workspace/r3", "/workspace/r1"]);
     expect(h.root.querySelector(".cp-list-foot")).toBeNull();
     followUp.resolve(undefined);
-    await delay(50);
+    // The follow-up lands on a list Show changed, so the list reads once more;
+    // that read proves the follow-up was judged, and waiting for it keeps the
+    // read from reaching the next test's answers.
+    await until(() => {
+      expect(h.asked).toHaveLength(6);
+    });
     expect(titles()).toEqual(["/workspace/r2", "/workspace/r3", "/workspace/r1"]);
   });
 
