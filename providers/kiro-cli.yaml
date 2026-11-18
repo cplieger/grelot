@@ -85,4 +85,11 @@ hooks:
     # SessionEnd also fires when the server unloads an idle chat or a client
     # disconnects; only a deleted chat has closed.
     when: {reason: [delete]}
+# No guard: in kiro-cli 3.4.0 nothing a PreToolUse or PostToolUse hook prints
+# reaches the model unless the hook blocks the call with exit 2, and the
+# guard never blocks a write. Plain stdout, additionalContext, stderr with
+# exit 1, and an allow with a permissionDecisionReason all reached neither
+# the model nor the stored session, and the allow also skipped the write's
+# permission prompt (measured on 3.4.0 on Linux;
+# https://kiro.dev/docs/hooks/types.md, "Structured decision").
 notes: docs/hosts/kiro-cli.md

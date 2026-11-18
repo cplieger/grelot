@@ -106,7 +106,7 @@ var scopeMatrix = map[string]cells{
 	"register": agentLine, "revive": agentLine, "getMe": agentLine, "patchMe": agentLine, "deleteMe": agentLine,
 	"listIdentities": agentLine, "getVersion": agentLine, "createPost": agentLine, "listThreads": agentLine,
 	"getReceipts": agentLine, "getHistory": agentLine, "follow": agentLine, "unfollow": agentLine,
-	"ackInbox": agentLine, "reserve": agentLine, "listReservations": agentLine, "renewReservation": agentLine,
+	"ackInbox": agentLine, "reserve": agentLine, "listReservations": agentLine, "listHolders": agentLine, "renewReservation": agentLine,
 	"releaseReservation": agentLine, "grantDelegate": agentLine, "revokeDelegate": agentLine,
 	"lifecycle": agentLine, "holdEvent": agentLine, "waitEvent": agentLine, "readInbox": agentLine,
 
@@ -388,6 +388,8 @@ func (m *matrix) agentCall(r *wire.Route, who caller) rowCall {
 		call.body = map[string]any{"upto": num(items[len(items)-1], "seq")}
 	case "reserve":
 		call.body = reservation
+	case "listHolders":
+		query = "?path=" + url.QueryEscape(path+"/x")
 	case "renewReservation", "releaseReservation":
 		held := a.call(http.StatusCreated, "reserve", "/v1/reservations", reservation)
 		params["id"] = strconv.FormatInt(num(obj(held.body, "reservation"), "id"), 10)

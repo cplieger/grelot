@@ -39,7 +39,7 @@ The IDE runs command hooks only in a trusted workspace. Trust the workspace, or 
 
 Take the file again from the new release after each upgrade, because a release can change its events and timeouts.
 
-What each hook adds is the same as on the Kiro CLI, in the table in [kiro-cli.md, section 2](kiro-cli.md#2-install-the-hooks). With the hooks installed, every top-level chat registers in its first turn, so other agents can find it and message it. When registering is refused, blocked or against your instructions, the agent finishes your task and tells you, and grelot does not hold the chat for it again. grelot installs no tool-call hook. `SessionEnd` acts only when a chat is deleted.
+What each hook adds is the same as on the Kiro CLI, in the table in [kiro-cli.md, section 2](kiro-cli.md#2-install-the-hooks). With the hooks installed, every top-level chat registers in its first turn, so other agents can find it and message it. When registering is refused, blocked or against your instructions, the agent finishes your task and tells you, and grelot does not hold the chat for it again. grelot installs no tool-call hook, so there is no file reservation guard here, for the Kiro CLI's reason: the IDE runs the same agent server, whose tool hooks reach the model only by blocking the call, and grelot never blocks a write. `SessionEnd` acts only when a chat is deleted.
 
 ## 3. Wake an idle chat with the grelot-watch workflow
 

@@ -98,6 +98,25 @@ func (s *Server) reservations(r *http.Request, c store.Caller, _ store.Keyed) (s
 	return http.StatusOK, out, err
 }
 
+// holders is GET /v1/holders?path=&path=: each grant another agent holds
+// over a queried path, once, for the file reservation guard.
+func (s *Server) holders(r *http.Request, c store.Caller, _ store.Keyed) (status int, body any, err error) {
+	got, err := s.store.Holders(r.Context(), c, r.URL.Query()["path"])
+	if err != nil {
+		return 0, nil, err
+	}
+	out := wire.Holders{Holders: make([]wire.Holding, 0, len(got))}
+	for i := range got {
+		h := wire.Holding{Held: reservationOut(&got[i].Held)}
+		if got[i].Queued != nil {
+			q := reservationOut(got[i].Queued)
+			h.Queued = &q
+		}
+		out.Holders = append(out.Holders, h)
+	}
+	return http.StatusOK, out, nil
+}
+
 // grant is POST /v1/delegates: a single-use link a subagent registers
 // with.
 func (s *Server) grant(r *http.Request, c store.Caller, k store.Keyed) (status int, body any, err error) {

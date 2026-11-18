@@ -46,6 +46,7 @@ func agentRequests(a *agent, name, peer string) map[string]rowRequest {
 		"ackInbox":           {map[string]any{"upto": 1}, "/v1/inbox/ack"},
 		"reserve":            {map[string]any{"path": repoPath, "reason": "a change", "ttl_ms": hourMS}, "/v1/reservations"},
 		"listReservations":   {nil, "/v1/reservations"},
+		"listHolders":        {nil, "/v1/holders?path=" + url.QueryEscape(repoPath+"/a.go")},
 		"renewReservation":   {map[string]any{"ttl_ms": hourMS}, "/v1/reservations/1"},
 		"releaseReservation": {nil, "/v1/reservations/1"},
 		"grantDelegate":      {map[string]any{"label": "helper", "ttl_ms": hourMS}, "/v1/delegates"},

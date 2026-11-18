@@ -1013,6 +1013,37 @@
         ],
         "type": "object"
       },
+      "Holders": {
+        "properties": {
+          "holders": {
+            "items": {
+              "$ref": "#/components/schemas/Holding"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "holders"
+        ],
+        "type": "object"
+      },
+      "Holding": {
+        "properties": {
+          "held": {
+            "$ref": "#/components/schemas/Reservation"
+          },
+          "queued": {
+            "$ref": "#/components/schemas/Reservation"
+          }
+        },
+        "required": [
+          "held"
+        ],
+        "type": "object"
+      },
       "Identity": {
         "properties": {
           "arch": {
@@ -6590,6 +6621,234 @@
           }
         ],
         "summary": "This identity's mailbox, read and unread, moving nothing; pages go back in time, each oldest first"
+      }
+    },
+    "/v1/holders": {
+      "get": {
+        "operationId": "listHolders",
+        "parameters": [
+          {
+            "description": "The client's version, which the server answers 426 below its floor.",
+            "in": "header",
+            "name": "Grelot-Version",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[\\x20-\\x7E]*$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "<provider>:<host session id>, the session the request acts as.",
+            "in": "header",
+            "name": "Grelot-Session",
+            "required": true,
+            "schema": {
+              "maxLength": 305,
+              "minLength": 3,
+              "pattern": "^[\\x20-\\x7E]*$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A delegate's handle, to act as that delegate of the session's identity.",
+            "in": "header",
+            "name": "Grelot-As",
+            "required": false,
+            "schema": {
+              "maxLength": 97,
+              "minLength": 1,
+              "pattern": "^[\\x20-\\x7E]*$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 when the agent's own command sent the request.",
+            "in": "header",
+            "name": "Grelot-Self",
+            "required": false,
+            "schema": {
+              "maxLength": 1,
+              "minLength": 1,
+              "pattern": "^[\\x20-\\x7E]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Holders"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request: invalid",
+            "x-error-codes": {
+              "invalid": {}
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized: auth_required, auth_session_expired, auth_invalid_credentials, auth_key_invalid",
+            "x-error-codes": {
+              "auth_invalid_credentials": {},
+              "auth_key_invalid": {},
+              "auth_required": {},
+              "auth_session_expired": {}
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden: forbidden, auth_session_required, auth_scope_required, auth_key_required",
+            "x-error-codes": {
+              "auth_key_required": {},
+              "auth_scope_required": {},
+              "auth_session_required": {},
+              "forbidden": {}
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found: auth_not_found",
+            "x-error-codes": {
+              "auth_not_found": {}
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Method Not Allowed: auth_method_not_allowed",
+            "x-error-codes": {
+              "auth_method_not_allowed": {}
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict: delegate_gate",
+            "x-error-codes": {
+              "delegate_gate": {}
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Gone: none, dormant, delegate_ended",
+            "x-error-codes": {
+              "delegate_ended": {},
+              "dormant": {},
+              "none": {}
+            }
+          },
+          "426": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Upgrade Required: upgrade_required",
+            "x-error-codes": {
+              "upgrade_required": {}
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests: rate_limited",
+            "x-error-codes": {
+              "rate_limited": {}
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error: internal_error",
+            "x-error-codes": {
+              "internal_error": {}
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable: timeout, shutting_down, auth_unavailable",
+            "x-error-codes": {
+              "auth_unavailable": {},
+              "shutting_down": {},
+              "timeout": {}
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerKey": [
+              "agent"
+            ]
+          }
+        ],
+        "summary": "Each grant another agent holds over any of 1 to 256 paths, each sent as a path query value, once, by grant id"
       }
     },
     "/v1/identities": {

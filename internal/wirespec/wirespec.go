@@ -170,6 +170,10 @@ var specs = map[string]Spec{
 		Summary: "The grants and queue entries overlapping a path, every one when it is absent, by id",
 		Query:   typeOf[wire.ReservationsQuery](), Response: typeOf[wire.Reservations](), Errors: agent(asCaller),
 	},
+	"listHolders": {
+		Summary:  "Each grant another agent holds over any of 1 to 256 paths, each sent as a path query value, once, by grant id",
+		Response: typeOf[wire.Holders](), Errors: agent(asIdentity),
+	},
 	"renewReservation": {
 		Summary: "Renew one of this identity's reservations",
 		Params:  typeOf[wire.ReservationParams](), Request: typeOf[wire.RenewRequest](), Response: typeOf[wire.ReservationAnswer](),
@@ -311,7 +315,7 @@ func Registry() *wiregen.Registry {
 			wiregen.TypeRef[wire.Event](), wiregen.TypeRef[wire.EventCounts](), wiregen.TypeRef[wire.HeldTurns](),
 			wiregen.TypeRef[wire.Methods](),
 			wiregen.TypeRef[wire.Where](), wiregen.TypeRef[wire.Checkout](), wiregen.TypeRef[wire.Identity](),
-			wiregen.TypeRef[wire.Counts](), wiregen.TypeRef[wire.Hint](), wiregen.TypeRef[wire.Reservation](),
+			wiregen.TypeRef[wire.Counts](), wiregen.TypeRef[wire.Hint](), wiregen.TypeRef[wire.Reservation](), wiregen.TypeRef[wire.Holding](),
 			wiregen.TypeRef[wire.Delegate](), wiregen.TypeRef[wire.Link](), wiregen.TypeRef[wire.Peer](),
 			wiregen.TypeRef[wire.PeerReservation](), wiregen.TypeRef[wire.PeerQueued](), wiregen.TypeRef[wire.PeerDelegate](),
 			wiregen.TypeRef[wire.IdentityFields](), wiregen.TypeRef[wire.Recipients](), wiregen.TypeRef[wire.Thread](),

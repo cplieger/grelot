@@ -197,6 +197,17 @@ var agentScenario = []scenarioStep{
 			}
 		}
 	}},
+	{row: "listHolders", what: "beta asks who holds a file under alpha's grant, and sees its own queue entry", run: func(s *scenario) {
+		r := s.beta.call(http.StatusOK, "listHolders", "/v1/holders?path="+url.QueryEscape(repoPath+"/a.go"), nil)
+		hs, _ := r.body["holders"].([]any)
+		if len(hs) != 1 {
+			s.c.t.Fatalf("holders: %s, want alpha's one grant", r.raw)
+		}
+		h, _ := hs[0].(map[string]any)
+		if held := obj(h, "held"); held["holder"] != "alpha" || num(held, "id") != s.held || obj(h, "queued")["state"] != "queued" {
+			s.c.t.Errorf("holders: %s, want alpha's grant %d with beta's queue entry", r.raw, s.held)
+		}
+	}},
 	{row: "renewReservation", what: "alpha renews its grant", run: func(s *scenario) {
 		r := s.alpha.call(http.StatusOK, "renewReservation", fmt.Sprintf("/v1/reservations/%d", s.held), map[string]any{"ttl_ms": halfMS})
 		if got := num(obj(r.body, "reservation"), "ttl_ms"); got != halfMS {

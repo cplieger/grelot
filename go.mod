@@ -4,12 +4,12 @@ go 1.27.4
 
 require (
 	github.com/cplieger/access v1.0.0-dev.12
-	github.com/cplieger/bolttable v1.2.0-dev.3
+	github.com/cplieger/bolttable v1.2.0-dev.5
 	github.com/cplieger/go/envx v1.1.0
-	github.com/cplieger/go/filesafe v1.1.0
+	github.com/cplieger/go/filesafe v1.2.0-dev.1
 	github.com/cplieger/go/health/v2 v2.0.0
 	github.com/cplieger/go/httpclient v1.2.0
-	github.com/cplieger/go/httpserver v1.5.0
+	github.com/cplieger/go/httpserver/v2 v2.0.0-dev.2
 	github.com/cplieger/go/keyenc v1.3.0
 	github.com/cplieger/go/measure/v2 v2.0.0
 	github.com/cplieger/go/pathinside v1.1.0
@@ -28,6 +28,9 @@ require (
 
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0 // indirect
+	github.com/cplieger/go/httpserver v1.3.0 // indirect
+	github.com/cplieger/go/ssrf v1.1.0 // indirect
+	github.com/cplieger/go/urlform v1.2.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.10.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.9 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect

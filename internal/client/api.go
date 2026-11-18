@@ -312,3 +312,14 @@ func (a *API) noteFacts(pathRoot, server string) {
 	f.PathRoot, f.Version = pathRoot, server
 	SaveFacts(a.configDir, f)
 }
+
+// Holders sends one GET /v1/holders for paths, canonical and 1 to
+// [protopath.MaxHolderPaths] of them, and answers each grant another agent
+// holds over any of them, once, in grant id order.
+func (a *API) Holders(ctx context.Context, paths []string) ([]wire.Holding, error) {
+	var out wire.Holders
+	if _, err := a.Do(ctx, &Request{Method: http.MethodGet, Path: wire.Path("listHolders", nil), Query: url.Values{"path": paths}}, &out); err != nil {
+		return nil, err
+	}
+	return out.Holders, nil
+}

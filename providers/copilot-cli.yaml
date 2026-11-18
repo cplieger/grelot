@@ -50,4 +50,8 @@ hooks:
       block: {text: '{"decision":"block","reason":{{json .Reason}}}'}
 # No prompt: userPromptSubmitted drops a command hook's output. No
 # session_end or subagent_stop until a run shows which session each names.
+# No guard: its hooks print nothing until a session.env is recorded, so no
+# channel can be tried. postToolUse documents additionalContext for the
+# model; a command preToolUse hook denies the call on a crash or any
+# non-zero exit.
 notes: docs/hosts/copilot-cli.md

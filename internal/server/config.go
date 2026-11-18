@@ -21,7 +21,7 @@ import (
 	"github.com/cplieger/access/oidc"
 	"github.com/cplieger/access/webauthn"
 	"github.com/cplieger/go/envx"
-	"github.com/cplieger/go/httpserver"
+	"github.com/cplieger/go/httpserver/v2"
 	"github.com/cplieger/go/pathinside"
 	"github.com/cplieger/grelot/internal/auth"
 	"github.com/cplieger/grelot/internal/protopath"

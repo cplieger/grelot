@@ -186,14 +186,17 @@ A tool's hook file wires each event to `grelot hook <provider> <role>`, and the 
 | `turn_end` | A turn ends some other way than `stop`, such as an error or an interruption | Tells the server the turn ended. Prints nothing |
 | `session_end` | A session closes | Tells the server, which ends the session's delegates and lets the identity go dormant within the hour. Prints nothing |
 | `subagent_stop` | A subagent ends | Ends the delegate that subagent's own session held. Prints nothing |
+| `guard` | Before a file-write tool runs | Prints, as `context`, a line for each other agent holding a written file: who, which path, until when and why. Checks the first 256 distinct written files inside a clone with a remote in one request, and only those; a last line says when more went unchecked. Says nothing for a free file or one the identity or its parent holds, in a subagent or a one-shot run, and on any error. Never blocks or asks, stops its lookups at its `budget`, and only reads |
+
+A hook reads at most 16 MiB of input, room for the whole file body or patch a write tool carries; past that it prints nothing.
 
 Every role takes these keys:
 
 | Key | What it holds |
 | --- | --- |
 | `event` | The tool's own name for the event. Required |
-| `when` | Stdin paths and the values each must hold for the role to act, such as `{reason: [delete]}` |
-| `budget` | How long the role may wait on the server, for a tool that allows less than the default 10 seconds. A role that gets no answer within it prints that it could not check the session and holds nothing. Give the tool's hook a timeout of at least the budget plus the time the tool takes to start the hook, which is up to about 10 seconds on a slow Windows machine. A hook the tool stops at its timeout holds nothing either, and the next command's status line shows the state |
+| `when` | Stdin paths and the values each must hold for the role to act, such as `{reason: [delete]}`. Required for `guard`, naming the tool's file-write tools, such as `{tool_name: [Edit, Write]}`, so it never runs for a read or a shell command; the hook file's matcher names the same tools |
+| `budget` | How long the role may wait on the server, for a tool that allows less than the default 10 seconds. A role that gets no answer within it prints that it could not check the session and holds nothing; `guard` prints nothing, and its budget also covers the git lookups that place each file. Give the tool's hook a timeout of at least the budget plus the time the tool takes to start the hook, which is up to about 10 seconds on a slow Windows machine. A hook the tool stops at its timeout holds nothing either, and the next command's status line shows the state |
 | `once` | `true` prints the role's output only the first time in a session |
 
 And these, by role:
@@ -203,10 +206,12 @@ And these, by role:
 | `stdin.agent_id` | all | The stdin path of a subagent's id. A hook whose input holds one belongs to a subagent and never acts for its parent |
 | `stdin.prompt` | `prompt` | The stdin path of the prompt text |
 | `signal` | `prompt` | An RE2 pattern over the whole prompt, with a named group `(?P<line>...)`, for a tool that delivers a background line inside its own wrapper |
-| `context_limit` | `session_start` | The most bytes of context the tool hands its model whole, from the tool's documentation, or `0` for no limit, which is the default. When the card, the status line and the manual together go over it, the manual is replaced by a line asking the agent to run `grelot help`. When that still goes over, the card is left out too, with a line pointing at `grelot me`. The count is of the rendered output, so a JSON wrapper counts. A byte count never undercounts a tool that counts characters |
+| `context_limit` | `session_start`, `guard` | The most bytes of context the tool hands its model whole, from the tool's documentation, or `0` for no limit, which is the default. When the card, the status line and the manual together go over it, the manual is replaced by a line asking the agent to run `grelot help`. When that still goes over, the card is left out too, with a line pointing at `grelot me`. A `guard` keeps the most lines that fit, then a line counting the reservations it left out, or only that count when no line fits. The count is of the rendered output, so a JSON wrapper counts. A byte count never undercounts a tool that counts characters |
 | `source` | `session_start` | `path`, the stdin path of the start source, and the values among it that mean a take-over (`take_over`, such as `clear`) or a fork (`fork`). A take-over start may get the hint for the identity of the previous session in that process |
 | `take_over_every_start` | `session_start` | `true` for a tool that reports no source and starts a session in its process only for a chat with no history. Every start but a fork may then get the hint. Not with `source.take_over` |
 | `once_per_turn` | `stop` | `true` for a tool that runs its stop hooks at most once per turn, so the hold ends the turn whether or not it blocks |
+| `stdin.paths` | `guard` | Stdin paths each holding one written file, such as `[tool_input.file_path]`. A relative one is read from the hook's working folder |
+| `stdin.patch`, `stdin.cwd` | `guard` | The stdin path of a patch's text, for a tool whose write tool takes one, and of the folder its relative paths start from; on Windows a rooted path with no drive, `\x`, takes that folder's drive or share. Every file the patch adds, updates, deletes or moves is read, and checked as the `guard` row says. They go together, and a `guard` needs `stdin.paths` or `stdin.patch` |
 | `stdin.session` | `subagent_stop` | The stdin path of the session the subagent's own shell carries, for a tool whose subagent hooks name the parent at `session.stdin`. `session.stdin` when left out |
 
 Outputs, under `outputs.context`, `outputs.block` and `outputs.notice`:
@@ -217,7 +222,7 @@ Outputs, under `outputs.context`, `outputs.block` and `outputs.notice`:
 | `stream` | `stdout` | `stdout` or `stderr` |
 | `exit` | `0` | The exit code after printing, 0 to 255 |
 
-`session_start` takes `context`, `prompt` takes `context` and `block`, and `stop` takes `block` and `notice`. A role whose output kind is left out prints nothing for it, so a `stop` with no `block` never holds a turn.
+`session_start` takes `context`, `prompt` takes `context` and `block`, `stop` takes `block` and `notice`, and `guard` takes `context` only, on `stdout` with exit `0`; a `guard` output on `stderr` or with another exit code is refused, and its text must carry no decision the tool would read as blocking, asking or delaying the call. A role whose output kind is left out prints nothing for it, so a `stop` with no `block` never holds a turn.
 
 #### Hooks that stop running
 

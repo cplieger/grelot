@@ -125,6 +125,45 @@ func TestMe_cachedRootCorrectedByTheNextMe(t *testing.T) {
 	}
 }
 
+func TestHolders_againstTheServer(t *testing.T) {
+	url, key := realServer(t)
+	holder, _ := newKeyedAPI(t, url, key, "v2.0.0")
+	writer, _ := newKeyedAPI(t, url, key, "v2.0.0")
+	holder.Session, writer.Session = "alpha:s-1", "alpha:s-2"
+	for a, name := range map[*API]string{holder: "holder-dev", writer: "writer-dev"} {
+		if _, err := a.Do(t.Context(), &Request{Method: http.MethodPost, Path: wire.Path("register", nil), Body: registerBody(name)}, nil); err != nil {
+			t.Fatalf("register %s: %v", name, err)
+		}
+	}
+	reserve := func(a *API, body map[string]any) uint64 {
+		t.Helper()
+		var out wire.Reserved
+		if _, err := a.Do(t.Context(), &Request{Method: http.MethodPost, Path: wire.Path("reserve", nil), Body: body}, &out); err != nil {
+			t.Fatalf("reserve %v: %v", body, err)
+		}
+		return out.Reservation.ID
+	}
+	held := reserve(holder, map[string]any{"path": "/workspace/tool/internal", "reason": "splitting it", "ttl_ms": time.Hour.Milliseconds()})
+	file := "/workspace/tool/internal/a.go"
+
+	got, err := writer.Holders(t.Context(), []string{file, "/workspace/tool/README.md", "/workspace/tool/internal/b.go"})
+	if err != nil {
+		t.Fatalf("Holders: %v", err)
+	}
+	if len(got) != 1 || got[0].Queued != nil || got[0].Held.ID != held ||
+		got[0].Held.Holder != "holder-dev" || got[0].Held.Path != "/workspace/tool/internal" ||
+		got[0].Held.Reason != "splitting it" || got[0].Held.Expires.IsZero() {
+		t.Fatalf("Holders = %+v, want one entry for both files: /workspace/tool/internal held by @holder-dev for splitting it", got)
+	}
+	queued := reserve(writer, map[string]any{"path": file, "reason": "next", "ttl_ms": (30 * time.Minute).Milliseconds(), "queue": true})
+	if got, err = writer.Holders(t.Context(), []string{file}); err != nil || len(got) != 1 || got[0].Queued == nil || got[0].Queued.ID != queued {
+		t.Errorf("Holders after queueing = %+v, %v; want the writer's queue entry %d named", got, err, queued)
+	}
+	if got, err = holder.Holders(t.Context(), []string{file}); err != nil || len(got) != 0 {
+		t.Errorf("Holders as the holder = %+v, %v; want no entry", got, err)
+	}
+}
+
 func TestDo_oldClientGetsThe426(t *testing.T) {
 	a, _ := newServerAPI(t, "v0.9.0")
 	a.Session = "alpha:s-1"

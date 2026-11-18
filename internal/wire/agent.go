@@ -487,6 +487,20 @@ type Reservations struct {
 	List[Reservation]
 }
 
+// Holding is one grant another agent holds over the queried paths; Queued
+// is the caller's own oldest queue entry overlapping both the grant and a
+// queried path, nil for none.
+type Holding struct {
+	Queued *Reservation `json:"queued,omitempty"`
+	Held   Reservation  `json:"held"`
+}
+
+// Holders is GET /v1/holders: each grant another agent holds over any
+// queried path, once, in grant id order.
+type Holders struct {
+	Holders []Holding `json:"holders"`
+}
+
 // ReservationParams names a reservation.
 type ReservationParams struct {
 	ID ReservationID `json:"id"`

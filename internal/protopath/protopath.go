@@ -12,6 +12,10 @@ import (
 // and the one a client assumes before a server has named its own.
 const DefaultRoot = "/workspace"
 
+// MaxHolderPaths bounds the distinct paths of one holders query: a patch
+// can name many files, and each path costs the server one index walk.
+const MaxHolderPaths = 256
+
 // IsCanonical reports whether p is absolute and already in path.Clean form,
 // which also rules out any ".." component.
 func IsCanonical(p string) bool { return path.IsAbs(p) && path.Clean(p) == p }

@@ -214,6 +214,7 @@ var Routes = []Route{
 	{Name: "ackInbox", Method: http.MethodPost, Path: "/v1/inbox/ack", Access: AccessAgent, Keyed: true},
 	{Name: "reserve", Method: http.MethodPost, Path: "/v1/reservations", Status: http.StatusCreated, Access: AccessAgent, Keyed: true},
 	{Name: "listReservations", Method: http.MethodGet, Path: "/v1/reservations", Access: AccessAgent, Paged: true},
+	{Name: "listHolders", Method: http.MethodGet, Path: "/v1/holders", Access: AccessAgent},
 	{Name: "renewReservation", Method: http.MethodPatch, Path: "/v1/reservations/{id}", Access: AccessAgent, Keyed: true},
 	{Name: "releaseReservation", Method: http.MethodDelete, Path: "/v1/reservations/{id}", Access: AccessAgent, Keyed: true},
 	{Name: "grantDelegate", Method: http.MethodPost, Path: "/v1/delegates", Status: http.StatusCreated, Access: AccessAgent, Keyed: true},

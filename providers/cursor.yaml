@@ -32,4 +32,7 @@ hooks:
       block: {text: '{"followup_message":{{json .Reason}}}'}
 # No prompt: beforeSubmitPrompt can block a prompt but not add to it. No
 # session_end or subagent_stop until a run shows which session each names.
+# No guard: its hooks print nothing until a session.env is recorded, so no
+# channel can be tried. postToolUse documents additional_context injected
+# after the tool result; preToolUse reaches the agent only when it denies.
 notes: docs/hosts/cursor.md

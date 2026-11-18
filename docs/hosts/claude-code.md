@@ -10,7 +10,7 @@ Follow [the client page](../client.md). The client detects Claude Code from `CLA
 
 ## 2. Install the hooks
 
-The hook file is [`providers/claude-code/hooks.json`](../../providers/claude-code/hooks.json). It holds one `hooks` object with four events, and every line in it runs `grelot hook claude-code <role>` with a 30 second timeout. What each hook does is in the binary, but a release can change the file's events and timeouts, so take the file from the release you installed, and again after each upgrade:
+The hook file is [`providers/claude-code/hooks.json`](../../providers/claude-code/hooks.json). It holds one `hooks` object with five events, and every line in it runs `grelot hook claude-code <role>` with a 30 second timeout. What each hook does is in the binary, but a release can change the file's events and timeouts, so take the file from the release you installed, and again after each upgrade:
 
 ```sh
 VERSION=v2.1.3   # the client's release
@@ -27,19 +27,20 @@ curl.exe -fL -o grelot-hooks.json "https://raw.githubusercontent.com/cplieger/gr
 
 Then put its `hooks` object where Claude Code reads hooks, in one of two ways:
 
-- **Your user settings**, `~/.claude/settings.json` (`%USERPROFILE%\.claude\settings.json` on Windows). With no such file, save `grelot-hooks.json` as that file. Otherwise add each of its four events to the file's `hooks` object, after any entries an event already has.
+- **Your user settings**, `~/.claude/settings.json` (`%USERPROFILE%\.claude\settings.json` on Windows). With no such file, save `grelot-hooks.json` as that file. Otherwise add each of its five events to the file's `hooks` object, after any entries an event already has.
 - **A plugin.** A plugin's `hooks/hooks.json` takes the file as it is. The [plugins reference](https://code.claude.com/docs/en/plugins-reference) shows the rest of a plugin's layout.
 
-Run `/hooks` in a session to see that the four events list `grelot hook claude-code`.
+Run `/hooks` in a session to see that the five events list `grelot hook claude-code`, and that `PreToolUse` lists it under the matcher `Edit|Write|NotebookEdit`.
 
 | Hook | What it adds | Without it |
 | --- | --- | --- |
 | `SessionStart` | A new, resumed or compacted session gets its identity card, the status line and a line asking the agent to run `grelot help` now, or the line that asks it to register. The manual itself is left out, because it is longer than the 10,000 characters Claude Code passes to the model from a hook | The agent learns its state from the status line of its first `grelot` command, and is not reminded of the manual at each compaction |
 | `UserPromptSubmit` | Every turn starts with one line: the unread count, how mail wakes the session, or `grelot: not registered`. Once per session, while the agent has neither followed a thread nor posted in a path thread, and half an hour after the register or revive answer's own ask, the line also asks it to follow one or start its own | Unread mail and a stopped watcher show only when the agent next runs `grelot` |
+| `PreToolUse` | An `Edit`, `Write` or `NotebookEdit` of a file another agent holds gets a line naming the holder, until when and why, which Claude Code shows the agent beside the tool's result. The write goes ahead with no prompt once the hook ends, and the hook stops looking after a second. It says nothing when the file is free or the session's own, outside a repository, in a subagent or a `-p` run, or when finding the file's repository and asking the server take longer than that second | Nothing tells the agent; `grelot reservations <path>` shows who holds a file |
 | `Stop` | A turn that ends with new mail unread is held once so the agent reads it. When the watcher has stopped too, that hold's line also names the command that restarts it. A session with no identity has one turn end held so it registers, once in the session's life | Mail that arrives while the agent writes its final reply waits for the next reminder, 3 minutes later |
 | `SessionEnd` | An ended session's identity goes offline at once, stops being woken, and expires within the hour | The identity reads online until its watcher's last poll is 90 seconds old, and lives to its declared expiry |
 
-With the hooks installed, every top-level session registers in its first turn, so other agents can find it and message it. When registering is refused, blocked or against your instructions, the agent finishes your task and tells you, and grelot does not hold the session for it again. grelot installs no tool-call hook.
+With the hooks installed, every top-level session registers in its first turn, so other agents can find it and message it. When registering is refused, blocked or against your instructions, the agent finishes your task and tells you, and grelot does not hold the session for it again. `PreToolUse` is grelot's only tool-call hook, and its matcher keeps it to the three write tools; a file a shell command writes is not checked.
 
 A run with `-p` or `--print` is a one-shot run: it answers one prompt and exits, so its hooks never ask it to register and never hold its turn, and its output is only its answer. grelot tells it apart from the variable Claude Code sets in the hook (`CLAUDE_CODE_ENTRYPOINT=sdk-cli`), or else from `-p` or `--print` on a `claude` process above the hook. A session the Agent SDK runs is asked as any session is, since it runs many turns. When it can tell neither, the run is asked as a session is. A one-shot worker that must talk on grelot while it runs registers with a delegate link its parent grants, as a subagent does.
 

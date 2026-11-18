@@ -13,8 +13,9 @@ import (
 // trailing "/" stripped, and the scp form host:owner/name read as
 // host/owner/name. It answers false for a remote with no host, such as a local
 // path, so a clone of one is local, and for one it cannot name canonically:
-// invalid UTF-8, whitespace in the host, a backslash, or a normalized form that
-// would not read back as itself, such as a name still ending in ".git".
+// invalid UTF-8, whitespace in the host, a backslash, a query, a fragment, an
+// escaped slash, or a normalized form that would not read back as itself, such
+// as a name still ending in ".git".
 func NormalizeRemote(raw string) (string, bool) {
 	host, p, ok := splitRemote(strings.TrimSpace(raw))
 	if !ok {
@@ -38,7 +39,10 @@ func splitRemote(s string) (host, p string, ok bool) {
 		return scpForm(s)
 	}
 	u, err := url.Parse(s)
-	if err != nil {
+	// The decoded path loses a query, a fragment and an escaped slash, none
+	// of which git reads as part of the repository it names.
+	if err != nil || u.RawQuery != "" || u.ForceQuery || strings.Contains(s, "#") ||
+		strings.Contains(strings.ToLower(u.EscapedPath()), "%2f") {
 		return "", "", false
 	}
 	host = u.Hostname()

@@ -327,3 +327,54 @@ func TestCodexSubagentStop(t *testing.T) {
 		t.Errorf("the parent's me after the stop: %q, want it unchanged", me)
 	}
 }
+
+// An apply_patch of a file another agent holds gets the holder's line as
+// additional context with no decision: exit 0 and one JSON object on
+// stdout, which Codex adds as a developer message and runs the patch
+// (parse_pre_tool_use in codex-rs/hooks/src/engine/output_parser.rs and
+// parse_completed in codex-rs/hooks/src/events/pre_tool_use.rs at
+// rust-v0.169.0).
+func TestCodexGuard_namesTheHolder(t *testing.T) {
+	sc := codexScene(t)
+	got := sc.writer.hook("guard", sc.patch("*** Begin Patch\n*** Update File: engine.go\n@@\n-a\n+b\n*** End Patch\n", sc.clone))
+	want := `{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"` + holderLine + `"}}` + "\n"
+	if got.Code != 0 || got.Stdout != want || got.Stderr != "" {
+		t.Errorf("exit %d, stdout %q, stderr %q; want 0, %q and no stderr", got.Code, got.Stdout, got.Stderr, want)
+	}
+	if asked := holdersAsked(t, got.Requests); !slices.EqualFunc(asked, [][]string{{heldFile}}, slices.Equal) {
+		t.Errorf("asked %v, want one GET /v1/holders for %s", asked, heldFile)
+	}
+}
+
+// Every file a patch adds, updates, deletes or moves is asked about in one
+// request, relative paths against the hook's cwd, and a file outside any
+// repository is left out; each grant another agent holds gets a line, in
+// grant id order.
+func TestCodexGuard_checksEveryFileOfThePatchInOneRequest(t *testing.T) {
+	sc := codexScene(t)
+	docs := newShell(t, sc.srv, "claude-code", map[string]string{"CLAUDE_CODE_SESSION_ID": "docs-session"})
+	docs.register("docs-dev")
+	docs.must("", "reserve", filepath.Join(sc.clone, "b"), "--ttl=1h", "--reason", "moving the docs")
+	abs := filepath.Join(sc.clone, "cmd", "abs.go")
+	patch := "*** Begin Patch\n" +
+		"*** Add File: new.go\n+package grelot\n" +
+		"*** Update File: engine.go\n@@\n-a\n+b\n" +
+		"*** Delete File: old.go\n" +
+		"*** Update File: a.go\n*** Move to: b/a.go\n@@\n-a\n+b\n" +
+		"*** Update File: " + abs + "\n@@\n-a\n+b\n" +
+		"*** Add File: ../outside.txt\n+x\n" +
+		"*** End Patch\n"
+	got := sc.writer.hook("guard", sc.patch(patch, sc.clone))
+	docsLine := "grelot: @docs-dev holds /workspace/grelot/b until 2026-11-05 10:00 UTC (moving the docs); your write goes ahead. " +
+		"Coordinate with grelot post '@docs-dev' or reserve it after them."
+	if want := wantContext(t, holderLine, docsLine); got.Code != 0 || got.Stdout != want || got.Stderr != "" {
+		t.Errorf("exit %d, stdout %q, stderr %q; want 0 and %q", got.Code, got.Stdout, got.Stderr, want)
+	}
+	want := [][]string{{
+		"/workspace/grelot/new.go", heldFile, "/workspace/grelot/old.go", "/workspace/grelot/a.go",
+		"/workspace/grelot/b/a.go", "/workspace/grelot/cmd/abs.go",
+	}}
+	if asked := holdersAsked(t, got.Requests); !slices.EqualFunc(asked, want, slices.Equal) {
+		t.Errorf("asked %v, want one GET /v1/holders for %v", asked, want)
+	}
+}

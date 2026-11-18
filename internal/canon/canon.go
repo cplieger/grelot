@@ -6,6 +6,7 @@ package canon
 
 import (
 	"context"
+	"iter"
 	"os"
 	"path"
 	"path/filepath"
@@ -108,12 +109,73 @@ func (r *Resolver) Path(ctx context.Context, local string) (Location, error) {
 	return Location{Canonical: path.Join(r.root, c.Repo, wt.Prefix, tail), Clone: &c}, nil
 }
 
+// Paths yields Path of each local in order, a failing one's error in its
+// place, asking git about each directory once.
+func (r *Resolver) Paths(ctx context.Context, locals []string) iter.Seq2[Location, error] {
+	return func(yield func(Location, error) bool) {
+		once := *r
+		once.git = &onceGit{git: r.git, seen: map[string]onceAnswer{}}
+		for _, local := range locals {
+			if !yield(once.Path(ctx, local)) {
+				return
+			}
+		}
+	}
+}
+
+// onceGit answers each directory's WorkTree from git's first answer there.
+type onceGit struct {
+	git  gitReader
+	seen map[string]onceAnswer
+}
+
+var _ gitReader = (*onceGit)(nil)
+
+type onceAnswer struct {
+	wt workTree
+	ok bool
+}
+
+func (g *onceGit) WorkTree(ctx context.Context, dir string) (workTree, bool, error) {
+	if a, ok := g.seen[dir]; ok {
+		return a.wt, a.ok, nil
+	}
+	wt, ok, err := g.git.WorkTree(ctx, dir)
+	if err != nil {
+		return workTree{}, false, err
+	}
+	g.seen[dir] = onceAnswer{wt: wt, ok: ok}
+	return wt, ok, nil
+}
+
 func (r *Resolver) clone(wt workTree) Clone {
 	c := Clone{Toplevel: wt.Toplevel, GitDir: wt.GitDir}
 	if norm, ok := NormalizeRemote(wt.Remote); ok {
 		c.Remote, c.Repo = norm, repoName(norm, r.repos)
 	}
 	return c
+}
+
+// From is file as a tool on this host resolves it from the folder dir: file
+// itself when absolute or, on Windows, drive-relative (C:x); on dir's volume
+// (see volume) when rooted with no drive (\x, which Windows reads on the
+// current volume); else under dir. ok is false when file is not absolute and
+// dir is "", or holds no volume for a rooted file.
+func (r *Resolver) From(file, dir string) (string, bool) {
+	p, d := r.slash(file), r.slash(dir)
+	switch {
+	case r.isAbs(p), r.windows() && hasDrive(p):
+		return file, true
+	case d == "":
+		return "", false
+	case strings.HasPrefix(p, "/"):
+		v := r.volume(d)
+		if v == "" {
+			return "", false
+		}
+		return r.clean(v + p), true
+	}
+	return r.clean(d + "/" + p), true
 }
 
 // absolute is local made absolute and cleaned, in slash form; a Windows path
@@ -204,14 +266,65 @@ func hasDrive(p string) bool {
 	return len(p) >= 2 && p[1] == ':' && ('a' <= p[0] && p[0] <= 'z' || 'A' <= p[0] && p[0] <= 'Z')
 }
 
-// clean is path.Clean, except that a drive root stays C:/ where path.Clean
-// would make it the drive-relative C:.
+// clean is path.Clean keeping a Windows volume whole: a drive root stays C:/,
+// not the drive-relative C:, and a share or verbatim prefix keeps its
+// leading //.
 func (r *Resolver) clean(p string) string {
+	if v := r.volume(p); strings.HasPrefix(v, "//") {
+		return v + path.Clean("/"+p[len(v):])
+	}
 	c := path.Clean(p)
 	if r.windows() && len(c) == 2 && hasDrive(c) {
 		c += "/"
 	}
 	return c
+}
+
+// volume is the prefix of a Windows path in slash form that a rooted path
+// joined onto it keeps, as filepath.VolumeName finds it on Windows: C:,
+// //server/share, //?/C: or //?/UNC/server/share (//./ alike); "" for none,
+// and always on another OS.
+func (r *Resolver) volume(p string) string {
+	if !r.windows() {
+		return ""
+	}
+	if hasDrive(p) {
+		return p[:2]
+	}
+	if !strings.HasPrefix(p, "//") {
+		return ""
+	}
+	if strings.HasPrefix(p, "//?/") || strings.HasPrefix(p, "//./") {
+		rest := p[4:]
+		switch {
+		case hasDrive(rest):
+			return p[:6]
+		case len(rest) >= 4 && strings.EqualFold(rest[:4], "UNC/"):
+			return prefixTo(p, 8, 2)
+		}
+		return prefixTo(p, 4, 1)
+	}
+	return prefixTo(p, 2, 2)
+}
+
+// prefixTo is p up to the end of its n non-empty components from i, "" when
+// p holds fewer.
+func prefixTo(p string, i, n int) string {
+	for range n {
+		j := strings.IndexByte(p[i:], '/')
+		if j == 0 {
+			return ""
+		}
+		if j < 0 {
+			if i == len(p) {
+				return ""
+			}
+			i = len(p)
+			continue
+		}
+		i += j + 1
+	}
+	return strings.TrimSuffix(p[:i], "/")
 }
 
 // nearestDir splits p into its nearest existing directory at or above it and
@@ -222,7 +335,8 @@ func (r *Resolver) nearestDir(p string) (dir, tail string) {
 		if r.isDir(p) {
 			return p, tail
 		}
-		parent := r.clean(path.Dir(p))
+		v := r.volume(p)
+		parent := r.clean(v + path.Dir(p[len(v):]))
 		if parent == p {
 			return "", ""
 		}

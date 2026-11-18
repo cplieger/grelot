@@ -2,8 +2,8 @@
 
 import { clientRequest } from "../transport.js";
 import type { ApiResult, EndpointSpec } from "../transport.js";
-import { decodeAcked, decodeAgentList, decodeAgentPage, decodeConversation, decodeConversationsPage, decodeGranted, decodeHeld, decodeHistory, decodeHistoryPage, decodeIdentityAnswer, decodeInbox, decodeLifecycle, decodeMarkedRead, decodeMe, decodeNudge, decodePeers, decodePosted, decodeReceipts, decodeRegistered, decodeReservationAnswer, decodeReservations, decodeReserved, decodeRetired, decodeRevoked, decodeSettings, decodeSignIn, decodeStats, decodeThreads, decodeUserPosted, decodeUserReceipts, decodeVersion } from "./decoders.gen.js";
-import type { AckRequest, Acked, AgentList, AgentPage, Conversation, ConversationsPage, Flag, GrantRequest, Granted, Held, History, HistoryPage, HoldRequest, IdentityAnswer, Inbox, Lifecycle, LifecycleRequest, MarkReadRequest, MarkedRead, Me, Nudge, PatchMeRequest, Peers, PostRequest, Posted, Receipts, RegisterRequest, Registered, RenewRequest, ReservationAnswer, Reservations, ReserveRequest, Reserved, Retired, ReviveRequest, Revoked, Settings, SettingsRequest, Show, SignIn, Stats, StatsRange, Threads, Turn, UserPostRequest, UserPosted, UserReceipts, Version, WaitRequest } from "./types.gen.js";
+import { decodeAcked, decodeAgentList, decodeAgentPage, decodeConversation, decodeConversationsPage, decodeGranted, decodeHeld, decodeHistory, decodeHistoryPage, decodeHolders, decodeIdentityAnswer, decodeInbox, decodeLifecycle, decodeMarkedRead, decodeMe, decodeNudge, decodePeers, decodePosted, decodeReceipts, decodeRegistered, decodeReservationAnswer, decodeReservations, decodeReserved, decodeRetired, decodeRevoked, decodeSettings, decodeSignIn, decodeStats, decodeThreads, decodeUserPosted, decodeUserReceipts, decodeVersion } from "./decoders.gen.js";
+import type { AckRequest, Acked, AgentList, AgentPage, Conversation, ConversationsPage, Flag, GrantRequest, Granted, Held, History, HistoryPage, HoldRequest, Holders, IdentityAnswer, Inbox, Lifecycle, LifecycleRequest, MarkReadRequest, MarkedRead, Me, Nudge, PatchMeRequest, Peers, PostRequest, Posted, Receipts, RegisterRequest, Registered, RenewRequest, ReservationAnswer, Reservations, ReserveRequest, Reserved, Retired, ReviveRequest, Revoked, Settings, SettingsRequest, Show, SignIn, Stats, StatsRange, Threads, Turn, UserPostRequest, UserPosted, UserReceipts, Version, WaitRequest } from "./types.gen.js";
 
 /** Options accepted by every generated client function. */
 export interface ClientOpts {
@@ -841,6 +841,51 @@ export const listReservationsEndpoint = {
 /** The grants and queue entries overlapping a path, every one when it is absent, by id */
 export function listReservations(args: ListReservationsArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Reservations, ListReservationsError>> {
   return clientRequest<Reservations, ListReservationsError>(listReservationsEndpoint.request(args), listReservationsEndpoint.decode, opts);
+}
+
+export interface ListHoldersArgs {
+  /** The client's version, which the server answers 426 below its floor. */
+  readonly grelotVersion: string;
+  /** <provider>:<host session id>, the session the request acts as. */
+  readonly grelotSession: string;
+  /** A delegate's handle, to act as that delegate of the session's identity. */
+  readonly grelotAs?: string;
+  /** 1 when the agent's own command sent the request. */
+  readonly grelotSelf?: string;
+}
+
+const listHoldersCodes = ["invalid", "forbidden", "none", "dormant", "delegate_ended", "delegate_gate", "upgrade_required", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_scope_required", "auth_key_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
+
+export type ListHoldersError = (typeof listHoldersCodes)[number];
+
+/** Each grant another agent holds over any of 1 to 256 paths, each sent as a path query value, once, by grant id */
+export const listHoldersEndpoint = {
+  method: "GET",
+  path: "/v1/holders",
+  codes: listHoldersCodes,
+  request(args: ListHoldersArgs): EndpointSpec {
+    const headers: globalThis.Record<string, string> = {};
+    headers["Grelot-Version"] = args.grelotVersion;
+    headers["Grelot-Session"] = args.grelotSession;
+    if (args.grelotAs !== undefined) {
+      headers["Grelot-As"] = args.grelotAs;
+    }
+    if (args.grelotSelf !== undefined) {
+      headers["Grelot-Self"] = args.grelotSelf;
+    }
+    return {
+      method: "GET",
+      path: "/v1/holders",
+      headers,
+      codes: listHoldersCodes,
+    };
+  },
+  decode: decodeHolders,
+} as const;
+
+/** Each grant another agent holds over any of 1 to 256 paths, each sent as a path query value, once, by grant id */
+export function listHolders(args: ListHoldersArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Holders, ListHoldersError>> {
+  return clientRequest<Holders, ListHoldersError>(listHoldersEndpoint.request(args), listHoldersEndpoint.decode, opts);
 }
 
 export interface RenewReservationArgs {

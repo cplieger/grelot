@@ -41,4 +41,7 @@ hooks:
       block: {text: '{"decision":"continue","reason":{{json .Reason}}}'}
 # No prompt: no event runs once at turn start (PreInvocation runs before
 # every model call). Antigravity has no session end or subagent stop event.
+# No guard: its hooks print nothing until a session.env is recorded, and no
+# channel is known. PreToolUse needs a decision, and the docs do not say
+# whether an allow's reason reaches the model; PostToolUse returns {} only.
 notes: docs/hosts/antigravity.md

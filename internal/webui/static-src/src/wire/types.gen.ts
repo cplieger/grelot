@@ -446,6 +446,24 @@ export interface HoldRequest {
   last: boolean;
 }
 
+/**
+ * Holders is GET /v1/holders: each grant another agent holds over any
+ * queried path, once, in grant id order.
+ */
+export interface Holders {
+  holders: Holding[];
+}
+
+/**
+ * Holding is one grant another agent holds over the queried paths; Queued
+ * is the caller's own oldest queue entry overlapping both the grant and a
+ * queried path, nil for none.
+ */
+export interface Holding {
+  queued?: Reservation;
+  held: Reservation;
+}
+
 /** IdentitiesQuery is GET /v1/identities' query. */
 export interface IdentitiesQuery {
   path?: string;

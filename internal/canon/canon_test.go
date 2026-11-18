@@ -1,9 +1,13 @@
 package canon
 
 import (
+	"context"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/cplieger/grelot/internal/where"
@@ -138,6 +142,30 @@ func TestPath_outsideAClone(t *testing.T) {
 		if err != nil || loc.Canonical != want {
 			t.Errorf("Windows %q: got %q, %v; want %q", local, loc.Canonical, err, want)
 		}
+	}
+}
+
+func TestPath_windowsShareInAClone(t *testing.T) {
+	win := windowsResolver("/workspace", fakeGit{
+		"//server/share/work/toolbelt": {
+			Toplevel: "//server/share/work/toolbelt",
+			GitDir:   "//server/share/work/toolbelt/.git",
+			Remote:   "https://github.com/cplieger/toolbelt.git",
+		},
+	}, []string{"//server/share/", "//server/share/work", "//server/share/work/toolbelt"}, nil)
+	for _, local := range []string{`\\server\share\work\toolbelt\a.go`, "//server/share/work/toolbelt/x/../a.go", `\\server\share\work\toolbelt\new\a.go`} {
+		loc, err := win.Path(t.Context(), local)
+		want := "/workspace/toolbelt/a.go"
+		if strings.Contains(local, "new") {
+			want = "/workspace/toolbelt/new/a.go"
+		}
+		if err != nil || loc.Canonical != want || loc.Clone == nil {
+			t.Errorf("Windows %q: got %+v, %v; want %q in the clone", local, loc, err, want)
+		}
+	}
+	loc, err := win.Path(t.Context(), `\\server\share\elsewhere\a.go`)
+	if err != nil || loc.Clone != nil {
+		t.Errorf("a share file in no clone: got %+v, %v; want no clone", loc, err)
 	}
 }
 
@@ -286,5 +314,108 @@ func TestPath_checkoutPerWorktreeAndCopy(t *testing.T) {
 	}
 	if got := where.Checkout(t.Context(), loc.Clone.GitDir, loc.Clone.Toplevel); got == "" || got == ids[primaryGit] {
 		t.Errorf("copy: id %q, original %q", got, ids[primaryGit])
+	}
+}
+
+// countingGit answers WorkTree from wts, an error for any other directory,
+// and counts the calls per directory.
+type countingGit struct {
+	wts   fakeGit
+	calls map[string]int
+}
+
+func (g *countingGit) WorkTree(_ context.Context, dir string) (workTree, bool, error) {
+	g.calls[dir]++
+	wt, ok := g.wts[dir]
+	if !ok {
+		return workTree{}, false, errors.New("git rev-parse failed")
+	}
+	return wt, true, nil
+}
+
+func TestPaths_asksGitOncePerDirectory(t *testing.T) {
+	wt := workTree{Toplevel: "C:/src/toolbelt", GitDir: "C:/src/toolbelt/.git", Remote: "git@github.com:cplieger/toolbelt.git"}
+	sub := wt
+	sub.Prefix = "internal/"
+	g := &countingGit{wts: fakeGit{"C:/src/toolbelt": wt, "C:/src/toolbelt/internal": sub}, calls: map[string]int{}}
+	r := windowsResolver("/workspace", nil, []string{"C:/", "C:/src", "C:/src/toolbelt", "C:/src/toolbelt/internal", "C:/broken"}, nil)
+	r.git = g
+	locals := []string{`C:\src\toolbelt\a.go`, `C:\broken\x.go`, `C:\src\toolbelt\internal\b.go`, `C:\src\toolbelt\c.go`, `C:\src\toolbelt\internal\d.go`}
+	var got []string
+	for loc, err := range r.Paths(t.Context(), locals) {
+		if err != nil {
+			got = append(got, "error")
+			continue
+		}
+		got = append(got, loc.Canonical)
+	}
+	want := []string{"/workspace/toolbelt/a.go", "error", "/workspace/toolbelt/internal/b.go", "/workspace/toolbelt/c.go", "/workspace/toolbelt/internal/d.go"}
+	if !slices.Equal(got, want) {
+		t.Errorf("Paths = %q, want %q", got, want)
+	}
+	if want := map[string]int{"C:/src/toolbelt": 1, "C:/src/toolbelt/internal": 1, "C:/broken": 1}; !maps.Equal(g.calls, want) {
+		t.Errorf("git asked %v, want each directory once", g.calls)
+	}
+	t.Run("a stop ends the walk", func(t *testing.T) {
+		n := 0
+		for range r.Paths(t.Context(), locals) {
+			n++
+			break
+		}
+		if n != 1 {
+			t.Errorf("yielded %d after a break, want 1", n)
+		}
+	})
+}
+
+// A rooted path with no drive, \x, is on the folder's drive or share, never
+// under the folder: Rust's Path::join, which Codex's apply_patch resolves
+// with, keeps only the folder's prefix for one
+// (https://doc.rust-lang.org/std/path/struct.PathBuf.html#method.push).
+func TestFrom_placesAFileAsItsToolDoes(t *testing.T) {
+	win := windowsResolver("/workspace", fakeGit{}, nil, nil)
+	unix := &Resolver{system: "linux", root: "/workspace"}
+	for _, c := range []struct {
+		r               *Resolver
+		name, file, dir string
+		want            string
+	}{
+		{win, "a drive path", "C:/Users/me/work/a.go", `D:\x`, "C:/Users/me/work/a.go"},
+		{win, "a drive path with backslashes", `C:\Users\me\work\a.go`, "", `C:\Users\me\work\a.go`},
+		{win, "a UNC path", `\\server\share\a.go`, "", `\\server\share\a.go`},
+		{win, "a rooted path on the folder's drive", "/workspace/grelot/a.go", `D:\Users\me\work`, "D:/workspace/grelot/a.go"},
+		{win, "a rooted path with backslashes", `\workspace\grelot\a.go`, `C:\Users\me`, "C:/workspace/grelot/a.go"},
+		{win, "a relative path under the folder", "internal/a.go", `C:\Users\me\work`, "C:/Users/me/work/internal/a.go"},
+		{win, "a relative path under a share", "internal/a.go", `\\server\share\work`, "//server/share/work/internal/a.go"},
+		{win, "a rooted path on the folder's share", "/workspace/a.go", `\\server\share\work`, "//server/share/workspace/a.go"},
+		{win, "a relative path under a verbatim drive", "a.go", `\\?\C:\Users\me`, "//?/C:/Users/me/a.go"},
+		{win, "a rooted path on a verbatim drive", "/workspace/a.go", `\\?\C:\Users\me`, "//?/C:/workspace/a.go"},
+		{win, "a rooted path on a verbatim share", "/workspace/a.go", `\\?\UNC\server\share\x`, "//?/UNC/server/share/workspace/a.go"},
+		{win, "a rooted path on a device drive", "/workspace/a.go", `\\.\D:\x`, "//./D:/workspace/a.go"},
+		{win, "a drive-relative path", "C:foo", `D:\x`, "C:foo"},
+		{unix, "an absolute path", "/workspace/grelot/a.go", "/home/me", "/workspace/grelot/a.go"},
+		{unix, "a relative path under the folder", "internal/../a.go", "/home/me/work", "/home/me/work/a.go"},
+	} {
+		t.Run(strings.ReplaceAll(c.name, " ", "_"), func(t *testing.T) {
+			if got, ok := c.r.From(c.file, c.dir); !ok || got != c.want {
+				t.Errorf("From(%q, %q) = %q, %v; want %q", c.file, c.dir, got, ok, c.want)
+			}
+		})
+	}
+	for _, c := range []struct {
+		r               *Resolver
+		name, file, dir string
+	}{
+		{win, "a relative path with no folder", "internal/a.go", ""},
+		{win, "a rooted path with no folder", "/workspace/grelot/a.go", ""},
+		{win, "a rooted path from a folder with no drive", "/workspace/grelot/a.go", "/srv/work"},
+		{win, "a rooted path from a server with no share", "/workspace/grelot/a.go", `\\server`},
+		{unix, "a relative path with no folder", "a.go", ""},
+	} {
+		t.Run(strings.ReplaceAll(c.name, " ", "_"), func(t *testing.T) {
+			if got, ok := c.r.From(c.file, c.dir); ok {
+				t.Errorf("From(%q, %q) = %q, true; want no file", c.file, c.dir, got)
+			}
+		})
 	}
 }

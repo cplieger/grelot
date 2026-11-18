@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/cplieger/access"
-	"github.com/cplieger/go/httpserver"
+	"github.com/cplieger/go/httpserver/v2"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/wire"
@@ -173,4 +173,13 @@ func gateWords(r *http.Request, e *access.Error) string {
 	default:
 		return ""
 	}
+}
+
+// panicked answers a recovered panic in grelot's error body, the one fail
+// writes for an internal error; Recoverer has already logged the panic.
+func panicked(w http.ResponseWriter, r *http.Request, status int, _ httpserver.ErrorCode, _ string) {
+	httpserver.WriteJSONStatus(w, status, wire.Error{
+		Error: "internal server error", Code: wire.ErrInternal.Code,
+		RequestID: httpserver.RequestIDFromContext(r.Context()),
+	})
 }

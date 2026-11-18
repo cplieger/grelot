@@ -9,6 +9,7 @@ Nothing yet. Antigravity's docs name no environment variable that carries the co
 - grelot never picks this provider by itself.
 - Its hooks print nothing and exit 0, so installing them changes nothing in a conversation.
 - Every identity command refuses with `provider antigravity records no session variable, so grelot has no session to bind in this shell`.
+- There is no file reservation guard, and no channel for one is known. A `PreToolUse` hook must answer with a decision, and the docs do not say whether an allow's reason reaches the model; `PostToolUse` takes no output.
 
 **If you run Antigravity, you can fix this.** Start two conversations, run `env` in each agent's shell, and look for a variable whose value differs between them and equals the `conversationId` its hooks receive. Open an issue on this repository naming the variable and your Antigravity version.
 

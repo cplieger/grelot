@@ -296,6 +296,7 @@ var agentRows = []agentRow{
 	{"ackInbox", http.MethodPost, "/v1/inbox/ack", true},
 	{"reserve", http.MethodPost, "/v1/reservations", true},
 	{"listReservations", http.MethodGet, "/v1/reservations", false},
+	{"listHolders", http.MethodGet, "/v1/holders", false},
 	{"renewReservation", http.MethodPatch, "/v1/reservations/{id}", true},
 	{"releaseReservation", http.MethodDelete, "/v1/reservations/{id}", true},
 	{"grantDelegate", http.MethodPost, "/v1/delegates", true},

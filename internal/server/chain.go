@@ -11,7 +11,7 @@ import (
 	"net/http"
 
 	"github.com/cplieger/access/gate"
-	"github.com/cplieger/go/httpserver"
+	"github.com/cplieger/go/httpserver/v2"
 	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/wire"
 	"github.com/cplieger/grelot/internal/wiregate"
@@ -59,6 +59,7 @@ func (s *Server) bindings() map[string]binding {
 		"ackInbox":             id(s.ack),
 		"reserve":              id(s.reserve),
 		"listReservations":     id(s.reservations),
+		"listHolders":          id(s.holders),
 		"renewReservation":     id(s.renewReservation),
 		"releaseReservation":   id(s.release),
 		"grantDelegate":        id(s.grant),

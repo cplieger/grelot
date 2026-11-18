@@ -17,7 +17,7 @@ import (
 
 	"github.com/cplieger/access/gate"
 	"github.com/cplieger/go/health/v2"
-	"github.com/cplieger/go/httpserver"
+	"github.com/cplieger/go/httpserver/v2"
 	"github.com/cplieger/grelot/internal/auth"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
@@ -223,10 +223,16 @@ func (s *Server) Handler() http.Handler {
 	}
 	s.mount(mux, t, "/v1/", "/api/")
 	mux.Handle("/", s.ui)
-	return httpserver.Chain(mux,
+	return s.middleware(mux)
+}
+
+// middleware wraps h in the API's access log and the panic recoverer, which
+// answers a panic in grelot's error body (panicked).
+func (s *Server) middleware(h http.Handler) http.Handler {
+	return httpserver.Chain(h,
 		httpserver.Logging(httpserver.WithLogger(s.log), httpserver.WithRecordRouteMetric(s.recordHTTP),
 			httpserver.WithClientIP(s.cfg.TrustedProxies...)),
-		httpserver.Recoverer(httpserver.WithRecoverLogger(s.log)))
+		httpserver.Recoverer(httpserver.WithRecoverLogger(s.log), httpserver.WithRecoverResponder(panicked)))
 }
 
 // OpsHTTPServer is the http.Server for OpsHandler.
@@ -247,7 +253,7 @@ func (s *Server) OpsHandler() http.Handler {
 	return httpserver.Chain(mux,
 		httpserver.Logging(httpserver.WithLogger(s.log), httpserver.WithProbeLogLevel("/healthz", "/metrics"),
 			httpserver.WithRecordRouteMetric(s.metrics.RecordHTTP)),
-		httpserver.Recoverer(httpserver.WithRecoverLogger(s.log)))
+		httpserver.Recoverer(httpserver.WithRecoverLogger(s.log), httpserver.WithRecoverResponder(panicked)))
 }
 
 func (s *Server) recordHTTP(rm httpserver.RequestMetric) {
