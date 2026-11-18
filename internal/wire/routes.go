@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // Kind is how a route answers.
@@ -151,6 +152,12 @@ const (
 	IdempotencyKeyMin = 16
 	IdempotencyKeyMax = 64
 )
+
+// IdempotencyWindow is how long after a keyed write's first send the server
+// answers its key, sent again, with the first answer; after it the key is
+// new. It is 20 times internal/client's 15 s call budget, so every re-send
+// that client makes falls inside it.
+const IdempotencyWindow = 5 * time.Minute
 
 // Pattern is the route's net/http ServeMux pattern.
 func (r *Route) Pattern() string { return r.Method + " " + r.Path }

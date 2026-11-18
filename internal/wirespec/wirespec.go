@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"reflect"
 	"slices"
+	"time"
 
 	"github.com/cplieger/access"
 	"github.com/cplieger/access/gate"
@@ -326,8 +327,9 @@ func Registry() *wiregen.Registry {
 var idempotencyKey = wiregen.Header{
 	Name: wire.HeaderIdempotencyKey, Arg: "idempotencyKey", Required: true,
 	MinBytes: wire.IdempotencyKeyMin + 2, MaxBytes: wire.IdempotencyKeyMax + 2,
-	Description: fmt.Sprintf("A new quoted random key of %d to %d letters, digits, - or _ per post, the same key when it is sent again.",
-		wire.IdempotencyKeyMin, wire.IdempotencyKeyMax),
+	Description: fmt.Sprintf("A new quoted random key of %d to %d letters, digits, - or _ per write, the same key when it is sent again. "+
+		"Sent again within %d minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key.",
+		wire.IdempotencyKeyMin, wire.IdempotencyKeyMax, int(wire.IdempotencyWindow/time.Minute)),
 }
 
 // identityHeaders are the headers an agent row reads to act as its

@@ -12,23 +12,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/cplieger/bolttable"
 	"github.com/cplieger/go/keyenc"
+	"github.com/cplieger/grelot/internal/wire"
 )
-
-// requestTTL is how long a keyed write's first result answers its
-// re-sends: 20 times the client's 15 s call budget, inside which every
-// re-send happens.
-const requestTTL = 5 * time.Minute
 
 // Keyed is one write's Idempotency-Key, scoped to its caller and bound to
 // the request it came with. A write whose caller skips work on a replay
-// also reports whether it replayed. A key whose first result is stored, for
-// requestTTL, answers that result and changes nothing, ahead of any
-// refusal the write would make now; a key sent with another request is
-// KindKeyReused; a refusal records nothing. The zero Keyed is an unkeyed
+// also reports whether it replayed. A key whose first result is stored,
+// for wire.IdempotencyWindow, answers that result and changes nothing, ahead
+// of any refusal the write would make now; a key sent with another request
+// is KindKeyReused; a refusal records nothing. The zero Keyed is an unkeyed
 // write, which runs every time and records nothing.
 type Keyed struct {
 	// seal is the key the first result is sealed under; only the client's
@@ -139,7 +134,7 @@ func (s *Store) ReplayPost(ctx context.Context, k Keyed) (Posted, bool, error) {
 	return replay[Posted](ctx, s, &k)
 }
 
-// record stores v as k's first result, for requestTTL.
+// record stores v as k's first result, for wire.IdempotencyWindow.
 func (k *Keyed) record(w *wtx, v any) error {
 	plain, err := json.Marshal(v)
 	if err != nil {
@@ -153,7 +148,7 @@ func (k *Keyed) record(w *wtx, v any) error {
 	nonce := make([]byte, aead.NonceSize())
 	_, _ = rand.Read(nonce) // crypto/rand.Read never returns an error.
 	row := requestRow{
-		Lease:   serverLease(w.now, requestTTL),
+		Lease:   serverLease(w.now, wire.IdempotencyWindow),
 		Request: k.request[:],
 		Sealed:  aead.Seal(nonce, nonce, plain, id),
 	}

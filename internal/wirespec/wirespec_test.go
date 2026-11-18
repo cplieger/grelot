@@ -182,6 +182,29 @@ func TestRowsDeclareTheirCredential(t *testing.T) {
 	}
 }
 
+// draft-ietf-httpapi-idempotency-key-header section 2.3 asks a server to
+// publish how long it keeps a key; grelot keeps a key's first answer for 5
+// minutes after the first send.
+func TestKeyedRowsPublishTheReplayWindow(t *testing.T) {
+	const want = "Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key."
+	reg := Registry()
+	for i := range wire.Routes {
+		r := &wire.Routes[i]
+		if !r.Keyed {
+			continue
+		}
+		var desc string
+		for _, h := range endpoint(t, reg, r.Name).Headers {
+			if h.Name == wire.HeaderIdempotencyKey {
+				desc = h.Description
+			}
+		}
+		if !strings.Contains(desc, want) {
+			t.Errorf("%s: Idempotency-Key says %q, want it to contain %q", r.Name, desc, want)
+		}
+	}
+}
+
 // A wire.Kind added with no wiregen kind stops the generator rather than
 // reaching the document as JSON.
 func TestKindOf_mapsEveryKindAndRefusesAnother(t *testing.T) {

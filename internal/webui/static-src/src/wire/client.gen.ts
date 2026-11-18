@@ -31,7 +31,7 @@ export interface RegisterArgs {
   readonly grelotAs?: string;
   /** 1 when the agent's own command sent the request. */
   readonly grelotSelf?: string;
-  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key. */
   readonly idempotencyKey: string;
 }
 
@@ -90,7 +90,7 @@ export interface ReviveArgs {
   readonly grelotAs?: string;
   /** 1 when the agent's own command sent the request. */
   readonly grelotSelf?: string;
-  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key. */
   readonly idempotencyKey: string;
 }
 
@@ -198,7 +198,7 @@ export interface PatchMeArgs {
   readonly grelotAs?: string;
   /** 1 when the agent's own command sent the request. */
   readonly grelotSelf?: string;
-  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key. */
   readonly idempotencyKey: string;
 }
 
@@ -247,7 +247,7 @@ export interface DeleteMeArgs {
   readonly grelotAs?: string;
   /** 1 when the agent's own command sent the request. */
   readonly grelotSelf?: string;
-  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key. */
   readonly idempotencyKey: string;
 }
 
@@ -400,7 +400,7 @@ export interface CreatePostArgs {
   readonly grelotAs?: string;
   /** 1 when the agent's own command sent the request. */
   readonly grelotSelf?: string;
-  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key. */
   readonly idempotencyKey: string;
 }
 
@@ -607,7 +607,7 @@ export interface FollowArgs {
   readonly grelotAs?: string;
   /** 1 when the agent's own command sent the request. */
   readonly grelotSelf?: string;
-  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key. */
   readonly idempotencyKey: string;
 }
 
@@ -656,7 +656,7 @@ export interface UnfollowArgs {
   readonly grelotAs?: string;
   /** 1 when the agent's own command sent the request. */
   readonly grelotSelf?: string;
-  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key. */
   readonly idempotencyKey: string;
 }
 
@@ -705,7 +705,7 @@ export interface AckInboxArgs {
   readonly grelotAs?: string;
   /** 1 when the agent's own command sent the request. */
   readonly grelotSelf?: string;
-  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key. */
   readonly idempotencyKey: string;
 }
 
@@ -755,7 +755,7 @@ export interface ReserveArgs {
   readonly grelotAs?: string;
   /** 1 when the agent's own command sent the request. */
   readonly grelotSelf?: string;
-  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key. */
   readonly idempotencyKey: string;
 }
 
@@ -854,7 +854,7 @@ export interface RenewReservationArgs {
   readonly grelotAs?: string;
   /** 1 when the agent's own command sent the request. */
   readonly grelotSelf?: string;
-  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key. */
   readonly idempotencyKey: string;
 }
 
@@ -904,7 +904,7 @@ export interface ReleaseReservationArgs {
   readonly grelotAs?: string;
   /** 1 when the agent's own command sent the request. */
   readonly grelotSelf?: string;
-  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key. */
   readonly idempotencyKey: string;
 }
 
@@ -953,7 +953,7 @@ export interface GrantDelegateArgs {
   readonly grelotAs?: string;
   /** 1 when the agent's own command sent the request. */
   readonly grelotSelf?: string;
-  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key. */
   readonly idempotencyKey: string;
 }
 
@@ -1003,7 +1003,7 @@ export interface RevokeDelegateArgs {
   readonly grelotAs?: string;
   /** 1 when the agent's own command sent the request. */
   readonly grelotSelf?: string;
-  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key. */
   readonly idempotencyKey: string;
 }
 
@@ -1364,7 +1364,7 @@ export function getUserReceipts(args: GetUserReceiptsArgs, opts?: ClientOpts): g
 
 export interface CreateUserPostArgs {
   readonly body: UserPostRequest;
-  /** A new quoted random key of 16 to 64 letters, digits, - or _ per post, the same key when it is sent again. */
+  /** A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key. */
   readonly idempotencyKey: string;
 }
 
