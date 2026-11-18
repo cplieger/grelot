@@ -11,7 +11,7 @@ import { readSummary } from "./readers.js";
 
 const skeletonEntries = 3;
 
-/** What a failed entry and its composer say once the server no longer keeps its key. */
+/** What a failed entry and its composer say once a re-send is no longer sure to arrive while the server keeps its key. */
 export const unsureWords =
   "This may have been sent. Check the conversation before sending it again.";
 
@@ -25,8 +25,8 @@ export interface Pending {
   readonly state: "sending" | "failed" | "sent";
   /**
    * What a failed entry offers: Retry, since sending it again unchanged can
-   * succeed now; a check, since the server no longer keeps its key and it may
-   * have been stored; or neither.
+   * succeed now; a check, since a re-send may now arrive after the server
+   * stops keeping its key and the post may have been stored; or neither.
    */
   readonly offer: "retry" | "check" | null;
   /** The stored message, once sent: its entry replaces this one. */

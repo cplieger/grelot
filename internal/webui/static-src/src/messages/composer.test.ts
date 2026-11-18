@@ -392,7 +392,7 @@ describe("the conversation's composer", () => {
     expect(sent.bodies[1]).toEqual(sent.bodies[0]);
   });
 
-  describe("a post whose key the server keeps no longer", () => {
+  describe("a post around its key's Retry deadline", () => {
     // docs/client.md section 6: the server answers a key sent again with its
     // first answer for 5 minutes after the post succeeds, so a re-send must
     // leave a whole request deadline (30 s) to arrive inside that window.

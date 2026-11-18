@@ -50,7 +50,7 @@ const freshKey = (): Kept => ({
 interface Sends {
   pending: Pending[];
   seq: number;
-  /** Each entry's key, reused by its Retry until the server no longer keeps it, so it stores the post once. */
+  /** Each entry's key, reused by its Retry until its deadline (Kept.until), so it stores the post once. */
   readonly keys: Map<number, Kept>;
   /** Each failed entry's refusal, which a composer drawn later still shows. */
   readonly refusals: Map<number, Failure>;
@@ -260,7 +260,7 @@ export function conversationComposer(opts: ComposerOptions): Composer {
       const d = fields.draft();
       void fields.send.run(async () => {
         // Send again on the text of a failed entry is that entry's Retry, or
-        // the person's new post once the server no longer keeps its key.
+        // the person's new post once its key's deadline (Kept.until) has passed.
         const failed = sends.pending.find((p) => p.state === "failed" && same(p, d));
         let n = failed?.n;
         if (n === undefined) {
