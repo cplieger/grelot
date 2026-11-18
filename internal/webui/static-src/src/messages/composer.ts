@@ -1,7 +1,7 @@
 import { el } from "@cplieger/reactive/dom";
 import { showError } from "@cplieger/ui/form";
 
-import { newIdempotencyKey, type ApiResult } from "../transport.js";
+import { idempotencyWindowMs, newIdempotencyKey, type ApiResult } from "../transport.js";
 import { createUserPost } from "../wire/client.gen.js";
 import type { Post, PostTarget } from "../wire/types.gen.js";
 import {
@@ -13,8 +13,8 @@ import {
   savedDraft,
   type Draft,
 } from "./compose.js";
-import type { Pending } from "./feed.js";
-import { whenRetryable } from "./parts.js";
+import { unsureWords, type Pending } from "./feed.js";
+import { retryableIn, whenRetryable } from "./parts.js";
 
 type Failure = Extract<ApiResult<unknown, string>, { readonly ok: false }>;
 
@@ -23,14 +23,26 @@ interface Mounted {
   readonly drawPending: () => void;
   readonly sent: (d: Draft) => void;
   readonly failed: (f: Failure) => void;
+  readonly unsure: (d: Draft) => void;
 }
+
+/** An entry's Idempotency-Key, and when the server stops answering it with the first answer. */
+interface Kept {
+  readonly key: string;
+  readonly until: number;
+}
+
+const freshKey = (): Kept => ({
+  key: newIdempotencyKey(),
+  until: Date.now() + idempotencyWindowMs,
+});
 
 /** One conversation's sends, kept for the page's life. */
 interface Sends {
   pending: Pending[];
   seq: number;
-  /** Each entry's Idempotency-Key, reused by its Retry so the server stores it once. */
-  readonly keys: Map<number, string>;
+  /** Each entry's key, reused by its Retry until the server no longer keeps it, so it stores the post once. */
+  readonly keys: Map<number, Kept>;
   /** Each failed entry's refusal, which a composer drawn later still shows. */
   readonly refusals: Map<number, Failure>;
   readonly flying: Map<number, Promise<void>>;
@@ -136,6 +148,11 @@ export function conversationComposer(opts: ComposerOptions): Composer {
     failed(f) {
       fields.report(form, [failureError(f, fields)]);
     },
+    unsure(d) {
+      if (same(fields.draft(), d)) {
+        showError(fields.body, unsureWords);
+      }
+    },
   };
   sends.mounted = mounted;
   signal.addEventListener("abort", () => {
@@ -144,21 +161,33 @@ export function conversationComposer(opts: ComposerOptions): Composer {
     }
   });
 
-  const set = (n: number, change: Partial<Pick<Pending, "state" | "retry" | "message">>): void => {
+  const set = (
+    n: number,
+    change: Partial<Pick<Pending, "at" | "state" | "offer" | "message">>,
+  ): void => {
     sends.pending = sends.pending.map((p) => (p.n === n ? { ...p, ...change } : p));
     sends.mounted?.drawPending();
   };
 
+  /** Entry n's outcome is unknown: no resend under its key is safe now. */
+  const unsure = (n: number): void => {
+    const p = sends.pending.find((x) => x.n === n);
+    if (p !== undefined) {
+      set(n, { offer: "check" });
+      sends.mounted?.unsure(p);
+    }
+  };
+
   const post = async (n: number): Promise<void> => {
     const p = sends.pending.find((x) => x.n === n);
-    const key = sends.keys.get(n);
-    if (p === undefined || key === undefined) {
+    const k = sends.keys.get(n);
+    if (p === undefined || k === undefined) {
       return;
     }
     sends.refusals.delete(n);
     set(n, { state: "sending" });
     const result = await createUserPost(
-      { body: { to: opts.to, subject: p.subject, body: p.body }, idempotencyKey: key },
+      { body: { to: opts.to, subject: p.subject, body: p.body }, idempotencyKey: k.key },
       { signal: opts.page },
     );
     if (result.ok) {
@@ -174,12 +203,29 @@ export function conversationComposer(opts: ComposerOptions): Composer {
       return;
     }
     sends.refusals.set(n, result);
-    set(n, { state: "failed", retry: false });
+    set(n, { state: "failed", offer: null });
     sends.mounted?.failed(result);
+    if (retryableIn(result) === null) {
+      return;
+    }
+    const current = (): boolean => sends.refusals.get(n) === result;
+    const left = k.until - Date.now();
+    if (left <= 0) {
+      unsure(n);
+      return;
+    }
     whenRetryable(result, opts.page, () => {
-      if (sends.refusals.get(n) === result) {
-        set(n, { retry: true });
+      if (current() && Date.now() < k.until) {
+        set(n, { offer: "retry" });
       }
+    });
+    const timer = setTimeout(() => {
+      if (current()) {
+        unsure(n);
+      }
+    }, left);
+    opts.page.addEventListener("abort", () => {
+      clearTimeout(timer);
     });
   };
 
@@ -204,16 +250,20 @@ export function conversationComposer(opts: ComposerOptions): Composer {
       }
       const d = fields.draft();
       void fields.send.run(async () => {
-        // Send again on the text of a failed entry is that entry's Retry.
+        // Send again on the text of a failed entry is that entry's Retry, or
+        // the person's new post once the server no longer keeps its key.
         const failed = sends.pending.find((p) => p.state === "failed" && same(p, d));
         let n = failed?.n;
         if (n === undefined) {
           n = ++sends.seq;
-          sends.keys.set(n, newIdempotencyKey());
+          sends.keys.set(n, freshKey());
           sends.pending = [
             ...sends.pending,
-            { n, ...d, at: Date.now(), state: "sending", retry: false, message: null },
+            { n, ...d, at: Date.now(), state: "sending", offer: null, message: null },
           ];
+        } else if (Date.now() >= (sends.keys.get(n)?.until ?? 0)) {
+          sends.keys.set(n, freshKey());
+          set(n, { at: Date.now() });
         }
         await deliver(n);
       });
@@ -243,7 +293,9 @@ export function conversationComposer(opts: ComposerOptions): Composer {
       const d = fields.draft();
       const refused = sends.pending.find((p) => p.state === "failed" && same(d, p));
       const why = refused === undefined ? undefined : sends.refusals.get(refused.n);
-      if (why !== undefined) {
+      if (refused?.offer === "check") {
+        showError(fields.body, unsureWords);
+      } else if (why !== undefined) {
         const e = failureError(why, fields);
         showError(e.field, e.message);
       }
@@ -251,6 +303,11 @@ export function conversationComposer(opts: ComposerOptions): Composer {
     retry(n) {
       // The Retry button leaves with the failed state, so focus goes to the message.
       fields.body.focus();
+      // A late timer, as in a background tab, can leave Retry drawn past the deadline.
+      if (Date.now() >= (sends.keys.get(n)?.until ?? 0)) {
+        unsure(n);
+        return;
+      }
       // Sent before run, which drops work while Send still holds its busy state.
       const flight = deliver(n);
       void fields.send.run(() => flight);

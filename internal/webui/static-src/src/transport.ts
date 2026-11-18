@@ -49,11 +49,18 @@ const requestDeadlineMs = 30_000;
 
 /**
  * A new Idempotency-Key value: the RFC 8941 String the server's keyed
- * routes read, quotes included. A re-send of the same post reuses it.
+ * routes read, quotes included. A re-send of the same write may reuse it
+ * only within idempotencyWindowMs of its first send.
  */
 export function newIdempotencyKey(): string {
   return `"${crypto.randomUUID().replaceAll("-", "")}"`;
 }
+
+/**
+ * How long after a write's first send the server answers its key with the
+ * first answer (wire.IdempotencyWindow, published in the header's description).
+ */
+export const idempotencyWindowMs = 5 * 60_000;
 
 function failure<E extends string>(
   status: number,

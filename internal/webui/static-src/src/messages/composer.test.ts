@@ -1,5 +1,5 @@
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { until } from "../__test-helpers__/until.js";
@@ -390,6 +390,95 @@ describe("the conversation's composer", () => {
     expect(sent.keys[0]).not.toBeNull();
     expect(sent.keys[1]).toBe(sent.keys[0]);
     expect(sent.bodies[1]).toEqual(sent.bodies[0]);
+  });
+
+  describe("a post whose key the server keeps no longer", () => {
+    // docs/client.md section 8: the server answers a key sent again with its
+    // first answer for 5 minutes after the first send, and after that the key is new.
+    const keyWindow = 5 * minute;
+    const unsure = "This may have been sent. Check the conversation before sending it again.";
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /**
+     * Sends "Merge order" into a 504 under a clock the test moves while real
+     * time still runs. The clock starts one window back, so history-quota.ts
+     * never records a write ahead of the real clock.
+     */
+    async function lost(): Promise<ReturnType<typeof posts>> {
+      vi.useFakeTimers({
+        toFake: ["Date", "setTimeout", "clearTimeout"],
+        shouldAdvanceTime: true,
+        now: Date.now() - keyWindow,
+      });
+      answer(pageOf([row(1)]));
+      serve(
+        1,
+        conversationOf(1, { posts: [post(4)] }),
+        conversationOf(1, { posts: [post(4), mine(5, "Merge order", "Now.")] }),
+      );
+      const sent = posts(() => new HttpResponse(null, { status: 504 }), stored(5));
+      start("/messages/1");
+      await shown(1);
+      await write("Merge order", "Now.");
+      button("Send", detail()).click();
+      await until(() => button("Retry", entries()[1] as HTMLElement));
+      return sent;
+    }
+
+    it("sends it under its first key on a Retry just before the window ends", async () => {
+      const sent = await lost();
+      await vi.advanceTimersByTimeAsync(keyWindow - 2000);
+      button("Retry", entries()[1] as HTMLElement).click();
+      await until(() => {
+        expect(entries()[1]?.querySelector("footer")?.textContent).toBe("Read by 1 of 2");
+      });
+      expect(sent.keys.length).toBe(2);
+      expect(sent.keys[1]).toBe(sent.keys[0]);
+    });
+
+    it("drops Retry once the window ends and says it may have been sent", async () => {
+      const sent = await lost();
+      await vi.advanceTimersByTimeAsync(keyWindow);
+      await until(() => {
+        expect(entries()[1]?.querySelector("footer")?.textContent).toBe(unsure);
+      });
+      const own = entries()[1] as HTMLElement;
+      expect(own.getAttribute("data-state")).toBe("failed");
+      expect(own.querySelector("footer button")).toBeNull();
+      expect(errorOf(message())).toBe(unsure);
+      expect(sent.keys.length).toBe(1);
+    });
+
+    it("sends nothing on a Retry pressed after the window ended, before the page caught up", async () => {
+      const sent = await lost();
+      vi.setSystemTime(Date.now() + keyWindow);
+      button("Retry", entries()[1] as HTMLElement).click();
+      await until(() => {
+        expect(entries()[1]?.querySelector("footer")?.textContent).toBe(unsure);
+      });
+      expect(errorOf(message())).toBe(unsure);
+      expect(sent.keys.length).toBe(1);
+    });
+
+    it("takes Send on the same text after the window as a new post under a new key", async () => {
+      const sent = await lost();
+      await vi.advanceTimersByTimeAsync(keyWindow);
+      await until(() => {
+        expect(entries()[1]?.querySelector("footer")?.textContent).toBe(unsure);
+      });
+      (await rested("Send", detail())).click();
+      await until(() => {
+        expect(entries()[1]?.querySelector("footer")?.textContent).toBe("Read by 1 of 2");
+      });
+      expect(sent.keys.length).toBe(2);
+      expect(sent.keys[1]).toMatch(/^"[0-9a-f]{32}"$/);
+      expect(sent.keys[1]).not.toBe(sent.keys[0]);
+      expect(sent.bodies[1]).toEqual(sent.bodies[0]);
+      expect(entries().length).toBe(2);
+    });
   });
 
   it("offers Retry on a rate-limited post once the server's wait has passed", async () => {

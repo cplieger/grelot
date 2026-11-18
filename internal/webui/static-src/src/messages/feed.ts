@@ -11,6 +11,10 @@ import { readSummary } from "./readers.js";
 
 const skeletonEntries = 3;
 
+/** What a failed entry and its composer say once the server no longer keeps its key. */
+export const unsureWords =
+  "This may have been sent. Check the conversation before sending it again.";
+
 /** A post the user sent from this page that the conversation does not show yet. */
 export interface Pending {
   /** Unique within the conversation for the page's life. */
@@ -19,8 +23,12 @@ export interface Pending {
   readonly body: string;
   readonly at: number;
   readonly state: "sending" | "failed" | "sent";
-  /** A failed entry offers Retry: sending it again unchanged can succeed now. */
-  readonly retry: boolean;
+  /**
+   * What a failed entry offers: Retry, since sending it again unchanged can
+   * succeed now; a check, since the server no longer keeps its key and it may
+   * have been stored; or neither.
+   */
+  readonly offer: "retry" | "check" | null;
   /** The stored message, once sent: its entry replaces this one. */
   readonly message: number | null;
 }
@@ -206,7 +214,7 @@ export function conversationFeed(idPrefix: string, signal: AbortSignal): Convers
   };
 
   const pendingFooter = (li: HTMLElement, p: Pending): void => {
-    const drawn = p.state === "failed" && p.retry ? "failed, retry" : p.state;
+    const drawn = p.state === "failed" ? `failed, ${p.offer ?? "none"}` : p.state;
     if (drawnState.get(li) === drawn) {
       return;
     }
@@ -236,9 +244,9 @@ export function conversationFeed(idPrefix: string, signal: AbortSignal): Convers
       "span",
       { className: "cp-state", "data-tone": "danger" },
       icon("circle-x"),
-      "Not sent.",
+      p.offer === "check" ? unsureWords : "Not sent.",
     );
-    if (!p.retry) {
+    if (p.offer !== "retry") {
       footer?.replaceChildren(notSent);
       return;
     }
