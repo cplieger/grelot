@@ -273,6 +273,42 @@ func TestGuard_skipsAPathOutsideAnyRepository(t *testing.T) {
 	}
 }
 
+// hookInputCap is the most hook input grelot reads, as docs/providers.md
+// gives it.
+const hookInputCap = 16 << 20
+
+// A Write's input carries the whole file body, so a held file is named for
+// a write of several MiB.
+func TestGuard_namesTheHolderOfALargeWrite(t *testing.T) {
+	sc := claudeScene(t)
+	in := withFields(t, sc.write(sc.file), map[string]any{"tool_input.content": strings.Repeat("a generated line\n", 3<<20/17)})
+	if got := sc.writer.hook("guard", in); got.Code != 0 || got.Stdout != wantContext(t, holderLine) {
+		t.Errorf("a %d-byte write of a held file: exit %d, stdout %q, stderr %q; want %q", len(in), got.Code, got.Stdout, got.Stderr, wantContext(t, holderLine))
+	}
+}
+
+// A patch carries every hunk's body, so a held file is named for a patch
+// of several MiB.
+func TestGuard_namesTheHolderOfALargePatch(t *testing.T) {
+	sc := codexScene(t)
+	body := strings.Repeat("+a generated line\n", 3<<20/18)
+	in := sc.patch("*** Begin Patch\n*** Add File: new.go\n"+body+"*** Update File: engine.go\n@@\n-a\n+b\n*** End Patch\n", sc.clone)
+	if got := sc.writer.hook("guard", in); got.Code != 0 || got.Stdout != wantContext(t, holderLine) {
+		t.Errorf("a %d-byte patch of a held file: exit %d, stdout %q, stderr %q; want %q", len(in), got.Code, got.Stdout, got.Stderr, wantContext(t, holderLine))
+	}
+}
+
+func TestGuard_silentPastTheHookInputCap(t *testing.T) {
+	sc := claudeScene(t)
+	sc.wantHolder(t)
+	in := withFields(t, sc.write(sc.file), map[string]any{"tool_input.content": strings.Repeat("x", hookInputCap)})
+	got := sc.writer.hook("guard", in)
+	wantSilent(t, got)
+	if len(got.Requests) != 0 {
+		t.Errorf("requests %v, want none", got.Requests)
+	}
+}
+
 func TestGuard_doesNotRunForARead(t *testing.T) {
 	sc := claudeScene(t)
 	sc.wantHolder(t)

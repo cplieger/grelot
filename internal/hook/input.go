@@ -12,9 +12,10 @@ import (
 	"strings"
 )
 
-// maxInput caps the hook input read from stdin; a host's hook payload is
-// a few KiB, so more is not a payload grelot reads.
-const maxInput = 1 << 20
+// maxInput caps the hook input read from stdin. A file-write tool's input
+// carries the whole body or patch the model wrote in one call, so the cap
+// sits well above a model's output per call; more is not a host's payload.
+const maxInput = 16 << 20
 
 // Input is a hook's stdin, one JSON object.
 type Input struct {
@@ -29,7 +30,7 @@ func ReadInput(r io.Reader) (Input, error) {
 		return Input{}, err
 	}
 	if len(data) > maxInput {
-		return Input{}, errors.New("hook input over 1 MiB")
+		return Input{}, errors.New("hook input over 16 MiB")
 	}
 	return parseInput(data)
 }
