@@ -485,15 +485,16 @@ func (r *GuardRole) check() error {
 	if err := firstErr(r.checkRole(), r.Stdin.check(), checkOutput("outputs.context", r.Outputs.Context)); err != nil {
 		return err
 	}
-	// The guard only informs: a host stops or prompts for a tool call on a
-	// hook's non-zero exit or stderr.
+	// The guard only informs, and only stdout at exit 0 carries context: a
+	// non-zero exit is how a hook blocks or denies the call, exit 2 alone on
+	// some hosts and any on others.
 	switch o := r.Outputs.Context; {
 	case o == nil:
 		return &LoadError{Key: "outputs.context", Problem: problemRequired}
 	case o.Exit != 0:
 		return &LoadError{Key: "outputs.context.exit", Problem: "must be 0, since the guard never stops the write"}
 	case o.Stream == StreamStderr:
-		return &LoadError{Key: "outputs.context.stream", Problem: "must be stdout, since the guard never stops the write"}
+		return &LoadError{Key: "outputs.context.stream", Problem: "must be stdout, the stream a host reads context from"}
 	}
 	return nil
 }
