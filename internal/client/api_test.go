@@ -411,7 +411,7 @@ func TestDo_aNewerServersRefusalNamesTheUpgrade(t *testing.T) {
 }
 
 func TestHolders_sendsOneGetWithEveryPath(t *testing.T) {
-	f := newFake(t, answerJSON(http.StatusOK, `{"holders":[{"path":"/workspace/tool/a.go",`+
+	f := newFake(t, answerJSON(http.StatusOK, `{"holders":[{`+
 		`"held":{"id":3,"holder":"other-dev","path":"/workspace/tool","state":"held","reason":"editing","expires_at":"2026-11-05T10:00:00Z"},`+
 		`"queued":{"id":4,"holder":"tool-dev","path":"/workspace/tool/a.go","state":"queued"}}]}`))
 	a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
@@ -425,7 +425,6 @@ func TestHolders_sendsOneGetWithEveryPath(t *testing.T) {
 		t.Fatalf("server saw %+v, want one GET /v1/holders with both paths in order", seen)
 	}
 	want := Holding{
-		Path: "/workspace/tool/a.go",
 		Held: Reservation{
 			ID: 3, Holder: "other-dev", Path: "/workspace/tool", State: "held", Reason: "editing",
 			Expires: time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC),

@@ -169,20 +169,17 @@ func TestHolders_route(t *testing.T) {
 	}
 	file, free := held+"/a.go", repoGrelot+"/README.md"
 
-	t.Run("each queried path another identity holds", func(t *testing.T) {
-		r := h.as(sessB, http.MethodGet, holdersQuery(file, free), nil)
+	t.Run("one entry per grant another identity holds over the queried paths", func(t *testing.T) {
+		r := h.as(sessB, http.MethodGet, holdersQuery(file, free, held+"/b.go"), nil)
 		entries, _ := r.body["holders"].([]any)
 		if r.status != http.StatusOK || len(entries) != 1 {
 			t.Fatalf("GET: %d %s, want 200 and one entry", r.status, r.raw)
 		}
 		e := entries[0].(map[string]any)
 		g, _ := e["held"].(map[string]any)
-		if e["path"] != file || g["holder"] != "holder" || g["path"] != held || g["reason"] != "editing" || g["state"] != "held" ||
+		if len(e) != 1 || g["holder"] != "holder" || g["path"] != held || g["reason"] != "editing" || g["state"] != "held" ||
 			g["expires_at"] != testNow.Add(time.Hour).Format(time.RFC3339) {
-			t.Errorf("entry %v, want %s held by @holder on %s until %s", e, file, held, testNow.Add(time.Hour).Format(time.RFC3339))
-		}
-		if _, ok := e["queued"]; ok {
-			t.Errorf("entry %v names a queue entry, want none", e)
+			t.Errorf("entry %v, want only held: @holder's grant on %s until %s", e, held, testNow.Add(time.Hour).Format(time.RFC3339))
 		}
 	})
 	t.Run("the caller's own grant is no entry", func(t *testing.T) {

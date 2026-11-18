@@ -867,10 +867,9 @@ func holdersOf(t *testing.T, s *Store, c Caller, paths ...string) []Holding {
 	return got
 }
 
-// holding is one Holders entry as path, held grant id and queued entry id,
-// 0 for none.
+// holding is one Holders entry as its held grant id and queued entry id, 0
+// for none.
 type holding struct {
-	path   string
 	held   uint64
 	queued uint64
 }
@@ -878,7 +877,7 @@ type holding struct {
 func holdingsOf(got []Holding) []holding {
 	out := make([]holding, 0, len(got))
 	for _, h := range got {
-		e := holding{path: h.Path, held: h.Held.ID}
+		e := holding{held: h.Held.ID}
 		if h.Queued != nil {
 			e.queued = h.Queued.ID
 		}
@@ -887,7 +886,7 @@ func holdingsOf(got []Holding) []holding {
 	return out
 }
 
-func TestHolders_listsOtherHoldersOfEachPath(t *testing.T) {
+func TestHolders_listsEachGrantOthersHoldOverThePaths(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
 	regAt(t, s, "web")
 	regAt(t, s, "api")
@@ -898,35 +897,51 @@ func TestHolders_listsOtherHoldersOfEachPath(t *testing.T) {
 	mustReserve(t, s, reserving("me", readme, time.Hour))
 	me := Caller{Session: sess("me")}
 
-	t.Run("one entry per path another identity holds, in the order asked", func(t *testing.T) {
+	t.Run("one entry per grant another identity holds, in grant id order", func(t *testing.T) {
 		got := holdersOf(t, s, me, pathAPI+"/a.go", readme, pathWeb+"/index.ts", "/workspace/grelot/main.go", pathAPI+"/b.go")
-		want := []holding{{path: pathAPI + "/a.go", held: api.ID}, {path: pathWeb + "/index.ts", held: web.ID}, {path: pathAPI + "/b.go", held: api.ID}}
-		if !slices.Equal(holdingsOf(got), want) {
-			t.Errorf("Holders = %+v, want %+v", holdingsOf(got), want)
+		if want := []holding{{held: web.ID}, {held: api.ID}}; !slices.Equal(holdingsOf(got), want) {
+			t.Fatalf("Holders = %+v, want %+v", holdingsOf(got), want)
 		}
-		if len(got) == 3 {
-			h := got[1].Held
-			if h.Holder != "web" || h.Path != pathWeb || h.Reason != "reason of web" || h.State != reservationHeld || !h.Expires.Equal(testNow.Add(time.Hour)) {
-				t.Errorf("the web entry's grant = %+v, want web's grant on %s until %v", h, pathWeb, testNow.Add(time.Hour))
-			}
+		if h := got[0].Held; h.Holder != "web" || h.Path != pathWeb || h.Reason != "reason of web" || h.State != reservationHeld || !h.Expires.Equal(testNow.Add(time.Hour)) {
+			t.Errorf("the first entry's grant = %+v, want web's grant on %s until %v", h, pathWeb, testNow.Add(time.Hour))
 		}
 	})
-	t.Run("a folder lists every grant under it in grant id order", func(t *testing.T) {
+	t.Run("a folder lists every grant under it", func(t *testing.T) {
 		got := holdersOf(t, s, me, pathMarotte)
-		want := []holding{{path: pathMarotte, held: web.ID}, {path: pathMarotte, held: api.ID}}
-		if !slices.Equal(holdingsOf(got), want) {
+		if want := []holding{{held: web.ID}, {held: api.ID}}; !slices.Equal(holdingsOf(got), want) {
 			t.Errorf("Holders = %+v, want %+v", holdingsOf(got), want)
 		}
 	})
+	q := mustQueue(t, s, reserving("me", pathWeb, 30*time.Minute)).Reservation
 	t.Run("the caller's own queue entry on the path", func(t *testing.T) {
-		q := mustQueue(t, s, reserving("me", pathWeb, 30*time.Minute)).Reservation
 		got := holdersOf(t, s, me, pathWeb+"/index.ts", pathAPI+"/a.go")
-		want := []holding{{path: pathWeb + "/index.ts", held: web.ID, queued: q.ID}, {path: pathAPI + "/a.go", held: api.ID}}
-		if !slices.Equal(holdingsOf(got), want) {
+		if want := []holding{{held: web.ID, queued: q.ID}, {held: api.ID}}; !slices.Equal(holdingsOf(got), want) {
+			t.Fatalf("Holders = %+v, want %+v", holdingsOf(got), want)
+		}
+		if got[0].Queued.Path != pathWeb || got[0].Queued.State != reservationQueued {
+			t.Errorf("queued = %+v, want the caller's queue entry on %s", got[0].Queued, pathWeb)
+		}
+	})
+	b := mustQueue(t, s, reserving("me", pathAPI+"/b.go", 30*time.Minute)).Reservation
+	t.Run("a queue entry on any queried path under the grant", func(t *testing.T) {
+		got := holdersOf(t, s, me, pathAPI+"/a.go", pathAPI+"/b.go")
+		if want := []holding{{held: api.ID, queued: b.ID}}; !slices.Equal(holdingsOf(got), want) {
 			t.Errorf("Holders = %+v, want %+v", holdingsOf(got), want)
 		}
-		if len(got) == 2 && (got[0].Queued.Path != pathWeb || got[0].Queued.State != reservationQueued) {
-			t.Errorf("queued = %+v, want the caller's queue entry on %s", got[0].Queued, pathWeb)
+	})
+	t.Run("no queue entry on a path not queried", func(t *testing.T) {
+		got := holdersOf(t, s, me, pathAPI+"/a.go")
+		if want := []holding{{held: api.ID}}; !slices.Equal(holdingsOf(got), want) {
+			t.Errorf("Holders = %+v, want %+v, not the queue entry %d on b.go", holdingsOf(got), want, b.ID)
+		}
+	})
+	folder := mustQueue(t, s, reserving("me", pathAPI, 30*time.Minute)).Reservation
+	t.Run("the oldest of the caller's queue entries", func(t *testing.T) {
+		if got, want := holdingsOf(holdersOf(t, s, me, pathAPI+"/a.go", pathAPI+"/b.go")), []holding{{held: api.ID, queued: b.ID}}; !slices.Equal(got, want) {
+			t.Errorf("Holders of a.go and b.go = %+v, want %+v", got, want)
+		}
+		if got, want := holdingsOf(holdersOf(t, s, me, pathAPI+"/a.go")), []holding{{held: api.ID, queued: folder.ID}}; !slices.Equal(got, want) {
+			t.Errorf("Holders of a.go = %+v, want %+v", got, want)
 		}
 	})
 	t.Run("the holder sees none of its own", func(t *testing.T) {
@@ -937,8 +952,8 @@ func TestHolders_listsOtherHoldersOfEachPath(t *testing.T) {
 	t.Run("a grant past its expiry before the sweep", func(t *testing.T) {
 		clk.set(testNow.Add(61 * time.Minute))
 		got := holdersOf(t, s, me, pathMarotte)
-		if want := []holding{{path: pathMarotte, held: api.ID}}; !slices.Equal(holdingsOf(got), want) {
-			t.Errorf("Holders = %+v, want only the unexpired %+v", holdingsOf(got), want)
+		if want := []holding{{held: api.ID, queued: b.ID}}; !slices.Equal(holdingsOf(got), want) {
+			t.Errorf("Holders = %+v, want only the unexpired %+v with its own queue entry, not %d on web", holdingsOf(got), want, q.ID)
 		}
 	})
 }
@@ -958,7 +973,7 @@ func TestHolders_skipsTheCallersParent(t *testing.T) {
 	for name, c := range map[string]Caller{"its own session": {Session: own}, "the parent's session": as(sess("parent"), d.Name)} {
 		t.Run(name, func(t *testing.T) {
 			got := holdersOf(t, s, c, paths...)
-			if want := []holding{{path: paths[1], held: theirs.ID}}; !slices.Equal(holdingsOf(got), want) {
+			if want := []holding{{held: theirs.ID}}; !slices.Equal(holdingsOf(got), want) {
 				t.Errorf("Holders = %+v, want only the other identity's %+v, not the parent's grant %d", holdingsOf(got), want, mine.ID)
 			}
 		})

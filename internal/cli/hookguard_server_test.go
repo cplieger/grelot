@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -125,6 +126,23 @@ func TestHookGuard_oneLinePerGrant(t *testing.T) {
 	}
 }
 
+// A queue entry on any written file under the grant is named, whichever
+// file the write lists first.
+func TestHookGuard_namesAQueueOnALaterFileOfTheGrant(t *testing.T) {
+	g := newGuardSetup(t, 0)
+	out := g.writer.must("reserve", filepath.Join(g.clone, "internal", "b.go"), "--ttl=30m", "--reason", "next", "--queue")
+	m := regexp.MustCompile(`reservation (\d+) queued`).FindStringSubmatch(out)
+	if m == nil {
+		t.Fatalf("reserve --queue printed no queued id:\n%s", out)
+	}
+	want := "grelot: @holder-dev holds /workspace/toolbelt/internal until 2026-11-05 10:00 UTC (splitting internal); your write goes ahead. " +
+		"You are queued for /workspace/toolbelt/internal/b.go (reservation " + m[1] + "): coordinate with grelot post '@holder-dev' or wait for the grant, which reaches you as mail.\n"
+	patch := patchOf("*** Update File: internal/a.go", "@@", "-a", "+b", "*** Update File: internal/b.go", "@@", "-a", "+b")
+	if code, got, _, _ := g.guard(t, map[string]any{"patch": patch}, g.clone); code != 0 || got != want {
+		t.Errorf("exit %d, stdout %q; want %q", code, got, want)
+	}
+}
+
 // A relative patch path is under the hook's cwd, never the hook process's
 // working directory: with no cwd it is not checked.
 func TestHookGuard_aRelativePatchPathNeedsACwd(t *testing.T) {
@@ -235,7 +253,7 @@ func TestHookGuard_answerIsPrintedOnOneSafeLine(t *testing.T) {
 		got = append(got, r.URL.Path)
 		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"holders":[{"path":"/workspace/toolbelt/a.go","held":{"id":1,"holder":"evil\u001b[2Jdev",`+
+		_, _ = io.WriteString(w, `{"holders":[{"held":{"id":1,"holder":"evil\u001b[2Jdev",`+
 			`"path":"/workspace/toolbelt/a.go\r\nfake: line","state":"held","reason":"red \u001b[31mtext\u202e here\nnext",`+
 			`"expires_at":"2026-11-05T10:00:00Z"}}]}`)
 	}))

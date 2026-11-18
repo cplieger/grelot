@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"strings"
@@ -298,18 +299,18 @@ func (s *Store) Reservations(ctx context.Context, c Caller, q ReservationQuery) 
 }
 
 // Holding is one grant another agent holds over a queried path. Queued is
-// the caller's own oldest queue entry overlapping both, nil for none.
+// the caller's own oldest queue entry overlapping the grant and a queried
+// path the grant covers, nil for none.
 type Holding struct {
 	Queued *Reservation
-	Path   string
 	Held   Reservation
 }
 
-// Holders lists, per path in the order asked and then in grant id order,
-// each unexpired grant overlapping it whose holder is neither c's identity
-// nor its parent. It reads only: no last-seen touch and no expiry sweep.
-// Refusals: KindInvalid for no path, a bad one or more than protopath.MaxHolderPaths
-// distinct ones; KindGone with no live identity.
+// Holders lists, in grant id order, each unexpired grant overlapping any of
+// paths whose holder is neither c's identity nor its parent, once. It reads
+// only: no last-seen touch and no expiry sweep. Refusals: KindInvalid for no
+// path, a bad one or more than protopath.MaxHolderPaths distinct ones;
+// KindGone with no live identity.
 func (s *Store) Holders(ctx context.Context, c Caller, paths []string) ([]Holding, error) {
 	ps, err := checkHolderPaths(paths)
 	if err != nil {
@@ -327,12 +328,20 @@ func (s *Store) Holders(ctx context.Context, c Caller, paths []string) ([]Holdin
 		case me.State == stateDormant:
 			return s.dormantIdentity(r, &me, now)
 		}
+		hs := holdings{held: map[uint64]reservationRow{}, queued: map[uint64]reservationRow{}}
 		for _, p := range ps {
-			held, herr := s.holdersOf(r, &me, p, now)
-			if herr != nil {
+			if herr := s.holdersOf(r, &me, p, now, &hs); herr != nil {
 				return herr
 			}
-			out = append(out, held...)
+		}
+		for _, id := range slices.Sorted(maps.Keys(hs.held)) {
+			g := hs.held[id]
+			h := Holding{Held: s.reservationView(r, &me, &g)}
+			if q, ok := hs.queued[id]; ok {
+				v := s.reservationView(r, &me, &q)
+				h.Queued = &v
+			}
+			out = append(out, h)
 		}
 		return nil
 	})
@@ -355,18 +364,26 @@ func checkHolderPaths(paths []string) ([]string, error) {
 	return out, nil
 }
 
-// holdersOf is Holders' answer for the one path p.
-func (s *Store) holdersOf(r *bolttable.ReadTx, me *identityRow, p string, now time.Time) ([]Holding, error) {
+// holdings is Holders' answer as it is gathered, by grant id: the grant and
+// the caller's oldest queue entry on it.
+type holdings struct {
+	held   map[uint64]reservationRow
+	queued map[uint64]reservationRow
+}
+
+// holdersOf adds to hs the grants overlapping p that Holders lists, each
+// with the caller's queue entries overlapping both p and the grant.
+func (s *Store) holdersOf(r *bolttable.ReadTx, me *identityRow, p string, now time.Time, hs *holdings) error {
 	ids, err := overlapIDs(r, s.t.resvPath, p)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	var held, queued []reservationRow
 	for _, id := range ids {
 		v, found, err := s.t.resv.table.Get(r, id)
 		switch {
 		case err != nil:
-			return nil, err
+			return err
 		case !found:
 		case v.State == reservationQueued && v.Holder == me.ID:
 			queued = append(queued, v)
@@ -374,17 +391,22 @@ func (s *Store) holdersOf(r *bolttable.ReadTx, me *identityRow, p string, now ti
 			held = append(held, v)
 		}
 	}
-	out := make([]Holding, 0, len(held))
 	for i := range held {
-		h := Holding{Path: p, Held: s.reservationView(r, me, &held[i])}
-		// Ids grow with each request, so the first overlapping one is the oldest.
-		if j := slices.IndexFunc(queued, func(q reservationRow) bool { return overlaps(q.Path, held[i].Path) }); j >= 0 {
-			q := s.reservationView(r, me, &queued[j])
-			h.Queued = &q
-		}
-		out = append(out, h)
+		hs.add(&held[i], queued)
 	}
-	return out, nil
+	return nil
+}
+
+// add records the grant g with the oldest of queued overlapping it.
+func (hs *holdings) add(g *reservationRow, queued []reservationRow) {
+	hs.held[g.ID] = *g
+	for i := range queued {
+		q := &queued[i]
+		// Ids grow with each request, so the lowest is the oldest.
+		if cur, ok := hs.queued[g.ID]; overlaps(q.Path, g.Path) && (!ok || q.ID < cur.ID) {
+			hs.queued[g.ID] = *q
+		}
+	}
 }
 
 func (s *Store) scanReservations(r *bolttable.ReadTx, q ReservationQuery, holder uint64, fn func(*reservationRow)) error {

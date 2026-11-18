@@ -106,13 +106,8 @@ func (h *hookCall) repoPaths(ctx context.Context, locals []string) []string {
 // most lines whose rendered text through out fits limit (0 for none) with
 // a last line counting the grants left out.
 func guardText(held []client.Holding, limit int, out *provider.Output) string {
-	var lines []string
-	var seen []uint64
+	lines := make([]string, 0, len(held))
 	for i := range held {
-		if slices.Contains(seen, held[i].Held.ID) {
-			continue
-		}
-		seen = append(seen, held[i].Held.ID)
 		lines = append(lines, guardLine(&held[i]))
 	}
 	text := strings.Join(lines, "\n")

@@ -105,12 +105,11 @@ func (s *Server) reservations(r *http.Request, c store.Caller) (status int, body
 
 type holdingJSON struct {
 	Queued *reservationJSON `json:"queued,omitempty"`
-	Path   string           `json:"path"`
 	Held   reservationJSON  `json:"held"`
 }
 
 // holders is GET /v1/holders?path=&path=: each grant another agent holds
-// over a queried path, for the file reservation guard.
+// over a queried path, once, for the file reservation guard.
 func (s *Server) holders(r *http.Request, c store.Caller) (status int, body any, err error) {
 	got, err := s.store.Holders(r.Context(), c, r.URL.Query()["path"])
 	if err != nil {
@@ -118,7 +117,7 @@ func (s *Server) holders(r *http.Request, c store.Caller) (status int, body any,
 	}
 	out := make([]holdingJSON, 0, len(got))
 	for i := range got {
-		h := holdingJSON{Path: got[i].Path, Held: reservationOut(&got[i].Held)}
+		h := holdingJSON{Held: reservationOut(&got[i].Held)}
 		if got[i].Queued != nil {
 			q := reservationOut(got[i].Queued)
 			h.Queued = &q

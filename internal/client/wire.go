@@ -95,11 +95,10 @@ type Reservation struct {
 	ID       uint64    `json:"id"`
 }
 
-// Holding is one grant another agent holds over the queried Path; Queued
-// is the caller's own oldest queue entry overlapping both, nil for none.
+// Holding is one grant another agent holds over a queried path; Queued is
+// the caller's own oldest queue entry on it, nil for none.
 type Holding struct {
 	Queued *Reservation `json:"queued"`
-	Path   string       `json:"path"`
 	Held   Reservation  `json:"held"`
 }
 

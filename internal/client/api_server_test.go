@@ -122,14 +122,14 @@ func TestHolders_againstTheServer(t *testing.T) {
 	held := reserve(holder, map[string]any{"path": "/workspace/tool/internal", "reason": "splitting it", "ttl": "1h"})
 	file := "/workspace/tool/internal/a.go"
 
-	got, err := writer.Holders(t.Context(), []string{file, "/workspace/tool/README.md"})
+	got, err := writer.Holders(t.Context(), []string{file, "/workspace/tool/README.md", "/workspace/tool/internal/b.go"})
 	if err != nil {
 		t.Fatalf("Holders: %v", err)
 	}
-	if len(got) != 1 || got[0].Path != file || got[0].Queued != nil || got[0].Held.ID != held ||
+	if len(got) != 1 || got[0].Queued != nil || got[0].Held.ID != held ||
 		got[0].Held.Holder != "holder-dev" || got[0].Held.Path != "/workspace/tool/internal" ||
 		got[0].Held.Reason != "splitting it" || got[0].Held.Expires.IsZero() {
-		t.Fatalf("Holders = %+v, want one entry: %s held by @holder-dev for splitting it", got, file)
+		t.Fatalf("Holders = %+v, want one entry for both files: /workspace/tool/internal held by @holder-dev for splitting it", got)
 	}
 	queued := reserve(writer, map[string]any{"path": file, "reason": "next", "ttl": "30m", "queue": true})
 	if got, err = writer.Holders(t.Context(), []string{file}); err != nil || len(got) != 1 || got[0].Queued == nil || got[0].Queued.ID != queued {
