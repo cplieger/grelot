@@ -211,7 +211,7 @@ And these, by role:
 | `take_over_every_start` | `session_start` | `true` for a tool that reports no source and starts a session in its process only for a chat with no history. Every start but a fork may then get the hint. Not with `source.take_over` |
 | `once_per_turn` | `stop` | `true` for a tool that runs its stop hooks at most once per turn, so the hold ends the turn whether or not it blocks |
 | `stdin.paths` | `guard` | Stdin paths each holding one written file, such as `[tool_input.file_path]`. A relative one is read from the hook's working folder |
-| `stdin.patch`, `stdin.cwd` | `guard` | The stdin path of a patch's text, for a tool whose write tool takes one, and of the folder its relative paths start from. Every file the patch adds, updates, deletes or moves is checked. They go together, and a `guard` needs `stdin.paths` or `stdin.patch` |
+| `stdin.patch`, `stdin.cwd` | `guard` | The stdin path of a patch's text, for a tool whose write tool takes one, and of the folder its relative paths start from; on Windows a rooted path with no drive, `\x`, takes that folder's drive. Every file the patch adds, updates, deletes or moves is checked. They go together, and a `guard` needs `stdin.paths` or `stdin.patch` |
 | `stdin.session` | `subagent_stop` | The stdin path of the session the subagent's own shell carries, for a tool whose subagent hooks name the parent at `session.stdin`. `session.stdin` when left out |
 
 Outputs, under `outputs.context`, `outputs.block` and `outputs.notice`:

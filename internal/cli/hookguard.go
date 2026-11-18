@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -59,14 +58,19 @@ func (h *hookCall) guard(ctx context.Context, role *provider.GuardRole) {
 	_ = h.emit(role.Outputs.Context, guardText(held, role.ContextLimit, role.Outputs.Context))
 }
 
-// writtenFiles is each local file the hook input names: each stdin path's
-// value, then the patch's files, relative ones under the stdin cwd and
-// dropped when it has none.
-func (h *hookCall) writtenFiles(role *provider.GuardRole) []string {
-	var out []string
+// written is one file the hook input names, as given, and the folder a
+// relative or drive-less one starts from.
+type written struct{ file, dir string }
+
+// writtenFiles is each file the hook input names: each stdin path's value
+// from the hook's working directory, then the patch's files from the stdin
+// cwd.
+func (h *hookCall) writtenFiles(role *provider.GuardRole) []written {
+	var out []written
+	wd, _ := h.Getwd()
 	for _, p := range role.Stdin.Paths {
 		if v := h.in.String(p); v != "" {
-			out = append(out, v)
+			out = append(out, written{file: v, dir: wd})
 		}
 	}
 	if role.Stdin.Patch == "" {
@@ -74,23 +78,24 @@ func (h *hookCall) writtenFiles(role *provider.GuardRole) []string {
 	}
 	cwd := h.in.String(role.Stdin.Cwd)
 	for _, p := range hook.PatchPaths(h.in.String(role.Stdin.Patch)) {
-		switch {
-		case filepath.IsAbs(p):
-			out = append(out, p)
-		case cwd != "":
-			out = append(out, filepath.Join(cwd, p))
-		}
+		out = append(out, written{file: p, dir: cwd})
 	}
 	return out
 }
 
-// repoPaths is the canonical form of each local inside a clone with a
-// remote, in order with repeats dropped, at most protopath.MaxHolderPaths; a path
-// that does not resolve is left out.
-func (h *hookCall) repoPaths(ctx context.Context, locals []string) []string {
+// repoPaths is the canonical form of each file inside a clone with a
+// remote, in order with repeats dropped, at most protopath.MaxHolderPaths; a
+// file that does not resolve is left out.
+func (h *hookCall) repoPaths(ctx context.Context, files []written) []string {
 	res, err := h.paths()
 	if err != nil {
 		return nil
+	}
+	var locals []string
+	for _, f := range files {
+		if p, ok := res.From(f.file, f.dir); ok {
+			locals = append(locals, p)
+		}
 	}
 	var out []string
 	for loc, err := range res.Paths(ctx, locals) {

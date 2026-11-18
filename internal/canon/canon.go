@@ -156,6 +156,26 @@ func (r *Resolver) clone(wt workTree) Clone {
 	return c
 }
 
+// From is file as a tool on this host resolves it from the folder dir: file
+// itself when absolute, on dir's drive when rooted with no drive (\x, which
+// Windows reads on the current drive), else under dir. ok is false when file
+// is not absolute and dir is "", or holds no drive for a rooted file.
+func (r *Resolver) From(file, dir string) (string, bool) {
+	p, d := r.slash(file), r.slash(dir)
+	switch {
+	case r.isAbs(p):
+		return file, true
+	case d == "":
+		return "", false
+	case strings.HasPrefix(p, "/"):
+		if !hasDrive(d) {
+			return "", false
+		}
+		return d[:2] + p, true
+	}
+	return path.Join(d, p), true
+}
+
 // absolute is local made absolute and cleaned, in slash form; a Windows path
 // keeps its drive, C:/x.
 func (r *Resolver) absolute(local string) (string, error) {

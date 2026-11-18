@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/cplieger/grelot/internal/where"
@@ -341,4 +342,48 @@ func TestPaths_asksGitOncePerDirectory(t *testing.T) {
 			t.Errorf("yielded %d after a break, want 1", n)
 		}
 	})
+}
+
+// A rooted path with no drive, \x, is on the folder's drive, never under
+// the folder: Rust's Path::join, which Codex's apply_patch resolves with,
+// keeps only the folder's prefix for one
+// (https://doc.rust-lang.org/std/path/struct.PathBuf.html#method.push).
+func TestFrom_placesAFileAsItsToolDoes(t *testing.T) {
+	win := windowsResolver("/workspace", fakeGit{}, nil, nil)
+	unix := &Resolver{system: "linux", root: "/workspace"}
+	for _, c := range []struct {
+		r               *Resolver
+		name, file, dir string
+		want            string
+	}{
+		{win, "a drive path", "C:/Users/me/work/a.go", `D:\x`, "C:/Users/me/work/a.go"},
+		{win, "a drive path with backslashes", `C:\Users\me\work\a.go`, "", `C:\Users\me\work\a.go`},
+		{win, "a UNC path", `\\server\share\a.go`, "", `\\server\share\a.go`},
+		{win, "a rooted path on the folder's drive", "/workspace/grelot/a.go", `D:\Users\me\work`, "D:/workspace/grelot/a.go"},
+		{win, "a rooted path with backslashes", `\workspace\grelot\a.go`, `C:\Users\me`, "C:/workspace/grelot/a.go"},
+		{win, "a relative path under the folder", "internal/a.go", `C:\Users\me\work`, "C:/Users/me/work/internal/a.go"},
+		{unix, "an absolute path", "/workspace/grelot/a.go", "/home/me", "/workspace/grelot/a.go"},
+		{unix, "a relative path under the folder", "internal/../a.go", "/home/me/work", "/home/me/work/a.go"},
+	} {
+		t.Run(strings.ReplaceAll(c.name, " ", "_"), func(t *testing.T) {
+			if got, ok := c.r.From(c.file, c.dir); !ok || got != c.want {
+				t.Errorf("From(%q, %q) = %q, %v; want %q", c.file, c.dir, got, ok, c.want)
+			}
+		})
+	}
+	for _, c := range []struct {
+		r               *Resolver
+		name, file, dir string
+	}{
+		{win, "a relative path with no folder", "internal/a.go", ""},
+		{win, "a rooted path with no folder", "/workspace/grelot/a.go", ""},
+		{win, "a rooted path from a folder with no drive", "/workspace/grelot/a.go", "/srv/work"},
+		{unix, "a relative path with no folder", "a.go", ""},
+	} {
+		t.Run(strings.ReplaceAll(c.name, " ", "_"), func(t *testing.T) {
+			if got, ok := c.r.From(c.file, c.dir); ok {
+				t.Errorf("From(%q, %q) = %q, true; want no file", c.file, c.dir, got)
+			}
+		})
+	}
 }

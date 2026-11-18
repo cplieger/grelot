@@ -143,6 +143,19 @@ func TestHookGuard_namesAQueueOnALaterFileOfTheGrant(t *testing.T) {
 	}
 }
 
+// A relative stdin path is under the hook's working directory.
+func TestHookGuard_aRelativeStdinPathIsUnderTheWorkingDirectory(t *testing.T) {
+	g := newGuardSetup(t, 0)
+	t.Chdir(t.TempDir())
+	code, out, _, asked := g.guard(t, map[string]any{"path": filepath.Join("internal", "a.go")}, "")
+	if code != 0 || out != guardInternal+"\n" {
+		t.Errorf("exit %d, stdout %q; want %q", code, out, guardInternal+"\n")
+	}
+	if want := [][]string{{"/workspace/toolbelt/internal/a.go"}}; !slices.EqualFunc(asked, want, slices.Equal) {
+		t.Errorf("asked %v, want %v", asked, want)
+	}
+}
+
 // A relative patch path is under the hook's cwd, never the hook process's
 // working directory: with no cwd it is not checked.
 func TestHookGuard_aRelativePatchPathNeedsACwd(t *testing.T) {
