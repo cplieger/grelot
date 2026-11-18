@@ -137,7 +137,7 @@ func AuthErrors(logger *slog.Logger, m *obs.Metrics) access.ErrorWriter {
 		}
 		msg := e.Detail
 		if !strings.HasPrefix(r.URL.Path, wire.AuthPrefix+"/") {
-			msg = cmp.Or(gateWords(r, e.Code), msg)
+			msg = cmp.Or(gateWords(r, &e), msg)
 		}
 		body := wire.Error{Error: msg, Code: string(e.Code), Reason: e.Reason, RequestID: httpserver.RequestIDFromContext(r.Context())}
 		if e.RetryAfter > 0 {
@@ -147,11 +147,11 @@ func AuthErrors(logger *slog.Logger, m *obs.Metrics) access.ErrorWriter {
 	}
 }
 
-// gateWords is the fix for a gate refusal of r with code, "" for a code
-// the gate does not answer.
-func gateWords(r *http.Request, code access.Code) string {
+// gateWords is the fix for the gate refusal e of r, "" for a code the gate
+// does not answer.
+func gateWords(r *http.Request, e *access.Error) string {
 	machine := strings.HasPrefix(r.URL.Path, "/v1/")
-	switch code {
+	switch e.Code {
 	case access.CodeAuthRequired, access.CodeSessionExpired, access.CodeInvalidCredentials, access.CodeKeyInvalid:
 		if machine {
 			return "a valid machine key is required: set token in the grelot client config to a key from grelot key create"
@@ -160,7 +160,14 @@ func gateWords(r *http.Request, code access.Code) string {
 	case access.CodeKeyRequired:
 		return "the agent API takes a machine's API key, not a browser session"
 	case access.CodeSessionRequired:
-		return "the web API takes a signed-in browser session; an API key works on /v1 only"
+		switch {
+		case errors.Is(e.Err, access.ErrRestrictedSession):
+			return "a recovery session only sets a new password or passkey: finish the recovery, then sign in"
+		case r.URL.Path == wire.Path("events", nil):
+			return "the event stream takes a signed-in browser session and refuses every API key"
+		default:
+			return "this route takes a signed-in browser session, not an API key"
+		}
 	case access.CodeCrossOrigin:
 		return "a cross-origin request cannot change anything: send it from grelot's own pages"
 	case access.CodeUnavailable:

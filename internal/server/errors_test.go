@@ -177,3 +177,47 @@ func TestAuthErrors_carriesTheEnvelope(t *testing.T) {
 		})
 	}
 }
+
+// TestAuthErrors_aSessionRefusalNamesWhatTheRouteTakes pins the words an
+// auth_session_required refusal carries outside the sign-in routes: the
+// event stream refuses every key, another route takes a session, and a
+// recovery session is told to finish its recovery.
+func TestAuthErrors_aSessionRefusalNamesWhatTheRouteTakes(t *testing.T) {
+	write := AuthErrors(slog.New(slog.DiscardHandler), obs.New())
+	restricted := &access.InvalidCredentialError{Err: access.ErrRestrictedSession}
+	cases := []struct {
+		name, path string
+		e          access.Error
+		want       string
+	}{
+		{
+			"eventStream", wire.Path("events", nil), access.NewError(access.CodeSessionRequired, "", nil),
+			"the event stream takes a signed-in browser session and refuses every API key",
+		},
+		{
+			"otherRoute", "/api/settings", access.NewError(access.CodeSessionRequired, "", nil),
+			"this route takes a signed-in browser session, not an API key",
+		},
+		{
+			"recoveryOnAPI", "/api/settings", access.NewError(access.CodeSessionRequired, "", restricted),
+			"a recovery session only sets a new password or passkey: finish the recovery, then sign in",
+		},
+		{
+			"recoveryOnV1", "/v1/version", access.NewError(access.CodeSessionRequired, "", restricted),
+			"a recovery session only sets a new password or passkey: finish the recovery, then sign in",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			write(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, tc.path, http.NoBody), tc.e)
+			var body wire.Error
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if body.Code != string(access.CodeSessionRequired) || body.Error != tc.want {
+				t.Errorf("%s: code %q, error %q, want auth_session_required and %q", tc.path, body.Code, body.Error, tc.want)
+			}
+		})
+	}
+}

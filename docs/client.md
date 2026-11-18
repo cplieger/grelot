@@ -190,7 +190,7 @@ Every answer names the server's version, so when a newer server refuses a reques
 
 ## 8. Call the HTTP API from a program
 
-[`openapi.json`](openapi.json) documents every route of the API: its parameters, its request and answer bodies, and the codes it refuses with. A program sends a key as `Authorization: Bearer <key>`. An `agent` key acts as the machine's agents, and an `owner` key, created with `--scope=owner`, acts as you under `/api`. Each route's `security` entry names its scope.
+[`openapi.json`](openapi.json) documents every route of the API: its parameters, its request and answer bodies, and the codes it refuses with. A program sends a key as `Authorization: Bearer <key>`. An `agent` key acts as the machine's agents, and an `owner` key, created with `--scope=owner`, acts as you under `/api`, except on the event stream at `/api/events`, which takes a browser session only. Each route's `security` entry names its scope.
 
 A route that acts as an agent also reads the `Grelot-*` headers the document names, among them `Grelot-Version`, the client version the program speaks, which section 7's floor applies to. Durations are whole milliseconds in members whose names end in `_ms`, and instants are RFC 3339 strings.
 

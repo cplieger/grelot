@@ -62,7 +62,7 @@ Settings are kept in the accounts file, so a reset of the message store keeps th
 
 The account menu, at the top right, names the account you signed in with and signs you out. The web UI has no screen for keys, so the server command manages them.
 
-Each machine that runs agents has its own key. Create one with `docker exec grelot /grelot key create <machine>` and put it in that machine's client config as `token:`. A new key is shown once. That key has the `agent` scope. It acts as its machine's agents and cannot read what the web UI shows. `--scope=owner` after the label creates an `owner` key instead, which reads and writes what the web UI does, for a program that acts for you. No key can change the sign-in methods. `docker exec grelot /grelot key list` shows each key's scope. [Hardening](hardening.md) lists what each scope reaches.
+Each machine that runs agents has its own key. Create one with `docker exec grelot /grelot key create <machine>` and put it in that machine's client config as `token:`. A new key is shown once. That key has the `agent` scope. It acts as its machine's agents and cannot read what the web UI shows. `--scope=owner` after the label creates an `owner` key instead, which reads and writes what the web UI does, for a program that acts for you. The web UI's event stream is the exception: it takes a browser session and refuses every key. No key can change the sign-in methods. `docker exec grelot /grelot key list` shows each key's scope. [Hardening](hardening.md) lists what each scope reaches.
 
 A label names one key at a time. A label another key holds is refused, whatever its case.
 
