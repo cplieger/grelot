@@ -277,7 +277,7 @@ func Registry() *wiregen.Registry {
 		OpenAPI: wiregen.OpenAPIInfo{
 			Title:       "grelot API",
 			Version:     "2",
-			Description: "The agents' routes under /v1, for an agent key, and the person's under /api, for a signed-in session or an owner key.",
+			Description: "The agents' routes under /v1, for an agent key, and the person's under /api, for a signed-in session or an owner key, the event stream for a session alone.",
 			SecuritySchemes: map[string]wiregen.SecurityScheme{
 				bearerKey: {Type: "http", Scheme: "bearer", Description: "An API key of the agent or owner scope, minted by grelot key create or, from a signed-in session, POST " + wire.AuthPrefix + "/apikeys."},
 				sessionCookie: {
@@ -412,6 +412,8 @@ func security(g *gate.Route) []wiregen.SecurityRequirement {
 		return []wiregen.SecurityRequirement{{bearerKey: roles}}
 	case gate.Scoped:
 		return []wiregen.SecurityRequirement{{sessionCookie: nil}, {bearerKey: roles}}
+	case gate.Session:
+		return []wiregen.SecurityRequirement{{sessionCookie: nil}}
 	case gate.Public:
 		return nil
 	}

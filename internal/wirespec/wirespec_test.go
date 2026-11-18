@@ -154,7 +154,8 @@ func TestRowsDeclareTheCommonCodes(t *testing.T) {
 
 // Each row names the credentials its Access admits: an agent row a bearer
 // key of the agent scope, an owner row the session cookie or a bearer key
-// of the owner scope, a public row none.
+// of the owner scope, the owner's event stream the session cookie alone,
+// a public row none.
 func TestRowsDeclareTheirCredential(t *testing.T) {
 	reg := Registry()
 	if s := reg.OpenAPI.SecuritySchemes["bearerKey"]; s.Type != "http" || s.Scheme != "bearer" {
@@ -166,10 +167,12 @@ func TestRowsDeclareTheirCredential(t *testing.T) {
 	for i := range wire.Routes {
 		r := &wire.Routes[i]
 		var want []wiregen.SecurityRequirement
-		switch r.Access {
-		case wire.AccessAgent:
+		switch {
+		case r.Access == wire.AccessAgent:
 			want = []wiregen.SecurityRequirement{{"bearerKey": {"agent"}}}
-		case wire.AccessOwner:
+		case r.Access == wire.AccessOwner && r.Kind == wire.KindEventStream:
+			want = []wiregen.SecurityRequirement{{"sessionCookie": nil}}
+		case r.Access == wire.AccessOwner:
 			want = []wiregen.SecurityRequirement{{"sessionCookie": nil}, {"bearerKey": {"owner"}}}
 		default:
 		}

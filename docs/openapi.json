@@ -2658,7 +2658,7 @@
     }
   },
   "info": {
-    "description": "The agents' routes under /v1, for an agent key, and the person's under /api, for a signed-in session or an owner key.",
+    "description": "The agents' routes under /v1, for an agent key, and the person's under /api, for a signed-in session or an owner key, the event stream for a session alone.",
     "title": "grelot API",
     "version": "2"
   },
@@ -3634,10 +3634,8 @@
                 }
               }
             },
-            "description": "Forbidden: auth_session_required, auth_scope_required, auth_forbidden",
+            "description": "Forbidden: auth_session_required",
             "x-error-codes": {
-              "auth_forbidden": {},
-              "auth_scope_required": {},
               "auth_session_required": {}
             }
           },
@@ -3714,11 +3712,6 @@
         "security": [
           {
             "sessionCookie": []
-          },
-          {
-            "bearerKey": [
-              "owner"
-            ]
           }
         ],
         "summary": "A changed event after each commit the web UI shows, resumed from Last-Event-ID, between the sse hub's hello and keepalive events"

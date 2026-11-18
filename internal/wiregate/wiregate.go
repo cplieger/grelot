@@ -19,6 +19,12 @@ func Route(r *wire.Route) gate.Route {
 	case wire.AccessAgent:
 		g.Class, g.Scope = gate.Key, wire.ScopeAgent
 	case wire.AccessOwner:
+		// The stream holds only a session's deadlines, so a key's stream
+		// would outlive the key's revocation.
+		if r.Kind == wire.KindEventStream {
+			g.Class = gate.Session
+			break
+		}
 		g.Class, g.Scope = gate.Scoped, wire.ScopeOwner
 	case wire.AccessPublic:
 		g.Class = gate.Public

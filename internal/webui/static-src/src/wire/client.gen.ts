@@ -1583,7 +1583,7 @@ export function getSignIn(opts?: ClientOpts): globalThis.Promise<ApiResult<SignI
   return clientRequest<SignIn, GetSignInError>(getSignInEndpoint.request(), getSignInEndpoint.decode, opts);
 }
 
-const eventsCodes = ["sse_unavailable", "streaming_unsupported", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_scope_required", "auth_forbidden", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
+const eventsCodes = ["sse_unavailable", "streaming_unsupported", "timeout", "shutting_down", "internal_error", "rate_limited", "auth_required", "auth_session_expired", "auth_invalid_credentials", "auth_key_invalid", "auth_session_required", "auth_unavailable", "auth_method_not_allowed", "auth_not_found"] as const;
 
 export type EventsError = (typeof eventsCodes)[number];
 

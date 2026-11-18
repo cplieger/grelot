@@ -83,6 +83,12 @@ var (
 		agent: refused(http.StatusForbidden, "auth_scope_required"), none: noCredential,
 	}
 	publicLine = cells{session: admit, recovery: admit, owner: admit, agent: admit, none: admit}
+	// eventsLine is the owner's event stream, which a key of either scope
+	// is refused until a stream ends with its key.
+	eventsLine = cells{
+		session: admit, recovery: recoveryRefuse, owner: refused(http.StatusForbidden, "auth_session_required"),
+		agent: refused(http.StatusForbidden, "auth_session_required"), none: noCredential,
+	}
 	// putSettingsMethods is putSettings' line for a request that changes
 	// the sign-in methods, from a session signed in moments ago.
 	putSettingsMethods = cells{
@@ -92,8 +98,7 @@ var (
 )
 
 // scopeMatrix is who each row admits, by row name. The two rows agents and
-// owners will share answer as agent rows until they merge, and the event
-// stream as an owner row until keys of either scope subscribe.
+// owners will share answer as agent rows until they merge.
 var scopeMatrix = map[string]cells{
 	"register": agentLine, "revive": agentLine, "getMe": agentLine, "patchMe": agentLine, "deleteMe": agentLine,
 	"listIdentities": agentLine, "getVersion": agentLine, "createPost": agentLine, "listThreads": agentLine,
@@ -105,7 +110,7 @@ var scopeMatrix = map[string]cells{
 	"listConversations": ownerLine, "getConversation": ownerLine, "markConversationRead": ownerLine,
 	"getUserReceipts": ownerLine, "createUserPost": ownerLine, "listAgents": ownerLine, "getAgent": ownerLine,
 	"getAgentHistory": ownerLine, "getStats": ownerLine, "getSettings": ownerLine, "putSettings": ownerLine,
-	"events": ownerLine,
+	"events": eventsLine,
 
 	"getSignIn": publicLine,
 }
@@ -367,10 +372,12 @@ func TestAgentKeyRefusedOwnerRoutes(t *testing.T) {
 		if r.Access != wire.AccessOwner {
 			continue
 		}
+		want := refused(http.StatusForbidden, "auth_scope_required")
+		if r.Kind == wire.KindEventStream {
+			want = refused(http.StatusForbidden, "auth_session_required")
+		}
 		for _, who := range []caller{asAgentKey, asScopelessKey} {
-			t.Run(r.Name+"/"+who.String(), func(t *testing.T) {
-				m.cell(t, r, who, refused(http.StatusForbidden, "auth_scope_required"), false)
-			})
+			t.Run(r.Name+"/"+who.String(), func(t *testing.T) { m.cell(t, r, who, want, false) })
 		}
 	}
 }

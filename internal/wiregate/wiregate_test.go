@@ -53,6 +53,22 @@ func TestRoute_panicsOnARowAdmittingNoOne(t *testing.T) {
 	wiregate.Route(&wire.Route{Name: "row", Method: http.MethodGet, Path: "/v1/row"})
 }
 
+// A key's stream would outlive the key's revocation, so the owner's event
+// stream admits a browser session alone.
+func TestRoute_theOwnersEventStreamTakesASessionAlone(t *testing.T) {
+	r := &wire.Route{Name: "events", Method: http.MethodGet, Path: "/v1/events", Kind: wire.KindEventStream, Access: wire.AccessOwner}
+	if got := wiregate.Route(r); got.Class != gate.Session || got.Scope != "" {
+		t.Errorf("the owner's event stream: class %d scope %q, want class %d (session) and no scope", got.Class, got.Scope, gate.Session)
+	}
+	got := make([]string, 0)
+	for _, code := range wiregate.Codes(r) {
+		got = append(got, string(code))
+	}
+	if want := slices.Sorted(slices.Values(slices.Concat(authenticating, mount))); !slices.Equal(slices.Sorted(slices.Values(got)), want) {
+		t.Errorf("the owner's event stream: Codes = %v, want %v", got, want)
+	}
+}
+
 func TestCodes_isTheGatesCodesThenTheMounts(t *testing.T) {
 	cases := []struct {
 		name   string
