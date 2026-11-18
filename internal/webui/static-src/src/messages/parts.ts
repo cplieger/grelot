@@ -7,8 +7,8 @@ import type { ApiResult } from "../transport.js";
 type Failure = Extract<ApiResult<unknown, string>, { readonly ok: false }>;
 
 // The statuses after which the same request sent again can succeed: no
-// answer, a proxy that could not reach or wait for the server, a server not
-// serving yet, and a rate limit.
+// answer, a proxy that could not reach or wait for the server, a server that
+// cannot serve it now, and a rate limit.
 const transient = new Set([0, 429, 502, 503, 504]);
 
 /**
