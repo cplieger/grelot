@@ -3,7 +3,7 @@ import { setupWorker } from "msw/browser";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { leaveTo } from "./location.js";
-import { clientRequest, newIdempotencyKey, type EndpointSpec } from "./transport.js";
+import { clientRequest, newIdempotencyKey, retryAfterOf, type EndpointSpec } from "./transport.js";
 
 vi.mock("./location.js", () => ({ leaveTo: vi.fn() }));
 
@@ -218,6 +218,61 @@ describe("clientRequest", () => {
     worker.use(http.get("/api/thing", () => new HttpResponse(null, { status: 401 })));
     await clientRequest(spec(), asIs);
     expect(leaveTo).not.toHaveBeenCalled();
+  });
+});
+
+describe("retryAfterOf", () => {
+  // Wed, 18 Nov 2026 08:00:00 GMT.
+  const now = Date.UTC(2026, 10, 18, 8, 0, 0);
+  // HTML timers: setTimeout runs a longer delay at once.
+  const longestTimer = 2_147_483_647;
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function waitOf(value: string): number | null {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
+    return retryAfterOf(new Headers({ "Retry-After": value }));
+  }
+
+  // RFC 9110 section 5.6.7: a recipient reads all three HTTP-date forms.
+  it.each([
+    ["an IMF-fixdate", "Wed, 18 Nov 2026 08:01:30 GMT", 90_000],
+    [
+      "an RFC 850 date, its two-digit year in this century",
+      "Wednesday, 18-Nov-26 08:01:30 GMT",
+      90_000,
+    ],
+    ["an asctime date, as GMT", "Wed Nov 18 08:01:30 2026", 90_000],
+    ["an asctime date with a one-digit day", "Tue Dec  1 08:00:00 2026", 13 * 86_400_000],
+    ["an RFC 850 date 49 years on", "Monday, 18-Nov-75 08:00:00 GMT", longestTimer],
+    ["an RFC 850 date over 50 years on, as the past", "Thursday, 18-Nov-77 08:00:00 GMT", 0],
+    ["the RFC's own IMF-fixdate, passed", "Sun, 06 Nov 1994 08:49:37 GMT", 0],
+    ["the RFC's own RFC 850 date, passed", "Sunday, 06-Nov-94 08:49:37 GMT", 0],
+    ["the RFC's own asctime date, passed", "Sun Nov  6 08:49:37 1994", 0],
+  ])("reads %s", (_, value, ms) => {
+    expect(waitOf(value)).toBe(ms);
+  });
+
+  it("holds a wait to the longest timer a browser keeps", () => {
+    expect(waitOf("2147483")).toBe(2_147_483_000);
+    expect(waitOf("2147484")).toBe(longestTimer);
+    expect(waitOf("9".repeat(400))).toBe(longestTimer);
+    expect(waitOf("Fri, 01 Jan 2100 00:00:00 GMT")).toBe(longestTimer);
+  });
+
+  it.each([
+    ["a day the month lacks", "Tue, 31 Feb 2026 08:00:00 GMT"],
+    ["an hour past 23", "Wed, 18 Nov 2026 24:00:00 GMT"],
+    ["a zone other than GMT", "Wed, 18 Nov 2026 08:01:30 UTC"],
+    ["a lowercase month", "Wed, 18 nov 2026 08:01:30 GMT"],
+    ["an asctime date with a zone", "Wed Nov 18 08:01:30 2026 GMT"],
+    ["an RFC 850 date with a four-digit year", "Wednesday, 18-Nov-2026 08:01:30 GMT"],
+    ["an ISO 8601 instant", "2026-11-18T08:01:30Z"],
+  ])("reads %s as no wait", (_, value) => {
+    expect(waitOf(value)).toBeNull();
   });
 });
 

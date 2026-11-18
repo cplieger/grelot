@@ -69,18 +69,73 @@ interface Envelope {
   readonly message: string | null;
 }
 
+/** HTML timers: setTimeout runs a longer delay at once (MDN setTimeout, "Maximum delay value"). */
+const longestTimerMs = 2_147_483_647;
+
+const monthNames = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");
+const monthPart = `(?<mon>${monthNames.join("|")})`;
+const dayPart = "(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)";
+const dayLongPart = "(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)";
+const timePart = String.raw`(?<h>\d{2}):(?<mi>\d{2}):(?<s>\d{2})`;
+// RFC 9110 section 5.6.7's three forms, case-sensitive; asctime has no zone and means GMT.
+const imfFixdate = new RegExp(
+  String.raw`^${dayPart}, (?<date>\d{2}) ${monthPart} (?<year>\d{4}) ${timePart} GMT$`,
+);
+const rfc850Date = new RegExp(
+  String.raw`^${dayLongPart}, (?<date>\d{2})-${monthPart}-(?<year>\d{2}) ${timePart} GMT$`,
+);
+const asctimeDate = new RegExp(
+  String.raw`^${dayPart} ${monthPart} (?<date>\d{2}| \d) ${timePart} (?<year>\d{4})$`,
+);
+
+/** The instant in ms of a UTC date and time, or null when no such date or time exists. */
+function utcMs(
+  year: number,
+  monthIndex: number,
+  date: number,
+  h: number,
+  mi: number,
+  s: number,
+): number | null {
+  // setUTCFullYear, unlike Date.UTC, keeps a year below 100 as written.
+  const d = new Date(0);
+  d.setUTCFullYear(year, monthIndex, date);
+  if (h > 23 || mi > 59 || s > 60 || d.getUTCMonth() !== monthIndex || d.getUTCDate() !== date) {
+    return null;
+  }
+  return d.getTime() + ((h * 60 + mi) * 60 + s) * 1000;
+}
+
+/** The instant in ms an HTTP-date names (RFC 9110 section 5.6.7), or null when v is none. */
+function httpDateMs(v: string, now: number): number | null {
+  const match = imfFixdate.exec(v) ?? rfc850Date.exec(v) ?? asctimeDate.exec(v);
+  const { date = "", mon = "", year = "", h = "", mi = "", s = "" } = match?.groups ?? {};
+  if (match === null) {
+    return null;
+  }
+  const at = (y: number): number | null =>
+    utcMs(y, monthNames.indexOf(mon), Number(date), Number(h), Number(mi), Number(s));
+  if (year.length === 4) {
+    return at(Number(year));
+  }
+  // A two-digit year more than 50 years on is the latest past year with those digits.
+  const fiftyOn = new Date(now);
+  fiftyOn.setUTCFullYear(fiftyOn.getUTCFullYear() + 50);
+  const y = Math.floor(new Date(now).getUTCFullYear() / 100) * 100 + Number(year);
+  const ms = at(y);
+  return ms !== null && ms > fiftyOn.getTime() ? at(y - 100) : ms;
+}
+
 /**
  * The wait in ms a Retry-After value names, delta-seconds or an HTTP-date
- * (RFC 9110 section 10.2.3); null when absent or neither. A date passed is 0.
+ * in any of its three forms (RFC 9110 section 10.2.3), held to the longest
+ * timer a browser keeps; null when absent or neither. A date passed is 0.
  */
 export function retryAfterOf(headers: Headers | undefined): number | null {
-  const v = headers?.get("Retry-After")?.trim() ?? "";
-  if (/^\d+$/.test(v)) {
-    const ms = Number(v) * 1000;
-    return Number.isSafeInteger(ms) ? ms : null;
-  }
-  const at = /^[A-Za-z]{3}, /.test(v) ? Date.parse(v) : Number.NaN;
-  return Number.isNaN(at) ? null : Math.max(0, at - Date.now());
+  const v = headers?.get("Retry-After") ?? "";
+  const now = Date.now();
+  const at = /^\d+$/.test(v) ? now + Number(v) * 1000 : httpDateMs(v, now);
+  return at === null ? null : Math.min(longestTimerMs, Math.max(0, at - now));
 }
 
 /** An error envelope's code and words, read from v as untrusted JSON. */
