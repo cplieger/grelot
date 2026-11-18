@@ -57,8 +57,8 @@ export function newIdempotencyKey(): string {
 }
 
 /**
- * How long after a write's first send the server answers its key with the
- * first answer (wire.IdempotencyWindow, published in the header's description).
+ * How long after a write succeeds the server answers its key with that
+ * answer (wire.IdempotencyWindow, published in the header's description).
  */
 export const idempotencyWindowMs = 5 * 60_000;
 

@@ -183,10 +183,11 @@ func TestRowsDeclareTheirCredential(t *testing.T) {
 }
 
 // draft-ietf-httpapi-idempotency-key-header section 2.3 asks a server to
-// publish how long it keeps a key; grelot keeps a key's first answer for 5
-// minutes after the first send.
+// publish how long it keeps a key; grelot keeps a write's answer for 5
+// minutes after the write succeeds, and keeps nothing for a refusal.
 func TestKeyedRowsPublishTheReplayWindow(t *testing.T) {
-	const want = "Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key."
+	const want = "Once the write succeeds, the server keeps its answer for 5 minutes: the key arriving again in that time gets that answer and stores nothing, and after it the key is new. " +
+		"A refused write keeps nothing, so its key sent again runs the write again."
 	reg := Registry()
 	for i := range wire.Routes {
 		r := &wire.Routes[i]

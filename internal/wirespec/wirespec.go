@@ -328,7 +328,8 @@ var idempotencyKey = wiregen.Header{
 	Name: wire.HeaderIdempotencyKey, Arg: "idempotencyKey", Required: true,
 	MinBytes: wire.IdempotencyKeyMin + 2, MaxBytes: wire.IdempotencyKeyMax + 2,
 	Description: fmt.Sprintf("A new quoted random key of %d to %d letters, digits, - or _ per write, the same key when it is sent again. "+
-		"Sent again within %d minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key.",
+		"Once the write succeeds, the server keeps its answer for %d minutes: the key arriving again in that time gets that answer and stores nothing, and after it the key is new. "+
+		"A refused write keeps nothing, so its key sent again runs the write again.",
 		wire.IdempotencyKeyMin, wire.IdempotencyKeyMax, int(wire.IdempotencyWindow/time.Minute)),
 }
 

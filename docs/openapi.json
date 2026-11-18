@@ -3874,7 +3874,7 @@
         "operationId": "createUserPost",
         "parameters": [
           {
-            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key.",
+            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Once the write succeeds, the server keeps its answer for 5 minutes: the key arriving again in that time gets that answer and stores nothing, and after it the key is new. A refused write keeps nothing, so its key sent again runs the write again.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": true,
@@ -4677,7 +4677,7 @@
             }
           },
           {
-            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key.",
+            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Once the write succeeds, the server keeps its answer for 5 minutes: the key arriving again in that time gets that answer and stores nothing, and after it the key is new. A refused write keeps nothing, so its key sent again runs the write again.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": true,
@@ -4976,7 +4976,7 @@
             }
           },
           {
-            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key.",
+            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Once the write succeeds, the server keeps its answer for 5 minutes: the key arriving again in that time gets that answer and stores nothing, and after it the key is new. A refused write keeps nothing, so its key sent again runs the write again.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": true,
@@ -5760,7 +5760,7 @@
             }
           },
           {
-            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key.",
+            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Once the write succeeds, the server keeps its answer for 5 minutes: the key arriving again in that time gets that answer and stores nothing, and after it the key is new. A refused write keeps nothing, so its key sent again runs the write again.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": true,
@@ -6033,7 +6033,7 @@
             }
           },
           {
-            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key.",
+            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Once the write succeeds, the server keeps its answer for 5 minutes: the key arriving again in that time gets that answer and stores nothing, and after it the key is new. A refused write keeps nothing, so its key sent again runs the write again.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": true,
@@ -7214,7 +7214,7 @@
             }
           },
           {
-            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key.",
+            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Once the write succeeds, the server keeps its answer for 5 minutes: the key arriving again in that time gets that answer and stores nothing, and after it the key is new. A refused write keeps nothing, so its key sent again runs the write again.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": true,
@@ -7741,7 +7741,7 @@
             }
           },
           {
-            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key.",
+            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Once the write succeeds, the server keeps its answer for 5 minutes: the key arriving again in that time gets that answer and stores nothing, and after it the key is new. A refused write keeps nothing, so its key sent again runs the write again.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": true,
@@ -8281,7 +8281,7 @@
             }
           },
           {
-            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key.",
+            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Once the write succeeds, the server keeps its answer for 5 minutes: the key arriving again in that time gets that answer and stores nothing, and after it the key is new. A refused write keeps nothing, so its key sent again runs the write again.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": true,
@@ -8811,7 +8811,7 @@
             }
           },
           {
-            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key.",
+            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Once the write succeeds, the server keeps its answer for 5 minutes: the key arriving again in that time gets that answer and stores nothing, and after it the key is new. A refused write keeps nothing, so its key sent again runs the write again.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": true,
@@ -9103,7 +9103,7 @@
             }
           },
           {
-            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key.",
+            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Once the write succeeds, the server keeps its answer for 5 minutes: the key arriving again in that time gets that answer and stores nothing, and after it the key is new. A refused write keeps nothing, so its key sent again runs the write again.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": true,
@@ -9657,7 +9657,7 @@
             }
           },
           {
-            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key.",
+            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Once the write succeeds, the server keeps its answer for 5 minutes: the key arriving again in that time gets that answer and stores nothing, and after it the key is new. A refused write keeps nothing, so its key sent again runs the write again.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": true,
@@ -9958,7 +9958,7 @@
             }
           },
           {
-            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key.",
+            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Once the write succeeds, the server keeps its answer for 5 minutes: the key arriving again in that time gets that answer and stores nothing, and after it the key is new. A refused write keeps nothing, so its key sent again runs the write again.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": true,
@@ -10233,7 +10233,7 @@
             }
           },
           {
-            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key.",
+            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Once the write succeeds, the server keeps its answer for 5 minutes: the key arriving again in that time gets that answer and stores nothing, and after it the key is new. A refused write keeps nothing, so its key sent again runs the write again.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": true,
@@ -10510,7 +10510,7 @@
             }
           },
           {
-            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Sent again within 5 minutes of its first send, a key answers the first answer and stores nothing; after that it is a new key.",
+            "description": "A new quoted random key of 16 to 64 letters, digits, - or _ per write, the same key when it is sent again. Once the write succeeds, the server keeps its answer for 5 minutes: the key arriving again in that time gets that answer and stores nothing, and after it the key is new. A refused write keeps nothing, so its key sent again runs the write again.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": true,

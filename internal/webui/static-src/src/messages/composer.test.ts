@@ -393,8 +393,8 @@ describe("the conversation's composer", () => {
   });
 
   describe("a post whose key the server keeps no longer", () => {
-    // docs/client.md section 8: the server answers a key sent again with its
-    // first answer for 5 minutes after the first send, and after that the key is new.
+    // docs/client.md section 6: the server answers a key sent again with its
+    // first answer for 5 minutes after the post succeeds, and after that the key is new.
     const keyWindow = 5 * minute;
     const unsure = "This may have been sent. Check the conversation before sending it again.";
 

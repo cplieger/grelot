@@ -153,10 +153,11 @@ const (
 	IdempotencyKeyMax = 64
 )
 
-// IdempotencyWindow is how long after a keyed write's first send the server
-// answers its key, sent again, with the first answer; after it the key is
-// new. It is 20 times internal/client's 15 s call budget, so every re-send
-// that client makes falls inside it.
+// IdempotencyWindow is how long after a keyed write succeeds the server
+// answers its key, arriving again, with that answer; after it the key is
+// new, and a refused write keeps nothing. The write succeeds after its first
+// send, and the window is 20 times internal/client's 15 s call budget, so
+// every re-send that client makes arrives inside it.
 const IdempotencyWindow = 5 * time.Minute
 
 // Pattern is the route's net/http ServeMux pattern.
