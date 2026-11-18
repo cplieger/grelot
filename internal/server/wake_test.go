@@ -30,12 +30,12 @@ func TestHub_aCommitBetweenTheReadAndTheBlockWakesTheWait(t *testing.T) {
 
 	wake, release := h.srv.hub.take(bravo)
 	defer release()
-	page, err := h.store.Inbox(t.Context(), store.Caller{Session: sessB}, 10)
+	page, err := h.store.Inbox(t.Context(), store.Caller{Key: h.keyID(), Session: sessB}, store.InboxQuery{Limit: 10})
 	if err != nil {
 		t.Fatalf("Inbox: %v", err)
 	}
-	if len(page.Entries) != 0 {
-		t.Fatalf("bravo's inbox before the post holds %d entries, want none", len(page.Entries))
+	if len(page.Items) != 0 {
+		t.Fatalf("bravo's inbox before the post holds %d entries, want none", len(page.Items))
 	}
 	t.Run("a commit for another identity leaves it blocked", func(t *testing.T) {
 		h.directPost(sessA, "charlie")

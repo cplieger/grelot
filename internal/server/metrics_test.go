@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net/http"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -16,16 +17,13 @@ import (
 	"github.com/cplieger/go/httpserver/v2"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
-// page reads /metrics with no headers.
+// page reads /metrics from the operations listener with no headers.
 func (h *harness) page() string {
 	h.t.Helper()
-	req, err := http.NewRequestWithContext(h.t.Context(), http.MethodGet, h.base()+"/metrics", http.NoBody)
-	if err != nil {
-		h.t.Fatal(err)
-	}
-	resp := h.do(req)
+	resp := h.opsCall(http.MethodGet, "/metrics")
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/plain") {
@@ -51,13 +49,6 @@ func (h *harness) scrape() map[string]float64 {
 		out[line[:i]] = v
 	}
 	return out
-}
-
-func (h *harness) base() string {
-	if h.http == nil {
-		return ""
-	}
-	return h.http.URL
 }
 
 func TestMetrics_takesNoHeadersAndCarriesTheRuntimeFamilies(t *testing.T) {
@@ -133,7 +124,7 @@ func TestMetrics_requestsAreCountedByTheirRoute(t *testing.T) {
 	h := newHarness(t)
 	h.as(sessA, http.MethodGet, "/v1/me", nil)
 	h.as(sessA, http.MethodGet, "/v1/me", nil)
-	h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": "", headerSession: sessA})
+	h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": "", wire.HeaderSession: sessA})
 	h.request(http.MethodGet, "/v1/no-such-route", nil, nil)
 	h.request(http.MethodGet, "/no-such-page", nil, nil)
 	got := h.scrape()
@@ -141,7 +132,7 @@ func TestMetrics_requestsAreCountedByTheirRoute(t *testing.T) {
 		`grelot_http_requests_total{code="200",route="/v1/me"}`:      2,
 		`grelot_http_requests_total{code="401",route="/v1/me"}`:      1,
 		`grelot_http_requests_total{code="404",route="/v1/"}`:        1,
-		`grelot_http_requests_total{code="404",route="unmatched"}`:   1,
+		`grelot_http_requests_total{code="404",route="/"}`:           1,
 		`grelot_http_request_duration_seconds_count{route="/v1/me"}`: 3,
 	} {
 		if v := got[name]; v != want {
@@ -193,7 +184,7 @@ func TestMetrics_postsAreCountedByThreadKindAndRefusalsByReason(t *testing.T) {
 		h.mustRegister(sessA, "parent")
 		handle := h.grantDelegate(sessA, "review")
 		r := h.request(http.MethodPost, "/v1/posts", postBody(map[string]any{"path": repoGrelot}, "hello", "a body"),
-			map[string]string{headerSession: sessA, headerAs: handle})
+			map[string]string{wire.HeaderSession: sessA, wire.HeaderAs: handle})
 		if r.status != http.StatusForbidden {
 			t.Fatalf("post outside the scope: %d %s, want 403", r.status, r.raw)
 		}
@@ -246,14 +237,15 @@ func TestMetrics_eachPushTryIsCountedByDoorAndOutcome(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		outcome string
+		event   string
 		reply   pushReply
 		up      float64
 	}{
 		{name: "202", reply: pushReply{status: http.StatusAccepted}, outcome: "accepted", up: 1},
-		{name: "503", reply: pushReply{status: http.StatusServiceUnavailable, header: map[string]string{"Retry-After": "20"}}, outcome: "retry", up: 1},
+		{name: "503", reply: pushReply{status: http.StatusServiceUnavailable, header: map[string]string{"Retry-After": "20"}}, outcome: "retry", up: 1, event: "push_retry"},
 		{name: "404 on the gone list", reply: pushReply{status: http.StatusNotFound}, outcome: "gone", up: 1},
-		{name: "400", reply: pushReply{status: http.StatusBadRequest}, outcome: "gave_up", up: 1},
-		{name: "401", reply: pushReply{status: http.StatusUnauthorized}, outcome: "gave_up", up: 0},
+		{name: "400", reply: pushReply{status: http.StatusBadRequest}, outcome: "gave_up", up: 1, event: "push_gave_up"},
+		{name: "401", reply: pushReply{status: http.StatusUnauthorized}, outcome: "gave_up", up: 0, event: "push_gave_up"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rcv := newPushReceiver(t, tc.reply)
@@ -285,6 +277,19 @@ func TestMetrics_eachPushTryIsCountedByDoorAndOutcome(t *testing.T) {
 				if sends != 1 {
 					t.Errorf("push tries counted = %v, want the one try", sends)
 				}
+				// A retry or give up is a Statistics event naming the
+				// recipient and the door.
+				var events []string
+				for _, e := range h.metrics.Events.Recent(time.Time{}, time.Now().Add(time.Hour)) {
+					events = append(events, e.Kind.String()+" "+e.Agent+" "+e.Detail)
+				}
+				var want []string
+				if tc.event != "" {
+					want = []string{tc.event + " reader testhost/push"}
+				}
+				if !slices.Equal(events, want) {
+					t.Errorf("events %q, want %q", events, want)
+				}
 			})
 		})
 	}
@@ -306,12 +311,12 @@ func TestMetrics_noLabelValueNamesAnAgentPathSubjectOrSession(t *testing.T) {
 	h.mustPost(sessQ, map[string]any{"agent": "marrowbone"}, subject)
 	h.mustPost(sessQ, map[string]any{"path": repo}, subject)
 	h.mustPost(sessQ, announce, subject)
-	if r := h.as(sessQ, http.MethodPost, "/v1/reservations", map[string]any{"path": repo + "/internal", "reason": "editing", "ttl": "1h"}); r.status != http.StatusCreated {
+	if r := h.as(sessQ, http.MethodPost, "/v1/reservations", map[string]any{"path": repo + "/internal", "reason": "editing", "ttl_ms": durMS("1h")}); r.status != http.StatusCreated {
 		t.Fatalf("reserve: %d %s", r.status, r.raw)
 	}
 	handle := h.grantDelegate(sessQ, "tanglewood")
 	h.request(http.MethodPost, "/v1/posts", postBody(map[string]any{"path": "/workspace/elsewhere"}, subject, "a body"),
-		map[string]string{headerSession: sessQ, headerAs: handle})
+		map[string]string{wire.HeaderSession: sessQ, wire.HeaderAs: handle})
 	h.as(sessM, http.MethodGet, "/v1/inbox", nil)
 	h.as(sessM, http.MethodGet, "/v1/history?path="+repo, nil)
 	h.as(sessM, http.MethodGet, "/v1/identities/quillfeather", nil)
@@ -368,11 +373,11 @@ func TestMetrics_seriesStayBoundedAtTheWorstCase(t *testing.T) {
 		{"POST", "/v1/events/wait"},
 		{"GET", "/v1/inbox"},
 		{"GET", "/v1/no-such-route"},
-		{"GET", "/healthz"},
 		{"GET", "/no-such-page"},
 	} {
 		h.request(r[0], r[1], nil, nil)
 	}
+	h.healthz(http.MethodGet)
 	h.page()
 	var routes []string
 	for name := range h.scrape() {
@@ -381,7 +386,7 @@ func TestMetrics_seriesStayBoundedAtTheWorstCase(t *testing.T) {
 		}
 	}
 	// The label drops the method: 18 /v1 paths, the /v1/ catch-all,
-	// /healthz, /metrics and unmatched.
+	// /healthz, /metrics and the web UI's /.
 	if len(routes) != 22 {
 		t.Fatalf("%d route labels %v, want 22", len(routes), routes)
 	}

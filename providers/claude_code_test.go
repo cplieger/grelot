@@ -23,7 +23,7 @@ func TestClaudeCodeDoors(t *testing.T) {
 		t.Fatalf("doors %v, want background, then monitor", names)
 	}
 	signal := transport.SignalLine(7, 2)
-	end := transport.EndLine(transport.EndEnded)
+	end := transport.EndLine("ended")
 	cases := []struct {
 		door      *provider.Door
 		start     string

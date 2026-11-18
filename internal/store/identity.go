@@ -10,20 +10,28 @@ import (
 	"strings"
 	"time"
 	"unicode"
-	"unicode/utf8"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // NoChange is the literal an identity field takes on a post to keep its
 // value; a post's Paths keeps the paths as the one element NoChange.
 const NoChange = "no change"
 
+// userName is the reserved name of the user's identity, @user, which Open
+// creates and no agent may take. Its row never expires and has no session.
+const userName = "user"
+
+// userProvider is @user's provider label; no session carries it.
+const userProvider = "web"
+
 const (
 	// maxPaths bounds one write's join-card fan-out, since each added work
 	// path owes a card to every overlapping identity.
-	maxPaths       = 16
-	maxPathBytes   = 1024
+	maxPaths = 16
+	// MaxPathBytes bounds one stored path.
+	MaxPathBytes   = 1024
 	maxPathDepth   = 64
 	maxDescription = 280
 	maxLabel       = 128
@@ -86,15 +94,17 @@ type Identity struct {
 // Fields.Description. Self is the Grelot-Self header, which a session
 // holding delegates needs to get its own identity back.
 type Registration struct {
-	Where    *Where
-	Session  string
-	Link     string
-	Host     string
-	OS       string
-	Arch     string
-	Proc     string
-	Fields   Fields
-	TTL      time.Duration
+	Where   *Where
+	Session string
+	Link    string
+	Host    string
+	OS      string
+	Arch    string
+	Proc    string
+	Fields  Fields
+	TTL     time.Duration
+	// Key is the machine key the registration came with.
+	Key      int64
 	TakeOver bool
 	Self     bool
 }
@@ -136,11 +146,14 @@ func (s *Store) Register(ctx context.Context, k Keyed, r *Registration) (Registe
 }
 
 func (w *wtx) register(r *Registration, provider string) (Registered, error) {
-	own, ownFound, err := w.identityBy(w.s.t.bySession, r.Session)
-	if err != nil {
-		return Registered{}, err
+	own, ownFound, err := w.ownFor(r.Session, r.Key)
+	if err == nil && ownFound {
+		err = w.rebind(&own, r.Key)
 	}
-	if ownFound && own.State == stateLive {
+	switch {
+	case err != nil:
+		return Registered{}, err
+	case ownFound && own.State == stateLive:
 		return w.existing(&own, r.Self)
 	}
 	row, added, moved, err := w.registerRow(r, provider)
@@ -152,7 +165,7 @@ func (w *wtx) register(r *Registration, provider string) (Registered, error) {
 			return Registered{}, err
 		}
 	}
-	if err := w.s.t.identities.table.Put(w.tx, row.ID, &row); err != nil {
+	if err := w.putIdentity(row.ID, &row); err != nil {
 		return Registered{}, err
 	}
 	w.queueCards(kindJoin, &row, added)
@@ -174,7 +187,7 @@ func (w *wtx) existing(own *identityRow, self bool) (Registered, error) {
 		}
 	}
 	if w.seen(own) {
-		if err := w.s.t.identities.table.Put(w.tx, own.ID, own); err != nil {
+		if err := w.putIdentity(own.ID, own); err != nil {
 			return Registered{}, err
 		}
 	}
@@ -186,7 +199,7 @@ func (w *wtx) existing(own *identityRow, self bool) (Registered, error) {
 // bind to that session; the row stays revivable by name.
 func (w *wtx) detach(row *identityRow) error {
 	row.Session = ""
-	return w.s.t.identities.table.Put(w.tx, row.ID, row)
+	return w.putIdentity(row.ID, row)
 }
 
 // registerRow validates r and returns the row it registers, a new one or
@@ -220,7 +233,7 @@ func (w *wtx) registerRow(r *Registration, provider string) (row identityRow, ad
 	}
 	row.Name, row.Paths, row.Description = fc.name, fc.paths, fc.description
 	row.Host, row.OS, row.Arch, row.Proc = r.Host, r.OS, r.Arch, r.Proc
-	row.Session, row.Provider = r.Session, provider
+	row.Session, row.Provider, row.Key = r.Session, provider, r.Key
 	row.Where = cloneWhere(*r.Where)
 	row.TTL, row.Lease = r.TTL, ls
 	w.touch(&row)
@@ -242,10 +255,14 @@ func (w *wtx) registerTarget(r *Registration, name, provider string) (identityRo
 	case held && !r.TakeOver:
 		return identityRow{}, false, w.s.liveNameRefusal(&row, *r.Where)
 	case held:
+		if kerr := w.s.bound(row.Key, r.Key); kerr != nil {
+			return identityRow{}, false, kerr
+		}
 		if merr := w.s.moveRefusal(verbTakeOver, &row, *r.Where, provider); merr != nil {
 			return identityRow{}, false, merr
 		}
-		return row, true, nil
+		err = w.rebind(&row, r.Key)
+		return row, true, err
 	}
 	if gerr := w.grow(); gerr != nil {
 		return identityRow{}, false, gerr
@@ -272,7 +289,7 @@ func (s *Store) Set(ctx context.Context, k Keyed, c Caller, ch Change) (Identity
 			return Identity{}, err
 		}
 		w.touch(&row)
-		if perr := s.t.identities.table.Put(w.tx, row.ID, &row); perr != nil {
+		if perr := w.putIdentity(row.ID, &row); perr != nil {
 			return Identity{}, perr
 		}
 		out, err := w.viewOf(&row)
@@ -373,13 +390,14 @@ func (w *wtx) nameFree(name string) error {
 	return err
 }
 
-// EndSession records the SessionEnd report on session's own live identity:
+// EndSession records the SessionEnd report on session's own live identity,
+// which key must hold (KindForbidden otherwise):
 // it is marked ended, its delegates end, and its expiry becomes
 // min(current, now + 1 h), its warning moving with it. Nothing restores
 // the lease but a renewal.
-func (s *Store) EndSession(ctx context.Context, session string) error {
+func (s *Store) EndSession(ctx context.Context, session string, key int64) error {
 	return s.update(ctx, func(w *wtx) error {
-		row, err := w.liveAs(Caller{Session: session, Self: true})
+		row, err := w.liveAs(Caller{Session: session, Key: key, Self: true})
 		if err != nil {
 			return err
 		}
@@ -391,7 +409,7 @@ func (s *Store) EndSession(ctx context.Context, session string) error {
 			row.Lease.Expires = limit
 			row.Lease.WarnAt = later(w.now, limit.Add(-identityPolicy.lead(row.TTL)))
 		}
-		return s.t.identities.table.Put(w.tx, row.ID, &row)
+		return w.putIdentity(row.ID, &row)
 	})
 }
 
@@ -422,7 +440,7 @@ func (s *Store) Retire(ctx context.Context, k Keyed, c Caller) (id uint64, repla
 		}
 		w.queueCards(kindLeft, &row, row.Paths)
 		// The row's delete cascades to its unused links.
-		if err := deleteRow(w, s.t.identities, row.ID); err != nil {
+		if err := w.deleteIdentity(row.ID); err != nil {
 			return 0, err
 		}
 		w.forgetSeen(row.ID)
@@ -486,7 +504,7 @@ func (s *Store) Seen(ctx context.Context, c Caller) (Identity, error) {
 			return noIdentity()
 		}
 		if row.State == stateLive && w.seen(&row) {
-			if err := s.t.identities.table.Put(w.tx, row.ID, &row); err != nil {
+			if err := w.putIdentity(row.ID, &row); err != nil {
 				return err
 			}
 		}
@@ -643,13 +661,15 @@ func (s *Store) moveRefusal(verb string, target *identityRow, caller Where, prov
 	var e *Error
 	switch {
 	case caller.Environment == "":
-		return s.refuseMove(verb, target.Name, noEnvironment())
+		ne := noEnvironment()
+		return s.refuseMove(verb, target.Name, ne.Why, ne)
 	case !shareEnvironment(caller, target.Where) && verb == verbRevive:
-		e = &Error{Kind: KindNotFound, Why: "other_environment", Msg: fmt.Sprintf(
+		e = &Error{Kind: KindNotFound, Reason: wire.ReasonIdentity, Msg: fmt.Sprintf(
 			"no dormant identity %s in this environment (%s)", target.Name, relation(caller, target.Where, ""),
 		)}
+		return s.refuseMove(verb, target.Name, whyOtherEnvironment, e)
 	case !shareEnvironment(caller, target.Where):
-		e = &Error{Kind: KindConflict, Why: "other_environment", Msg: fmt.Sprintf(
+		e = &Error{Kind: KindConflict, Why: whyOtherEnvironment, Msg: fmt.Sprintf(
 			"%s is not in this environment (%s); a %s moves an identity only within its own environment and provider: choose another name",
 			target.Name, relation(caller, target.Where, ""), verb,
 		)}
@@ -661,7 +681,7 @@ func (s *Store) moveRefusal(verb string, target *identityRow, caller Where, prov
 	default:
 		return nil
 	}
-	return s.refuseMove(verb, target.Name, e)
+	return s.refuseMove(verb, target.Name, e.Why, e)
 }
 
 func noEnvironment() *Error {
@@ -671,9 +691,11 @@ func noEnvironment() *Error {
 	}
 }
 
+const whyOtherEnvironment = "other_environment"
+
 // refuseMove logs a refused move as move refused with its why.
-func (s *Store) refuseMove(verb, name string, e *Error) *Error {
-	s.log.Info("move refused", "verb", verb, "name", name, "why", e.Why)
+func (s *Store) refuseMove(verb, name, why string, e *Error) *Error {
+	s.log.Info("move refused", "verb", verb, "name", name, "why", why)
 	return e
 }
 
@@ -756,26 +778,31 @@ func missingField(mode fieldMode, field, flag string) *Error {
 }
 
 func checkName(n string) error {
-	if !namePattern.MatchString(n) {
+	switch {
+	case !namePattern.MatchString(n):
 		return refuse(KindInvalid, fmt.Sprintf("name %q must be 2 to 48 lowercase letters, digits and hyphens, starting with a letter or digit", n))
+	case n == userName:
+		return refuse(KindInvalid, "the name user is reserved for the user, who posts as @user from the web UI")
 	}
 	return nil
 }
 
+// isUser reports whether row is @user's, which checkName keeps every
+// other identity from naming.
+func isUser(row *identityRow) bool { return row.Name == userName && row.Parent == 0 }
+
 func checkDescription(d string) error {
-	if n := utf8.RuneCountInString(d); n > maxDescription || !utf8.ValidString(d) || strings.ContainsFunc(d, isControl) {
-		return refuse(KindInvalid, fmt.Sprintf("the description must be 1 to %d characters of text, on one line", maxDescription))
-	}
-	return nil
+	return fieldRefusal(textFault("description", d, maxDescription, false),
+		fmt.Sprintf("the description must be 1 to %d characters of text, on one line", maxDescription))
 }
 
 // checkPaths validates work paths and drops repeats, keeping their order.
 func checkPaths(ps []string) ([]string, error) {
 	var out []string
 	for _, p := range ps {
-		if !isCanonicalPath(p) || len(p) > maxPathBytes || strings.Count(p, "/") > maxPathDepth || strings.ContainsFunc(p, isControl) {
+		if !isCanonicalPath(p) || len(p) > MaxPathBytes || strings.Count(p, "/") > maxPathDepth || strings.ContainsFunc(p, isControl) {
 			return nil, refuse(KindInvalid, fmt.Sprintf(
-				"path %q must be a canonical path: absolute, clean, no .., at most %d bytes and %d components", p, maxPathBytes, maxPathDepth,
+				"path %q must be a canonical path: absolute, clean, no .., at most %d bytes and %d components", p, MaxPathBytes, maxPathDepth,
 			))
 		}
 		if !slices.Contains(out, p) {
@@ -799,8 +826,9 @@ func checkSession(session string) (string, error) {
 
 func checkLabels(host, goos, arch, proc string) error {
 	for _, l := range []struct{ field, v string }{{"host", host}, {"os", goos}, {"arch", arch}, {"proc", proc}} {
-		if utf8.RuneCountInString(l.v) > maxLabel || !utf8.ValidString(l.v) || strings.ContainsFunc(l.v, isControl) {
-			return refuse(KindInvalid, fmt.Sprintf("%s must be at most %d characters of text, on one line", l.field, maxLabel))
+		if err := fieldRefusal(textFault(l.field, l.v, maxLabel, false),
+			fmt.Sprintf("%s must be at most %d characters of text, on one line", l.field, maxLabel)); err != nil {
+			return err
 		}
 	}
 	return nil

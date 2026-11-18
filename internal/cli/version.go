@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -56,7 +55,7 @@ func (r *run) serverVersion(ctx context.Context) (string, error) {
 	if timeout == 0 {
 		timeout = versionTimeout
 	}
-	resp, err := a.Do(ctx, &client.Request{Method: http.MethodGet, Path: "/v1/version", Timeout: timeout}, nil)
+	resp, err := a.Version(ctx, &client.Request{Timeout: timeout})
 	switch {
 	case resp.Version != "":
 		return resp.Version, nil

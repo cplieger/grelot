@@ -13,10 +13,10 @@ func TestVersion(t *testing.T) {
 	t.Run("the client's build, then the server's version", func(t *testing.T) {
 		ts := newServer(t)
 		a := newAgent(t, ts, "s-1", "")
-		a.env.Build = "v1.1.0"
+		a.env.Build = "v2.0.0"
 		for _, args := range [][]string{{"version"}, {"--version"}, {"-v"}} {
 			code, out, errOut := a.run(args...)
-			if code != exitOK || out != "grelot client v1.1.0\ngrelot server v1.1.0-dev.4\n" || errOut != "" {
+			if code != exitOK || out != "grelot client v2.0.0\ngrelot server v2.0.0-dev.1\n" || errOut != "" {
 				t.Errorf("grelot %s: exit %d, stdout %q, stderr %q; want 0 and the two versions", args[0], code, out, errOut)
 			}
 		}
@@ -29,23 +29,23 @@ func TestVersion(t *testing.T) {
 		if got := req.Header.Get("Grelot-Session"); got != "" {
 			t.Errorf("Grelot-Session %q, want none", got)
 		}
-		if got := req.Header.Get("Grelot-Version"); got != "v1.1.0" {
+		if got := req.Header.Get("Grelot-Version"); got != "v2.0.0" {
 			t.Errorf("Grelot-Version %q, want the client's wire version", got)
 		}
 	})
 	t.Run("a pseudo-version build prints as built", func(t *testing.T) {
 		ts := newServerAt(t, newerServer, nil)
 		a := newAgent(t, ts, "s-1", "")
-		a.env.Build, a.env.Version = "v1.1.0-dev.4.0.20261105101010-0123456789ab", "dev"
-		if out := a.must("version"); out != "grelot client v1.1.0-dev.4.0.20261105101010-0123456789ab\ngrelot server v1.2.0\n" {
+		a.env.Build, a.env.Version = "v2.0.0-dev.4.0.20261105101010-0123456789ab", "dev"
+		if out := a.must("version"); out != "grelot client v2.0.0-dev.4.0.20261105101010-0123456789ab\ngrelot server v2.1.0\n" {
 			t.Errorf("stdout %q, want the build and the server, and no upgrade line for a dev client", out)
 		}
 	})
 	t.Run("a newer server names the client to install", func(t *testing.T) {
 		ts := newServerAt(t, newerServer, nil)
 		a := newAgent(t, ts, "s-1", "")
-		a.env.Build = "v1.1.0"
-		if out := a.must("version"); out != "grelot client v1.1.0\ngrelot server v1.2.0\ngrelot: "+upgrade+"\n" {
+		a.env.Build = "v2.0.0"
+		if out := a.must("version"); out != "grelot client v2.0.0\ngrelot server v2.1.0\ngrelot: "+upgrade+"\n" {
 			t.Errorf("stdout %q, want the two versions and the upgrade line", out)
 		}
 	})
@@ -54,47 +54,47 @@ func TestVersion(t *testing.T) {
 		a := newAgent(t, ts, "s-1", "")
 		a.env.Build, a.env.Version = "v0.0.1", "v0.0.1"
 		out := a.must("version")
-		if want := "grelot client v0.0.1\ngrelot server v1.1.0-dev.4\ngrelot: this client is v0.0.1 and the server v1.1.0-dev.4: install grelot v1.1.0-dev.4"; !strings.HasPrefix(out, want) {
+		if want := "grelot client v0.0.1\ngrelot server v2.0.0-dev.1\ngrelot: this client is v0.0.1 and the server v2.0.0-dev.1: install grelot v2.0.0 from https://github.com/cplieger/grelot/releases/tag/v2.0.0, or, if that page does not exist yet"; !strings.HasPrefix(out, want) {
 			t.Errorf("stdout %q, want it to start %q", out, want)
 		}
 	})
 	t.Run("a server older than the route names its version on the 404", func(t *testing.T) {
 		hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Grelot-Version", "v1.1.0-dev.1")
+			w.Header().Set("Grelot-Version", "v2.0.0-dev.1")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"error":"no such route: GET /v1/version","code":"not_found"}`))
 		}))
 		t.Cleanup(hs.Close)
 		a := newAgent(t, &testServer{URL: hs.URL}, "s-1", "")
-		a.env.Build = "v1.1.0"
-		if out := a.must("version"); out != "grelot client v1.1.0\ngrelot server v1.1.0-dev.1\n" {
+		a.env.Build = "v2.0.0"
+		if out := a.must("version"); out != "grelot client v2.0.0\ngrelot server v2.0.0-dev.1\n" {
 			t.Errorf("stdout %q, want the 404's version", out)
 		}
 	})
-	t.Run("a refused token says why the server's version is unknown", func(t *testing.T) {
+	t.Run("a refused key says why the server's version is unknown", func(t *testing.T) {
 		ts := newServer(t)
 		a := newAgent(t, ts, "s-1", "")
 		writeClientConfig(t, a.env.ConfigDir, "server: "+ts.URL+"\ntoken: wrong\n")
-		a.env.Build = "v1.1.0"
-		if out := a.must("version"); out != "grelot client v1.1.0\ngrelot server unknown: a valid bearer token is required: set token in the grelot client config\n" {
+		a.env.Build = "v2.0.0"
+		if out := a.must("version"); out != "grelot client v2.0.0\ngrelot server unknown: a valid machine key is required: set token in the grelot client config to a key from grelot key create\n" {
 			t.Errorf("stdout %q, want the 401's reason", out)
 		}
 	})
 	t.Run("an unreachable server says why", func(t *testing.T) {
 		a := newAgent(t, &testServer{URL: unreachableURL(t)}, "s-1", "")
-		a.env.Build = "v1.1.0"
+		a.env.Build = "v2.0.0"
 		out := a.must("version")
-		if !strings.HasPrefix(out, "grelot client v1.1.0\ngrelot server unknown: cannot reach the server http://127.0.0.1:") {
+		if !strings.HasPrefix(out, "grelot client v2.0.0\ngrelot server unknown: cannot reach the server http://127.0.0.1:") {
 			t.Errorf("stdout %q, want the client and why the server is unknown", out)
 		}
 	})
 	t.Run("no client config says why", func(t *testing.T) {
 		a := newAgent(t, &testServer{URL: "http://127.0.0.1:1"}, "s-1", "")
 		a.env.ConfigDir = t.TempDir()
-		a.env.Build = "v1.1.0"
+		a.env.Build = "v2.0.0"
 		out := a.must("version")
-		if !strings.HasPrefix(out, "grelot client v1.1.0\ngrelot server unknown: ") || strings.Count(out, "\n") != 2 {
+		if !strings.HasPrefix(out, "grelot client v2.0.0\ngrelot server unknown: ") || strings.Count(out, "\n") != 2 {
 			t.Errorf("stdout %q, want the client and the config's reason", out)
 		}
 	})

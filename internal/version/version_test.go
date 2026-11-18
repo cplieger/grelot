@@ -84,12 +84,25 @@ func TestWire(t *testing.T) {
 	}
 }
 
+// release and development are the two install lines, the only
+// forms a version takes at any major.
+func release(v string) string {
+	return "install grelot " + v + " from https://github.com/cplieger/grelot/releases/tag/" + v + ", then check both with grelot version"
+}
+
+func development(base string) string {
+	return "install grelot " + base + " from https://github.com/cplieger/grelot/releases/tag/" + base +
+		", or, if that page does not exist yet, a development build with go install github.com/cplieger/grelot@dev, then check both with grelot version"
+}
+
 func TestInstall(t *testing.T) {
-	// A release's page carries the client binaries; a dev build's tag has
-	// no release, so its line names go install only.
 	for _, tc := range []struct{ in, want string }{
-		{"v1.2.0", "install grelot v1.2.0 with go install github.com/cplieger/grelot@v1.2.0 or from https://github.com/cplieger/grelot/releases/tag/v1.2.0, then check both with grelot version"},
-		{"v1.2.0-dev.3", "install grelot v1.2.0-dev.3 with go install github.com/cplieger/grelot@v1.2.0-dev.3, then check both with grelot version"},
+		{"v2.0.0", release("v2.0.0")},
+		{"v3.1.0", release("v3.1.0")},
+		{"v1.2.0", release("v1.2.0")},
+		{"v2.0.0-dev.3", development("v2.0.0")},
+		{"v3.0.0-dev.1", development("v3.0.0")},
+		{"v1.2.0-dev.3", development("v1.2.0")},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			if got := Install(tc.in); got != tc.want {

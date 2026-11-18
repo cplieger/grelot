@@ -8,12 +8,11 @@ import (
 	"maps"
 	"math"
 	"slices"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/cplieger/bolttable"
 	"github.com/cplieger/grelot/internal/protopath"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 const maxReason = 280
@@ -53,10 +52,15 @@ type Reserved struct {
 }
 
 // ReservationQuery filters Reservations. Path keeps the rows at, above or
-// under it; Mine keeps the caller's own.
+// under it; Mine keeps the caller's own. After and Limit page the list:
+// the ids past After, at most Limit of them (every one at 0), read as
+// ReadAs (resumes).
 type ReservationQuery struct {
-	Path string
-	Mine bool
+	ReadAs *uint64
+	Path   string
+	After  uint64
+	Limit  int
+	Mine   bool
 }
 
 // Reserve grants r.Path to r.Caller's identity for r.TTL, or queues the
@@ -81,10 +85,8 @@ func checkReserving(r *Reserving) error {
 	if _, err := checkPaths([]string{r.Path}); err != nil {
 		return err
 	}
-	if n := utf8.RuneCountInString(r.Reason); n == 0 || n > maxReason || !utf8.ValidString(r.Reason) || strings.ContainsFunc(r.Reason, isControl) {
-		return refuse(KindInvalid, fmt.Sprintf("a reason is required: pass --reason <text>, 1 to %d characters on one line", maxReason))
-	}
-	return nil
+	return fieldRefusal(textFault("reason", r.Reason, maxReason, true),
+		fmt.Sprintf("a reason is required: pass --reason <text>, 1 to %d characters on one line", maxReason))
 }
 
 // reserve answers a conflict as a refusal the transaction still commits:
@@ -102,7 +104,7 @@ func (w *wtx) reserve(r *Reserving) (Reserved, error) {
 		return Reserved{}, refuse(KindForbidden, "a delegate cannot reserve or queue: ask your parent to reserve the path")
 	}
 	w.touch(&me)
-	if perr := w.s.t.identities.table.Put(w.tx, me.ID, &me); perr != nil {
+	if perr := w.putIdentity(me.ID, &me); perr != nil {
 		return Reserved{}, perr
 	}
 	blocker, err := w.blocker(&reservationRow{Holder: me.ID, Path: r.Path, ID: math.MaxUint64})
@@ -146,7 +148,7 @@ func (w *wtx) addReservation(me *identityRow, r *Reserving, held bool) (reservat
 			return reservationRow{}, err
 		}
 	}
-	if err := w.s.t.resv.table.Put(w.tx, id, &row); err != nil {
+	if err := w.putReservation(id, &row); err != nil {
 		return reservationRow{}, err
 	}
 	w.logInfo(verb, "id", id, "name", me.Name, "path", r.Path)
@@ -215,7 +217,7 @@ func (s *Store) RenewReservation(ctx context.Context, k Keyed, c Caller, id uint
 			return Reservation{}, err
 		}
 		row.TTL = ttl
-		if err := s.t.resv.table.Put(w.tx, id, &row); err != nil {
+		if err := w.putReservation(id, &row); err != nil {
 			return Reservation{}, err
 		}
 		w.logInfo("reservation renewed", "id", id, "name", me.Name, "path", row.Path)
@@ -255,37 +257,37 @@ func (w *wtx) ownReservation(c Caller, id uint64) (identityRow, reservationRow, 
 		return identityRow{}, reservationRow{}, err
 	}
 	if !found || row.Holder != me.ID {
-		return identityRow{}, reservationRow{}, refuse(KindNotFound, fmt.Sprintf(
+		return identityRow{}, reservationRow{}, notFound(wire.ReasonReservation, fmt.Sprintf(
 			"no reservation %d of yours: it expired or was released; grelot reservations --mine lists yours", id,
 		))
 	}
 	w.touch(&me)
-	err = w.s.t.identities.table.Put(w.tx, me.ID, &me)
+	err = w.putIdentity(me.ID, &me)
 	return me, row, err
 }
 
 // Reservations lists the unexpired grants and the queue entries, in id
 // order, as c's identity sees them; a session with no live
-// identity sees every relation as unknown. Refusals: KindInvalid for a bad
-// path.
-func (s *Store) Reservations(ctx context.Context, c Caller, q ReservationQuery) ([]Reservation, error) {
+// identity sees every relation as unknown and reads as 0. Refusals:
+// KindInvalid for a bad path; ErrCursorMismatch.
+func (s *Store) Reservations(ctx context.Context, c Caller, q ReservationQuery) (Listing[Reservation], error) {
 	if q.Path != "" {
 		if _, err := checkPaths([]string{q.Path}); err != nil {
-			return nil, err
+			return Listing[Reservation]{}, err
 		}
 	}
 	if _, err := s.Seen(ctx, c); err != nil && !isKind(err, KindGone) {
-		return nil, err
+		return Listing[Reservation]{}, err
 	}
 	var out []Reservation
+	var readAs uint64
 	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
-		var me identityRow
-		if v, found, err := s.callerFor(r, c, now); err != nil {
+		me, err := s.pagedCaller(r, c, now, q.ReadAs)
+		if err != nil {
 			return err
-		} else if found && v.State == stateLive {
-			me = v
 		}
+		readAs = me.ID
 		if q.Mine && me.ID == 0 {
 			return nil
 		}
@@ -295,7 +297,9 @@ func (s *Store) Reservations(ctx context.Context, c Caller, q ReservationQuery) 
 			}
 		})
 	})
-	return out, err
+	l := listing(out, pastKey(q.After, func(v *Reservation) uint64 { return v.ID }), q.Limit)
+	l.ReadAs = readAs
+	return l, err
 }
 
 // Holding is one grant another agent holds over a queried path, overlapping
@@ -463,6 +467,7 @@ func (w *wtx) freeAndHandOff(rows []reservationRow) error {
 		if _, err := w.s.t.resv.table.Delete(w.tx, rows[i].ID); err != nil {
 			return err
 		}
+		w.changed.Agents = true
 	}
 	queue, err := w.queued()
 	if err != nil {
@@ -521,7 +526,7 @@ func (w *wtx) handOver(q *reservationRow) error {
 		return err
 	}
 	q.State, q.Since, q.Lease = reservationHeld, w.now, ls
-	if err := w.s.t.resv.table.Put(w.tx, q.ID, q); err != nil {
+	if err := w.putReservation(q.ID, q); err != nil {
 		return err
 	}
 	w.logInfo("reservation handed over", "id", q.ID, "holder", q.Holder, "path", q.Path)

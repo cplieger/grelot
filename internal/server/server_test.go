@@ -4,6 +4,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -12,8 +13,8 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 const (
@@ -21,18 +22,48 @@ const (
 	wantStale    = "the store sweep has not committed for over a minute"
 )
 
-// healthz sends a bare /healthz, with no bearer and no version, and returns
-// its status and reasons.
+// healthz sends a bare /healthz to the operations listener and returns its
+// status and reasons.
 func (h *harness) healthz(method string) (int, []string) {
 	h.t.Helper()
-	r := h.request(method, "/healthz", nil, map[string]string{"Authorization": "", headerVersion: ""})
-	var reasons []string
-	if list, ok := r.body["reasons"].([]any); ok {
-		for _, v := range list {
-			reasons = append(reasons, v.(string))
-		}
+	resp := h.opsCall(method, "/healthz")
+	defer resp.Body.Close()
+	var body struct{ Reasons []string }
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	return resp.StatusCode, body.Reasons
+}
+
+// The API listener serves neither operations route, whatever headers a
+// request sends, and the operations listener serves nothing else.
+func TestHandler_theOperationsRoutesAreOnTheirOwnListener(t *testing.T) {
+	h := newHarness(t)
+	h.srv.Beat(t.Context())
+	for _, path := range []string{"/healthz", "/metrics"} {
+		t.Run("the API answers 404 to "+path, func(t *testing.T) {
+			if r := h.request(http.MethodGet, path, nil, nil); r.status != http.StatusNotFound {
+				t.Errorf("GET %s on the API = %d, want 404", path, r.status)
+			}
+			if r := h.request(http.MethodGet, path, nil, map[string]string{"Authorization": "", wire.HeaderVersion: ""}); r.status != http.StatusNotFound {
+				t.Errorf("bare GET %s on the API = %d, want 404", path, r.status)
+			}
+		})
+		t.Run("the operations listener answers 200 to "+path, func(t *testing.T) {
+			resp := h.opsCall(http.MethodGet, path)
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("GET %s on the operations listener = %d, want 200", path, resp.StatusCode)
+			}
+		})
 	}
-	return r.status, reasons
+	for _, path := range []string{"/v1/me", "/v1/version", "/api/conversations", "/"} {
+		t.Run("the operations listener answers 404 to "+path, func(t *testing.T) {
+			resp := h.opsCall(http.MethodGet, path)
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusNotFound {
+				t.Errorf("GET %s on the operations listener = %d, want 404", path, resp.StatusCode)
+			}
+		})
+	}
 }
 
 func TestHealthz_takesNoHeadersAndFollowsTheSweeperBeat(t *testing.T) {
@@ -65,7 +96,7 @@ func TestHealthz_aReleaseAnswers503AtOnceAndForGood(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h := newBubbleHarness(t)
 		h.srv.Beat(t.Context())
-		h.srv.Release()
+		h.srv.Release(t.Context())
 		if code, reasons := h.healthz(http.MethodGet); code != http.StatusServiceUnavailable || !slices.Equal(reasons, []string{wantStopping}) {
 			t.Errorf("after Release: %d %q, want 503 %q", code, reasons, wantStopping)
 		}
@@ -76,27 +107,75 @@ func TestHealthz_aReleaseAnswers503AtOnceAndForGood(t *testing.T) {
 	})
 }
 
-func TestAuthorize_bearer(t *testing.T) {
-	h := newHarness(t)
+func TestGate_refusesARequestWithNoValidMachineKey(t *testing.T) {
+	h := newSignedIn(t)
+	revoked, err := h.srv.auth.CreateKey(t.Context(), "retired", wire.ScopeAgent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := h.request(http.MethodGet, "/v1/version", nil, map[string]string{"Authorization": "Bearer " + revoked}); r.status != http.StatusOK {
+		t.Fatalf("GET /v1/version with the key before its revoke: %d %s, want 200", r.status, r.raw)
+	}
+	if err := h.srv.auth.RevokeKey(t.Context(), "retired"); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		name, header string
-	}{{"none", ""}, {"wrong token", "Bearer other"}, {"another scheme", "Basic " + testToken}} {
+	}{{"none", ""}, {"an unknown key", "Bearer grelot_unknown"}, {"another scheme", "Basic " + revoked}, {"a revoked key", "Bearer " + revoked}} {
 		t.Run(tc.name, func(t *testing.T) {
-			r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": tc.header, headerSession: sessA})
+			r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": tc.header, wire.HeaderSession: sessA})
 			if r.status != http.StatusUnauthorized {
 				t.Fatalf("status %d, want 401", r.status)
 			}
-			if r.header.Get("WWW-Authenticate") == "" {
-				t.Error("no WWW-Authenticate header")
+			if got := r.header.Get("WWW-Authenticate"); !strings.HasPrefix(got, `Bearer realm="grelot"`) {
+				t.Errorf("WWW-Authenticate %q, want the Bearer challenge of realm grelot", got)
+			}
+			if !strings.Contains(r.str("error"), "grelot key create") {
+				t.Errorf("error %q, want it to name grelot key create", r.str("error"))
 			}
 			if _, ok := r.body["path_root"]; ok {
 				t.Error("a 401 carries the path root")
 			}
-			if r.header.Get(headerVersion) != "" {
+			if r.header.Get(wire.HeaderVersion) != "" {
 				t.Error("a 401 names the server version")
 			}
 		})
 	}
+	t.Run("a browser session", func(t *testing.T) {
+		r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{"Authorization": "", "Cookie": h.browser.header(), wire.HeaderSession: sessA})
+		if r.status != http.StatusForbidden || r.str("code") != "auth_key_required" {
+			t.Errorf("GET /v1/me with the signed-in session cookie: %d %s, want 403 auth_key_required", r.status, r.raw)
+		}
+	})
+}
+
+func TestGate_aFailingAccountsFileAnswers503(t *testing.T) {
+	a, db := testAuthDB(t)
+	h := newHarnessWith(t, store.Options{}, withAuth(a))
+	h.setUp()
+	h.mustRegister(sessA, "alpha")
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	r := h.as(sessA, http.MethodGet, "/v1/me", nil)
+
+	if r.status != http.StatusServiceUnavailable || r.str("code") != "auth_unavailable" || r.header.Get("Retry-After") != "5" {
+		t.Errorf("GET /v1/me with the accounts file closed: %d %s Retry-After %q, want 503 auth_unavailable, Retry-After 5",
+			r.status, r.raw, r.header.Get("Retry-After"))
+	}
+}
+
+// testUpgradeLine is the 426 line from the harness's server, a
+// development build of v2.0.0, to a client sending client.
+func testUpgradeLine(client string) string {
+	if client == "" {
+		client = "with no Grelot-Version"
+	}
+	return "this grelot server (" + testVersion + ") does not speak client " + client +
+		"; install grelot v2.0.0 from https://github.com/cplieger/grelot/releases/tag/v2.0.0," +
+		" or, if that page does not exist yet, a development build with go install github.com/cplieger/grelot@dev," +
+		" then check both with grelot version"
 }
 
 func TestAuthorize_version(t *testing.T) {
@@ -107,26 +186,28 @@ func TestAuthorize_version(t *testing.T) {
 	}{
 		{"", http.StatusUpgradeRequired},
 		{"v1.0.9", http.StatusUpgradeRequired},
-		{"v1.1.0-rc.1", http.StatusUpgradeRequired},
-		{"1.1.0", http.StatusUpgradeRequired},
-		{"v1.1", http.StatusUpgradeRequired},
+		{"v1.1.0", http.StatusUpgradeRequired},
+		{"v1.1.0-dev.3", http.StatusUpgradeRequired},
+		{"v1.2.0", http.StatusUpgradeRequired},
+		{"v2.0.0-rc.1", http.StatusUpgradeRequired},
+		{"2.0.0", http.StatusUpgradeRequired},
+		{"v2.0", http.StatusUpgradeRequired},
 		{"dev", http.StatusOK},
-		{"v1.1.0", http.StatusOK},
-		{"v1.1.0-dev.3", http.StatusOK},
-		{"v1.2.0", http.StatusOK},
 		{"v2.0.0", http.StatusOK},
+		{"v2.0.0-dev.3", http.StatusOK},
+		{"v2.1.0", http.StatusOK},
+		{"v3.0.0", http.StatusOK},
 	} {
 		t.Run("version "+tc.version, func(t *testing.T) {
-			r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{headerVersion: tc.version, headerSession: sessA})
+			r := h.request(http.MethodGet, "/v1/me", nil, map[string]string{wire.HeaderVersion: tc.version, wire.HeaderSession: sessA})
 			if r.status != tc.want {
 				t.Fatalf("status %d, want %d: %s", r.status, tc.want, r.raw)
 			}
-			if got := r.header.Get(headerVersion); got != testVersion {
+			if got := r.header.Get(wire.HeaderVersion); got != testVersion {
 				t.Errorf("answer names server version %q, want %q", got, testVersion)
 			}
-			if tc.want == http.StatusUpgradeRequired && !strings.Contains(r.str("error"),
-				"install grelot v1.1.0-dev.4 with go install github.com/cplieger/grelot@v1.1.0-dev.4") {
-				t.Errorf("426 %q does not name the server's go install", r.str("error"))
+			if want := testUpgradeLine(tc.version); tc.want == http.StatusUpgradeRequired && r.str("error") != want {
+				t.Errorf("426 error %q, want %q", r.str("error"), want)
 			}
 		})
 	}
@@ -135,25 +216,31 @@ func TestAuthorize_version(t *testing.T) {
 func TestVersionRoute(t *testing.T) {
 	h := newHarness(t)
 	t.Run("any caller reads the server's version", func(t *testing.T) {
-		r := h.request(http.MethodGet, "/v1/version", nil, map[string]string{headerVersion: "v1.1.0"})
-		if r.status != http.StatusOK || r.str("version") != testVersion || r.header.Get(headerVersion) != testVersion {
-			t.Errorf("status %d, body %s, Grelot-Version %q; want 200 and %s in both", r.status, r.raw, r.header.Get(headerVersion), testVersion)
+		r := h.request(http.MethodGet, "/v1/version", nil, map[string]string{wire.HeaderVersion: "v2.0.0"})
+		if r.status != http.StatusOK || r.str("version") != testVersion || r.header.Get(wire.HeaderVersion) != testVersion {
+			t.Errorf("status %d, body %s, Grelot-Version %q; want 200 and %s in both", r.status, r.raw, r.header.Get(wire.HeaderVersion), testVersion)
 		}
 	})
-	t.Run("a client it does not speak gets the 426 naming grelot version", func(t *testing.T) {
-		r := h.request(http.MethodGet, "/v1/version", nil, map[string]string{headerVersion: "v1.0.0"})
-		if r.status != http.StatusUpgradeRequired || r.header.Get(headerVersion) != testVersion ||
-			!strings.HasSuffix(r.str("error"), "go install github.com/cplieger/grelot@"+testVersion+", then check both with grelot version") {
-			t.Errorf("status %d, error %q, Grelot-Version %q; want the 426 naming grelot version and the server's version", r.status, r.str("error"), r.header.Get(headerVersion))
+	t.Run("a v1 client gets the 426 naming grelot version", func(t *testing.T) {
+		r := h.request(http.MethodGet, "/v1/version", nil, map[string]string{wire.HeaderVersion: "v1.1.2"})
+		if r.status != http.StatusUpgradeRequired || r.header.Get(wire.HeaderVersion) != testVersion || r.str("error") != testUpgradeLine("v1.1.2") {
+			t.Errorf("status %d, error %q, Grelot-Version %q; want 426, %q and %s", r.status, r.str("error"), r.header.Get(wire.HeaderVersion), testUpgradeLine("v1.1.2"), testVersion)
 		}
 	})
 }
 
-func TestRoutes_unknownRouteIs404WithThePathRoot(t *testing.T) {
+func TestRoutes_anUnknownRouteIs404AndAWrongMethod405(t *testing.T) {
 	h := newHarness(t)
-	r := h.as(sessA, http.MethodGet, "/v1/nope", nil)
-	if r.status != http.StatusNotFound || r.str("path_root") != protopath.DefaultRoot {
-		t.Errorf("got %d %s, want 404 with path_root %s", r.status, r.raw, protopath.DefaultRoot)
+	if r := h.as(sessA, http.MethodGet, "/v1/nope", nil); r.status != http.StatusNotFound || r.str("code") != "auth_not_found" {
+		t.Errorf("GET /v1/nope: %d %s, want 404 auth_not_found", r.status, r.raw)
+	}
+	r := h.as(sessA, http.MethodPut, "/v1/me", nil)
+	if r.status != http.StatusMethodNotAllowed || r.str("code") != "auth_method_not_allowed" || r.header.Get("Allow") != "GET, HEAD, PATCH, DELETE" {
+		t.Errorf("PUT /v1/me: %d %s Allow %q, want 405 auth_method_not_allowed allowing GET, HEAD, PATCH, DELETE", r.status, r.raw, r.header.Get("Allow"))
+	}
+	r = h.as(sessA, http.MethodPut, "/api/auth/me", nil)
+	if r.status != http.StatusMethodNotAllowed || r.str("code") != "auth_method_not_allowed" || r.header.Get("Allow") != "GET, HEAD" {
+		t.Errorf("PUT /api/auth/me: %d %s Allow %q, want 405 auth_method_not_allowed allowing GET, HEAD", r.status, r.raw, r.header.Get("Allow"))
 	}
 }
 
@@ -172,7 +259,7 @@ func TestSweeper_aServerAtRestLogsNoPeriodicLine(t *testing.T) {
 		h.mustRegisterAlone(sessA, "reader")
 		h.mustRegisterAlone(sessB, "writer")
 		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
-		if r := h.as(sessA, http.MethodPost, "/v1/reservations", map[string]any{"path": "/workspace/reader/main.go", "reason": "editing", "ttl": "1h"}); r.status != http.StatusCreated {
+		if r := h.as(sessA, http.MethodPost, "/v1/reservations", map[string]any{"path": "/workspace/reader/main.go", "reason": "editing", "ttl_ms": durMS("1h")}); r.status != http.StatusCreated {
 			t.Fatalf("reserve: %d %s", r.status, r.raw)
 		}
 		// The first committed pass logs the one health transition, which is

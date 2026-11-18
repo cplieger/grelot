@@ -23,11 +23,17 @@ import (
 // those that share the caller's environment.
 type WhoQuery struct {
 	Online func(*Identity) bool
+	// ReadAs is a later page's identity (resumes).
+	ReadAs *uint64
+	// After and Limit page the list: the names past After, at most Limit
+	// (every one at 0).
+	After  string
 	Path   string
 	Repo   string
 	Holds  string
 	Queued string
 	Text   string
+	Limit  int
 	All    bool
 	Here   bool
 }
@@ -59,28 +65,31 @@ type PeerQueued struct {
 	Place int
 }
 
-// Who lists live identities, by name, as c's identity sees them, each
+// Who lists live identities but @user, by name, as c's identity sees them, each
 // live parent's delegates nested under it and nowhere else; q filters the
-// parents. A session with no live identity sees every relation as unknown.
-// Refusals: KindInvalid for a filter path that is not canonical or a repo
-// that is not one path segment.
-func (s *Store) Who(ctx context.Context, c Caller, query *WhoQuery) ([]Peer, error) {
+// parents. A session with no live identity sees every relation as unknown
+// and reads as 0. Refusals: those of every route, the delegate gate
+// (KindConflict) and an As naming no delegate (KindGone) included;
+// KindInvalid for a filter path that is not canonical or a repo that is
+// not one path segment; ErrCursorMismatch.
+func (s *Store) Who(ctx context.Context, c Caller, query *WhoQuery) (Listing[Peer], error) {
 	q := *query
 	if err := s.checkWho(&q); err != nil {
-		return nil, err
+		return Listing[Peer]{}, err
 	}
 	if _, err := s.Seen(ctx, c); err != nil && !isKind(err, KindGone) {
-		return nil, err
+		return Listing[Peer]{}, err
 	}
 	var out []Peer
+	var readAs uint64
 	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
-		var caller party
-		if me, found, err := s.callerFor(r, c, now); err != nil {
+		me, err := s.pagedCaller(r, c, now, q.ReadAs)
+		if err != nil {
 			return err
-		} else if found && me.State == stateLive {
-			caller = party{where: me.Where, id: me.ID}
 		}
+		caller := party{where: me.Where, id: me.ID}
+		readAs = me.ID
 		held, queued, err := s.reservationsByHolder(r, now)
 		if err != nil {
 			return err
@@ -89,7 +98,7 @@ func (s *Store) Who(ctx context.Context, c Caller, query *WhoQuery) ([]Peer, err
 		delegates := map[uint64][]identityRow{}
 		err = s.t.identities.table.Scan(r, bolttable.Range{}, func(_ uint64, v *identityRow) (bool, error) {
 			switch v = settled(v, now, s.dormantTTL); {
-			case v == nil:
+			case v == nil, isUser(v):
 			case v.Parent != 0:
 				delegates[v.Parent] = append(delegates[v.Parent], *v)
 			case s.whoShows(&q, v, caller.where, held[v.ID], queued[v.ID]):
@@ -101,7 +110,9 @@ func (s *Store) Who(ctx context.Context, c Caller, query *WhoQuery) ([]Peer, err
 		return err
 	})
 	slices.SortFunc(out, func(a, b Peer) int { return strings.Compare(a.Name, b.Name) })
-	return out, err
+	l := listing(out, pastKey(q.After, func(p *Peer) string { return p.Name }), q.Limit)
+	l.ReadAs = readAs
+	return l, err
 }
 
 // whoPeers is each of shown that text matches as caller sees it, with
@@ -126,7 +137,7 @@ func (s *Store) whoPeers(
 // checkWho validates q's paths and repo, and lowercases its text.
 func (s *Store) checkWho(q *WhoQuery) error {
 	for _, f := range []struct{ name, v string }{{"path", q.Path}, {"holds", q.Holds}, {"queued", q.Queued}} {
-		if f.v != "" && (!isCanonicalPath(f.v) || len(f.v) > maxPathBytes) {
+		if f.v != "" && (!isCanonicalPath(f.v) || len(f.v) > MaxPathBytes) {
 			return refuse(KindInvalid, fmt.Sprintf(
 				"%s %q is not a canonical path: send it as %s/<repo>/<file>, which grelot path prints", f.name, f.v, s.pathRoot,
 			))

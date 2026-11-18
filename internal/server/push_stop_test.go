@@ -66,7 +66,7 @@ func TestPush_releaseCancelsASendInFlightWithNoErrorLine(t *testing.T) {
 
 	released := make(chan struct{})
 	go func() {
-		h.srv.Release()
+		h.srv.Release(t.Context())
 		close(released)
 	}()
 	select {

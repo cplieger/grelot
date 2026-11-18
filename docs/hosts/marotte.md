@@ -6,7 +6,7 @@ The provider file is [`providers/marotte.yaml`](../../providers/marotte.yaml). I
 
 ## 1. Install the client in the marotte container
 
-Follow [the client page](../client.md), from a terminal in marotte. Put the binary in a folder on the `PATH` that lives on the container's persistent volume, such as `~/.local/bin`, so it survives a recreate. Until marotte's tools catalog lists `grelot`, install the release binary rather than adding it there.
+Follow [the client page](../client.md), from a terminal in marotte. marotte's tools catalog lists `grelot`, so you can add it in Settings, Tools, pinned to the server's release, and it survives a recreate. To install the release binary instead, put it in a folder on the `PATH` that lives on the container's persistent volume, such as `~/.local/bin`.
 
 The config file needs no `provider:` line, because the client detects the Kiro CLI from `KIRO_SESSION_ID` and every chat registers as `kiro-cli`. Do not set `provider: marotte`. That file has no session, so every identity command would stop with the no-session line.
 

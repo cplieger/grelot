@@ -8,8 +8,7 @@ import (
 )
 
 func TestRun_serverCommandsRefuseOnWindows(t *testing.T) {
-	t.Setenv("GRELOT_TOKEN", "test-token")
-	for _, cmd := range []string{"serve", "health"} {
+	for _, cmd := range []string{"serve", "health", "setup-token", "recovery", "key"} {
 		t.Run(cmd, func(t *testing.T) {
 			var stderr bytes.Buffer
 			if code := run([]string{cmd}, io.Discard, &stderr); code != 1 {

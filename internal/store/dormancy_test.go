@@ -87,7 +87,7 @@ func TestDormant_itsSessionOnlyReadsItsStatus(t *testing.T) {
 	expireToDormant(t, s, clk, "subflux-dev")
 	_, err := s.Set(t.Context(), Keyed{}, Caller{Session: sessA}, Change{Fields: Fields{Description: "new work"}})
 	wantRefusal(t, err, KindGone, "dormant", "your identity @subflux-dev expired 0 h ago with 0 unread; `grelot revive --ttl=<d>` restores it")
-	wantRefusal(t, s.EndSession(t.Context(), sessA), KindGone, "dormant")
+	wantRefusal(t, s.EndSession(t.Context(), sessA, 0), KindGone, "dormant")
 	got, err := s.Seen(t.Context(), Caller{Session: sessA})
 	if err != nil {
 		t.Fatalf("Seen of a dormant session: %v", err)
@@ -106,14 +106,14 @@ func TestDormant_readsCommitNothing(t *testing.T) {
 	ctx := t.Context()
 	start := commitCount(t, s)
 
-	_, err := s.Inbox(ctx, Caller{Session: sessA}, 0)
+	_, err := s.Inbox(ctx, Caller{Session: sessA}, InboxQuery{Limit: 0})
 	wantRefusal(t, err, KindGone, "dormant", "`grelot revive --ttl=<d>` restores it")
 	_, err = s.History(ctx, Caller{Session: sessA}, &HistoryQuery{})
 	wantRefusal(t, err, KindGone, "dormant")
-	if _, err := s.Who(ctx, Caller{Session: sessA}, &WhoQuery{}); err != nil {
+	if _, err := items(s.Who(ctx, Caller{Session: sessA}, &WhoQuery{})); err != nil {
 		t.Fatalf("who from the dormant session: %v", err)
 	}
-	if _, err := s.Who(ctx, Caller{Session: "kiro-cli:nobody"}, &WhoQuery{}); err != nil {
+	if _, err := items(s.Who(ctx, Caller{Session: "kiro-cli:nobody"}, &WhoQuery{})); err != nil {
 		t.Fatalf("who from a session with no identity: %v", err)
 	}
 	if n := commitCount(t, s) - start; n != 0 {
@@ -137,13 +137,13 @@ func TestDormant_readsNeverWaitForTheWriter(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_, err := s.Inbox(ctx, Caller{Session: sessA}, 0)
+		_, err := s.Inbox(ctx, Caller{Session: sessA}, InboxQuery{Limit: 0})
 		errs = append(errs, err)
 		_, err = s.History(ctx, Caller{Session: sessA}, &HistoryQuery{})
 		errs = append(errs, err)
-		_, err = s.Who(ctx, Caller{Session: sessA}, &WhoQuery{})
+		_, err = items(s.Who(ctx, Caller{Session: sessA}, &WhoQuery{}))
 		errs = append(errs, err)
-		_, err = s.Who(ctx, Caller{Session: "kiro-cli:nobody"}, &WhoQuery{})
+		_, err = items(s.Who(ctx, Caller{Session: "kiro-cli:nobody"}, &WhoQuery{}))
 		errs = append(errs, err)
 	}()
 	select {
@@ -180,8 +180,8 @@ func TestPurge_afterDormantTTLFreesTheName(t *testing.T) {
 	}
 	clk.set(purge)
 	mustSweep(t, s)
-	if n := countRows(t, s, s.t.identities.table); n != 0 {
-		t.Errorf("%d identity rows after the purge, want none", n)
+	if n := countRows(t, s, s.t.identities.table); n != 1 {
+		t.Errorf("%d identity rows after the purge, want only @user's", n)
 	}
 	if n := countRows(t, s, s.t.deliveries.table); n != 1 {
 		t.Errorf("%d deliveries, want the row kept until its own expiry", n)

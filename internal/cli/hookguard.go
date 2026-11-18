@@ -6,10 +6,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/hook"
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/provider"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // The guard's lines, each naming one grant another agent holds over a
@@ -116,7 +116,7 @@ func (h *hookCall) repoPaths(ctx context.Context, files []written) (out []string
 // most lines whose rendered text through out fits limit (0 for none) with
 // a line counting the grants left out, then the capped line when capped,
 // which is always kept.
-func guardText(held []client.Holding, capped bool, limit int, out *provider.Output) string {
+func guardText(held []wire.Holding, capped bool, limit int, out *provider.Output) string {
 	lines := make([]string, 0, len(held))
 	for i := range held {
 		lines = append(lines, guardLine(&held[i]))
@@ -139,7 +139,7 @@ func guardText(held []client.Holding, capped bool, limit int, out *provider.Outp
 	return join(fmt.Sprintf(lineGuardCount, len(lines)))
 }
 
-func guardLine(e *client.Holding) string {
+func guardLine(e *wire.Holding) string {
 	g := e.Held
 	holder, path, until, reason := safe(g.Holder), safe(g.Path), stamp(g.Expires), safe(g.Reason)
 	if q := e.Queued; q != nil {

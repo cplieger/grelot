@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -248,6 +249,11 @@ func TestMetrics_eachRecordedNudgeIsCountedByLayerAndAttemptWithItsDelay(t *test
 		`grelot_nudge_delay_seconds_count{via="hook"}`: 1,
 		`grelot_nudge_delay_seconds_sum{via="hook"}`:   2,
 	})
+	// Only the repeat is a Statistics event, naming its recipient.
+	want := []obs.Event{{At: testNow.Add(1500*time.Millisecond + 3*time.Minute), Kind: obs.EventNudgeRepeat, Detail: string(NudgeByPush), Agent: "bravo"}}
+	if events := m.Events.Recent(testNow, testNow.Add(time.Hour)); !slices.Equal(events, want) {
+		t.Errorf("events %+v, want %+v", events, want)
+	}
 	if v, ok := got[`grelot_nudges_total{attempt="first",via="push"}`]; ok {
 		t.Errorf("first nudges via push = %v, want none: the racing record wrote nothing", v)
 	}

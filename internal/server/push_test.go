@@ -487,7 +487,7 @@ func TestPush_neverForADormantIdentityAnEndedSessionOrADelegate(t *testing.T) {
 			h.mustRegisterAlone(sessA, "parent")
 			h.mustRegisterAlone(sessB, "writer")
 			g := h.self(sessA, http.MethodPost, "/v1/delegates",
-				map[string]any{"label": "review", "ttl": "1h", "allow_agents": []string{"writer"}})
+				map[string]any{"label": "review", "ttl_ms": durMS("1h"), "allow_agents": []string{"writer"}})
 			if g.status != http.StatusCreated {
 				t.Fatalf("grant: %d %s", g.status, g.raw)
 			}
@@ -669,7 +669,7 @@ func TestPush_aPromptTheDelegateGateRefusesOpensNoTurn(t *testing.T) {
 		h.mustRegisterAlone(sessA, "reader")
 		h.mustRegisterAlone(sessB, "writer")
 		h.stopHold(sessA, false)
-		if _, _, err := h.store.Delegate(t.Context(), store.Keyed{}, &store.Grant{Caller: store.Caller{Session: sessA}, Label: "tests", TTL: time.Hour}); err != nil {
+		if _, _, err := h.store.Delegate(t.Context(), store.Keyed{}, &store.Grant{Caller: store.Caller{Key: h.keyID(), Session: sessA}, Label: "tests", TTL: time.Hour}); err != nil {
 			t.Fatal(err)
 		}
 		if r := h.as(sessA, http.MethodGet, "/v1/me?turn=start", nil); r.status != http.StatusConflict || r.str("code") != "delegate_gate" {

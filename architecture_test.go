@@ -1,11 +1,14 @@
 package main
 
 import (
+	"cmp"
+	"errors"
 	"fmt"
 	"go/scanner"
 	"go/token"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -64,6 +67,7 @@ func fileToolNames(path string) ([]string, error) {
 	var s scanner.Scanner
 	s.Init(fset.AddFile(path, -1, len(src)), src, errs.Add, scanner.ScanComments)
 	var hits []string
+	var ident string
 	for {
 		pos, tok, lit := s.Scan()
 		if tok == token.EOF {
@@ -73,7 +77,13 @@ func fileToolNames(path string) ([]string, error) {
 			continue
 		}
 		for _, n := range namesIn(lit) {
+			if n == `"cursor"` && filepath.ToSlash(path) == cursorParamFile && ident == cursorParamConst {
+				continue
+			}
 			hits = append(hits, fmt.Sprintf("%s: %s", fset.Position(pos), n))
+		}
+		if tok == token.IDENT {
+			ident = lit
 		}
 	}
 	if errs.Len() > 0 {
@@ -81,6 +91,14 @@ func fileToolNames(path string) ([]string, error) {
 	}
 	return hits, nil
 }
+
+// The list reads' cursor parameter shares the cursor provider's name, so
+// its one declaration is the literal the guard admits; every other site
+// reads the constant.
+const (
+	cursorParamFile  = "internal/wire/wire.go"
+	cursorParamConst = "QueryCursor"
+)
 
 // namesIn reports the tool names one token holds. kas is a common run of
 // letters (taskAssign), so it counts only as a whole word or identifier
@@ -249,6 +267,50 @@ func TestToolNameHitsPlantedTree(t *testing.T) {
 			t.Error("toolNameHits answered no error for an unterminated literal")
 		}
 	})
+}
+
+// codegen is what wiregen links: it loads packages through
+// golang.org/x/tools/go/packages, so only cmd/wire-codegen and tests may
+// reach it, through internal/wirespec.
+var codegen = []string{
+	"github.com/cplieger/grelot/internal/wirespec",
+	"github.com/cplieger/go/wiregen/",
+	"golang.org/x/tools/",
+}
+
+func TestBinaryImportsNoCodegen(t *testing.T) {
+	for _, tags := range []string{"", "noui"} {
+		t.Run("tags "+cmp.Or(tags, "none"), func(t *testing.T) {
+			for _, p := range goList(t, "-deps", "-tags="+tags, ".") {
+				for _, c := range codegen {
+					if p == strings.TrimSuffix(c, "/") || strings.HasPrefix(p, c) {
+						t.Errorf("the binary imports %s", p)
+					}
+				}
+			}
+		})
+	}
+	t.Run("the wire package imports the standard library only", func(t *testing.T) {
+		const wire = "github.com/cplieger/grelot/internal/wire"
+		for _, p := range goList(t, "-deps", "-f", "{{if not .Standard}}{{.ImportPath}}{{end}}", "./internal/wire") {
+			if p != wire {
+				t.Errorf("internal/wire imports %s", p)
+			}
+		}
+	})
+}
+
+// goList runs go list with args and returns its non-empty lines.
+func goList(t *testing.T, args ...string) []string {
+	t.Helper()
+	out, err := exec.CommandContext(t.Context(), "go", append([]string{"list"}, args...)...).Output()
+	if err != nil {
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok {
+			t.Fatalf("go list %v: %v\n%s", args, err, ee.Stderr)
+		}
+		t.Fatalf("go list %v: %v", args, err)
+	}
+	return strings.Fields(string(out))
 }
 
 func plantTree(t *testing.T, files map[string]string) string {

@@ -84,7 +84,7 @@ func TestRun_noSession(t *testing.T) {
 	ts := newServer(t)
 	a := newAgent(t, ts, "s-1", "")
 	delete(a.vars, "ALPHA_ID")
-	reached := "grelot: the server at " + ts.URL + " answers and accepts this token\n"
+	reached := "grelot: the server at " + ts.URL + " answers and accepts this key\n"
 	inAgent := "grelot: run grelot me in your agent's shell for its status line and the register command\n"
 	t.Run("no provider detected", func(t *testing.T) {
 		code, out, errOut := a.run("me")
@@ -109,12 +109,12 @@ func TestRun_noSession(t *testing.T) {
 			t.Errorf("exit %d, stdout %q, stderr %q; want 0 and %q", code, out, errOut, want)
 		}
 	})
-	t.Run("a token the server refuses", func(t *testing.T) {
+	t.Run("a key the server refuses", func(t *testing.T) {
 		b := newAgent(t, ts, "s-1", "")
 		delete(b.vars, "ALPHA_ID")
 		writeClientConfig(t, b.env.ConfigDir, "server: "+ts.URL+"\ntoken: wrong-token\n")
 		code, out, errOut := b.run("me")
-		if code != 1 || strings.Contains(out, "accepts this token") || !strings.Contains(errOut, client.ConfigFile(b.env.ConfigDir)) {
+		if code != 1 || strings.Contains(out, "accepts this key") || !strings.Contains(errOut, client.ConfigFile(b.env.ConfigDir)) {
 			t.Errorf("exit %d, stdout %q, stderr %q; want 1 and the refusal naming the config file", code, out, errOut)
 		}
 	})

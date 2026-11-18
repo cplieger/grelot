@@ -8,14 +8,8 @@ import (
 	"strings"
 
 	"github.com/cplieger/grelot/internal/client"
+	"github.com/cplieger/grelot/internal/wire"
 )
-
-type reserveBody struct {
-	Path   string `json:"path"`
-	Reason string `json:"reason"`
-	TTL    string `json:"ttl,omitempty"`
-	Queue  bool   `json:"queue,omitempty"`
-}
 
 func (r *run) reserve(ctx context.Context, args []string) error {
 	fs := flags(r.verb)
@@ -29,17 +23,21 @@ func (r *run) reserve(ctx context.Context, args []string) error {
 	if len(rest) != 1 {
 		return usagef(r.verb, "name one path: grelot reserve <path> --ttl=<d> --reason <why> [--queue]")
 	}
+	ttlMS, err := r.ttlFlag(*ttl)
+	if err != nil {
+		return err
+	}
 	canonical, _, err := r.canonical(ctx, rest)
 	if err != nil {
 		return err
 	}
-	var got client.Reserved
-	body := reserveBody{Path: canonical[0], Reason: *reason, TTL: *ttl, Queue: *queue}
-	if err := r.call(ctx, &client.Request{Method: http.MethodPost, Path: "/v1/reservations", Body: body}, &got); err != nil {
+	var got wire.Reserved
+	body := wire.ReserveRequest{Path: canonical[0], Reason: *reason, TTLMS: ttlMS, Queue: *queue}
+	if err := r.call(ctx, &client.Request{Method: http.MethodPost, Path: wire.Path("reserve", nil), Body: body}, &got); err != nil {
 		return unknownOutcome(err)
 	}
 	v := &got.Reservation
-	if v.State == client.ReservationQueued {
+	if v.State == string(wire.ReservationQueued) {
 		behind := ""
 		if b := got.Behind; b != nil {
 			behind = fmt.Sprintf(" behind @%s%s until %s", safe(b.Holder), origin(b.Host, b.Relation), stamp(b.Expires))
@@ -61,13 +59,13 @@ func (r *run) release(ctx context.Context, args []string) error {
 	if len(rest) != 1 || !isID(rest[0]) {
 		return usagef(r.verb, "name one reservation id: grelot release <reservation id>, from grelot reservations")
 	}
-	var got client.ReservationAnswer
-	if err := r.call(ctx, &client.Request{Method: http.MethodDelete, Path: "/v1/reservations/" + rest[0]}, &got); err != nil {
+	var got wire.ReservationAnswer
+	if err := r.call(ctx, &client.Request{Method: http.MethodDelete, Path: wire.Path("releaseReservation", map[string]string{"id": rest[0]})}, &got); err != nil {
 		return err
 	}
 	v := &got.Reservation
 	done := "released"
-	if v.State == client.ReservationQueued {
+	if v.State == string(wire.ReservationQueued) {
 		done = "cancelled"
 	}
 	fmt.Fprintf(r.Stdout, "grelot: reservation %d on %s %s\n", v.ID, safe(v.Path), done)
@@ -90,33 +88,24 @@ func (r *run) reservations(ctx context.Context, args []string) error {
 		}
 		q.Set(pathParam, canonical[0])
 	}
-	var got client.Reservations
-	if err := r.call(ctx, &client.Request{Method: http.MethodGet, Path: "/v1/reservations", Query: q}, &got); err != nil {
+	resv, err := walkList[wire.Reservation](ctx, r.call, "listReservations", q)
+	if err != nil {
 		return err
 	}
-	if len(got.Reservations) == 0 {
+	if len(resv) == 0 {
 		fmt.Fprintln(r.Stdout, "grelot: no reservation")
 		return nil
 	}
-	for i := range got.Reservations {
-		v := &got.Reservations[i]
+	for i := range resv {
+		v := &resv[i]
 		until := "until " + stamp(v.Expires)
 		if v.Expires.IsZero() {
-			until = "for " + safe(v.TTL) + " once granted"
+			until = "for " + durationText(v.TTLMS) + " once granted"
 		}
 		fmt.Fprintf(r.Stdout, "reservation %d · %s · %s · @%s%s · %s · reason: %s%s\n",
 			v.ID, safe(v.State), safe(v.Path), safe(v.Holder), origin(v.Host, v.Relation), until, safe(v.Reason), labelFor(v.Relation))
 	}
 	return nil
-}
-
-type grantBody struct {
-	Label        string   `json:"label"`
-	TTL          string   `json:"ttl,omitempty"`
-	AllowThreads []string `json:"allow_threads,omitempty"`
-	AllowAgents  []string `json:"allow_agents,omitempty"`
-	DenyThreads  []string `json:"deny_threads,omitempty"`
-	DenyAgents   []string `json:"deny_agents,omitempty"`
 }
 
 func (r *run) delegate(ctx context.Context, args []string) error {
@@ -137,15 +126,19 @@ func (r *run) delegate(ctx context.Context, args []string) error {
 	if len(rest) != 1 {
 		return usagef(r.verb, "name one label: grelot delegate <label> --ttl=<d> [--allow-thread <path>|announce] [--allow-agent <name>]")
 	}
-	body := grantBody{Label: rest[0], TTL: *ttl, AllowAgents: names(allowAgents), DenyAgents: names(denyAgents)}
+	ttlMS, err := r.ttlFlag(*ttl)
+	if err != nil {
+		return err
+	}
+	body := wire.GrantRequest{Label: rest[0], TTLMS: ttlMS, AllowAgents: names(allowAgents), DenyAgents: names(denyAgents)}
 	if body.AllowThreads, err = r.threadScope(ctx, allowThreads); err != nil {
 		return err
 	}
 	if body.DenyThreads, err = r.threadScope(ctx, denyThreads); err != nil {
 		return err
 	}
-	var got client.Granted
-	if err := r.call(ctx, &client.Request{Method: http.MethodPost, Path: "/v1/delegates", Body: body}, &got); err != nil {
+	var got wire.Granted
+	if err := r.call(ctx, &client.Request{Method: http.MethodPost, Path: wire.Path("grantDelegate", nil), Body: body}, &got); err != nil {
 		return err
 	}
 	h := safe(got.Handle)
@@ -191,8 +184,8 @@ func (r *run) revoke(ctx context.Context, args []string) error {
 	if len(rest) != 1 {
 		return usagef(r.verb, "name one label: grelot delegate revoke <label>")
 	}
-	var got client.Revoked
-	if err := r.call(ctx, &client.Request{Method: http.MethodDelete, Path: "/v1/delegates/" + url.PathEscape(rest[0])}, &got); err != nil {
+	var got wire.Revoked
+	if err := r.call(ctx, &client.Request{Method: http.MethodDelete, Path: wire.Path("revokeDelegate", map[string]string{"label": rest[0]})}, &got); err != nil {
 		return err
 	}
 	if got.Link {

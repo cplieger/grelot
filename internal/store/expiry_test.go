@@ -5,6 +5,7 @@ package store
 import (
 	"log/slog"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -20,15 +21,15 @@ func TestDelivery_outlivesTheReadAndExpiresWithItsMessage(t *testing.T) {
 	mustInbox(t, s, sess("bravo"), 0)
 	mustAck(t, s, sess("bravo"), 2)
 
-	clk.set(testNow.Add(DefaultThreadTTL - time.Nanosecond))
+	clk.set(testNow.Add(DefaultRetention - time.Nanosecond))
 	mustSweep(t, s)
 	ds := deliveriesTo(t, s, b.ID)
 	if len(ds) != 2 || ds[0].ReadAt.IsZero() || ds[1].ReadAt.IsZero() {
 		t.Fatalf("deliveries %+v, want both kept, read, until their message expires", ds)
 	}
-	wantSubjects(t, "history of read mail", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: testNow}), "first", "second")
+	wantSubjects(t, "history of read mail", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: new(testNow)}), "first", "second")
 
-	clk.set(testNow.Add(DefaultThreadTTL))
+	clk.set(testNow.Add(DefaultRetention))
 	mustSweep(t, s)
 	if _, found := findMessage(t, s, first.Message); found {
 		t.Error("the first message outlived its expiry")
@@ -39,49 +40,100 @@ func TestDelivery_outlivesTheReadAndExpiresWithItsMessage(t *testing.T) {
 	if ds := deliveriesTo(t, s, b.ID); len(ds) != 1 || ds[0].Seq != 2 {
 		t.Errorf("deliveries %+v, want only seq 2: the first expires by its own index with its message", ds)
 	}
-	wantSubjects(t, "history after the first expiry", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: testNow}), "second")
+	wantSubjects(t, "history after the first expiry", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: new(testNow)}), "second")
 }
 
-func TestThread_neverExpiresBeforeAnOlderMessage(t *testing.T) {
-	// a later post under a shorter THREAD_TTL must not pull the thread's
-	// expiry before an older message's, which would take that message
-	// while its delivery is still unread.
-	const shared = "/workspace/shared"
-	path := filepath.Join(t.TempDir(), "grelot.db")
+// openRetentionStore opens a store on a test clock whose retention the
+// test changes while it runs, starting at DefaultRetention.
+func openRetentionStore(t *testing.T) (*Store, *clock, *atomic.Int64) {
+	t.Helper()
 	clk := &clock{t: testNow}
-	s, err := Open(path, &Options{Logger: slog.New(newLogSink()), Now: clk.now})
-	if err != nil {
-		t.Fatal(err)
-	}
-	a := regAt(t, s, "alpha", "/workspace/alpha")
-	b := regAt(t, s, "bravo", shared)
-	keepAlive(t, s, a.ID, b.ID)
-	first := say(t, s, "alpha", Target{Path: shared}, "first")
-	if err := s.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	clk.advance(time.Minute)
-	s, err = Open(path, &Options{Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: time.Hour})
+	var retention atomic.Int64
+	retention.Store(int64(DefaultRetention))
+	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{
+		Logger: slog.New(newLogSink()), Now: clk.now,
+		Retention: func() time.Duration { return time.Duration(retention.Load()) },
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
+	return s, clk, &retention
+}
+
+func TestRetention_aChangeAppliesToLaterWritesOnly(t *testing.T) {
+	s, clk, retention := openRetentionStore(t)
+	a := regAt(t, s, "alpha", "/workspace/alpha")
+	b := regAt(t, s, "bravo", "/workspace/bravo")
+	keepAlive(t, s, a.ID, b.ID)
+	first := mustPost(t, s, watchedPost("alpha", Target{Agent: "bravo"}, NotifyRead{All: true}))
+
+	retention.Store(int64(time.Hour))
+	clk.advance(time.Minute)
+	second := say(t, s, "alpha", Target{Agent: "bravo"}, "second")
+	mustAck(t, s, sess("bravo"), 2)
+	c := regAt(t, s, "carol", "/workspace/bravo")
+
+	m1, _ := findMessage(t, s, first.Message)
+	if want := testNow.Add(DefaultRetention); !m1.Lease.Expires.Equal(want) {
+		t.Errorf("the message posted before the change expires %v, want %v", m1.Lease.Expires, want)
+	}
+	m2, _ := findMessage(t, s, second.Message)
+	if want := clk.now().Add(time.Hour); !m2.Lease.Expires.Equal(want) {
+		t.Errorf("the message posted after the change expires %v, want %v", m2.Lease.Expires, want)
+	}
+	if th, _ := findThread(t, s, first.Thread); !th.Lease.Expires.Equal(m1.Lease.Expires) {
+		t.Errorf("the thread expires %v, want the older message's %v", th.Lease.Expires, m1.Lease.Expires)
+	}
+	var events []deliveryRow
+	for _, d := range deliveriesTo(t, s, a.ID) {
+		if d.Kind == kindReceiptsComplete {
+			events = append(events, d)
+		}
+	}
+	if len(events) != 1 {
+		t.Fatalf("alpha holds %d receipts events, want 1", len(events))
+	}
+	if want := clk.now().Add(time.Hour); !events[0].Lease.Expires.Equal(want) {
+		t.Errorf("the receipts event written after the change expires %v, want %v", events[0].Lease.Expires, want)
+	}
+	cards := cardsAbout(t, s, b.ID, c.ID)
+	if len(cards) != 1 {
+		t.Fatalf("bravo holds %d cards about carol, want 1", len(cards))
+	}
+	if want := clk.now().Add(time.Hour); !cards[0].Lease.Expires.Equal(want) {
+		t.Errorf("the card written after the change expires %v, want %v", cards[0].Lease.Expires, want)
+	}
+}
+
+func TestThread_neverExpiresBeforeAnOlderMessage(t *testing.T) {
+	// a later post under a shorter retention must not pull the thread's
+	// expiry before an older message's, which would take that message
+	// while its delivery is still unread.
+	const shared = "/workspace/shared"
+	s, clk, retention := openRetentionStore(t)
+	a := regAt(t, s, "alpha", "/workspace/alpha")
+	b := regAt(t, s, "bravo", shared)
+	keepAlive(t, s, a.ID, b.ID)
+	first := say(t, s, "alpha", Target{Path: shared}, "first")
+
+	clk.advance(time.Minute)
+	retention.Store(int64(time.Hour))
 	say(t, s, "alpha", Target{Path: shared}, "second")
 
 	clk.set(testNow.Add(2 * time.Hour))
 	mustSweep(t, s)
-	if got := subjects(mustInbox(t, s, sess("bravo"), 0).Entries); len(got) != 1 || got[0] != "first" {
+	if got := subjects(mustInbox(t, s, sess("bravo"), 0).Items); len(got) != 1 || got[0] != "first" {
 		t.Errorf("inbox %q, want [first]: the second post expired, the first lives until its own expiry", got)
 	}
-	wantSubjects(t, "history --path", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: testNow, Path: shared}), "first")
+	wantSubjects(t, "history --path", historySubjects(t, s, sess("bravo"), HistoryQuery{Since: new(testNow), Path: shared}), "first")
 
-	clk.set(testNow.Add(DefaultThreadTTL - time.Nanosecond))
+	clk.set(testNow.Add(DefaultRetention - time.Nanosecond))
 	mustSweep(t, s)
 	if _, found := findThread(t, s, first.Thread); !found {
 		t.Fatal("the thread expired before its first message")
 	}
-	clk.set(testNow.Add(DefaultThreadTTL))
+	clk.set(testNow.Add(DefaultRetention))
 	mustSweep(t, s)
 	if _, found := findThread(t, s, first.Thread); found {
 		t.Error("the thread outlived its last message")
@@ -91,7 +143,7 @@ func TestThread_neverExpiresBeforeAnOlderMessage(t *testing.T) {
 func TestSweep_catchesUpAfterARestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grelot.db")
 	clk := &clock{t: testNow}
-	o := Options{Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: time.Hour}
+	o := Options{Logger: slog.New(newLogSink()), Now: clk.now, Retention: retainFor(time.Hour)}
 	s, err := Open(path, &o)
 	if err != nil {
 		t.Fatal(err)
@@ -116,7 +168,7 @@ func TestSweep_catchesUpAfterARestart(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
-	_, err = s.Inbox(t.Context(), Caller{Session: sess("bravo")}, 0)
+	_, err = s.Inbox(t.Context(), Caller{Session: sess("bravo")}, InboxQuery{Limit: 0})
 	wantRefusal(t, err, KindGone, "dormant", "your identity @bravo expired 22 h ago with 0 unread")
 
 	mustSweep(t, s)
@@ -127,13 +179,13 @@ func TestSweep_catchesUpAfterARestart(t *testing.T) {
 		t.Error("the direct thread outlived its post across the restart")
 	}
 	for _, name := range []string{"alpha", "bravo"} {
-		_, err := s.Inbox(t.Context(), Caller{Session: sess(name)}, 0)
+		_, err := s.Inbox(t.Context(), Caller{Session: sess(name)}, InboxQuery{Limit: 0})
 		wantRefusal(t, err, KindGone, "dormant")
 	}
 	p := mustInbox(t, s, sess("carol"), 0)
-	if len(p.Entries) != 1 || p.Entries[0].Kind != kindIdentityExpiring ||
-		p.Entries[0].Text != "your identity @carol expires in 20 min (at 2026-11-05 05:39 UTC); if you are still working on moving the run surface, run `grelot renew --ttl=24h`, otherwise do nothing" {
-		t.Errorf("carol's inbox %+v, want the one identity_expiring written by the sweep after the restart", p.Entries)
+	if len(p.Items) != 1 || p.Items[0].Kind != kindIdentityExpiring ||
+		p.Items[0].Text != "your identity @carol expires in 20 min (at 2026-11-05 05:39 UTC); if you are still working on moving the run surface, run `grelot renew --ttl=24h`, otherwise do nothing" {
+		t.Errorf("carol's inbox %+v, want the one identity_expiring written by the sweep after the restart", p.Items)
 	}
 	mustSweep(t, s)
 	if ds := allDeliveriesTo(t, s, carol.ID); len(ds) != 1 {

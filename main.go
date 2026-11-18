@@ -28,11 +28,14 @@ var version = "dev"
 // which.
 func buildVersion() string { return buildver.Build(version, debug.ReadBuildInfo) }
 
-// The server's two commands; serve is also what grelot runs with no
-// arguments.
+// The server's commands; serve is also what grelot runs with no arguments.
+// The last three reach the running server through its admin socket.
 const (
-	cmdServe  = "serve"
-	cmdHealth = "health"
+	cmdServe      = "serve"
+	cmdHealth     = "health"
+	cmdSetupToken = "setup-token"
+	cmdRecovery   = "recovery"
+	cmdKey        = "key"
 )
 
 func main() {
@@ -42,13 +45,13 @@ func main() {
 // run dispatches one subcommand and returns the process exit code: 0 on
 // success, 1 on a runtime failure, 2 on a usage error.
 func run(args []string, stdout, stderr io.Writer) int {
-	cmd := cmdServe
+	cmd, rest := cmdServe, args
 	if len(args) > 0 {
-		cmd = args[0]
+		cmd, rest = args[0], args[1:]
 	}
 	switch cmd {
-	case cmdServe, cmdHealth:
-		return serverCommand(cmd, stderr)
+	case cmdServe, cmdHealth, cmdSetupToken, cmdRecovery, cmdKey:
+		return serverCommand(cmd, rest, stdout, stderr)
 	case "provider":
 		return providerCommand(args[1:], stderr)
 	default:

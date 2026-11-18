@@ -216,7 +216,7 @@ func TestCodexStop(t *testing.T) {
 		if got.Code != 0 || got.Stdout != "" {
 			t.Errorf("second stop: exit %d, stdout %q; want 0 and nothing", got.Code, got.Stdout)
 		}
-		if len(got.Requests) != 1 || got.Requests[0].Path != "/v1/lifecycle" || got.Requests[0].Body != `{"event":"turn_end"}` {
+		if len(got.Requests) != 1 || got.Requests[0].Path != "/v1/lifecycle" || got.Requests[0].Body != `{"event":"turn_end","agent_id":""}` {
 			t.Errorf("second stop: requests %v, want one turn_end report", got.Requests)
 		}
 	})
@@ -270,7 +270,7 @@ func TestCodexSessionEnd(t *testing.T) {
 	if got.Code != 0 || got.Stdout != "" || got.Stderr != "" {
 		t.Errorf("the current thread: exit %d, stdout %q, stderr %q; want 0 and nothing", got.Code, got.Stdout, got.Stderr)
 	}
-	if len(got.Requests) != 1 || got.Requests[0].Path != "/v1/lifecycle" || got.Requests[0].Body != `{"event":"session_end"}` ||
+	if len(got.Requests) != 1 || got.Requests[0].Path != "/v1/lifecycle" || got.Requests[0].Body != `{"event":"session_end","agent_id":""}` ||
 		got.Requests[0].Header.Get("Grelot-Session") != "codex:"+codexCleared {
 		t.Errorf("the current thread: requests %v, want one session_end report as that thread", got.Requests)
 	}

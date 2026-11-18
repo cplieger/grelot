@@ -187,7 +187,7 @@ func TestWoke_reportsARequestThatClearsEnded(t *testing.T) {
 			s, _, wl := openWokeStore(t)
 			regAt(t, s, "alpha")
 			bravo := regAt(t, s, "bravo")
-			if err := s.EndSession(t.Context(), sess("bravo")); err != nil {
+			if err := s.EndSession(t.Context(), sess("bravo"), 0); err != nil {
 				t.Fatalf("EndSession: %v", err)
 			}
 			wl.take()

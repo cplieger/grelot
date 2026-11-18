@@ -41,7 +41,7 @@ func whoFixture(t *testing.T) *Store {
 
 func whoNames(t *testing.T, s *Store, q WhoQuery) []string {
 	t.Helper()
-	ps, err := s.Who(t.Context(), Caller{Session: sess("docs-writer")}, &q)
+	ps, err := items(s.Who(t.Context(), Caller{Session: sess("docs-writer")}, &q))
 	if err != nil {
 		t.Fatalf("Who(%+v): %v", q, err)
 	}
@@ -55,7 +55,7 @@ func whoNames(t *testing.T, s *Store, q WhoQuery) []string {
 func TestWho_carriesEachAgentsDeclaredWork(t *testing.T) {
 	s := whoFixture(t)
 	for _, sess := range []string{sess("docs-writer"), "kiro-cli:nobody"} {
-		ps, err := s.Who(t.Context(), Caller{Session: sess}, &WhoQuery{})
+		ps, err := items(s.Who(t.Context(), Caller{Session: sess}, &WhoQuery{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -121,7 +121,7 @@ func TestWho_textFindsAParentByItsDelegate(t *testing.T) {
 		{"chooser", []string{"toolbelt-dev"}},
 		{"no such work", nil},
 	} {
-		ps, err := s.Who(t.Context(), Caller{Session: sess("docs-writer")}, &WhoQuery{Text: tc.text})
+		ps, err := items(s.Who(t.Context(), Caller{Session: sess("docs-writer")}, &WhoQuery{Text: tc.text}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -150,7 +150,7 @@ func TestWho_refusesAFilterThatIsNotCanonical(t *testing.T) {
 		{"a repo with a slash", WhoQuery{Repo: "cplieger/docs"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := s.Who(t.Context(), Caller{Session: sess("docs-writer")}, &tc.q)
+			_, err := items(s.Who(t.Context(), Caller{Session: sess("docs-writer")}, &tc.q))
 			wantRefusal(t, err, KindInvalid, "", "/workspace")
 		})
 	}

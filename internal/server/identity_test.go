@@ -10,11 +10,12 @@ import (
 
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // reviveBody is a revive request for ttl, by name when name is set.
 func reviveBody(name, ttl string) map[string]any {
-	b := map[string]any{"host": "host-a/app", "os": "linux", "arch": "amd64", "where": where("a"), "ttl": ttl}
+	b := map[string]any{"host": "host-a/app", "os": "linux", "arch": "amd64", "where": where("a"), "ttl_ms": durMS(ttl)}
 	if name != "" {
 		b["name"] = name
 	}
@@ -24,7 +25,7 @@ func reviveBody(name, ttl string) map[string]any {
 // self sends a request from session with Grelot-Self.
 func (h *harness) self(session, method, path string, body any) *response {
 	h.t.Helper()
-	return h.request(method, path, body, map[string]string{headerSession: session, headerSelf: "1"})
+	return h.request(method, path, body, map[string]string{wire.HeaderSession: session, wire.HeaderSelf: "1"})
 }
 
 func identityOf(r *response) map[string]any {
@@ -56,7 +57,7 @@ func TestRevive_refusals(t *testing.T) {
 func TestRevive_ownDormantIdentityWithTheMailSentWhileDormant(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegister(sessB, "store-dev")
-	if r := h.as(sessB, http.MethodPatch, "/v1/me", map[string]any{"ttl": "24h", "where": where("a")}); r.status != http.StatusOK {
+	if r := h.as(sessB, http.MethodPatch, "/v1/me", map[string]any{"ttl_ms": durMS("24h"), "where": where("a")}); r.status != http.StatusOK {
 		t.Fatalf("renew store-dev: %d %s", r.status, r.raw)
 	}
 	h.mustRegister(sessA, "grelot-dev")
@@ -131,13 +132,13 @@ func TestPatchMe(t *testing.T) {
 	h.mustRegister(sessA, "grelot-dev")
 
 	t.Run("a ttl with where renews, and the status line shows the time under an hour", func(t *testing.T) {
-		r := h.as(sessA, http.MethodPatch, "/v1/me", map[string]any{"ttl": "45m", "where": where("a")})
+		r := h.as(sessA, http.MethodPatch, "/v1/me", map[string]any{"ttl_ms": durMS("45m"), "where": where("a")})
 		if r.status != http.StatusOK || !strings.HasSuffix(r.line(), " · expires in 45 min") {
 			t.Errorf("got %d with status %q, want 200 ending with 45 min left", r.status, r.line())
 		}
 	})
 	t.Run("a ttl with no where is 400 naming where", func(t *testing.T) {
-		r := h.as(sessA, http.MethodPatch, "/v1/me", map[string]any{"ttl": "2h"})
+		r := h.as(sessA, http.MethodPatch, "/v1/me", map[string]any{"ttl_ms": durMS("2h")})
 		if r.status != http.StatusBadRequest || !strings.Contains(r.str("error"), "where is required") {
 			t.Errorf("got %d %s, want 400 naming where", r.status, r.raw)
 		}
@@ -174,7 +175,7 @@ func TestMe_liveIdentityStatus(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegister(sessA, "grelot-dev")
 	ctx := t.Context()
-	own := store.Caller{Session: sessA, Self: true}
+	own := store.Caller{Key: h.keyID(), Session: sessA, Self: true}
 	if _, _, err := h.store.Reserve(ctx, store.Keyed{}, &store.Reserving{Path: repoGrelot + "/main.go", Reason: "editing", Caller: own, TTL: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +240,7 @@ func TestMe_liveIdentityStatus(t *testing.T) {
 func TestDelegateGate_refusesASessionWithDelegatesNamingNeither(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegister(sessA, "grelot-dev")
-	if _, _, err := h.store.Delegate(t.Context(), store.Keyed{}, &store.Grant{Caller: store.Caller{Session: sessA}, Label: "tests", TTL: time.Hour}); err != nil {
+	if _, _, err := h.store.Delegate(t.Context(), store.Keyed{}, &store.Grant{Caller: store.Caller{Key: h.keyID(), Session: sessA}, Label: "tests", TTL: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {

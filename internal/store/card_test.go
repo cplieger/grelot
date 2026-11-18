@@ -63,7 +63,7 @@ func TestJoinCard_onRegisterReachesLiveIdentitiesOverlappingThePath(t *testing.T
 			t.Errorf("%s's card: kind %q via %q named %q, want a join card via %s named %s", name, d.Kind, d.Path, d.Name, p, name)
 		}
 		if want := clk.now().Add(72 * time.Hour); !d.Lease.Expires.Equal(want) {
-			t.Errorf("%s's card expires %v, want THREAD_TTL on: %v", name, d.Lease.Expires, want)
+			t.Errorf("%s's card expires %v, want the retention on: %v", name, d.Lease.Expires, want)
 		}
 		th, _ := findThread(t, s, d.Thread)
 		if th.Kind != kindCards || !th.Lease.Expires.IsZero() {

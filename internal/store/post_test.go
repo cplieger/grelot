@@ -307,7 +307,7 @@ func TestPost_aFollowOverALiveThreadSaysSo(t *testing.T) {
 	regAt(t, s, "bravo", repoSubflux)
 	regAt(t, s, "charlie", "/workspace/marotte")
 	mustPost(t, s, posting(sess("bravo"), Target{Path: lib + "/index.go"}))
-	clk.advance(shortThreadTTL + time.Minute)
+	clk.advance(shortRetention + time.Minute)
 	if over := mustPost(t, s, posting(sess("charlie"), Target{Path: lib})); len(over.Notices) != 0 {
 		t.Errorf("a post over an expired thread: notices %q, want none", over.Notices)
 	}
@@ -475,12 +475,12 @@ func TestPost_threadsAndMessagesExpireFromTheirPosts(t *testing.T) {
 		t.Fatalf("second post in thread %d, want the first's %d", second.Thread, first.Thread)
 	}
 	if th, _ := findThread(t, s, first.Thread); !th.Lease.Expires.Equal(testNow.Add(73 * time.Hour)) {
-		t.Errorf("path thread expires %v, want THREAD_TTL after its last post", th.Lease.Expires)
+		t.Errorf("path thread expires %v, want the retention after its last post", th.Lease.Expires)
 	}
 	m1, _ := findMessage(t, s, first.Message)
 	m2, _ := findMessage(t, s, second.Message)
 	if !m1.Lease.Expires.Equal(testNow.Add(72*time.Hour)) || !m2.Lease.Expires.Equal(testNow.Add(73*time.Hour)) {
-		t.Errorf("messages expire %v and %v, want THREAD_TTL after each post", m1.Lease.Expires, m2.Lease.Expires)
+		t.Errorf("messages expire %v and %v, want the retention after each post", m1.Lease.Expires, m2.Lease.Expires)
 	}
 	for _, d := range deliveriesTo(t, s, b.ID) {
 		m, _ := findMessage(t, s, d.Message)
@@ -588,7 +588,7 @@ func TestPost_needsALiveIdentity(t *testing.T) {
 func TestPost_clearsEnded(t *testing.T) {
 	s, clk, _ := openIdentityStore(t)
 	a := regAt(t, s, "alpha")
-	if err := s.EndSession(t.Context(), sess("alpha")); err != nil {
+	if err := s.EndSession(t.Context(), sess("alpha"), 0); err != nil {
 		t.Fatal(err)
 	}
 	clk.advance(time.Minute)

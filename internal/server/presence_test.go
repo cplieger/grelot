@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 func TestPresence_onlineWhileAWaitIsOpenAndFor90sAfter(t *testing.T) {
@@ -153,7 +155,7 @@ func TestPresence_aNewerStandingWaitReplacesItsSessionsOlderOnes(t *testing.T) {
 	if _, gone := p.next(third); gone {
 		t.Error("next answers the newest wait as replaced")
 	}
-	n := nudgeJSON{Seq: 9, Count: 1, Attempt: 1}
+	n := wire.Nudge{Seq: 9, Count: 1, Attempt: 1}
 	if handed, gone := p.handOff(third, n); handed || gone {
 		t.Errorf("handOff from the newest = handed %v, replaced %v; want neither", handed, gone)
 	}
@@ -179,7 +181,7 @@ func TestPresence_aWaitForAnotherIdentityTakesNoHandedNudge(t *testing.T) {
 	const id = 7
 	old := p.opened(id, sessA, testNow)
 	moved := p.opened(id+1, sessA, testNow)
-	if handed, gone := p.handOff(old, nudgeJSON{Seq: 9, Count: 1, Attempt: 1}); handed || !gone {
+	if handed, gone := p.handOff(old, wire.Nudge{Seq: 9, Count: 1, Attempt: 1}); handed || !gone {
 		t.Errorf("handOff = handed %v, replaced %v; want replaced and nothing handed", handed, gone)
 	}
 	if got, gone := p.next(moved); got != nil || gone {

@@ -1,12 +1,14 @@
 // Package obs is grelot's /metrics page: the counters and histograms the
 // server and store record into, and the gauges read from the store at
 // scrape time. No label value is ever an agent name, path, subject or
-// session.
+// session. Beside the page, Events keeps the recent delivery problems for
+// the web UI, names included, behind sign-in.
 package obs
 
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -30,7 +32,36 @@ const (
 
 	AttemptFirst  = "first"
 	AttemptRepeat = "repeat"
+
+	AuthRateLimited      = "rate_limited"
+	AuthWrongKeyIdentity = "wrong_key_identity"
+	authOther            = "other"
+
+	LimitRate        = "rate"
+	LimitWaitsKey    = "waits_key"
+	LimitWaitsServer = "waits_server"
 )
+
+// authReasons are auth_failures_total's reasons: access's gate.failure and
+// gate.forbidden reasons (access internal/failreason and gate's own), then
+// grelot's. A reason access adds later counts as other, so the label stays
+// bounded.
+var authReasons = []string{
+	"key_unknown", "key_expired", "key_retired", "account_disabled", "session_expired", "session_unknown",
+	"credential_invalid", "key_required", "session_required",
+	"recovery_session", "cross_origin", AuthRateLimited, AuthWrongKeyIdentity, authOther,
+}
+
+// AuthReason is reason as auth_failures_total labels it.
+func AuthReason(reason string) string {
+	if slices.Contains(authReasons, reason) {
+		return reason
+	}
+	return authOther
+}
+
+// labelReason is the label of every counter that sorts by cause.
+const labelReason = "reason"
 
 // Metrics holds every family on the page. Build it with New.
 type Metrics struct {
@@ -58,33 +89,54 @@ type Metrics struct {
 	// Nudges counts recorded nudges by layer and attempt.
 	Nudges *measure.LabeledCounter
 	// NudgeDelay is the oldest-in-batch post-to-nudge delay by layer.
-	NudgeDelay   *measure.LabeledHistogram
+	NudgeDelay *measure.LabeledHistogram
+	// AuthFailures counts credentials presented and refused, and sign-in
+	// attempts the failure limiter turned away, by reason.
+	AuthFailures *measure.LabeledCounter
+	// RequestsLimited counts /v1 requests refused by a limit, by limit.
+	RequestsLimited *measure.LabeledCounter
+	// Events is recorded beside PostsRefused, PushSends and Nudges.
+	Events       *Events
 	httpRequests *measure.LabeledCounter
 	httpDuration *measure.LabeledHistogram
 }
 
-// New builds the page with every family registered and the refusal and
-// started-empty reasons seeded at 0, so a first one shows in increase().
+// New builds the page with every family registered and the refusal,
+// started-empty, auth failure and limit labels seeded at 0, so a first one
+// shows in increase().
 func New() *Metrics {
 	m := &Metrics{
 		reg:               measure.NewRegistry("grelot"),
 		SweepLastSuccess:  measure.NewGauge("sweep_last_success_timestamp_seconds", "Unix time of the last store sweep that committed.", measure.UnitSeconds),
 		SweepFailures:     measure.NewCounter("sweep_failures_total", "Store sweeps that failed.", measure.UnitCount),
-		StoreStartedEmpty: measure.NewLabeledCounter("store_started_empty_total", "Store opens that started with no rows: a corrupt file moved aside, or a namespace of another format reset.", measure.UnitCount, []string{"reason"}, measure.WithSeed([]string{StartedEmptyCorrupt}, []string{StartedEmptyFormat})),
+		StoreStartedEmpty: measure.NewLabeledCounter("store_started_empty_total", "Store opens that started with no rows: a corrupt file moved aside, or a namespace of another format reset.", measure.UnitCount, []string{labelReason}, seeds(StartedEmptyCorrupt, StartedEmptyFormat)),
 		Posts:             measure.NewLabeledCounter("posts_total", "Posts stored, by thread kind.", measure.UnitCount, []string{"thread_kind"}),
-		PostsRefused:      measure.NewLabeledCounter("posts_refused_total", "Posts refused, by reason.", measure.UnitCount, []string{"reason"}, measure.WithSeed([]string{RefusedStoreFull}, []string{RefusedRateLimited}, []string{RefusedScope})),
+		PostsRefused:      measure.NewLabeledCounter("posts_refused_total", "Posts refused, by reason.", measure.UnitCount, []string{labelReason}, seeds(RefusedStoreFull, RefusedRateLimited, RefusedScope)),
 		WritesReplayed:    measure.NewCounter("writes_replayed_total", "Writes sent again with their Idempotency-Key and answered their first result, changing nothing.", measure.UnitCount),
 		PushDoorUp:        measure.NewLabeledGauge("push_door_up", "1 while a push door sends, 0 once a refused credential turned it off.", measure.UnitNone, []string{"door"}),
 		PushSends:         measure.NewLabeledCounter("push_sends_total", "Push tries, by door and outcome.", measure.UnitCount, []string{"door", "outcome"}),
 		ProvidersInvalid:  measure.NewGauge("providers_invalid", "Provider files skipped at load; 1 for a folder that cannot be read.", measure.UnitCount),
 		Nudges:            measure.NewLabeledCounter("nudges_total", "Nudges recorded, by layer and attempt.", measure.UnitCount, []string{"via", "attempt"}),
 		NudgeDelay:        measure.NewLabeledHistogram("nudge_delay_seconds", "Delay from the oldest post in a batch to its nudge, by layer.", measure.UnitSeconds, []string{"via"}, measure.WithBuckets(measure.APIBuckets())),
+		AuthFailures:      measure.NewLabeledCounter("auth_failures_total", "Machine keys and sessions presented and refused, requests acting for another key's identity, and sign-in attempts the failure limiter refused, by reason.", measure.UnitCount, []string{labelReason}, seeds(authReasons...)),
+		RequestsLimited:   measure.NewLabeledCounter("requests_limited_total", "Agent API requests refused by a key's request rate, a key's held waits or the server's held waits.", measure.UnitCount, []string{"limit"}, seeds(LimitRate, LimitWaitsKey, LimitWaitsServer)),
 		httpRequests:      measure.NewLabeledCounter("http_requests_total", "HTTP requests, by route and status code.", measure.UnitCount, []string{"route", "code"}),
 		httpDuration:      measure.NewLabeledHistogram("http_request_duration_seconds", "HTTP request latency, by route.", measure.UnitSeconds, []string{"route"}),
+		Events:            newEvents(),
 	}
 	m.reg.MustRegister(m.SweepLastSuccess, m.SweepFailures, m.StoreStartedEmpty, m.Posts, m.PostsRefused, m.WritesReplayed,
-		m.PushDoorUp, m.PushSends, m.ProvidersInvalid, m.Nudges, m.NudgeDelay, m.httpRequests, m.httpDuration)
+		m.PushDoorUp, m.PushSends, m.ProvidersInvalid, m.Nudges, m.NudgeDelay, m.AuthFailures, m.RequestsLimited,
+		m.httpRequests, m.httpDuration)
 	return m
+}
+
+// seeds is WithSeed for a one-label instrument: one set per value.
+func seeds(values ...string) measure.Option {
+	sets := make([][]string, len(values))
+	for i, v := range values {
+		sets[i] = []string{v}
+	}
+	return measure.WithSeed(sets...)
 }
 
 // ServeBuildInfo registers grelot_build_info, 1 with the running version as

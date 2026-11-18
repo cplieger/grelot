@@ -35,33 +35,33 @@ func TestStatus_Line(t *testing.T) {
 			"grelot: @tool-dev · 0 unread · wake: down · expires in 20 min · " + startLine,
 		},
 		{
-			"another release base names the server's own tag",
-			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "v1.1.0", ServerVersion: "v1.2.0-dev.3"},
-			"grelot: @a · 0 unread · wake: watcher · this client is v1.1.0 and the server v1.2.0-dev.3: install grelot v1.2.0-dev.3 with go install github.com/cplieger/grelot@v1.2.0-dev.3, then check both with grelot version",
+			"another release base names that base's release page",
+			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "v2.0.0", ServerVersion: "v2.1.0-dev.3"},
+			"grelot: @a · 0 unread · wake: watcher · this client is v2.0.0 and the server v2.1.0-dev.3: install grelot v2.1.0 from https://github.com/cplieger/grelot/releases/tag/v2.1.0, or, if that page does not exist yet, a development build with go install github.com/cplieger/grelot@dev, then check both with grelot version",
 		},
 		{
 			"an earlier dev build of the server's release",
-			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "v1.1.0-dev.24", ServerVersion: "v1.1.0-dev.25"},
-			"grelot: @a · 0 unread · wake: watcher · this client is v1.1.0-dev.24 and the server v1.1.0-dev.25: install grelot v1.1.0-dev.25 with go install github.com/cplieger/grelot@v1.1.0-dev.25, then check both with grelot version",
+			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "v2.0.0-dev.24", ServerVersion: "v2.0.0-dev.25"},
+			"grelot: @a · 0 unread · wake: watcher · this client is v2.0.0-dev.24 and the server v2.0.0-dev.25: install grelot v2.0.0 from https://github.com/cplieger/grelot/releases/tag/v2.0.0, or, if that page does not exist yet, a development build with go install github.com/cplieger/grelot@dev, then check both with grelot version",
 		},
 		{
 			"a later dev build than the server says nothing",
-			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "v1.1.0-dev.26", ServerVersion: "v1.1.0-dev.25"},
+			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "v2.0.0-dev.26", ServerVersion: "v2.0.0-dev.25"},
 			"grelot: @a · 0 unread · wake: watcher",
 		},
 		{
 			"a promoted dev build is the same release",
-			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "v1.1.0", ServerVersion: "v1.1.0-dev.5"},
+			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "v2.0.0", ServerVersion: "v2.0.0-dev.5"},
 			"grelot: @a · 0 unread · wake: watcher",
 		},
 		{
 			"a dev client says nothing",
-			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "dev", ServerVersion: "v1.2.0"},
+			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "dev", ServerVersion: "v2.1.0"},
 			"grelot: @a · 0 unread · wake: watcher",
 		},
 		{
 			"an unknown server version says nothing",
-			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "v1.1.0"},
+			Status{Server: "grelot: @a · 0 unread · wake: watcher", Client: "v2.0.0"},
 			"grelot: @a · 0 unread · wake: watcher",
 		},
 		{
@@ -89,7 +89,7 @@ func TestStatus_Line(t *testing.T) {
 			Status{Invalid: []string{"beta", "gamma"}},
 			"grelot: provider beta invalid: run grelot provider check on its file · provider gamma invalid: run grelot provider check on its file",
 		},
-		{"nothing to say", Status{Client: "v1.1.0"}, ""},
+		{"nothing to say", Status{Client: "v2.0.0"}, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -151,18 +151,18 @@ func TestOlder(t *testing.T) {
 		client, server string
 		want           bool
 	}{
-		{"v1.1.0", "v1.2.0", true},
+		{"v2.0.0", "v2.1.0", true},
 		{"v1.9.0", "v1.10.0", true},
-		{"v1.1.0-dev.24", "v1.1.0-dev.25", true},
-		{"v1.1.0-dev.9", "v1.1.0-dev.10", true},
-		{"v1.1.0-dev.30", "v1.2.0-dev.1", true},
-		{"v1.1.0", "v1.1.0-dev.25", false},
-		{"v1.1.0-dev.25", "v1.1.0", false},
-		{"v1.1.0-dev.25", "v1.1.0-dev.25", false},
-		{"v1.2.0", "v1.1.0", false},
-		{"dev", "v1.2.0", false},
-		{"v1.1.0", "dev", false},
-		{"v1.1.0", "", false},
+		{"v2.0.0-dev.24", "v2.0.0-dev.25", true},
+		{"v2.0.0-dev.9", "v2.0.0-dev.10", true},
+		{"v2.0.0-dev.30", "v2.1.0-dev.1", true},
+		{"v2.0.0", "v2.0.0-dev.25", false},
+		{"v2.0.0-dev.25", "v2.0.0", false},
+		{"v2.0.0-dev.25", "v2.0.0-dev.25", false},
+		{"v2.1.0", "v2.0.0", false},
+		{"dev", "v2.1.0", false},
+		{"v2.0.0", "dev", false},
+		{"v2.0.0", "", false},
 	} {
 		t.Run(tc.client+" against "+tc.server, func(t *testing.T) {
 			if got := older(tc.client, tc.server); got != tc.want {

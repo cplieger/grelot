@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // lease is the expiry every leased row carries. A zero Expires never
@@ -54,10 +55,14 @@ func serverLease(now time.Time, ttl time.Duration) lease { return lease{Expires:
 // a KindInvalid refusal naming them.
 func (p leasePolicy) grant(now time.Time, ttl time.Duration, limit time.Time) (lease, error) {
 	if ttl < p.min || ttl > p.max {
+		lo, hi := p.min.Milliseconds(), p.max.Milliseconds()
+		f := &wire.FieldError{Field: "ttl_ms", Code: wire.FieldOutOfRange, Min: &lo, Max: &hi}
+		msg := fmt.Sprintf("ttl %s is outside the bounds: pass --ttl=<d>, from %s to %s", fmtDur(ttl), fmtDur(p.min), fmtDur(p.max))
 		if ttl == 0 {
-			return lease{}, refuse(KindInvalid, fmt.Sprintf("a ttl is required: pass --ttl=<d>, from %s to %s", fmtDur(p.min), fmtDur(p.max)))
+			f = &wire.FieldError{Field: "ttl_ms", Code: wire.FieldRequired}
+			msg = fmt.Sprintf("a ttl is required: pass --ttl=<d>, from %s to %s", fmtDur(p.min), fmtDur(p.max))
 		}
-		return lease{}, refuse(KindInvalid, fmt.Sprintf("ttl %s is outside the bounds: pass --ttl=<d>, from %s to %s", fmtDur(ttl), fmtDur(p.min), fmtDur(p.max)))
+		return lease{}, &Error{Kind: KindInvalid, Msg: msg, Field: f}
 	}
 	l := lease{Expires: now.Add(ttl)}
 	if !limit.IsZero() && l.Expires.After(limit) {

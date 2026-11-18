@@ -71,7 +71,7 @@ func TestLease_capHoldsTheExpiryAndItsWarning(t *testing.T) {
 }
 
 func TestLease_postsCarryAnExpiryAndNoWarning(t *testing.T) {
-	// threads, messages and deliveries expire THREAD_TTL after the post
+	// threads, messages and deliveries expire the retention after the post
 	// and are never warned.
 	s := openTestStore(t)
 	regAt(t, s, "alpha", "/workspace/alpha")
@@ -83,7 +83,7 @@ func TestLease_postsCarryAnExpiryAndNoWarning(t *testing.T) {
 	if len(ds) != 1 {
 		t.Fatalf("%d deliveries, want 1", len(ds))
 	}
-	want := testNow.Add(DefaultThreadTTL)
+	want := testNow.Add(DefaultRetention)
 	for name, got := range map[string]lease{"thread": th.Lease, "message": m.Lease, "delivery": ds[0].Lease} {
 		if !got.Expires.Equal(want) || !got.WarnAt.IsZero() {
 			t.Errorf("%s lease %+v, want expiry %v and no warning", name, got, want)
@@ -201,6 +201,9 @@ func TestSweep_runsInBoundedBatches(t *testing.T) {
 	}
 }
 
+// leaseTestID is an identity id clear of @user's row and of NextID's first ids.
+const leaseTestID = 99
+
 func TestSweep_warnsOnceAndARenewalReArms(t *testing.T) {
 	// identity_expiring is written once at warn_at, warn_at is
 	// cleared, and a renewal sets it again.
@@ -210,7 +213,7 @@ func TestSweep_warnsOnceAndARenewalReArms(t *testing.T) {
 		t.Fatal(err)
 	}
 	putRows(t, s, func(w *wtx) error {
-		return s.t.identities.table.Put(w.tx, 1, &identityRow{ID: 1, Name: "lease-test", Description: "testing leases", TTL: time.Hour, State: stateLive, Lease: l})
+		return s.t.identities.table.Put(w.tx, leaseTestID, &identityRow{ID: leaseTestID, Name: "lease-test", Description: "testing leases", TTL: time.Hour, State: stateLive, Lease: l})
 	})
 	events := func() []deliveryRow {
 		var out []deliveryRow
@@ -247,20 +250,20 @@ func TestSweep_warnsOnceAndARenewalReArms(t *testing.T) {
 			t.Errorf("warning %q lacks %q", ev[0].Text, want)
 		}
 	}
-	if row := getIdentity(t, s, 1); !row.Lease.WarnAt.IsZero() {
+	if row := getIdentity(t, s, leaseTestID); !row.Lease.WarnAt.IsZero() {
 		t.Errorf("warn_at %v not cleared after the warning", row.Lease.WarnAt)
 	}
 
 	putRows(t, s, func(w *wtx) error {
-		row := getIdentity(t, s, 1)
+		row := getIdentity(t, s, leaseTestID)
 		nl, err := identityPolicy.grant(w.now, time.Hour, time.Time{})
 		if err != nil {
 			return err
 		}
 		row.Lease = nl
-		return s.t.identities.table.Put(w.tx, 1, &row)
+		return s.t.identities.table.Put(w.tx, leaseTestID, &row)
 	})
-	if row := getIdentity(t, s, 1); row.Lease.WarnAt.IsZero() {
+	if row := getIdentity(t, s, leaseTestID); row.Lease.WarnAt.IsZero() {
 		t.Fatal("a renewal left warn_at clear")
 	}
 	clk.set(clk.now().Add(30 * time.Minute))

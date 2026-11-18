@@ -1,0 +1,446 @@
+// Package wire is grelot's wire contract: the JSON the server sends and
+// reads, and the route rows it binds. It imports the standard library only,
+// so the server, the clients and the generator share it. The agent rows'
+// instants are RFC 3339; the other rows' instants are milliseconds since
+// the Unix epoch. Durations are milliseconds, each named with _ms.
+package wire
+
+import "math"
+
+// Error is every error response, on /api and /v1 alike.
+type Error struct {
+	// Error is the server's sentence for a person reading a raw answer;
+	// a client words Code instead.
+	Error string `json:"error"`
+	// Code names the refusal, such as not_found.
+	Code string `json:"code"`
+	// Reason refines Code, such as label_too_long or the resource a
+	// not_found names.
+	Reason    string `json:"reason,omitempty"`
+	RequestID string `json:"request_id"`
+	// Fields are the refused request fields, on the codes that name them
+	// (invalid, too_large, person_reserved).
+	Fields []FieldError `json:"fields,omitempty"`
+	// RetryAfterMS is set, with Retry-After, when a wait fixes the refusal.
+	RetryAfterMS int64 `json:"retry_after_ms,omitempty"`
+}
+
+// FieldError is one refused request field: Field is its JSON or query
+// name, dotted when nested, and Code what is wrong with it.
+type FieldError struct {
+	Field   string    `json:"field"`
+	Code    FieldCode `json:"code"`
+	Min     *int64    `json:"min,omitempty"`
+	Max     *int64    `json:"max,omitempty"`
+	Allowed []string  `json:"allowed,omitempty"`
+}
+
+// FieldCode is what is wrong with a refused field.
+type FieldCode string
+
+// The field codes.
+const (
+	FieldRequired FieldCode = "required"
+	// FieldOneOf carries Allowed.
+	FieldOneOf FieldCode = "one_of"
+	// FieldOutOfRange carries Min and Max.
+	FieldOutOfRange FieldCode = "out_of_range"
+	// FieldTooLong carries Max.
+	FieldTooLong FieldCode = "too_long"
+	// FieldNotText is not UTF-8, or more than one line where one is
+	// required.
+	FieldNotText         FieldCode = "not_text"
+	FieldNotWholeMinutes FieldCode = "not_whole_minutes"
+	FieldPersonReserved  FieldCode = "person_reserved"
+)
+
+// List is one page of a list read, which every list answer embeds: Items
+// in the row's order, NextCursor absent on the last page, and Total the
+// items matching the query over every page.
+type List[T any] struct {
+	NextCursor string `json:"next_cursor,omitempty"`
+	Items      []T    `json:"items"`
+	Total      int    `json:"total"`
+}
+
+// The limit a list read takes: 1 to PageLimitMax, PageLimitDefault when
+// absent.
+const (
+	PageLimitDefault = 50
+	PageLimitMax     = 200
+)
+
+// PageLimit is a list read's limit.
+type PageLimit int
+
+// Range is the limits the server takes, which the document states.
+func (PageLimit) Range() (lo, hi int64) { return 1, PageLimitMax }
+
+// Page is a list read's paging, which every Paged row's query embeds:
+// Cursor is the next_cursor of the page before, absent for the first.
+type Page struct {
+	Cursor string    `json:"cursor,omitempty"`
+	Limit  PageLimit `json:"limit,omitempty"`
+}
+
+// The query parameters a list read pages with.
+const (
+	QueryCursor = "cursor"
+	QueryLimit  = "limit"
+)
+
+// Show filters the conversation list.
+type Show string
+
+// The conversation filters.
+const (
+	ShowAll     Show = "all"
+	ShowThreads Show = "threads"
+	ShowDirect  Show = "direct"
+)
+
+// Flag is a 0-or-1 query parameter; absent reads as FlagOff.
+type Flag string
+
+// The flag values.
+const (
+	FlagOff Flag = "0"
+	FlagOn  Flag = "1"
+)
+
+// Turn is GET /v1/me's turn parameter; absent opens no turn.
+type Turn string
+
+// TurnStart opens the turn.
+const TurnStart Turn = "start"
+
+// ThreadKind is a conversation's kind.
+type ThreadKind string
+
+// The conversation kinds.
+const (
+	ThreadAnnounce ThreadKind = "announce"
+	ThreadPath     ThreadKind = "path"
+	ThreadDirect   ThreadKind = "direct"
+)
+
+// SenderKind tells an agent's post from the user's.
+type SenderKind string
+
+// The sender kinds.
+const (
+	SenderAgent SenderKind = "agent"
+	SenderUser  SenderKind = "user"
+)
+
+// ConversationThread names one conversation.
+type ConversationThread struct {
+	Kind ThreadKind `json:"kind"`
+	// Title is announce, the path, or the direct thread's two names.
+	Title string `json:"title"`
+	Path  string `json:"path,omitempty"`
+	// Agents are a direct thread's two names.
+	Agents []string `json:"agents,omitempty"`
+	ID     uint64   `json:"id"`
+}
+
+// LastPost is a conversation's newest post.
+type LastPost struct {
+	From    string `json:"from"`
+	Subject string `json:"subject"`
+	// Preview is the body's first line, cut at 200 characters.
+	Preview string `json:"preview"`
+	ID      uint64 `json:"id"`
+	AtMS    int64  `json:"at_ms"`
+}
+
+// ConversationRow is one row of the conversation list.
+type ConversationRow struct {
+	Last LastPost `json:"last"`
+	ConversationThread
+	Participants int `json:"participants"`
+	// Unread counts the user's unread posts in it.
+	Unread int `json:"unread"`
+}
+
+// ConversationsQuery is the conversation list's query.
+type ConversationsQuery struct {
+	Kind Show `json:"kind,omitempty"`
+	// Before and BeforeThread are the Next and NextThread of the newer
+	// page; both absent for the newest.
+	Before       uint64 `json:"before,omitempty"`
+	BeforeThread uint64 `json:"before_thread,omitempty"`
+}
+
+// ConversationsPage is one page of conversations, newest activity first.
+type ConversationsPage struct {
+	Rows []ConversationRow `json:"rows"`
+	// Next and NextThread are the Before and BeforeThread of the older
+	// page, both absent on the oldest.
+	Next       uint64 `json:"next,omitempty"`
+	NextThread uint64 `json:"next_thread,omitempty"`
+	// Counts covers every page and every kind, whatever the query.
+	Counts ConversationCounts `json:"counts"`
+}
+
+// ConversationCounts counts the conversations each filter lists; all
+// lists their sum.
+type ConversationCounts struct {
+	Threads int `json:"threads"`
+	Direct  int `json:"direct"`
+}
+
+// ReadCount is how many of a post's recipients have read it.
+type ReadCount struct {
+	Read  int `json:"read"`
+	Total int `json:"total"`
+}
+
+// Post is one message.
+type Post struct {
+	From     string     `json:"from"`
+	FromKind SenderKind `json:"from_kind"`
+	Subject  string     `json:"subject"`
+	Body     string     `json:"body"`
+	// Origin is the subpath a post shown in its parent path's
+	// conversation was posted to.
+	Origin string    `json:"origin,omitempty"`
+	Read   ReadCount `json:"read"`
+	ID     uint64    `json:"id"`
+	Thread uint64    `json:"thread"`
+	AtMS   int64     `json:"at_ms"`
+	// Unread marks a post delivered to the user that the user has not read.
+	Unread bool `json:"unread,omitempty"`
+}
+
+// ReservationState is a reservation's state.
+type ReservationState string
+
+// The reservation states.
+const (
+	ReservationHeld   ReservationState = "held"
+	ReservationQueued ReservationState = "queued"
+)
+
+// ConversationReservation is a path an agent holds or waits for.
+type ConversationReservation struct {
+	Path   string           `json:"path"`
+	Holder string           `json:"holder"`
+	Host   string           `json:"host,omitempty"`
+	Reason string           `json:"reason,omitempty"`
+	State  ReservationState `json:"state"`
+	ID     uint64           `json:"id"`
+	// Place is a queued entry's place in its path's queue, from 1.
+	Place int `json:"place,omitempty"`
+	// SinceMS is when it was queued or, once held, granted.
+	SinceMS   int64 `json:"since_ms"`
+	ExpiresMS int64 `json:"expires_ms"`
+}
+
+// AgentState is an identity's state.
+type AgentState string
+
+// The identity states.
+const (
+	AgentLive    AgentState = "live"
+	AgentDormant AgentState = "dormant"
+)
+
+// Agent is an agent's card.
+type Agent struct {
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	State       AgentState `json:"state"`
+	Host        string     `json:"host,omitempty"`
+	OS          string     `json:"os,omitempty"`
+	Arch        string     `json:"arch,omitempty"`
+	Provider    string     `json:"provider,omitempty"`
+	Paths       []string   `json:"paths"`
+	Follows     []string   `json:"follows"`
+	// RegisteredMS is when it first registered.
+	RegisteredMS int64 `json:"registered_ms"`
+	LastSeenMS   int64 `json:"last_seen_ms,omitempty"`
+	// ExpiresMS is the end of a live agent's lease.
+	ExpiresMS      int64 `json:"expires_ms,omitempty"`
+	DormantSinceMS int64 `json:"dormant_since_ms,omitempty"`
+	// Online marks a live agent holding a standing wait, as grelot who
+	// reports it.
+	Online bool `json:"online,omitempty"`
+}
+
+// AgentList is every live and dormant agent, by name.
+type AgentList struct {
+	Agents []Agent `json:"agents"`
+}
+
+// Conversation is one conversation's posts, oldest first, and its context.
+type Conversation struct {
+	Posts []Post `json:"posts"`
+	// Reservations are a path conversation's grants then queue entries
+	// overlapping its path.
+	Reservations []ConversationReservation `json:"reservations"`
+	// Followers are the agents a path conversation's posts reach.
+	Followers []string `json:"followers"`
+	// Cards are a direct conversation's agents.
+	Cards  []Agent            `json:"cards"`
+	Thread ConversationThread `json:"thread"`
+	// Next is the before of the older page, absent on the oldest.
+	Next uint64 `json:"next,omitempty"`
+}
+
+// ConversationParams names a conversation by its thread.
+type ConversationParams struct {
+	ID ThreadID `json:"id"`
+}
+
+// PageQuery pages a list of posts.
+type PageQuery struct {
+	// Before is the Next of the newer page; absent for the newest.
+	Before uint64 `json:"before,omitempty"`
+}
+
+// MessageParams names a message.
+type MessageParams struct {
+	ID MessageID `json:"id"`
+}
+
+// MessageID names a message; ids start at 1.
+type MessageID uint64
+
+// Range is the limits the server takes, which the document states.
+func (MessageID) Range() (lo, hi int64) { return 1, math.MaxInt64 }
+
+// UserReceipt is one recipient of a message.
+type UserReceipt struct {
+	Name  string `json:"name"`
+	Host  string `json:"host,omitempty"`
+	State string `json:"state"`
+	// ReadAtMS is absent while unread.
+	ReadAtMS int64 `json:"read_at_ms,omitempty"`
+}
+
+// UserReceipts are who has read a message.
+type UserReceipts struct {
+	Subject    string        `json:"subject"`
+	Kind       string        `json:"kind"`
+	Recipients []UserReceipt `json:"recipients"`
+	Message    uint64        `json:"message"`
+	PostedAtMS int64         `json:"posted_at_ms"`
+	// RegisteredSince counts, for an announcement, the agents registered
+	// after it, which never received it.
+	RegisteredSince int `json:"registered_since"`
+}
+
+// MarkReadRequest bounds a mark-read to the posts the reader was shown.
+type MarkReadRequest struct {
+	// UpTo is the newest post id shown; a later post stays unread.
+	UpTo uint64 `json:"up_to"`
+}
+
+// MarkedRead is how many posts a mark-read stamped.
+type MarkedRead struct {
+	Read int `json:"read"`
+}
+
+// PostTarget is where the user posts: exactly one of its fields.
+type PostTarget struct {
+	Path     string `json:"path,omitempty"`
+	Agent    string `json:"agent,omitempty"`
+	Announce bool   `json:"announce,omitempty"`
+}
+
+// UserPostRequest is a post the user sends.
+type UserPostRequest struct {
+	Subject string     `json:"subject"`
+	Body    string     `json:"body"`
+	To      PostTarget `json:"to"`
+}
+
+// UserPosted is a post the server stored.
+type UserPosted struct {
+	Message uint64 `json:"message"`
+	Thread  uint64 `json:"thread"`
+	// Delivered counts its recipients.
+	Delivered int `json:"delivered"`
+}
+
+// AgentParams names an agent.
+type AgentParams struct {
+	Name string `json:"name"`
+}
+
+// AgentPage is an agent's card, its reservations (grants first) and its
+// live delegates' handles.
+type AgentPage struct {
+	Reservations []ConversationReservation `json:"reservations"`
+	Delegates    []string                  `json:"delegates"`
+	Agent        Agent                     `json:"agent"`
+}
+
+// HistoryPost is a post an agent sent or received, with its conversation.
+type HistoryPost struct {
+	Conversation ConversationThread `json:"conversation"`
+	Post
+}
+
+// HistoryPage is one page of an agent's posts, newest first.
+type HistoryPage struct {
+	Posts []HistoryPost `json:"posts"`
+	// Next is the before of the older page, absent on the oldest.
+	Next uint64 `json:"next,omitempty"`
+}
+
+// EventChanged names the event stream's one event, whose data is Changed.
+const EventChanged = "changed"
+
+// Changed is the event stream's one event: what a commit wrote.
+type Changed struct {
+	// Conversations gained a post, had a post read, or had a post or
+	// themselves expire; one that expired answers not_found.
+	Conversations []uint64 `json:"conversations"`
+	// Agents is set when an agent or a reservation changed.
+	Agents bool `json:"agents"`
+}
+
+// Methods are the sign-in methods the owner has left on.
+type Methods struct {
+	Password bool `json:"password"`
+	Passkeys bool `json:"passkeys"`
+	// OIDC is single sign-on, which also needs the server's OIDC_* settings.
+	OIDC bool `json:"oidc"`
+}
+
+// Settings are what the Settings screen changes, and the bounds it holds
+// the history retention to.
+type Settings struct {
+	// Revision counts the stored saves, 0 before the first; a save sends
+	// it back.
+	Revision uint64 `json:"revision"`
+	// RetentionMS is how long a thread, post or event lives after it is
+	// written.
+	RetentionMS    int64   `json:"retention_ms"`
+	RetentionMinMS int64   `json:"retention_min_ms"`
+	RetentionMaxMS int64   `json:"retention_max_ms"`
+	Methods        Methods `json:"methods"`
+	// OIDCConfigured is false when the server has no single sign-on
+	// provider, so its switch does nothing.
+	OIDCConfigured bool `json:"oidc_configured"`
+}
+
+// SettingsRequest replaces the settings. A change of methods is a
+// session's alone, after a sign-in or step-up of the last 10 minutes; a
+// key that sends one gets person_reserved.
+type SettingsRequest struct {
+	Methods Methods `json:"methods"`
+	// Revision is the Settings revision the change was made over; any
+	// other is stale_revision.
+	Revision    uint64 `json:"revision"`
+	RetentionMS int64  `json:"retention_ms"`
+}
+
+// SignIn is what the sign-in page shows beside access's state.
+type SignIn struct {
+	// OIDCLabel names the single sign-on provider; empty when the server
+	// has none.
+	OIDCLabel string `json:"oidc_label"`
+}

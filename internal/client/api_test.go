@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // captured is one request a fake server saw.
@@ -70,13 +72,13 @@ func answerJSON(status int, body string) http.HandlerFunc {
 
 func TestDo_sendsTheHeaders(t *testing.T) {
 	f := newFake(t, answerJSON(http.StatusOK, `{"ok":true}`))
-	a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
+	a, _ := newTestAPI(t, f.srv.URL, "v2.0.0")
 	a.Session, a.As, a.Self = "alpha:s-1", "tool-dev/review", true
 	var out struct{ OK bool }
 	_, err := a.Do(t.Context(), &Request{
 		Method: http.MethodPost, Path: "/v1/posts",
 		Query:  url.Values{"path": {"/workspace/a b"}},
-		Header: http.Header{HeaderEnvironment: {"env-id"}},
+		Header: http.Header{wire.HeaderEnvironment: {"env-id"}},
 		Body:   map[string]string{"subject": "hello"},
 	}, &out)
 	if err != nil {
@@ -92,7 +94,7 @@ func TestDo_sendsTheHeaders(t *testing.T) {
 	r := got[0]
 	want := map[string]string{
 		"Authorization":      "Bearer test-token",
-		"Grelot-Version":     "v1.1.0",
+		"Grelot-Version":     "v2.0.0",
 		"Grelot-Session":     "alpha:s-1",
 		"Grelot-As":          "tool-dev/review",
 		"Grelot-Self":        "1",
@@ -114,7 +116,7 @@ func TestDo_sendsTheHeaders(t *testing.T) {
 
 func TestDo_noIdentityHeadersWhenUnset(t *testing.T) {
 	f := newFake(t, answerJSON(http.StatusOK, `{}`))
-	a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
+	a, _ := newTestAPI(t, f.srv.URL, "v2.0.0")
 	if _, err := a.Do(t.Context(), &Request{Method: http.MethodGet, Path: "/v1/identities"}, nil); err != nil {
 		t.Fatalf("Do: %v", err)
 	}
@@ -146,7 +148,7 @@ func TestDo_retriesAGetAndAKeyedWriteAndSendsAOnceRequestOnce(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f := newFake(t, answerJSON(http.StatusServiceUnavailable, `{"error":"the request ran out of time before anything was stored; nothing changed: send it again","code":"timeout"}`))
-			a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
+			a, _ := newTestAPI(t, f.srv.URL, "v2.0.0")
 			_, err := a.Do(t.Context(), &Request{Method: c.method, Path: "/v1/me", Body: map[string]int{"n": 1}, Once: c.once}, nil)
 			var ae *APIError
 			if !errors.As(err, &ae) || ae.HTTP != http.StatusServiceUnavailable {
@@ -176,7 +178,7 @@ func TestDo_retriesAGetAndAKeyedWriteAndSendsAOnceRequestOnce(t *testing.T) {
 
 func TestDo_aNewCallSendsANewKey(t *testing.T) {
 	f := newFake(t, answerJSON(http.StatusOK, `{}`))
-	a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
+	a, _ := newTestAPI(t, f.srv.URL, "v2.0.0")
 	for range 2 {
 		if _, err := a.Do(t.Context(), &Request{Method: http.MethodPost, Path: "/v1/posts", Body: map[string]int{"n": 1}}, nil); err != nil {
 			t.Fatalf("Do: %v", err)
@@ -193,7 +195,7 @@ func TestDo_a429IsNotRetried(t *testing.T) {
 		w.Header().Set("Retry-After", "1")
 		answerJSON(http.StatusTooManyRequests, `{"error":"over 30 posts a minute from this identity and its delegates: post again in 1s","code":"rate_limited"}`)(w, nil)
 	})
-	a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
+	a, _ := newTestAPI(t, f.srv.URL, "v2.0.0")
 	_, err := a.Do(t.Context(), &Request{Method: http.MethodPost, Path: "/v1/posts", Body: map[string]int{"n": 1}}, nil)
 	var ae *APIError
 	if !errors.As(err, &ae) || ae.HTTP != http.StatusTooManyRequests {
@@ -206,7 +208,7 @@ func TestDo_a429IsNotRetried(t *testing.T) {
 
 func TestNewOnceAPI_sendsAKeyedWriteOnce(t *testing.T) {
 	f := newFake(t, answerJSON(http.StatusServiceUnavailable, `{"error":"store unavailable","code":"unavailable"}`))
-	a, err := NewOnceAPI(&Config{Server: f.srv.URL, Token: "test-token"}, "v1.1.0", t.TempDir())
+	a, err := NewOnceAPI(&Config{Server: f.srv.URL, Token: "test-token"}, "v2.0.0", t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +222,7 @@ func TestNewOnceAPI_sendsAKeyedWriteOnce(t *testing.T) {
 
 func TestNewOnceAPI_sendsAGetOnce(t *testing.T) {
 	f := newFake(t, answerJSON(http.StatusServiceUnavailable, `{"error":"store unavailable","code":"unavailable"}`))
-	a, err := NewOnceAPI(&Config{Server: f.srv.URL, Token: "test-token"}, "v1.1.0", t.TempDir())
+	a, err := NewOnceAPI(&Config{Server: f.srv.URL, Token: "test-token"}, "v2.0.0", t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,9 +237,9 @@ func TestNewOnceAPI_sendsAGetOnce(t *testing.T) {
 func TestDo_refusal(t *testing.T) {
 	f := newFake(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Grelot-Status", "grelot: @a · 0 unread · wake: watcher")
-		answerJSON(http.StatusConflict, `{"error":"/workspace/docs is another repository for docs-dev; give one of them another name with repos: in your client config","code":"conflict","path_root":"/srv/work"}`)(w, nil)
+		answerJSON(http.StatusConflict, `{"error":"/workspace/docs is another repository for docs-dev; give one of them another name with repos: in your client config","code":"conflict","reason":"name_held","fields":[{"field":"name","code":"required"}],"retry_after_ms":2000}`)(w, nil)
 	})
-	a, dir := newTestAPI(t, f.srv.URL, "v1.1.0")
+	a, dir := newTestAPI(t, f.srv.URL, "v2.0.0")
 	_, err := a.Do(t.Context(), &Request{Method: http.MethodPost, Path: "/v1/register"}, nil)
 	var ae *APIError
 	if !errors.As(err, &ae) {
@@ -249,8 +251,11 @@ func TestDo_refusal(t *testing.T) {
 	if want := "grelot: /workspace/docs is another repository for docs-dev; give one of them another name with repos: in your client config"; ae.Error() != want {
 		t.Errorf("Error() = %q, want %q", ae.Error(), want)
 	}
-	if got := LoadFacts(dir).PathRoot; got != "/srv/work" {
-		t.Errorf("cached path root = %q, want the refusal's /srv/work", got)
+	if ae.Reason != "name_held" || len(ae.Fields) != 1 || ae.Fields[0].Field != "name" || ae.RetryAfter != 2*time.Second {
+		t.Errorf("APIError = %+v, want the envelope's reason, fields and retry_after_ms", ae)
+	}
+	if got := LoadFacts(dir).PathRoot; got != "/workspace" {
+		t.Errorf("cached path root = %q after a refusal, want the default: a refusal names none", got)
 	}
 }
 
@@ -261,7 +266,7 @@ func TestDo_refusalWithoutAnErrorBody(t *testing.T) {
 				w.WriteHeader(http.StatusBadGateway)
 				_, _ = io.WriteString(w, body)
 			})
-			a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
+			a, _ := newTestAPI(t, f.srv.URL, "v2.0.0")
 			_, err := a.Do(t.Context(), &Request{Method: http.MethodPost, Path: "/v1/posts"}, nil)
 			if err == nil || err.Error() != "grelot: the server answered 502 Bad Gateway" {
 				t.Errorf("err = %v, want the status named", err)
@@ -272,7 +277,7 @@ func TestDo_refusalWithoutAnErrorBody(t *testing.T) {
 
 func TestDo_refusalTextIsOneSafeLine(t *testing.T) {
 	f := newFake(t, answerJSON(http.StatusBadRequest, `{"error":"bad\u001b[2J\nline\u202e","code":"in\nvalid"}`))
-	a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
+	a, _ := newTestAPI(t, f.srv.URL, "v2.0.0")
 	_, err := a.Do(t.Context(), &Request{Method: http.MethodPost, Path: "/v1/posts"}, nil)
 	var ae *APIError
 	if !errors.As(err, &ae) {
@@ -285,7 +290,7 @@ func TestDo_refusalTextIsOneSafeLine(t *testing.T) {
 
 func TestDo_answerThatIsNotJSON(t *testing.T) {
 	f := newFake(t, answerJSON(http.StatusOK, `not json`))
-	a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
+	a, _ := newTestAPI(t, f.srv.URL, "v2.0.0")
 	var out struct{}
 	_, err := a.Do(t.Context(), &Request{Method: http.MethodGet, Path: "/v1/me"}, &out)
 	if err == nil || !strings.Contains(err.Error(), "grelot version") {
@@ -297,7 +302,7 @@ func TestDo_answerOverTheCap(t *testing.T) {
 	f := newFake(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write(make([]byte, maxResponse+1))
 	})
-	a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
+	a, _ := newTestAPI(t, f.srv.URL, "v2.0.0")
 	_, err := a.Do(t.Context(), &Request{Method: http.MethodPost, Path: "/v1/inbox/ack"}, nil)
 	if _, ok := errors.AsType[*UnreachableError](err); !ok {
 		t.Errorf("err = %v, want an *UnreachableError", err)
@@ -308,7 +313,7 @@ func TestDo_unreachable(t *testing.T) {
 	f := newFake(t, answerJSON(http.StatusOK, `{}`))
 	addr := f.srv.URL
 	f.srv.Close()
-	a, _ := newTestAPI(t, addr, "v1.1.0")
+	a, _ := newTestAPI(t, addr, "v2.0.0")
 	_, err := a.Do(t.Context(), &Request{Method: http.MethodPost, Path: "/v1/posts"}, nil)
 	var ue *UnreachableError
 	if !errors.As(err, &ue) || ue.Timeout {
@@ -323,7 +328,7 @@ func TestDo_timeout(t *testing.T) {
 	release := make(chan struct{})
 	f := newFake(t, func(http.ResponseWriter, *http.Request) { <-release })
 	t.Cleanup(func() { close(release) })
-	a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
+	a, _ := newTestAPI(t, f.srv.URL, "v2.0.0")
 	_, err := a.Do(t.Context(), &Request{Method: http.MethodPost, Path: "/v1/posts", Timeout: 50 * time.Millisecond}, nil)
 	var ue *UnreachableError
 	if !errors.As(err, &ue) || !ue.Timeout {
@@ -338,7 +343,7 @@ func TestDo_callerCancelIsTheContextError(t *testing.T) {
 	release := make(chan struct{})
 	f := newFake(t, func(http.ResponseWriter, *http.Request) { <-release })
 	t.Cleanup(func() { close(release) })
-	a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
+	a, _ := newTestAPI(t, f.srv.URL, "v2.0.0")
 	ctx, cancel := context.WithCancel(t.Context())
 	time.AfterFunc(50*time.Millisecond, cancel)
 	_, err := a.Do(ctx, &Request{Method: http.MethodPost, Path: "/v1/posts"}, nil)
@@ -357,7 +362,7 @@ func TestDo_noRedirectFollowed(t *testing.T) {
 	f := newFake(t, func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, other.URL+"/steal", http.StatusFound)
 	})
-	a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
+	a, _ := newTestAPI(t, f.srv.URL, "v2.0.0")
 	_, err := a.Do(t.Context(), &Request{Method: http.MethodGet, Path: "/v1/me"}, nil)
 	var ae *APIError
 	if !errors.As(err, &ae) || ae.HTTP != http.StatusFound {
@@ -372,19 +377,19 @@ func TestDo_noRedirectFollowed(t *testing.T) {
 // missing-key 400, names the client to install; a refusal from a server
 // of the client's own build, or one an old client still reads, does not.
 func TestDo_aNewerServersRefusalNamesTheUpgrade(t *testing.T) {
-	const upgrade = "this client is v1.1.0-dev.24 and the server v1.1.0-dev.25: install grelot v1.1.0-dev.25 with go install github.com/cplieger/grelot@v1.1.0-dev.25, then check both with grelot version"
+	const upgrade = "this client is v2.0.0-dev.24 and the server v2.0.0-dev.25: install grelot v2.0.0 from https://github.com/cplieger/grelot/releases/tag/v2.0.0, or, if that page does not exist yet, a development build with go install github.com/cplieger/grelot@dev, then check both with grelot version"
 	for _, tc := range []struct {
 		name, server string
 		status       int
 		want         string
 	}{
-		{"a newer server's 400", "v1.1.0-dev.25", http.StatusBadRequest, upgrade},
-		{"a newer server's 404", "v1.1.0-dev.25", http.StatusNotFound, upgrade},
-		{"a newer server's 422", "v1.1.0-dev.25", http.StatusUnprocessableEntity, upgrade},
-		{"a newer server's conflict", "v1.1.0-dev.25", http.StatusConflict, ""},
-		{"a newer server's 410", "v1.1.0-dev.25", http.StatusGone, ""},
-		{"the same server's 400", "v1.1.0-dev.24", http.StatusBadRequest, ""},
-		{"an older server's 400", "v1.1.0-dev.23", http.StatusBadRequest, ""},
+		{"a newer server's 400", "v2.0.0-dev.25", http.StatusBadRequest, upgrade},
+		{"a newer server's 404", "v2.0.0-dev.25", http.StatusNotFound, upgrade},
+		{"a newer server's 422", "v2.0.0-dev.25", http.StatusUnprocessableEntity, upgrade},
+		{"a newer server's conflict", "v2.0.0-dev.25", http.StatusConflict, ""},
+		{"a newer server's 410", "v2.0.0-dev.25", http.StatusGone, ""},
+		{"the same server's 400", "v2.0.0-dev.24", http.StatusBadRequest, ""},
+		{"an older server's 400", "v2.0.0-dev.23", http.StatusBadRequest, ""},
 		{"a server naming no version", "", http.StatusBadRequest, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -394,7 +399,7 @@ func TestDo_aNewerServersRefusalNamesTheUpgrade(t *testing.T) {
 				}
 				answerJSON(tc.status, `{"error":"this route requires an Idempotency-Key","code":"invalid"}`)(w, r)
 			})
-			a, dir := newTestAPI(t, f.srv.URL, "v1.1.0-dev.24")
+			a, dir := newTestAPI(t, f.srv.URL, "v2.0.0-dev.24")
 			_, err := a.Do(t.Context(), &Request{Method: http.MethodPost, Path: "/v1/inbox/ack"}, nil)
 			ae, ok := errors.AsType[*APIError](err)
 			if !ok {
@@ -414,7 +419,7 @@ func TestHolders_sendsOneGetWithEveryPath(t *testing.T) {
 	f := newFake(t, answerJSON(http.StatusOK, `{"holders":[{`+
 		`"held":{"id":3,"holder":"other-dev","path":"/workspace/tool","state":"held","reason":"editing","expires_at":"2026-11-05T10:00:00Z"},`+
 		`"queued":{"id":4,"holder":"tool-dev","path":"/workspace/tool/a.go","state":"queued"}}]}`))
-	a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
+	a, _ := newTestAPI(t, f.srv.URL, "v2.0.0")
 	a.Session, a.Self = "alpha:s-1", true
 	got, err := a.Holders(t.Context(), []string{"/workspace/tool/a.go", "/workspace/tool/b c.go"})
 	if err != nil {
@@ -424,13 +429,13 @@ func TestHolders_sendsOneGetWithEveryPath(t *testing.T) {
 	if len(seen) != 1 || seen[0].method != http.MethodGet || seen[0].uri != "/v1/holders?path=%2Fworkspace%2Ftool%2Fa.go&path=%2Fworkspace%2Ftool%2Fb+c.go" {
 		t.Fatalf("server saw %+v, want one GET /v1/holders with both paths in order", seen)
 	}
-	want := Holding{
-		Held: Reservation{
+	want := wire.Holding{
+		Held: wire.Reservation{
 			ID: 3, Holder: "other-dev", Path: "/workspace/tool", State: "held", Reason: "editing",
 			Expires: time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC),
 		},
 	}
-	if len(got) != 1 || got[0].Queued == nil || *got[0].Queued != (Reservation{ID: 4, Holder: "tool-dev", Path: "/workspace/tool/a.go", State: "queued"}) {
+	if len(got) != 1 || got[0].Queued == nil || *got[0].Queued != (wire.Reservation{ID: 4, Holder: "tool-dev", Path: "/workspace/tool/a.go", State: "queued"}) {
 		t.Fatalf("Holders = %+v, want one entry with the caller's queue entry 4", got)
 	}
 	if got[0].Queued = nil; got[0] != want {
@@ -440,7 +445,7 @@ func TestHolders_sendsOneGetWithEveryPath(t *testing.T) {
 
 func TestHolders_aRefusalIsAnAPIError(t *testing.T) {
 	f := newFake(t, answerJSON(http.StatusNotFound, `{"error":"no such route: GET /v1/holders","code":"not_found"}`))
-	a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
+	a, _ := newTestAPI(t, f.srv.URL, "v2.0.0")
 	got, err := a.Holders(t.Context(), []string{"/workspace/tool/a.go"})
 	var ae *APIError
 	if !errors.As(err, &ae) || ae.HTTP != http.StatusNotFound || got != nil {

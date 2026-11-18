@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // Revival is a revive request from Session, "<provider>:<id>". An empty
@@ -22,6 +23,8 @@ type Revival struct {
 	Arch    string
 	Proc    string
 	TTL     time.Duration
+	// Key is the machine key the revive came with.
+	Key int64
 }
 
 // Revived is what a revive answers.
@@ -38,10 +41,14 @@ type Revived struct {
 // its id, follows, cursors and mail, and resetting its nudge state.
 // Refusals: KindInvalid for a bad ttl, label or where; KindConflict for a
 // session with a live identity, an empty environment on a revive by name,
-// or another provider; KindNotFound for no dormant identity to revive, in
-// this environment or at all.
+// another provider, or a checkout another live identity gives another
+// remote (Why other_repository); KindNotFound for no dormant identity to
+// revive, in this environment or at all.
 func (s *Store) Revive(ctx context.Context, k Keyed, r *Revival) (Revived, bool, error) {
 	provider, err := checkSession(r.Session)
+	if err == nil && r.Name != "" {
+		err = checkName(r.Name)
+	}
 	if err == nil {
 		err = checkLabels(r.Host, r.OS, r.Arch, r.Proc)
 	}
@@ -59,7 +66,7 @@ func (w *wtx) revive(r *Revival, provider string) (Revived, error) {
 	if err != nil {
 		return Revived{}, err
 	}
-	own, ownFound, err := w.identityBy(w.s.t.bySession, r.Session)
+	own, ownFound, err := w.ownFor(r.Session, r.Key)
 	if err != nil {
 		return Revived{}, err
 	}
@@ -73,6 +80,9 @@ func (w *wtx) revive(r *Revival, provider string) (Revived, error) {
 	}
 	if werr := checkWhere(r.Where, row.Paths); werr != nil {
 		return Revived{}, werr
+	}
+	if kerr := w.rebind(&row, r.Key); kerr != nil {
+		return Revived{}, kerr
 	}
 	if moved && ownFound {
 		if derr := w.detach(&own); derr != nil {
@@ -91,7 +101,7 @@ func (w *wtx) revive(r *Revival, provider string) (Revived, error) {
 	row.State, row.DormantSince = stateLive, time.Time{}
 	w.touch(&row)
 	row.Nudged, row.Nudges, row.NudgedAt = 0, 0, time.Time{}
-	if perr := w.s.t.identities.table.Put(w.tx, row.ID, &row); perr != nil {
+	if perr := w.putIdentity(row.ID, &row); perr != nil {
 		return Revived{}, perr
 	}
 	// The left card told the others it had gone.
@@ -109,20 +119,24 @@ func (w *wtx) revive(r *Revival, provider string) (Revived, error) {
 func (w *wtx) reviveTarget(r *Revival, provider string, own *identityRow, ownFound bool) (identityRow, bool, error) {
 	if r.Name == "" || ownFound && own.Name == r.Name {
 		if !ownFound {
-			return identityRow{}, false, refuse(KindNotFound,
+			return identityRow{}, false, notFound(wire.ReasonIdentity,
 				"this session has no dormant identity: run grelot revive <name> --ttl=<d> to revive one by name from its own environment")
 		}
 		return *own, false, nil
 	}
 	if r.Where.Environment == "" {
-		return identityRow{}, false, w.s.refuseMove(verbRevive, r.Name, noEnvironment())
+		e := noEnvironment()
+		return identityRow{}, false, w.s.refuseMove(verbRevive, r.Name, e.Why, e)
 	}
 	row, found, err := w.identityBy(w.s.t.byName, r.Name)
 	if err != nil {
 		return identityRow{}, false, err
 	}
 	if !found || row.State != stateDormant {
-		return identityRow{}, false, refuse(KindNotFound, "no dormant identity "+r.Name)
+		return identityRow{}, false, notFound(wire.ReasonIdentity, "no dormant identity "+r.Name)
+	}
+	if err := w.s.bound(row.Key, r.Key); err != nil {
+		return identityRow{}, false, err
 	}
 	if err := w.s.moveRefusal(verbRevive, &row, *r.Where, provider); err != nil {
 		return identityRow{}, false, err
@@ -131,11 +145,12 @@ func (w *wtx) reviveTarget(r *Revival, provider string, own *identityRow, ownFou
 }
 
 // TakeOverHint finds the identity a new session may be the continuation
-// of: one registered by another session under proc, live or dormant, that
-// shares the caller's environment and has the session's provider, ranked
-// by hintBeats. It never moves one. Refusals: KindInvalid for a bad
-// session, machine or environment.
-func (s *Store) TakeOverHint(ctx context.Context, session, proc string, caller Where) (Identity, bool, error) {
+// of: one registered by another session of key, or of a key that no longer
+// authenticates, under proc, live or dormant, that shares the caller's
+// environment and has the session's provider, ranked by hintBeats. It
+// never moves one. Refusals: KindInvalid for a bad session, machine or
+// environment.
+func (s *Store) TakeOverHint(ctx context.Context, session string, key int64, proc string, caller Where) (Identity, bool, error) {
 	provider, err := checkSession(session)
 	if err == nil {
 		err = checkWhere(&caller, nil)
@@ -147,21 +162,36 @@ func (s *Store) TakeOverHint(ctx context.Context, session, proc string, caller W
 	err = s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
 		return scanExact(r, s.t.byProc, proc, func(id uint64) (bool, error) {
-			row, found, gerr := s.t.identities.table.Get(r, id)
-			if gerr != nil || !found {
-				return gerr == nil, gerr
+			v, rerr := s.hintRow(r, id, now)
+			if rerr != nil || !hintCandidate(v, session, provider, caller) || !hintBeats(v, best) {
+				return rerr == nil, rerr
 			}
-			v := settled(&row, now, s.dormantTTL)
-			if v != nil && v.Session != session && v.Provider == provider && shareEnvironment(caller, v.Where) && hintBeats(v, best) {
+			ok, kerr := s.keyMayTake(v.Key, key)
+			if ok {
 				best = v
 			}
-			return true, nil
+			return kerr == nil, kerr
 		})
 	})
 	if err != nil || best == nil {
 		return Identity{}, false, err
 	}
 	return s.view(best), true, nil
+}
+
+// hintRow is identity id as settled reads it at now, nil when it is gone.
+func (s *Store) hintRow(r *bolttable.ReadTx, id uint64, now time.Time) (*identityRow, error) {
+	row, found, err := s.t.identities.table.Get(r, id)
+	if err != nil || !found {
+		return nil, err
+	}
+	return settled(&row, now, s.dormantTTL), nil
+}
+
+// hintCandidate reports whether v, as settled reads it, may be a take-over
+// hint for a session of provider in caller's environment.
+func hintCandidate(v *identityRow, session, provider string, caller Where) bool {
+	return v != nil && v.Session != session && v.Provider == provider && shareEnvironment(caller, v.Where)
 }
 
 // hintBeats reports whether v is a better take-over hint than best: live

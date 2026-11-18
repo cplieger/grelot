@@ -9,11 +9,12 @@ import (
 
 	"github.com/cplieger/grelot/internal/store"
 	"github.com/cplieger/grelot/internal/version"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // minClient is the release base of the oldest client this server speaks.
 // Raise it in the release whose API an older client can no longer use.
-const minClient = "v1.1.0"
+const minClient = "v2.0.0"
 
 // speaks reports whether this server speaks a client of version v.
 func speaks(v string) bool {
@@ -29,8 +30,7 @@ func speaks(v string) bool {
 }
 
 // upgradeLine is the 426's one line: the client to install for a server of
-// version server. It names the server's own tag, which exists for a dev
-// build whose release base is not out yet.
+// version server; version.Install owns the line.
 func upgradeLine(client, server string) string {
 	if client == "" {
 		client = "with no Grelot-Version"
@@ -41,13 +41,8 @@ func upgradeLine(client, server string) string {
 	return fmt.Sprintf("this grelot server (%s) does not speak client %s; %s", server, client, version.Install(server))
 }
 
-// versionResponse is GET /v1/version.
-type versionResponse struct {
-	Version string `json:"version"`
-}
-
-// serverVersion is GET /v1/version, which any caller may make; the answer's
-// Grelot-Version header names the same version.
-func (s *Server) serverVersion(_ *http.Request, _ store.Caller) (status int, body any, err error) {
-	return http.StatusOK, versionResponse{Version: s.version}, nil
+// serverVersion is GET /v1/version for a machine key, with or without
+// Grelot-Session; the answer's Grelot-Version header names the same version.
+func (s *Server) serverVersion(_ *http.Request, _ store.Caller, _ store.Keyed) (status int, body any, err error) {
+	return http.StatusOK, wire.Version{Version: s.version, PathRoot: s.cfg.PathRoot}, nil
 }

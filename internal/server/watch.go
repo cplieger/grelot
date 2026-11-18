@@ -8,55 +8,41 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cplieger/go/httpserver/v2"
 	"github.com/cplieger/grelot/internal/store"
-	"github.com/cplieger/grelot/internal/transport"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
-type watchRequest struct {
-	Wait duration `json:"wait"`
-}
-
-// nudgeJSON is a nudge as a standing wait returns it: the signal line's
-// seq, the wake deliveries past read, and which send it is, 1 to 4.
-type nudgeJSON struct {
-	Seq     uint64 `json:"seq"`
-	Count   int    `json:"count"`
-	Attempt int    `json:"attempt"`
-}
-
 // errSessionEnded answers a standing wait while the session's end is
-// reported; its code is the reason word the watcher's end line carries.
-var errSessionEnded = &apiError{
-	status: http.StatusGone, code: transport.EndEnded,
-	msg: "session ended: its end was reported, so its watcher stops; any other grelot command from this session reopens it",
-}
+// reported. The wait ends' codes are the reasons a watcher's end line
+// carries (transport.EndLine).
+var errSessionEnded = refusal(wire.ErrEnded,
+	"session ended: its end was reported, so its watcher stops; any other grelot command from this session reopens it")
 
 // errReplaced answers a standing wait once a newer one of its session
 // opened, so that each nudge wakes the session once.
-var errReplaced = &apiError{
-	status: http.StatusGone, code: transport.EndReplaced,
-	msg: "replaced: another watcher of this session took over, so this one stops",
-}
+var errReplaced = refusal(wire.ErrReplaced, "replaced: another watcher of this session took over, so this one stops")
 
 // errRestored answers a standing wait once host push takes over from the
 // watcher (pushReading.restoredAt).
-var errRestored = &apiError{
-	status: http.StatusGone, code: transport.EndRestored,
-	msg: "host push works again, so this watcher stops",
-}
+var errRestored = refusal(wire.ErrRestored, "host push works again, so this watcher stops")
 
 // standingWait is POST /v1/events/wait: it holds until a nudge for the
 // caller's identity goes out, sending a due one itself unless host push
 // works, and returns it; 204 when wait passes with none, 410 replaced once
-// a newer standing wait of the caller's session opens, and 410 restored
-// once host push takes over (pushReading.restoredAt).
-func (s *Server) standingWait(r *http.Request, c store.Caller) (status int, body any, err error) {
+// a newer standing wait of the caller's session opens, 410 restored once
+// host push takes over (pushReading.restoredAt), and 429 past a held-wait
+// cap.
+func (s *Server) standingWait(r *http.Request, c store.Caller, _ store.Keyed) (status int, body any, err error) {
 	ctx := r.Context()
 	id, wait, err := s.watchFor(r, c)
 	if err != nil {
 		return 0, nil, err
 	}
+	free, err := s.holdWait(c.Key)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer free()
 	t := s.presence.opened(id, c.Session, s.now())
 	defer func() { s.presence.closed(t, s.now(), errors.Is(err, errRestored)) }()
 	deadline := s.now().Add(wait)
@@ -82,42 +68,21 @@ func (s *Server) standingWait(r *http.Request, c store.Caller) (status int, body
 	}
 }
 
-// endReasons maps the store's refusal of a session with no live identity
-// to the end reason a watcher's end line carries, which transport owns.
-var endReasons = map[string]httpserver.ErrorCode{
-	stateNone:    transport.EndNone,
-	stateDormant: transport.EndDormant,
-}
-
-// waitEnd answers a standing wait the store refused for want of a live
-// identity with its end reason; any other error passes through.
-func waitEnd(err error) error {
-	var se *store.Error
-	if !errors.As(err, &se) || se.Kind != store.KindGone {
-		return err
-	}
-	code, ok := endReasons[se.Why]
-	if !ok {
-		return err
-	}
-	return &apiError{status: http.StatusGone, code: code, msg: se.Msg}
-}
-
 // watchFor reads a standing wait's request: the identity it holds for and
 // how long. A refused wait holds nothing, so it never counts as held.
 func (s *Server) watchFor(r *http.Request, c store.Caller) (id uint64, wait time.Duration, err error) {
-	var req watchRequest
+	var req wire.WaitRequest
 	if derr := decode(r, &req); derr != nil {
 		return 0, 0, derr
 	}
-	wait = time.Duration(req.Wait)
-	if wait <= 0 || wait > maxWait {
-		return 0, 0, badRequest(`wait must be a duration above 0 and at most 55s, such as "55s"`)
+	if wait = durationMS(int64(req.WaitMS)); wait <= 0 || wait > maxWait {
+		lo, hi := wire.StandingWaitMS(0).Range()
+		return 0, 0, rangeRefusal("wait_ms", lo, hi)
 	}
 	me, err := s.store.Watcher(r.Context(), c)
 	switch {
 	case err != nil:
-		return 0, 0, waitEnd(err)
+		return 0, 0, err
 	case me.Ended:
 		return 0, 0, errSessionEnded
 	}
@@ -129,7 +94,7 @@ func (s *Server) watchFor(r *http.Request, c store.Caller) (id uint64, wait time
 // of the hub's channel always brings the next look.
 type watchStep struct {
 	until time.Time
-	nudge *nudgeJSON
+	nudge *wire.Nudge
 	done  bool
 }
 
@@ -147,7 +112,7 @@ func (s *Server) look(ctx context.Context, c store.Caller, t waitTicket) (watchS
 			return watchStep{}, err
 		}
 		if recorded {
-			n := nudgeJSON{Seq: got.Seq, Count: got.Count, Attempt: got.Attempt}
+			n := wire.Nudge{Seq: got.Seq, Count: got.Count, Attempt: got.Attempt}
 			if s.handOff(t, n) {
 				return watchStep{}, errReplaced
 			}
@@ -165,7 +130,7 @@ func (s *Server) due(ctx context.Context, c store.Caller, t waitTicket) (watchSt
 	me, err := s.store.Watcher(ctx, c)
 	switch {
 	case err != nil:
-		return watchStep{}, nil, waitEnd(err)
+		return watchStep{}, nil, err
 	case me.Ended:
 		return watchStep{}, nil, errSessionEnded
 	}
@@ -203,7 +168,7 @@ func (s *Server) due(ctx context.Context, c store.Caller, t waitTicket) (watchSt
 // handOff reports whether t was replaced when it sent n, which its
 // session's newest wait then returns instead. The send's own commit woke
 // that wait before it could take n, so it is woken again to look.
-func (s *Server) handOff(t waitTicket, n nudgeJSON) (replaced bool) {
+func (s *Server) handOff(t waitTicket, n wire.Nudge) (replaced bool) {
 	handed, replaced := s.presence.handOff(t, n)
 	if handed {
 		s.hub.Woke([]uint64{t.id})

@@ -17,7 +17,7 @@ func entriesOf(t *testing.T, r *response) []map[string]any {
 	if r.status != http.StatusOK {
 		t.Fatalf("%d %s", r.status, r.raw)
 	}
-	raw, _ := r.body["entries"].([]any)
+	raw, _ := r.body["items"].([]any)
 	out := make([]map[string]any, 0, len(raw))
 	for _, e := range raw {
 		out = append(out, e.(map[string]any))
@@ -106,6 +106,7 @@ func TestHistory_routeMapsEveryFilterAndMovesNothing(t *testing.T) {
 		}
 		return out
 	}
+	since := "since=" + h.clk.now().Add(-30*time.Minute).Format(time.RFC3339)
 	for _, tc := range []struct {
 		query string
 		want  []string
@@ -116,10 +117,10 @@ func TestHistory_routeMapsEveryFilterAndMovesNothing(t *testing.T) {
 		{"?from=@peer", []string{"answer"}},
 		{"?announce=1", []string{"notice"}},
 		{"?grep=ANSW", []string{"answer"}},
-		{"?since=30m", []string{"answer", "notice"}},
+		{"?" + since, []string{"answer", "notice"}},
 		{"?until=" + testNow.Add(time.Minute).Format(time.RFC3339), []string{"question"}},
 		{"?limit=1", []string{"notice"}},
-		{"?with=peer&since=30m", []string{"answer"}},
+		{"?with=peer&" + since, []string{"answer"}},
 	} {
 		t.Run(tc.query, func(t *testing.T) {
 			if got := subjects(tc.query); fmt.Sprint(got) != fmt.Sprint(tc.want) {
@@ -130,10 +131,105 @@ func TestHistory_routeMapsEveryFilterAndMovesNothing(t *testing.T) {
 	if unread := entriesOf(t, h.as(sessA, http.MethodGet, "/v1/inbox", nil)); len(unread) != 2 {
 		t.Errorf("inbox after history = %d entries, want both still unread", len(unread))
 	}
-	for _, q := range []string{"?since=soon", "?thread=x", "?limit=-1", "?full=yes", "?from=@me&with=nobody"} {
+	for _, q := range []string{"?since=soon", "?since=30m", "?thread=x", "?thread=0", "?limit=-1", "?full=yes", "?from=@me&with=nobody"} {
 		if r := h.as(sessA, http.MethodGet, "/v1/history"+q, nil); r.status/100 != 4 {
 			t.Errorf("history%s: %d, want a refusal", q, r.status)
 		}
+	}
+}
+
+func TestHistory_aWalkWithNoSinceKeepsTheWindowOfItsFirstPage(t *testing.T) {
+	h := newHarness(t)
+	for _, a := range []struct{ session, name string }{{sessA, "asker"}, {sessB, "peer"}} {
+		if r := h.as(a.session, http.MethodPost, "/v1/register", registerBody(a.name, "24h", "/workspace/"+a.name)); r.status != http.StatusCreated {
+			t.Fatalf("register %s: %d %s", a.name, r.status, r.raw)
+		}
+	}
+	h.mustPost(sessB, map[string]any{"agent": "asker"}, "old")
+	h.clk.advance(23*time.Hour + 50*time.Minute)
+	if r := h.as(sessA, http.MethodPatch, "/v1/me", map[string]any{"ttl_ms": durMS("24h"), "where": where("a")}); r.status != http.StatusOK {
+		t.Fatalf("renew asker: %d %s", r.status, r.raw)
+	}
+	h.mustPost(sessB, map[string]any{"agent": "asker"}, "new1")
+	h.mustPost(sessB, map[string]any{"agent": "asker"}, "new2")
+	first := h.as(sessA, http.MethodGet, "/v1/history?limit=2", nil)
+	if items := entriesOf(t, first); len(items) != 2 || first.body["total"] != float64(3) {
+		t.Fatalf("page 1 = %s, want new1 and new2 of 3", first.raw)
+	}
+	cursor, _ := first.body["next_cursor"].(string)
+	h.clk.advance(20 * time.Minute)
+	second := h.as(sessA, http.MethodGet, "/v1/history?limit=2&cursor="+cursor, nil)
+	items := entriesOf(t, second)
+	if len(items) != 1 || items[0]["subject"] != "old" || second.body["total"] != float64(3) {
+		t.Errorf("page 2 = %s, want old and the total of page 1, 3", second.raw)
+	}
+}
+
+// oldAndTwoNew gives asker a mailbox of "old", written 24 h 10 min ago and
+// so outside the default window, and "new1" and "new2", written now.
+func oldAndTwoNew(t *testing.T) *harness {
+	t.Helper()
+	h := newHarness(t)
+	for _, a := range []struct{ session, name string }{{sessA, "asker"}, {sessB, "peer"}} {
+		if r := h.as(a.session, http.MethodPost, "/v1/register", registerBody(a.name, "24h", "/workspace/"+a.name)); r.status != http.StatusCreated {
+			t.Fatalf("register %s: %d %s", a.name, r.status, r.raw)
+		}
+	}
+	h.mustPost(sessB, map[string]any{"agent": "asker"}, "old")
+	h.clk.advance(23*time.Hour + 50*time.Minute)
+	for _, s := range []string{sessA, sessB} {
+		if r := h.as(s, http.MethodPatch, "/v1/me", map[string]any{"ttl_ms": durMS("24h"), "where": where("a")}); r.status != http.StatusOK {
+			t.Fatalf("renew: %d %s", r.status, r.raw)
+		}
+	}
+	h.clk.advance(20 * time.Minute)
+	h.mustPost(sessB, map[string]any{"agent": "asker"}, "new1")
+	h.mustPost(sessB, map[string]any{"agent": "asker"}, "new2")
+	return h
+}
+
+func TestHistory_aWalkKeepsAnExplicitSinceAtAnyInstant(t *testing.T) {
+	for _, tc := range []struct{ name, query string }{
+		{"the Unix epoch", "since=1970-01-01T00:00:00Z"},
+		{"before 1678", "since=1600-01-01T00:00:00Z"},
+		{"year 1", "since=0001-01-01T00:00:00Z"},
+		{"year 1 to year 9999", "since=0001-01-01T00:00:00Z&until=9999-12-31T23:59:59.999999999Z"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := oldAndTwoNew(t)
+			first := h.as(sessA, http.MethodGet, "/v1/history?limit=2&"+tc.query, nil)
+			if items := entriesOf(t, first); len(items) != 2 || first.body["total"] != float64(3) {
+				t.Fatalf("page 1 = %s, want new1 and new2 of 3", first.raw)
+			}
+			cursor, _ := first.body["next_cursor"].(string)
+			second := h.as(sessA, http.MethodGet, "/v1/history?limit=2&"+tc.query+"&cursor="+cursor, nil)
+			items := entriesOf(t, second)
+			if len(items) != 1 || items[0]["subject"] != "old" || second.body["total"] != float64(3) {
+				t.Errorf("page 2 = %s, want old and the total of page 1, 3", second.raw)
+			}
+		})
+	}
+}
+
+func TestHistory_aYearOneOrYear9999BoundIsAnInstant(t *testing.T) {
+	h := oldAndTwoNew(t)
+	for _, tc := range []struct {
+		name, query string
+		total       float64
+	}{
+		{"since year 9999 reads nothing", "since=9999-12-31T23:59:59Z", 0},
+		{"until year 1 after since year 1 reads nothing", "since=0001-01-01T00:00:00Z&until=0001-01-01T00:00:00Z", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := h.as(sessA, http.MethodGet, "/v1/history?"+tc.query, nil)
+			if items := entriesOf(t, r); len(items) != 0 || r.body["total"] != tc.total {
+				t.Errorf("history?%s = %s, want no entries of %v", tc.query, r.raw, tc.total)
+			}
+		})
+	}
+	r := h.as(sessA, http.MethodGet, "/v1/history?until=0001-01-01T00:00:00Z", nil)
+	if r.status != http.StatusBadRequest || r.str("code") != "invalid" {
+		t.Errorf("until year 1 with no since = %d %s, want 400 invalid: the default window starts after it", r.status, r.raw)
 	}
 }
 
@@ -162,7 +258,7 @@ func TestThreads_listsLivePathThreadsUnderAPath(t *testing.T) {
 			t.Fatalf("threads%s: %d %s", query, r.status, r.raw)
 		}
 		var out []string
-		for _, th := range r.body["threads"].([]any) {
+		for _, th := range r.body["items"].([]any) {
 			out = append(out, th.(map[string]any)["path"].(string))
 		}
 		return out
@@ -250,7 +346,7 @@ func TestFollows_followAndUnfollowALiveThread(t *testing.T) {
 	if got := fmt.Sprint(unfollowed.body["notices"]); got != "[]" {
 		t.Errorf("unfollow of a plain follow: notices %s, want []", got)
 	}
-	if r := h.as(sessA, http.MethodPost, "/v1/reservations", map[string]any{"path": "/workspace/other", "reason": "editing", "ttl": "1h"}); r.status != http.StatusCreated {
+	if r := h.as(sessA, http.MethodPost, "/v1/reservations", map[string]any{"path": "/workspace/other", "reason": "editing", "ttl_ms": durMS("1h")}); r.status != http.StatusCreated {
 		t.Fatalf("reserve: %d %s", r.status, r.raw)
 	}
 	if r := h.as(sessA, http.MethodDelete, "/v1/follows?path=/workspace/other", nil); r.status != http.StatusOK || !strings.Contains(fmt.Sprint(r.body["notices"]), "your reservation") {

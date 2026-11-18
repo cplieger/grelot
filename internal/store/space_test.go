@@ -41,7 +41,7 @@ func TestPost_refusedOnlyPastNinetyPercentOfTheDefaultCeiling(t *testing.T) {
 	p := posting(sess("alpha"), Target{Agent: "bravo"})
 	_, _, err := s.Post(t.Context(), Keyed{}, &p)
 	wantRefusal(t, err, KindFull, "", "store nearly full")
-	if n := len(mustInbox(t, s, sess("bravo"), 0).Entries); n != 1 {
+	if n := len(mustInbox(t, s, sess("bravo"), 0).Items); n != 1 {
 		t.Errorf("bravo has %d messages, want 1: a refused post stores nothing", n)
 	}
 
@@ -229,7 +229,7 @@ func TestStoreFull_takesEveryWriteThatAddsNothing(t *testing.T) {
 	mustFollow(t, s, sess("bravo"), "/workspace/bolttable")
 	held := mustReserve(t, s, reserving("alpha", repoGrelot+"/a.go", time.Hour))
 	mustGrant(t, s, grantFrom("alpha", "rev"))
-	seq := mustInbox(t, s, sess("bravo"), 0).Entries[0].Seq
+	seq := mustInbox(t, s, sess("bravo"), 0).Items[0].Seq
 	s.space = inUse(DefaultMaxBytes)
 	ctx, alpha, bravo, w := t.Context(), Caller{Session: sess("alpha"), Self: true}, Caller{Session: sess("bravo")}, envA()
 	for _, c := range []struct {
@@ -256,7 +256,7 @@ func TestStoreFull_takesEveryWriteThatAddsNothing(t *testing.T) {
 		}},
 		{name: "a release", write: func() error { _, err := s.Release(ctx, Keyed{}, alpha, held.Reservation.ID); return err }},
 		{name: "a revoke", write: func() error { _, err := s.Revoke(ctx, Keyed{}, alpha, "rev"); return err }},
-		{name: "a session end", write: func() error { return s.EndSession(ctx, sess("alpha")) }},
+		{name: "a session end", write: func() error { return s.EndSession(ctx, sess("alpha"), 0) }},
 		{name: "a bye", write: func() error { _, _, err := s.Retire(ctx, Keyed{}, bravo); return err }},
 		{name: "a sweep", write: func() error { clk.advance(7 * time.Hour); _, err := s.sweep(ctx); return err }},
 	} {
@@ -293,7 +293,7 @@ const testMaxBytes = 32 << 20
 func TestMeasure_inUseFallsWhenABurstExpiresThoughTheFileDoesNot(t *testing.T) {
 	clk := &clock{t: testNow}
 	s, err := Open(filepath.Join(t.TempDir(), "grelot.db"), &Options{
-		Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: time.Hour, MaxBytes: testMaxBytes,
+		Logger: slog.New(newLogSink()), Now: clk.now, Retention: retainFor(time.Hour), MaxBytes: testMaxBytes,
 	})
 	if err != nil {
 		t.Fatal(err)

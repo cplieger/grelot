@@ -30,6 +30,7 @@ const (
 	prefixLinks        byte = 6
 	prefixWatches      byte = 7
 	prefixRequests     byte = 8
+	prefixFile         byte = 9
 )
 
 // Identity states.
@@ -104,6 +105,9 @@ type identityRow struct {
 	Nudges int           `json:"nudges"`
 	// Parent is a delegate's parent identity, 0 on any other row.
 	Parent uint64 `json:"parent,omitempty"`
+	// Key is the machine key that registered the identity, or its
+	// parent's; 0 on @user.
+	Key int64 `json:"key,omitempty"`
 	// Threaded is set for good by the identity's first follow or path
 	// post, whatever it unfollows later.
 	Threaded bool `json:"threaded,omitempty"`
@@ -218,6 +222,11 @@ type reservationRow struct {
 	TTL    time.Duration `json:"ttl"`
 }
 
+// fileRow is the store file's one row, written when the file is created.
+type fileRow struct {
+	ID [16]byte `json:"id"`
+}
+
 // watchRow is one receipt watch, keyed by its id: the recipients of a
 // post still to read it, and how many have read or retired since.
 type watchRow struct {
@@ -268,7 +277,8 @@ type tables struct {
 	watches    *leased[uint64, watchRow]
 	watchBy    *bolttable.Index[uint64, watchRow]
 	requests   *leased[[]byte, requestRow]
-	// leased lists every table above, in the order the sweep walks them.
+	file       *bolttable.Table[uint64, fileRow]
+	// leased lists every leased table above, in the order the sweep walks them.
 	leased []sweeper
 }
 
@@ -281,8 +291,9 @@ func newSchema() (*bolttable.Schema, *tables, error) {
 	}
 	silent := bolttable.TableOptions{Silent: true}
 	var t tables
+	// Version 4 resets an older store, whose identities name no Key.
 	ids, err := bolttable.Define(ns, prefixIdentities, "identities",
-		bolttable.Uint64Key{}, bolttable.JSON[identityRow](2), silent)
+		bolttable.Uint64Key{}, bolttable.JSON[identityRow](4), silent)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -312,23 +323,21 @@ func newSchema() (*bolttable.Schema, *tables, error) {
 		func(_ uint64, v *threadRow) []bolttable.Entry { return keyEntries(v.Key) }); err != nil {
 		return nil, nil, err
 	}
-	if err := defineMessageIndexes(&t, messages, deliveries); err != nil {
-		return nil, nil, err
-	}
-	if err := defineCoreLeases(&t, ids, threads, messages, deliveries); err != nil {
-		return nil, nil, err
-	}
-	if err := defineReservations(ns, &t); err != nil {
-		return nil, nil, err
-	}
-	if err := defineLinks(ns, ids, &t); err != nil {
-		return nil, nil, err
-	}
-	if err := defineWatches(ns, &t); err != nil {
-		return nil, nil, err
-	}
-	if err := defineRequests(s, &t); err != nil {
-		return nil, nil, err
+	for _, define := range []func() error{
+		func() error { return defineMessageIndexes(&t, messages, deliveries) },
+		func() error { return defineCoreLeases(&t, ids, threads, messages, deliveries) },
+		func() error { return defineReservations(ns, &t) },
+		func() error { return defineLinks(ns, ids, &t) },
+		func() error { return defineWatches(ns, &t) },
+		func() (derr error) {
+			t.file, derr = bolttable.Define(ns, prefixFile, "file", bolttable.Uint64Key{}, bolttable.JSON[fileRow](1), silent)
+			return derr
+		},
+		func() error { return defineRequests(s, &t) },
+	} {
+		if derr := define(); derr != nil {
+			return nil, nil, derr
+		}
 	}
 	// Identities go first: an identity's expiry hands off its grants and
 	// deletes its links itself, before their own sweeps would reach them

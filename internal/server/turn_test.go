@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // stopHold sends the stop hook's hold from session, with last when set.
@@ -307,6 +310,23 @@ func TestPrompt_refusals(t *testing.T) {
 	}
 }
 
+func TestPrompt_aTurnOtherThanStartIsRefusedWithItsFieldError(t *testing.T) {
+	h := newHarness(t)
+	h.mustRegisterAlone(sessA, "reader")
+	for _, q := range []string{"turn=end", "turn=no", "turn=START"} {
+		r := h.self(sessA, http.MethodGet, "/v1/me?"+q, nil)
+		fields, _ := r.body["fields"].([]any)
+		var f map[string]any
+		if len(fields) == 1 {
+			f, _ = fields[0].(map[string]any)
+		}
+		if r.status != http.StatusBadRequest || r.str("code") != "invalid" || f["field"] != "turn" || f["code"] != "one_of" ||
+			fmt.Sprint(f["allowed"]) != "[start]" {
+			t.Errorf("%s: %d %s, want 400 invalid naming turn one_of [start]", q, r.status, r.raw)
+		}
+	}
+}
+
 func TestPrompt_anUnreportedTurnEndWaitsForTheLapse(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h := newBubbleHarness(t)
@@ -405,9 +425,9 @@ func TestInTurnWait_closingWithNoMailWakesAStandingWaitItDeferred(t *testing.T) 
 	})
 }
 
-// inTurn holds GET /v1/inbox?wait= from session in its own goroutine.
+// inTurn holds GET /v1/inbox?wait_ms= from session in its own goroutine.
 func (h *harness) inTurn(session string, wait time.Duration) *pending {
-	return h.async(http.MethodGet, "/v1/inbox?wait="+wait.String(), nil, map[string]string{headerSession: session})
+	return h.async(http.MethodGet, "/v1/inbox?wait_ms="+strconv.FormatInt(wait.Milliseconds(), 10), nil, map[string]string{wire.HeaderSession: session})
 }
 
 func TestInTurnWait_returnsMailPastReadWhateverTheNudgeState(t *testing.T) {
@@ -495,9 +515,9 @@ func TestInTurnWait_mailLeftUnackedIsNudgedAfterTheGrace(t *testing.T) {
 func TestInTurnWait_refusals(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegisterAlone(sessA, "reader")
-	for _, w := range []string{"56s", "-1s", "soon"} {
+	for _, w := range []string{"55001", "-1", "soon"} {
 		t.Run(w, func(t *testing.T) {
-			if r := h.as(sessA, http.MethodGet, "/v1/inbox?wait="+w, nil); r.status != http.StatusBadRequest {
+			if r := h.as(sessA, http.MethodGet, "/v1/inbox?wait_ms="+w, nil); r.status != http.StatusBadRequest {
 				t.Errorf("got %d %s, want 400", r.status, r.raw)
 			}
 		})

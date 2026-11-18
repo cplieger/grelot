@@ -25,7 +25,7 @@ func TestKiroCLIWorkflowDoor(t *testing.T) {
 		t.Errorf("door %s: %s at layer %d holding %s, start %q; want an exit door at layer 2 holding 45s", door.Name, door.Transport, door.Layer, door.Hold, door.Start)
 	}
 	signal := transport.SignalLine(7, 2)
-	end := transport.EndLine(transport.EndEnded)
+	end := transport.EndLine("ended")
 	cases := []struct {
 		run  func(*transport.Watch) (transport.Step, error)
 		want map[string]any

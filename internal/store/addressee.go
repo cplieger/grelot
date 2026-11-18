@@ -50,7 +50,7 @@ func (s *Store) Addressees(ctx context.Context) ([]Addressee, error) {
 
 func (s *Store) addressee(row *identityRow) (Addressee, bool) {
 	v := settled(row, s.now(), s.dormantTTL)
-	if v == nil || v.State != stateLive || v.Parent != 0 {
+	if v == nil || v.State != stateLive || v.Parent != 0 || isUser(v) {
 		return Addressee{}, false
 	}
 	_, session, _ := strings.Cut(v.Session, ":")

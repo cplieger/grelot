@@ -19,6 +19,27 @@ grelot_push_sends_total{door="provider/door",outcome="retry"} 0
 # TYPE grelot_nudges_total counter
 grelot_nudges_total{attempt="repeat",via="push"} 1
 grelot_nudges_total{attempt="first",via="watcher"} 1
+# HELP grelot_auth_failures_total Machine keys and sessions presented and refused, requests acting for another key's identity, and sign-in attempts the failure limiter refused, by reason.
+# TYPE grelot_auth_failures_total counter
+grelot_auth_failures_total{reason="account_disabled"} 0
+grelot_auth_failures_total{reason="credential_invalid"} 0
+grelot_auth_failures_total{reason="cross_origin"} 0
+grelot_auth_failures_total{reason="key_expired"} 0
+grelot_auth_failures_total{reason="key_required"} 0
+grelot_auth_failures_total{reason="key_retired"} 0
+grelot_auth_failures_total{reason="key_unknown"} 0
+grelot_auth_failures_total{reason="other"} 0
+grelot_auth_failures_total{reason="rate_limited"} 0
+grelot_auth_failures_total{reason="recovery_session"} 0
+grelot_auth_failures_total{reason="session_expired"} 0
+grelot_auth_failures_total{reason="session_required"} 0
+grelot_auth_failures_total{reason="session_unknown"} 0
+grelot_auth_failures_total{reason="wrong_key_identity"} 0
+# HELP grelot_requests_limited_total Agent API requests refused by a key's request rate, a key's held waits or the server's held waits.
+# TYPE grelot_requests_limited_total counter
+grelot_requests_limited_total{limit="rate"} 0
+grelot_requests_limited_total{limit="waits_key"} 0
+grelot_requests_limited_total{limit="waits_server"} 0
 # HELP grelot_http_requests_total HTTP requests, by route and status code.
 # TYPE grelot_http_requests_total counter
 grelot_http_requests_total{code="200",route="/v1/me"} 1

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // watch holds a standing wait from session for d, as grelot watch sends
@@ -22,8 +23,8 @@ func (h *harness) watch(session string, d time.Duration) *response {
 
 // watchAsync starts a standing wait from session in its own goroutine.
 func (h *harness) watchAsync(session string, d time.Duration) *pending {
-	return h.async(http.MethodPost, "/v1/events/wait", map[string]any{"wait": d.String()},
-		map[string]string{headerSession: session, headerSelf: "1"})
+	return h.async(http.MethodPost, "/v1/events/wait", map[string]any{"wait_ms": d.Milliseconds()},
+		map[string]string{wire.HeaderSession: session, wire.HeaderSelf: "1"})
 }
 
 // newestWake is the seq of the newest wake entry in session's inbox,
@@ -31,7 +32,7 @@ func (h *harness) watchAsync(session string, d time.Duration) *pending {
 func (h *harness) newestWake(session string) float64 {
 	h.t.Helper()
 	r := h.as(session, http.MethodGet, "/v1/inbox", nil)
-	entries, _ := r.body["entries"].([]any)
+	entries, _ := r.body["items"].([]any)
 	var seq float64
 	for _, e := range entries {
 		if m, _ := e.(map[string]any); m["wake"] == true {
@@ -129,7 +130,7 @@ func TestWait_anotherSessionsWaitIsNotReplaced(t *testing.T) {
 
 // sendAsWait records id's due nudge as a standing wait's send would, and
 // returns it.
-func (h *harness) sendAsWait(id uint64) nudgeJSON {
+func (h *harness) sendAsWait(id uint64) wire.Nudge {
 	h.t.Helper()
 	st, _, err := h.store.Nudging(h.t.Context(), id)
 	if err != nil || st.Due == nil {
@@ -139,7 +140,7 @@ func (h *harness) sendAsWait(id uint64) nudgeJSON {
 	if err != nil || !ok {
 		h.t.Fatalf("RecordNudge: %v, %v", ok, err)
 	}
-	return nudgeJSON{Seq: got.Seq, Count: got.Count, Attempt: got.Attempt}
+	return wire.Nudge{Seq: got.Seq, Count: got.Count, Attempt: got.Attempt}
 }
 
 func TestWait_aNudgeTheReplacedWaitSentReachesTheNewest(t *testing.T) {
@@ -304,7 +305,7 @@ func TestWait_aHoldThatShowsTheMailLeavesTheWaitHolding(t *testing.T) {
 		h.mustPost(sessB, map[string]any{"agent": "reader"}, "hello")
 		synctest.Wait()
 		h.srv.presence.turnClosed(id)
-		if _, err := h.store.Hold(t.Context(), store.Caller{Session: sessA, Self: true}); err != nil {
+		if _, err := h.store.Hold(t.Context(), store.Caller{Key: h.keyID(), Session: sessA, Self: true}); err != nil {
 			t.Fatalf("Hold: %v", err)
 		}
 		if r := wait.answer(); r.status != http.StatusNoContent {
@@ -368,7 +369,7 @@ func TestWait_sessionEndedAnswersEndedAndLeavesItSet(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h := newBubbleHarness(t)
 		h.mustRegisterAlone(sessA, "reader")
-		self := map[string]string{headerSession: sessA, headerSelf: "1"}
+		self := map[string]string{wire.HeaderSession: sessA, wire.HeaderSelf: "1"}
 		wait := h.watchAsync(sessA, 55*time.Second)
 		synctest.Wait()
 		start := time.Now()
@@ -376,7 +377,7 @@ func TestWait_sessionEndedAnswersEndedAndLeavesItSet(t *testing.T) {
 			t.Fatalf("session_end: %d %s", r.status, r.raw)
 		}
 		ended := func() bool {
-			id, err := h.store.Watcher(t.Context(), store.Caller{Session: sessA, Self: true})
+			id, err := h.store.Watcher(t.Context(), store.Caller{Key: h.keyID(), Session: sessA, Self: true})
 			if err != nil {
 				t.Fatalf("Watcher: %v", err)
 			}
@@ -466,15 +467,15 @@ func TestWait_refusals(t *testing.T) {
 	h.mustRegister(sessA, "parent")
 	handle := h.grantDelegate(sessA, "review")
 	t.Run("a delegate is 400", func(t *testing.T) {
-		r := h.request(http.MethodPost, "/v1/events/wait", map[string]any{"wait": "55s"},
-			map[string]string{headerSession: sessA, headerAs: handle})
+		r := h.request(http.MethodPost, "/v1/events/wait", map[string]any{"wait_ms": durMS("55s")},
+			map[string]string{wire.HeaderSession: sessA, wire.HeaderAs: handle})
 		if r.status != http.StatusBadRequest {
 			t.Errorf("got %d %s, want 400", r.status, r.raw)
 		}
 	})
-	for _, wait := range []any{nil, "0s", "56s", "-1s"} {
+	for _, wait := range []any{nil, 0, 55001, -1, "55s"} {
 		t.Run("wait "+fmtAny(wait), func(t *testing.T) {
-			r := h.self(sessA, http.MethodPost, "/v1/events/wait", map[string]any{"wait": wait})
+			r := h.self(sessA, http.MethodPost, "/v1/events/wait", map[string]any{"wait_ms": wait})
 			if r.status != http.StatusBadRequest {
 				t.Errorf("got %d %s, want 400", r.status, r.raw)
 			}
@@ -503,7 +504,7 @@ func TestWait_refreshesLastSeenAndPresence(t *testing.T) {
 		t.Errorf("status line %q, want wake: %s", line, wakeWatcher)
 	}
 	who := h.request(http.MethodGet, "/v1/identities?q=reader", nil, nil)
-	entries, _ := who.body["identities"].([]any)
+	entries, _ := who.body["items"].([]any)
 	if len(entries) != 1 {
 		t.Fatalf("who: %s", who.raw)
 	}
@@ -521,11 +522,11 @@ func TestRelease_answersEveryHeldWaitAtOnce(t *testing.T) {
 		inTurn := h.inTurn(sessA, 55*time.Second)
 		synctest.Wait()
 		start := time.Now()
-		h.srv.Release()
+		h.srv.Release(t.Context())
 		if r := standing.answer(); r.status != http.StatusServiceUnavailable || r.str("code") != "shutting_down" || time.Since(start) != 0 {
 			t.Errorf("the held standing wait = %d %s after %v, want 503 shutting_down at once", r.status, r.raw, time.Since(start))
 		}
-		if r := inTurn.answer(); r.status != http.StatusOK || r.body["entries"] == nil || time.Since(start) != 0 {
+		if r := inTurn.answer(); r.status != http.StatusOK || r.body["items"] == nil || time.Since(start) != 0 {
 			t.Errorf("the held in-turn wait = %d %s after %v, want 200 with the page at once", r.status, r.raw, time.Since(start))
 		}
 		if r := h.watch(sessA, 55*time.Second); r.status != http.StatusServiceUnavailable || time.Since(start) != 0 {

@@ -62,8 +62,7 @@ func (s *Status) Line() string {
 // version server, "" when either is unknown or client is server's release:
 // a promoted stable image keeps its dev build's version while the
 // release's clients carry the base, so only another base, or an earlier
-// dev build of the same base, names one. The server's exact version is
-// always a tag, so the line names it.
+// dev build of the same base, names one. version.Install owns the line.
 func upgradeLine(client, server string) string {
 	c, ok := version.Parse(client)
 	s, sok := version.Parse(server)

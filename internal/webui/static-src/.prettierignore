@@ -1,0 +1,4 @@
+**/*.gen.ts
+# html-validate is the page's gate, and its void-style and doctype-style
+# rules disagree with Prettier's HTML output.
+index.html

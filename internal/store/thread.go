@@ -4,6 +4,7 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"time"
 
@@ -26,10 +27,16 @@ func directKey(a, b uint64) string {
 	return fmt.Sprintf("direct:%d:%d", min(a, b), max(a, b))
 }
 
-// ensureServerThreads creates the announcement and cards threads at the
-// store's first start.
-func (s *Store) ensureServerThreads(ctx context.Context) error {
+// ensureServerRows creates the announcement and cards threads and @user's
+// identity at the store's first start.
+func (s *Store) ensureServerRows(ctx context.Context) error {
 	return s.update(ctx, func(w *wtx) error {
+		if err := w.ensureFile(); err != nil {
+			return err
+		}
+		if err := w.ensureUser(); err != nil {
+			return err
+		}
 		for _, st := range [...]struct{ key, kind string }{{announceKey, kindAnnounce}, {cardsKey, kindCards}} {
 			th, found, err := w.thread(st.key)
 			if err != nil {
@@ -44,6 +51,37 @@ func (s *Store) ensureServerThreads(ctx context.Context) error {
 			}
 		}
 		return nil
+	})
+}
+
+// ensureFile reads the file's id into the store, creating it with the
+// file.
+func (w *wtx) ensureFile() error {
+	row, found, err := w.s.t.file.Get(w.r, 1)
+	if err != nil || found {
+		w.s.fileID = row.ID
+		return err
+	}
+	_, _ = rand.Read(row.ID[:]) // crypto/rand.Read never returns an error.
+	w.s.fileID = row.ID
+	return w.s.t.file.Put(w.tx, 1, &row)
+}
+
+// ensureUser creates @user's row: live under a zero lease, so it never
+// warns, expires or goes dormant, and with no session, so no agent request
+// resolves to it.
+func (w *wtx) ensureUser() error {
+	_, _, found, err := w.s.t.byName.Lookup(w.r, []byte(userName))
+	if err != nil || found {
+		return err
+	}
+	id, err := w.s.t.identities.table.NextID(w.tx)
+	if err != nil {
+		return err
+	}
+	return w.putIdentity(id, &identityRow{
+		ID: id, Name: userName, State: stateLive, RegisteredAt: w.now,
+		Description: "the user, through grelot's web UI", Provider: userProvider,
 	})
 }
 
@@ -66,34 +104,48 @@ func (w *wtx) thread(key string) (threadRow, bool, error) {
 }
 
 // PathThread is a live path thread: its path and when it expires, which is
-// THREAD_TTL after its last post.
+// the retention after its last post.
 type PathThread struct {
 	Expires time.Time
 	Path    string
 	ID      uint64
 }
 
-// Threads lists, by path, the live path threads at or under root, every
-// one when root is "". Like any request it clears ended (Seen).
-// Refusals: KindInvalid for a path that is not canonical; KindGone for a
-// session with no live identity.
-func (s *Store) Threads(ctx context.Context, c Caller, root string) ([]PathThread, error) {
+// ThreadQuery is a Threads read: the threads at or under Root, every one
+// when it is "", paged past the path After, at most Limit of them (every
+// one at 0), read as ReadAs (resumes).
+type ThreadQuery struct {
+	ReadAs *uint64
+	Root   string
+	After  string
+	Limit  int
+}
+
+// Threads lists, by path, the live path threads q names. Like any request
+// it clears ended (Seen). Refusals: KindInvalid for a path that is not
+// canonical; KindGone for a session with no live identity;
+// ErrCursorMismatch.
+func (s *Store) Threads(ctx context.Context, c Caller, q ThreadQuery) (Listing[PathThread], error) {
+	root := q.Root
 	prefix := "/"
 	if root != "" {
 		if _, err := checkPaths([]string{root}); err != nil {
-			return nil, err
+			return Listing[PathThread]{}, err
 		}
 		prefix = root
 	}
 	if _, err := s.Seen(ctx, c); err != nil {
-		return nil, err
+		return Listing[PathThread]{}, err
 	}
 	out := []PathThread{}
+	var readAs uint64
 	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
-		if _, err := s.liveFor(r, c, now); err != nil {
+		me, err := s.pagedLive(r, c, now, q.ReadAs)
+		if err != nil {
 			return err
 		}
+		readAs = me.ID
 		return s.t.threadKey.Scan(r, bolttable.Range{Prefix: []byte(prefix)}, func(_ []byte, id uint64, _ []byte) (bool, error) {
 			th, found, err := s.t.threads.table.Get(r, id)
 			if err != nil || !found || th.Kind != kindPath || !th.Lease.Expires.After(now) {
@@ -105,5 +157,7 @@ func (s *Store) Threads(ctx context.Context, c Caller, root string) ([]PathThrea
 			return true, nil
 		})
 	})
-	return out, err
+	l := listing(out, pastKey(q.After, func(t *PathThread) string { return t.Path }), q.Limit)
+	l.ReadAs = readAs
+	return l, err
 }

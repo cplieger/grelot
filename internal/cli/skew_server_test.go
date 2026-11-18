@@ -13,10 +13,10 @@ import (
 )
 
 // newerServer is the version the skew tests' server runs, newer than the
-// agents' v1.1.0, and upgrade the line naming it.
+// agents' v2.0.0, and upgrade the line naming it.
 const (
-	newerServer = "v1.2.0"
-	upgrade     = "this client is v1.1.0 and the server v1.2.0: install grelot v1.2.0 with go install github.com/cplieger/grelot@v1.2.0 or from https://github.com/cplieger/grelot/releases/tag/v1.2.0, then check both with grelot version"
+	newerServer = "v2.1.0"
+	upgrade     = "this client is v2.0.0 and the server v2.1.0: install grelot v2.1.0 from https://github.com/cplieger/grelot/releases/tag/v2.1.0, then check both with grelot version"
 )
 
 func refuseAck(r *http.Request) bool {
@@ -73,7 +73,7 @@ func TestWatch_stopsOnceTheServerRefusesItsAck(t *testing.T) {
 		if got := w.stdout.String(); got != "end "+end+"\n" {
 			t.Errorf("stdout %q, want only the end line", got)
 		}
-		if got := w.stderr.String(); !strings.Contains(got, "go install github.com/cplieger/grelot@v1.2.0") {
+		if got := w.stderr.String(); !strings.Contains(got, "install grelot v2.1.0 from https://github.com/cplieger/grelot/releases/tag/v2.1.0") {
 			t.Errorf("stderr %q, want the upgrade named", got)
 		}
 	})
@@ -137,4 +137,44 @@ func TestHookStop_aOneShotRunGetsNoCannotAckNotice(t *testing.T) {
 			}
 		})
 	}
+}
+
+// belowFloor is a released v1 client, below the server's floor, and the
+// 426 line a v2.0.0-dev.1 server's refusal of it carries.
+const (
+	belowFloor    = "v1.1.2"
+	belowFloor426 = "grelot: this grelot server (v2.0.0-dev.1) does not speak client v1.1.2; install grelot v2.0.0 from " +
+		"https://github.com/cplieger/grelot/releases/tag/v2.0.0, or, if that page does not exist yet, a development build with " +
+		"go install github.com/cplieger/grelot@dev, then check both with grelot version"
+)
+
+func TestBelowTheFloor_everyCommandClassPrintsThe426(t *testing.T) {
+	t.Run("a command", func(t *testing.T) {
+		ts := newServer(t)
+		a, _ := registerAt(t, ts, "s-1", "ant-dev")
+		a.env.Version = belowFloor
+		if code, _, errOut := a.run("me"); code == exitOK || !strings.Contains(errOut, belowFloor426+"\n") {
+			t.Errorf("exit %d, stderr %q; want a failure printing %q", code, errOut, belowFloor426)
+		}
+	})
+	t.Run("a hook", func(t *testing.T) {
+		ts := newServer(t)
+		a := hooked(t, newAgent(t, ts, "s-1", ""), "alpha", hookTurnFile)
+		a.env.Version = belowFloor
+		if code, out := a.prompt("x"); code != 0 || out != belowFloor426+"\n" {
+			t.Errorf("exit %d, stdout %q; want 0 and the 426's line %q", code, out, belowFloor426)
+		}
+	})
+	t.Run("the watcher", func(t *testing.T) {
+		const end = "end [grelot:end] grelot (automated, not the user): this watcher stopped (error); run grelot me\n"
+		_, reader, _ := watchPair(t)
+		reader.env.Version = belowFloor
+		w := reader.start("watch", "--door", "poll")
+		if code, out := w.exit(t), w.stdout.String(); code != 0 || out != end {
+			t.Errorf("exit %d, stdout %q; want the door's end_exit 0 and its end output %q", code, out, end)
+		}
+		if got := w.stderr.String(); !strings.Contains(got, belowFloor426) {
+			t.Errorf("stderr %q, want the 426's line %q", got, belowFloor426)
+		}
+	})
 }

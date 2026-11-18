@@ -218,12 +218,12 @@ func TestScope_aDelegatePostStoresItsParentsWhereAndItsRelationFollowsIt(t *test
 	if first.Other != 1 || first.SameEnvironment != 0 {
 		t.Errorf("counted %d same, %d other, want the reader other to the parent's environment", first.SameEnvironment, first.Other)
 	}
-	page, err := s.Inbox(t.Context(), Caller{Session: sess("cloudy-lake")}, 0)
+	page, err := s.Inbox(t.Context(), Caller{Session: sess("cloudy-lake")}, InboxQuery{Limit: 0})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page.Entries) != 1 || page.Entries[0].Relation != "same machine, other environment" {
-		t.Errorf("reader's entries %+v, want the delegate at the parent's relation", page.Entries)
+	if len(page.Items) != 1 || page.Items[0].Relation != "same machine, other environment" {
+		t.Errorf("reader's entries %+v, want the delegate at the parent's relation", page.Items)
 	}
 
 	moved := Where{Machine: dmi("1"), Environment: hex32("b")}
@@ -238,12 +238,12 @@ func TestScope_aDelegatePostStoresItsParentsWhereAndItsRelationFollowsIt(t *test
 	if toDelegate.SameEnvironment != 1 {
 		t.Errorf("a post to the delegate counted %d same, want 1 by the parent's new where", toDelegate.SameEnvironment)
 	}
-	got, err := s.Inbox(t.Context(), as(sess("subflux-dev"), d.Name), 0)
+	got, err := s.Inbox(t.Context(), as(sess("subflux-dev"), d.Name), InboxQuery{Limit: 0})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Entries) != 1 || got.Entries[0].From != reader.Name || got.Entries[0].Relation != "same environment" {
-		t.Errorf("delegate's entries %+v, want the reader at same environment by the parent's new where", got.Entries)
+	if len(got.Items) != 1 || got.Items[0].From != reader.Name || got.Items[0].Relation != "same environment" {
+		t.Errorf("delegate's entries %+v, want the reader at same environment by the parent's new where", got.Items)
 	}
 }
 
@@ -288,7 +288,7 @@ func TestScope_whoNestsADelegateUnderItsParent(t *testing.T) {
 	regAt(t, s, "subflux-dev", repoSubflux)
 	mustRegister(t, s, registration(sess("cloudy-lake"), "cloudy-lake", Where{Machine: dmi("1"), Environment: hex32("b")}))
 	d := scopedDelegate(t, s, "subflux-dev", "review", nil)
-	peers, err := s.Who(t.Context(), Caller{Session: sess("cloudy-lake")}, &WhoQuery{})
+	peers, err := items(s.Who(t.Context(), Caller{Session: sess("cloudy-lake")}, &WhoQuery{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,8 +317,8 @@ func TestScope_historyStaysInsideTheScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(h.Entries) != 2 || h.Entries[0].ThreadPath != pathInternal || h.Entries[1].Relation != "you" {
-		t.Errorf("history %+v, want the post at %s and its own post", h.Entries, pathInternal)
+	if len(h.Items) != 2 || h.Items[0].ThreadPath != pathInternal || h.Items[1].Relation != "you" {
+		t.Errorf("history %+v, want the post at %s and its own post", h.Items, pathInternal)
 	}
 }
 

@@ -9,6 +9,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 var reservationID = regexp.MustCompile(`reservation (\d+) (held|queued)`)
@@ -35,14 +38,11 @@ func TestReserve_holdsQueuesAndHandsOff(t *testing.T) {
 		" --ttl=<d>, release with grelot release " + held + "\n"; !strings.Contains(out, want) {
 		t.Errorf("reserve printed %q, want %q", out, want)
 	}
-	var sentBody struct {
-		Path, Reason, TTL string
-		Queue             *bool
-	}
+	var sentBody wire.ReserveRequest
 	if err := json.Unmarshal([]byte(ts.last(t, http.MethodPost, "/v1/reservations").Body), &sentBody); err != nil {
 		t.Fatal(err)
 	}
-	if sentBody.Path != file || sentBody.Reason != "splitting the engine" || sentBody.TTL != "1h" || sentBody.Queue != nil {
+	if sentBody.Path != file || sentBody.Reason != "splitting the engine" || sentBody.TTLMS != time.Hour.Milliseconds() || sentBody.Queue {
 		t.Errorf("body = %+v, want the path, reason and ttl, no queue", sentBody)
 	}
 
@@ -118,17 +118,11 @@ func TestDelegate_printsTheLinkAndThePromptLine(t *testing.T) {
 	if !strings.Contains(out, "add --self to your own commands") {
 		t.Errorf("delegate printed %q, want the parent told to add --self", out)
 	}
-	var body struct {
-		Label        string   `json:"label"`
-		TTL          string   `json:"ttl"`
-		AllowThreads []string `json:"allow_threads"`
-		AllowAgents  []string `json:"allow_agents"`
-		DenyThreads  []string `json:"deny_threads"`
-	}
+	var body wire.GrantRequest
 	if err := json.Unmarshal([]byte(ts.last(t, http.MethodPost, "/v1/delegates").Body), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Label != "review" || body.TTL != "2h" || strings.Join(body.AllowThreads, " ") != "/workspace/toolbelt/internal announce" ||
+	if body.Label != "review" || body.TTLMS != (2*time.Hour).Milliseconds() || strings.Join(body.AllowThreads, " ") != "/workspace/toolbelt/internal announce" ||
 		strings.Join(body.AllowAgents, " ") != "bee-dev" || strings.Join(body.DenyThreads, " ") != pdir+"/internal/legacy" {
 		t.Errorf("grant body = %+v, want the label, ttl and scope with names stripped of @", body)
 	}

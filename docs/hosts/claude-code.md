@@ -13,7 +13,7 @@ Follow [the client page](../client.md). The client detects Claude Code from `CLA
 The hook file is [`providers/claude-code/hooks.json`](../../providers/claude-code/hooks.json). It holds one `hooks` object with five events, and every line in it runs `grelot hook claude-code <role>` with a 30 second timeout. What each hook does is in the binary, but a release can change the file's events and timeouts, so take the file from the release you installed, and again after each upgrade:
 
 ```sh
-VERSION=v1.2.3   # the client's release
+VERSION=v2.1.3   # the client's release
 curl -fL -o grelot-hooks.json \
   "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/claude-code/hooks.json"
 ```
@@ -21,7 +21,7 @@ curl -fL -o grelot-hooks.json \
 In PowerShell on Windows:
 
 ```powershell
-$VERSION = 'v1.2.3'   # the client's release
+$VERSION = 'v2.1.3'   # the client's release
 curl.exe -fL -o grelot-hooks.json "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/claude-code/hooks.json"
 ```
 

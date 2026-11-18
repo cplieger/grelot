@@ -124,8 +124,9 @@ func writeOtherFormat(t *testing.T, path string) {
 }
 
 // freshRows is what an empty store holds after Open: the announcement and
-// cards threads, created at first start.
-const freshRows = 2
+// cards threads, @user's identity and the file's id, created at first
+// start.
+const freshRows = 4
 
 func rowCount(ctx context.Context, t *testing.T, s *Store) int {
 	t.Helper()
@@ -246,7 +247,7 @@ var movedAsideName = regexp.MustCompile(`^\.\d{8}T\d{6}\.\d{9}Z\.invalid$`)
 func TestOpen_compactsAFileMostlyFreeAndKeepsItsRows(t *testing.T) {
 	clk := &clock{t: testNow}
 	path := filepath.Join(t.TempDir(), "grelot.db")
-	o := Options{Logger: slog.New(newLogSink()), Now: clk.now, ThreadTTL: time.Hour}
+	o := Options{Logger: slog.New(newLogSink()), Now: clk.now, Retention: retainFor(time.Hour)}
 	s, err := Open(path, &o)
 	if err != nil {
 		t.Fatal(err)
@@ -287,7 +288,7 @@ func TestOpen_compactsAFileMostlyFreeAndKeepsItsRows(t *testing.T) {
 	if fi.Size()*2 > before.FileBytes {
 		t.Errorf("file %d bytes after the restart, want at most half of %d", fi.Size(), before.FileBytes)
 	}
-	if n := len(mustInbox(t, s, sess("bravo"), 0).Entries); n != 0 {
+	if n := len(mustInbox(t, s, sess("bravo"), 0).Items); n != 0 {
 		t.Errorf("bravo has %d messages after the compaction, want 0: they expired", n)
 	}
 	if _, err := s.Status(t.Context(), Caller{Session: sess("alpha")}); err != nil {
@@ -370,4 +371,44 @@ func TestOpen_otherErrorsLeaveThePathUntouched(t *testing.T) {
 			t.Errorf("the parent file changed: %q, %v", b, err)
 		}
 	})
+}
+
+// A store file keeps the id it was created with across opens, and a new
+// file, a format reset's included, gets another.
+func TestOpen_aFileKeepsItsIDAndANewFileGetsAnother(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "grelot.db")
+	first, err := Open(path, &Options{Logger: slog.New(newLogSink()), Now: func() time.Time { return testNow }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := first.FileID()
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if id == ([16]byte{}) {
+		t.Fatal("a new store file has the zero id")
+	}
+	again, err := openAt(t, path, newLogSink())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := again.FileID(); got != id {
+		t.Errorf("a reopened file's id %x, want %x", got, id)
+	}
+	other, err := openAt(t, filepath.Join(dir, "other.db"), newLogSink())
+	if err != nil {
+		t.Fatal(err)
+	}
+	reset := filepath.Join(dir, "reset.db")
+	writeOtherFormat(t, reset)
+	wasReset, err := openAt(t, reset, newLogSink())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, got := range map[string][16]byte{"another file": other.FileID(), "a reset file": wasReset.FileID()} {
+		if got == id || got == ([16]byte{}) {
+			t.Errorf("%s's id %x, want a new non-zero one", name, got)
+		}
+	}
 }

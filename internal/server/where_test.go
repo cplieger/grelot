@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 func TestWhere_requiredOnRegisterReviveAndRenew(t *testing.T) {
@@ -22,7 +24,7 @@ func TestWhere_requiredOnRegisterReviveAndRenew(t *testing.T) {
 	}{
 		{"register", http.MethodPost, "/v1/register", reg, nil},
 		{"revive", http.MethodPost, "/v1/revive", rev, nil},
-		{"renew", http.MethodPatch, "/v1/me", map[string]any{"ttl": "2h"}, func() { h.mustRegister(sessA, "grelot-dev") }},
+		{"renew", http.MethodPatch, "/v1/me", map[string]any{"ttl_ms": durMS("2h")}, func() { h.mustRegister(sessA, "grelot-dev") }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.setup != nil {
@@ -105,13 +107,13 @@ func TestWhere_storedValuesInNoResponseOrLogLine(t *testing.T) {
 	}
 	reg := registerBody("grelot-dev", "6h")
 	reg["where"], reg["proc"] = seeded, "4242:1700000000"
-	hint := map[string]string{headerSession: sessB, headerEnvironment: env, headerMachine: machine}
+	hint := map[string]string{wire.HeaderSession: sessB, wire.HeaderEnvironment: env, wire.HeaderMachine: machine}
 
 	var answers []*response
 	answers = append(answers,
 		h.as(sessA, http.MethodPost, "/v1/register", reg),
 		h.as(sessA, http.MethodGet, "/v1/me", nil),
-		h.as(sessA, http.MethodPatch, "/v1/me", map[string]any{"ttl": "2h", "where": seeded}),
+		h.as(sessA, http.MethodPatch, "/v1/me", map[string]any{"ttl_ms": durMS("2h"), "where": seeded}),
 		h.request(http.MethodGet, "/v1/me?proc=4242:1700000000", nil, hint),
 		h.as(sessC, http.MethodGet, "/v1/identities", nil),
 	)
@@ -120,7 +122,7 @@ func TestWhere_storedValuesInNoResponseOrLogLine(t *testing.T) {
 	answers = append(answers,
 		h.as(sessA, http.MethodGet, "/v1/me", nil),
 		h.request(http.MethodGet, "/v1/me?proc=4242:1700000000", nil, hint),
-		h.as(sessA, http.MethodPost, "/v1/revive", map[string]any{"ttl": "2h", "where": seeded}),
+		h.as(sessA, http.MethodPost, "/v1/revive", map[string]any{"ttl_ms": durMS("2h"), "where": seeded}),
 		h.as(sessA, http.MethodDelete, "/v1/me", nil),
 	)
 	if got := answers[3].body["hint"]; got == nil {
@@ -164,7 +166,7 @@ func TestMe_takeOverHint(t *testing.T) {
 	sameEnv, _ := same["environment"].(string)
 	sameMachine, _ := same["machine"].(string)
 	hintFor := func(headers map[string]string, query string) *response {
-		headers[headerSession] = sessB
+		headers[wire.HeaderSession] = sessB
 		return h.request(http.MethodGet, "/v1/me?proc="+proc+query, nil, headers)
 	}
 	hintOf := func(r *response) map[string]any {
@@ -173,7 +175,7 @@ func TestMe_takeOverHint(t *testing.T) {
 	}
 
 	t.Run("the live identity under that proc in the caller's environment", func(t *testing.T) {
-		got := hintOf(hintFor(map[string]string{headerEnvironment: sameEnv, headerMachine: sameMachine}, ""))
+		got := hintOf(hintFor(map[string]string{wire.HeaderEnvironment: sameEnv, wire.HeaderMachine: sameMachine}, ""))
 		line, _ := got["line"].(string)
 		if got["name"] != "grelot-dev" || got["state"] != "live" || !strings.Contains(line, "grelot register grelot-dev --take-over --ttl") {
 			t.Errorf("hint %v, want grelot-dev live with the take-over command", got)
@@ -189,19 +191,19 @@ func TestMe_takeOverHint(t *testing.T) {
 		}
 	})
 	t.Run("none from another environment", func(t *testing.T) {
-		if got := hintOf(hintFor(map[string]string{headerEnvironment: strings.Repeat("b", 32), headerMachine: sameMachine}, "")); got != nil {
+		if got := hintOf(hintFor(map[string]string{wire.HeaderEnvironment: strings.Repeat("b", 32), wire.HeaderMachine: sameMachine}, "")); got != nil {
 			t.Errorf("hint %v for another environment", got)
 		}
 	})
 	t.Run("a malformed environment header is 400", func(t *testing.T) {
-		r := hintFor(map[string]string{headerEnvironment: "not-hex"}, "")
+		r := hintFor(map[string]string{wire.HeaderEnvironment: "not-hex"}, "")
 		if r.status != http.StatusBadRequest || !strings.Contains(r.str("error"), "environment") {
 			t.Errorf("got %d %s, want 400 naming the environment", r.status, r.raw)
 		}
 	})
 	h.clk.advance(7 * time.Hour)
 	t.Run("a dormant one is offered as a revive", func(t *testing.T) {
-		got := hintOf(hintFor(map[string]string{headerEnvironment: sameEnv, headerMachine: sameMachine}, ""))
+		got := hintOf(hintFor(map[string]string{wire.HeaderEnvironment: sameEnv, wire.HeaderMachine: sameMachine}, ""))
 		line, _ := got["line"].(string)
 		if got["state"] != "dormant" || !strings.Contains(line, "grelot revive grelot-dev --ttl") {
 			t.Errorf("hint %v, want the revive offer", got)

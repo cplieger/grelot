@@ -10,3 +10,8 @@ go.work.sum
 
 # Agent workflow scratch
 .agents/
+
+# The web UI's dependencies and its bundle (go run ./cmd/bundle)
+internal/webui/static-src/node_modules/
+internal/webui/static/*
+!internal/webui/static/.gitkeep

@@ -11,31 +11,32 @@ import (
 	"time"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
-// History page sizes and window: a limit of 0 takes the default, and a
-// zero Since the last defaultHistoryWindow, except with LastRead or Path.
-const (
-	defaultHistoryLimit  = 20
-	maxHistoryLimit      = 100
-	defaultHistoryWindow = 24 * time.Hour
-)
+// defaultHistoryWindow is a nil Since's window, except with LastRead or
+// Path.
+const defaultHistoryWindow = 24 * time.Hour
 
 // HistoryQuery filters History; every filter set must hold. Thread is a
 // thread id; Path keeps path threads at or under it; With is the direct
 // thread with the identity of that name; Announce the announcements. From
 // keeps that identity's posts to the caller and FromMe only the caller's
-// own posts. Since and Until bound the time, both inclusive. Grep is a
-// substring of the subject, body or event text, ignoring case. LastRead
-// keeps the deliveries of the last acked inbox page. Full keeps whole
-// bodies instead of their first line.
+// own posts. Since and Until bound the time, both inclusive; nil is open.
+// Grep is a substring of the subject, body or event text, ignoring case.
+// LastRead keeps the last acked inbox page; Full keeps whole bodies.
 type HistoryQuery struct {
-	Since    time.Time
-	Until    time.Time
-	Path     string
-	With     string
-	From     string
-	Grep     string
+	Since *time.Time
+	Until *time.Time
+	Grep  string
+	Path  string
+	With  string
+	From  string
+	// ReadAs is a later page's identity (resumes).
+	ReadAs *uint64
+	// Before and Limit page the read back in time: the entries before
+	// Before (the newest at its zero), at most Limit (every one at 0).
+	Before   EntryKey
 	Thread   uint64
 	Limit    int
 	FromMe   bool
@@ -44,51 +45,84 @@ type HistoryQuery struct {
 	LastRead bool
 }
 
-// History is a history read: the newest matching entries, oldest first.
-type History struct {
-	Entries []Entry
+// EntryKey is an entry's place in a history read's order.
+type EntryKey struct {
+	Written time.Time
+	Message uint64
+	Seq     uint64
 }
 
-// History reads c's own mailbox, its deliveries read and unread and,
-// unless From names another identity or LastRead is set, its own posts in
-// the same threads, merged in time order; with Path and no LastRead, also
-// every post of the live path threads under Path, from before c followed
-// too. It moves no cursor. An own post carries no Seq and the relation
-// "you". Refusals: KindInvalid for a bad limit, path or time window, From
-// with FromMe, or With naming the caller; KindNotFound for an unknown
-// name; KindGone for a session with no live identity.
-func (s *Store) History(ctx context.Context, c Caller, query *HistoryQuery) (History, error) {
+// Key is e's place in a history read's order.
+func (e *Entry) Key() EntryKey { return EntryKey{Written: e.Written, Message: e.Message, Seq: e.Seq} }
+
+func (k EntryKey) compare(o EntryKey) int {
+	return cmp.Or(k.Written.Compare(o.Written), cmp.Compare(k.Message, o.Message), cmp.Compare(k.Seq, o.Seq))
+}
+
+// HistoryPage is a history read: a page of entries, and Since, the lower
+// bound the read applied (nil when it read whole). A page after the first
+// passes Since back as its query's Since, so the walk keeps one window.
+type HistoryPage struct {
+	Since *time.Time
+	Listing[Entry]
+}
+
+// History pages c's own mailbox, read and unread, and unless From names
+// another identity or LastRead is set its own posts there, in time order;
+// with Path and no LastRead, every post of the live path threads under
+// Path too. It moves no cursor. An own post carries no Seq and the
+// relation "you". Refusals: KindInvalid for a bad path or time window,
+// From with FromMe, or With naming the caller; KindNotFound for an unknown
+// name; KindGone for a session with no live identity; ErrCursorMismatch.
+func (s *Store) History(ctx context.Context, c Caller, query *HistoryQuery) (HistoryPage, error) {
 	q := *query
 	if err := checkHistory(&q); err != nil {
-		return History{}, err
+		return HistoryPage{}, err
 	}
 	if _, err := s.Seen(ctx, c); err != nil {
-		return History{}, err
+		return HistoryPage{}, err
 	}
-	var out History
+	var all []Entry
+	var since *time.Time
+	var readAs uint64
 	err := s.read(ctx, func(r *bolttable.ReadTx) error {
 		now := s.now()
-		me, err := s.liveFor(r, c, now)
+		me, err := s.pagedLive(r, c, now, q.ReadAs)
 		if err != nil {
 			return err
 		}
+		readAs = me.ID
 		h, ok, err := s.historyWalk(r, &me, &q, now)
+		since = h.since
 		if err != nil || !ok {
 			return err
 		}
-		out.Entries, err = h.read(r)
+		all, err = h.read(r)
 		return err
 	})
-	return out, err
+	if err != nil {
+		return HistoryPage{}, err
+	}
+	page := HistoryPage{Since: since, Listing: historyPage(all, &q)}
+	page.ReadAs = readAs
+	return page, nil
+}
+
+// historyPage is the page of all, in order, that q asks for.
+func historyPage(all []Entry, q *HistoryQuery) Listing[Entry] {
+	before := all
+	if q.Before != (EntryKey{}) {
+		n, _ := slices.BinarySearchFunc(all, q.Before, func(e Entry, k EntryKey) int { return e.Key().compare(k) })
+		before = all[:n]
+	}
+	start := 0
+	if q.Limit != 0 {
+		start = max(0, len(before)-q.Limit)
+	}
+	return Listing[Entry]{Items: before[start:len(before):len(before)], Total: len(all), More: start > 0}
 }
 
 func checkHistory(q *HistoryQuery) error {
-	switch {
-	case q.Limit == 0:
-		q.Limit = defaultHistoryLimit
-	case q.Limit < 0 || q.Limit > maxHistoryLimit:
-		return refuse(KindInvalid, fmt.Sprintf("the history limit must be 1 to %d", maxHistoryLimit))
-	}
 	if q.Path != "" {
 		if _, err := checkPaths([]string{q.Path}); err != nil {
 			return err
@@ -97,7 +131,7 @@ func checkHistory(q *HistoryQuery) error {
 	if q.FromMe && q.From != "" {
 		return refuse(KindInvalid, "--from takes one identity: @me or another's name")
 	}
-	if !q.Until.IsZero() && q.Since.After(q.Until) {
+	if q.Since != nil && q.Until != nil && q.Since.After(*q.Until) {
 		return refuse(KindInvalid, "--since must not be after --until")
 	}
 	return nil
@@ -109,14 +143,13 @@ type walk struct {
 	me          *identityRow
 	threadPaths map[uint64]string
 	now         time.Time
-	since       time.Time
-	until       time.Time
+	since       *time.Time
+	until       *time.Time
 	grep        string
 	path        string
 	seqs        seqRange
 	thread      uint64
 	sender      uint64
-	limit       int
 	announce    bool
 	full        bool
 	lastRead    bool
@@ -130,7 +163,7 @@ type walk struct {
 func (s *Store) historyWalk(r *bolttable.ReadTx, me *identityRow, q *HistoryQuery, now time.Time) (w walk, ok bool, err error) {
 	w = walk{
 		s: s, me: me, now: now, until: q.Until, grep: strings.ToLower(q.Grep), path: q.Path,
-		thread: q.Thread, limit: q.Limit, announce: q.Announce, full: q.Full, lastRead: q.LastRead,
+		thread: q.Thread, announce: q.Announce, full: q.Full, lastRead: q.LastRead,
 		threadPaths: map[uint64]string{},
 	}
 	if w.since, err = historySince(q, now); err != nil {
@@ -162,16 +195,22 @@ func (s *Store) historyWalk(r *bolttable.ReadTx, me *identityRow, q *HistoryQuer
 // now unless q reads the last page or a path, whose threads a follower
 // reads whole. An Until before that default window is refused, as an
 // explicit inverted window is.
-func historySince(q *HistoryQuery, now time.Time) (time.Time, error) {
-	if !q.Since.IsZero() || q.LastRead || q.Path != "" {
+func historySince(q *HistoryQuery, now time.Time) (*time.Time, error) {
+	if q.Since != nil || q.LastRead || q.Path != "" {
 		return q.Since, nil
 	}
 	since := now.Add(-defaultHistoryWindow)
-	if !q.Until.IsZero() && since.After(q.Until) {
-		return since, refuse(KindInvalid, "--until is before the default 24 h window: pass --since too")
+	if q.Until != nil && since.After(*q.Until) {
+		return &since, refuse(KindInvalid, "--until is before the default 24 h window: pass --since too")
 	}
-	return since, nil
+	return &since, nil
 }
+
+// beforeSince reports whether t is older than w's lower bound.
+func (w *walk) beforeSince(t time.Time) bool { return w.since != nil && t.Before(*w.since) }
+
+// afterUntil reports whether t is newer than w's upper bound.
+func (w *walk) afterUntil(t time.Time) bool { return w.until != nil && t.After(*w.until) }
 
 // withThread narrows w to the direct thread with the identity named name.
 func (w *walk) withThread(r *bolttable.ReadTx, name string) (bool, error) {
@@ -199,12 +238,12 @@ func (s *Store) historyPeer(r *bolttable.ReadTx, name string) (identityRow, erro
 }
 
 func unknownIdentity(name string) *Error {
-	return refuse(KindNotFound, fmt.Sprintf("no identity %s: grelot who --all lists them", name))
+	return notFound(wire.ReasonIdentity, fmt.Sprintf("no identity %s: grelot who --all lists them", name))
 }
 
 // read walks me's deliveries, and its posts or with a path the path
-// threads, newest first, each stopping at the since bound or at limit
-// matches, and returns the newest limit of them.
+// threads, newest first, each stopping at the since bound, and returns
+// every match in key order.
 func (w *walk) read(r *bolttable.ReadTx) ([]Entry, error) {
 	var out []Entry
 	if w.deliveries {
@@ -228,20 +267,13 @@ func (w *walk) read(r *bolttable.ReadTx) ([]Entry, error) {
 		}
 		out = append(out, ps...)
 	}
-	out = w.newest(out)
+	slices.SortFunc(out, func(a, b Entry) int { return a.Key().compare(b.Key()) })
 	if !w.full {
 		for i := range out {
 			firstLine(&out[i])
 		}
 	}
 	return out, nil
-}
-
-func (w *walk) newest(es []Entry) []Entry {
-	slices.SortFunc(es, func(a, b Entry) int {
-		return cmp.Or(a.Written.Compare(b.Written), cmp.Compare(a.Message, b.Message), cmp.Compare(a.Seq, b.Seq))
-	})
-	return es[max(0, len(es)-w.limit):]
 }
 
 // walkDeliveries relies on seq order being write order, so the walk can
@@ -253,7 +285,7 @@ func (w *walk) walkDeliveries(r *bolttable.ReadTx) ([]Entry, error) {
 		rg.To = pairKey(w.me.ID, w.seqs.To+1)
 	}
 	err := w.s.t.deliveries.table.Scan(r, rg, func(_ []byte, d *deliveryRow) (bool, error) {
-		if d.Seq < w.seqs.From || d.Written.Before(w.since) {
+		if d.Seq < w.seqs.From || w.beforeSince(d.Written) {
 			return false, nil
 		}
 		if d.Lease.due(w.now) {
@@ -270,7 +302,7 @@ func (w *walk) walkDeliveries(r *bolttable.ReadTx) ([]Entry, error) {
 		if w.grepMatches(&e) {
 			out = append(out, e)
 		}
-		return len(out) < w.limit, nil
+		return true, nil
 	})
 	return out, err
 }
@@ -280,7 +312,7 @@ func (w *walk) deliveryMatches(r *bolttable.ReadTx, d *deliveryRow) (bool, error
 	case w.thread != 0 && d.Thread != w.thread,
 		w.announce && d.Kind != kindAnnounce,
 		w.sender != 0 && (!isPost(d.Kind) || d.Sender != w.sender),
-		!w.until.IsZero() && d.Written.After(w.until):
+		w.afterUntil(d.Written):
 		return false, nil
 	case w.path == "":
 		return true, nil
@@ -315,10 +347,10 @@ func (w *walk) walkPosts(r *bolttable.ReadTx) ([]Entry, error) {
 	var out []Entry
 	err := w.s.t.bySender.Scan(r, bolttable.Range{Prefix: be64(w.me.ID), Reverse: true}, func(ikey, k, _ []byte) (bool, error) {
 		at, err := senderPostedAt(ikey)
-		if err != nil || at.Before(w.since) {
+		if err != nil || w.beforeSince(at) {
 			return false, err
 		}
-		if !w.until.IsZero() && at.After(w.until) {
+		if w.afterUntil(at) {
 			return true, nil
 		}
 		m, found, err := w.s.t.messages.table.Get(r, k)
@@ -333,15 +365,14 @@ func (w *walk) walkPosts(r *bolttable.ReadTx) ([]Entry, error) {
 		if w.grepMatches(&e) {
 			out = append(out, e)
 		}
-		return len(out) < w.limit, nil
+		return true, nil
 	})
 	return out, err
 }
 
-// walkThreads reads the newest limit posts of the live path threads at or
-// under w.path that readsThread lets me read, delivered to me or not, but
-// the messages in seen. It cuts to limit after each thread, so a wide path
-// holds two pages at most, not one per thread.
+// walkThreads reads the posts of the live path threads at or under w.path
+// that readsThread lets me read, delivered to me or not, but the messages
+// in seen.
 func (w *walk) walkThreads(r *bolttable.ReadTx, seen map[uint64]bool) ([]Entry, error) {
 	var out []Entry
 	err := w.s.t.threadKey.Scan(r, bolttable.Range{Prefix: []byte(w.path)}, func(_ []byte, id uint64, _ []byte) (bool, error) {
@@ -350,7 +381,7 @@ func (w *walk) walkThreads(r *bolttable.ReadTx, seen map[uint64]bool) ([]Entry, 
 			return err == nil, err
 		}
 		ps, err := w.threadPosts(r, th.ID, seen)
-		out = w.newest(append(out, ps...))
+		out = append(out, ps...)
 		return err == nil, err
 	})
 	return out, err
@@ -363,7 +394,7 @@ func (w *walk) readsThread(th *threadRow) bool {
 		(w.me.Parent == 0 || w.me.Scope.allowsPath(th.Path))
 }
 
-// threadPosts reads thread's matching posts newest first, up to limit. It
+// threadPosts reads thread's matching posts newest first. It
 // relies on id order being post-time order, so the walk can stop at the
 // first post before since, as walkDeliveries relies on seq order.
 func (w *walk) threadPosts(r *bolttable.ReadTx, thread uint64, seen map[uint64]bool) ([]Entry, error) {
@@ -373,11 +404,11 @@ func (w *walk) threadPosts(r *bolttable.ReadTx, thread uint64, seen map[uint64]b
 	}
 	var out []Entry
 	err := w.s.t.messages.table.Scan(r, bolttable.Range{Prefix: be64(thread), Reverse: true}, func(_ []byte, m *messageRow) (bool, error) {
-		if m.PostedAt.Before(w.since) {
+		if w.beforeSince(m.PostedAt) {
 			return false, nil
 		}
 		if seen[m.ID] || m.Lease.due(w.now) || !w.postMatches(m) || (author != 0 && m.Sender != author) ||
-			(!w.until.IsZero() && m.PostedAt.After(w.until)) {
+			w.afterUntil(m.PostedAt) {
 			return true, nil
 		}
 		e := Entry{Kind: m.Kind, Written: m.PostedAt, Message: m.ID, Thread: m.Thread}
@@ -385,7 +416,7 @@ func (w *walk) threadPosts(r *bolttable.ReadTx, thread uint64, seen map[uint64]b
 		if w.grepMatches(&e) {
 			out = append(out, e)
 		}
-		return len(out) < w.limit, nil
+		return true, nil
 	})
 	return out, err
 }

@@ -6,19 +6,12 @@ package transport
 import (
 	"fmt"
 	"regexp"
-)
 
-// The end reasons the server answers a watcher's wait with.
-const (
-	EndDormant  = "dormant"
-	EndNone     = "none"
-	EndEnded    = "ended"
-	EndReplaced = "replaced"
-	EndRestored = "restored"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // endWords are the end reasons a line words as more than the reason.
-var endWords = map[string]string{EndRestored: "host push working again"}
+var endWords = map[string]string{wire.ErrRestored.Code: "host push working again"}
 
 // endReasonRE bounds an end reason to one short lowercase word, so no text but
 // the server's own word can ride into a line a host may deliver with the

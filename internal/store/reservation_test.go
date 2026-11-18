@@ -488,13 +488,13 @@ func TestInbox_showsAReservationEventsText(t *testing.T) {
 
 	page := mustInbox(t, s, sess("waiter"), 0)
 	var granted []Entry
-	for _, e := range page.Entries {
+	for _, e := range page.Items {
 		if e.Kind == kindReservationGranted {
 			granted = append(granted, e)
 		}
 	}
 	if len(granted) != 1 {
-		t.Fatalf("inbox %+v, want one reservation_granted", page.Entries)
+		t.Fatalf("inbox %+v, want one reservation_granted", page.Items)
 	}
 	e := granted[0]
 	if !e.Wake || !strings.Contains(e.Text, pathMarotte) || !strings.Contains(e.Text, "release") || e.From != "" || e.Relation != "" {
@@ -596,7 +596,7 @@ func TestReservations_listsGrantsAndQueueEntries(t *testing.T) {
 	}
 	list := func(session string, q ReservationQuery) []Reservation {
 		t.Helper()
-		rs, err := s.Reservations(t.Context(), Caller{Session: session}, q)
+		rs, err := items(s.Reservations(t.Context(), Caller{Session: session}, q))
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cplieger/grelot/internal/auth/authtest"
 	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/server"
@@ -34,9 +35,14 @@ func newServer(t *testing.T) *testServer {
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
+	a := authtest.New(t, nil)
+	ts.Key = authtest.Key(t, a, "providers")
 	h := server.New(&server.Options{
-		Store: st, Logger: logger, Hub: hub, Version: "v1.1.0", Now: ts.clock.Now,
-		Config: server.Config{Token: "test-token", PathRoot: protopath.DefaultRoot},
+		Store: st, Logger: logger, Hub: hub, Version: "v2.0.0-dev.1", Now: ts.clock.Now, Auth: a,
+		Config: server.Config{PathRoot: protopath.DefaultRoot}, CursorKey: bytes.Repeat([]byte{7}, 32),
+		// Every shell shares one key under a frozen clock, so a scene's
+		// requests would spend the default burst with no refill.
+		Limits: server.Limits{Rate: 1e9, Burst: 1 << 20},
 	}).Handler()
 	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -55,12 +61,12 @@ func newServer(t *testing.T) *testServer {
 // holds vars, with a client config naming the server and host label box.
 func newShell(t *testing.T, srv *testServer, name string, vars map[string]string) *shell {
 	t.Helper()
-	s := &shell{t: t, srv: srv, provider: name, vars: vars, home: t.TempDir(), config: t.TempDir(), wd: t.TempDir(), version: "v1.1.0"}
+	s := &shell{t: t, srv: srv, provider: name, vars: vars, home: t.TempDir(), config: t.TempDir(), wd: t.TempDir(), version: "v2.0.0-dev.1"}
 	file := client.ConfigFile(s.config)
 	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(file, fmt.Appendf(nil, "server: %s\ntoken: test-token\nhost: box\n", srv.URL), 0o600); err != nil {
+	if err := os.WriteFile(file, fmt.Appendf(nil, "server: %s\ntoken: %s\nhost: box\n", srv.URL, srv.Key), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return s

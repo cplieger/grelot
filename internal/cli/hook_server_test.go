@@ -269,7 +269,7 @@ func TestHookSessionStart_delegateInItsOwnSession(t *testing.T) {
 		Link string `json:"link"`
 	}
 	ts.call(t, "alpha:s-1", false, &client.Request{
-		Method: http.MethodPost, Path: "/v1/delegates", Body: map[string]any{"label": "review", "ttl": "1h"},
+		Method: http.MethodPost, Path: "/v1/delegates", Body: map[string]any{"label": "review", "ttl_ms": 3600000},
 	}, &grant)
 	sub := newAgent(t, ts, "sub-1", "")
 	sub.must("register", "--delegate", grant.Link, "--desc", "reviewing the diff")
@@ -379,7 +379,7 @@ func TestHookSessionStart_anOldClientGetsThe426(t *testing.T) {
 	a := hooked(t, newAgent(t, ts, "s-1", ""))
 	a.env.Version = "v0.0.1"
 	code, out, _ := a.hook("session_start", `{"session_id":"s-1"}`)
-	if code != 0 || !strings.HasPrefix(out, "grelot: this grelot server (v1.1.0-dev.4) does not speak client v0.0.1; install grelot") {
+	if code != 0 || !strings.HasPrefix(out, "grelot: this grelot server (v2.0.0-dev.1) does not speak client v0.0.1; install grelot") {
 		t.Errorf("exit %d, stdout %q; want 0 and the 426's line", code, out)
 	}
 }

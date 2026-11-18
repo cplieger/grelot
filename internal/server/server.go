@@ -15,10 +15,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cplieger/access/gate"
 	"github.com/cplieger/go/health/v2"
 	"github.com/cplieger/go/httpserver/v2"
+	"github.com/cplieger/grelot/internal/auth"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/webui"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // Options are what New needs.
@@ -32,13 +36,27 @@ type Options struct {
 	// Hub must be the one whose Woke the store's Options.Woke calls; nil
 	// gives a hub no commit reaches, whose waits wake only at their timeout.
 	Hub *Hub
+	// Events must be the one whose Changed the store's Options.Changed
+	// calls; nil gives a stream no commit reaches.
+	Events *Events
+	// Auth is the web UI's sign-in, whose routes Handler mounts under
+	// /api/auth, and the machines' keys. Required.
+	Auth *auth.Auth
 	// Providers is the providers folder; nil reads Config.ProvidersDir.
 	Providers fs.FS
+	// UI is the built web UI that every path outside /v1 and /api answers
+	// from; nil serves webui.Files.
+	UI fs.FS
 	// Metrics is the /metrics page the store records into too; nil gives
 	// the server a page of its own.
 	Metrics *obs.Metrics
 	Version string
-	Config  Config
+	// CursorKey seals the list cursors: 32 bytes, kept with the accounts
+	// file's secrets so a cursor outlives a restart. New panics on any
+	// other length.
+	CursorKey []byte
+	Config    Config
+	Limits    Limits
 }
 
 // Server serves the API over one open store.
@@ -48,16 +66,24 @@ type Server struct {
 	now      func() time.Time
 	presence *presence
 	posts    *postLimit
+	rates    *keyRates
+	cursors  *cursors
+	waits    *waitCaps
 	hub      *Hub
+	events   *Events
+	auth     *auth.Auth
+	ui       http.Handler
+	started  time.Time
 	push     Pusher
 	metrics  *obs.Metrics
 	health   *health.Status
+	sampler  *sampler
 	stopping chan struct{}
-	// needles are the bearer and every door secret, cut from logged text.
+	// needles are every door secret, cut from logged text.
 	needles  []string
 	version  string
 	cfg      Config
-	bearer   httpserver.StaticTokenVerifier
+	limits   Limits
 	stopOnce sync.Once
 }
 
@@ -76,13 +102,26 @@ func New(o *Options) *Server {
 	if m == nil {
 		m = obs.New()
 	}
+	events := o.Events
+	if events == nil {
+		events = NewEvents(o.Logger)
+	}
 	doors := loadDoors(o, o.Logger, m)
+	limits := o.Limits.orDefault()
+	ui := o.UI
+	if ui == nil {
+		ui = webui.Files()
+	}
 	s := &Server{
+		ui:     webui.Handler(ui),
+		limits: limits, rates: newKeyRates(limits), waits: newWaitCaps(limits),
+		events: events, auth: o.Auth, started: now(),
 		store: o.Store, log: o.Logger, now: now, version: o.Version, cfg: o.Config,
 		presence: newPresence(), posts: newPostLimit(), hub: hub, push: o.Push, metrics: m,
 		health:   health.NewStatus(health.WithLogger(o.Logger)),
-		needles:  append([]string{o.Config.Token}, doors.Secrets()...),
-		bearer:   httpserver.NewStaticTokenVerifier(o.Config.Token),
+		sampler:  newSampler(),
+		needles:  doors.Secrets(),
+		cursors:  newCursors(o.CursorKey, now),
 		stopping: make(chan struct{}),
 	}
 	m.ServeState(s.state, now)
@@ -99,23 +138,29 @@ func New(o *Options) *Server {
 // Release turns /healthz unhealthy for good, then answers every held
 // standing and in-turn wait at once, and every one opened after it, so a
 // graceful stop's drain need not outlast their deadlines. It does not wait
-// for them: http.Server.Shutdown does. It stops host push and waits for
-// it, cancelling a send in flight.
-func (s *Server) Release() {
+// for them: http.Server.Shutdown does. It ends every /api/events stream,
+// waiting for them until ctx ends, and stops host push and waits for it,
+// cancelling a send in flight. A second call does nothing.
+func (s *Server) Release(ctx context.Context) {
 	s.stopOnce.Do(func() {
 		// BeginDrain first, so no /healthz answers 200 once a held wait is
 		// told the server is stopping.
 		s.health.BeginDrain()
 		close(s.stopping)
+		s.events.shutdown(ctx)
 		s.push.stop()
 	})
 }
 
-// Beat records a sweeper pass that committed, which /healthz reads, and
-// forgets the in-memory state of every identity no longer live.
+// Beat records a sweeper pass that committed, which /healthz reads, takes
+// the minute's statistics sample once the minute has turned, and forgets
+// the in-memory state of every identity no longer live and of every key
+// idle long enough to have its whole burst back.
 func (s *Server) Beat(ctx context.Context) {
 	s.health.Set(true)
+	s.sample(ctx)
 	s.posts.prune(s.now())
+	s.rates.prune(s.now())
 	s.push.beat(ctx)
 	ids := s.presence.ids()
 	live, err := s.store.Live(ctx, ids)
@@ -147,13 +192,12 @@ const (
 	// and the deadline only ends one whose store calls stall.
 	waitRouteDeadline = maxWait + 10*time.Second
 	// maxWait is the longest a standing or in-turn wait holds.
-	maxWait = 55 * time.Second
+	maxWait = wire.MaxWaitMS * time.Millisecond
 )
 
-// readTimeout bounds a slow request body. net/http keeps this deadline on
-// the connection while the handler runs and cancels the request's context
-// when its background read hits it (net/http connReader.backgroundRead),
-// so it must outlast the longest route, a held wait.
+// readTimeout bounds reading a request's headers and body. net/http clears
+// the deadline once the body is read (connReader.startBackgroundRead), so
+// it never ends a held wait or the event stream.
 const readTimeout = waitRouteDeadline + 10*time.Second
 
 // HTTPServer is the http.Server for Handler. It sets no write timeout, so
@@ -164,62 +208,57 @@ func (s *Server) HTTPServer() *http.Server {
 	return srv
 }
 
-// Handler is the whole API: /healthz and /metrics with no headers, and
-// every /v1 route behind the bearer and the version check.
+// Handler is the API: every /v1 route behind a machine key and the
+// version check, access's sign-in routes under /api/auth, which check
+// their own credentials, and every other /api route behind a signed-in
+// session, all behind one access gate; any other path is the web UI's.
 func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	t := newTable()
+	s.chains(t)
+	routes := s.auth.Routes()
+	for i := range routes {
+		pattern := routes[i].Method + " " + routes[i].Path
+		t.add(gate.Route{Name: pattern, Method: routes[i].Method, Path: routes[i].Path, Class: gate.Public}, routes[i].Handler)
+	}
+	s.mount(mux, t, "/v1/", "/api/")
+	mux.Handle("/", s.ui)
+	return s.middleware(mux)
+}
+
+// middleware wraps h in the API's access log and the panic recoverer, which
+// answers a panic in grelot's error body (panicked).
+func (s *Server) middleware(h http.Handler) http.Handler {
+	return httpserver.Chain(h,
+		httpserver.Logging(httpserver.WithLogger(s.log), httpserver.WithRecordRouteMetric(s.recordHTTP),
+			httpserver.WithClientIP(s.cfg.TrustedProxies...)),
+		httpserver.Recoverer(httpserver.WithRecoverLogger(s.log), httpserver.WithRecoverResponder(panicked)))
+}
+
+// OpsHTTPServer is the http.Server for OpsHandler.
+func (s *Server) OpsHTTPServer() *http.Server {
+	return httpserver.New(s.OpsHandler(), httpserver.WithSlogErrorLog(slog.LevelWarn))
+}
+
+// OpsHandler is the operations listener: /healthz and /metrics, with no
+// headers. Its requests count on /metrics but not in the statistics
+// sampler, whose requests are the API's.
+func (s *Server) OpsHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /healthz", health.CheckHandler(
 		health.Check{Signal: s.health, Reason: reasonStopping},
 		health.Check{Signal: s.health.Fresh(healthyFor), Reason: reasonStale},
 	))
 	mux.Handle("GET /metrics", s.metrics.Handler())
-	s.routes(mux)
-	return s.middleware(mux)
-}
-
-// middleware wraps h in the access log and the panic recoverer.
-func (s *Server) middleware(h http.Handler) http.Handler {
-	return httpserver.Chain(h,
+	return httpserver.Chain(mux,
 		httpserver.Logging(httpserver.WithLogger(s.log), httpserver.WithProbeLogLevel("/healthz", "/metrics"),
 			httpserver.WithRecordRouteMetric(s.metrics.RecordHTTP)),
-		httpserver.Recoverer(httpserver.WithRecoverLogger(s.log), httpserver.WithRecoverResponder(s.panicked)))
+		httpserver.Recoverer(httpserver.WithRecoverLogger(s.log), httpserver.WithRecoverResponder(panicked)))
 }
 
-// routes registers every /v1 route on the one mux the access log reads
-// its route label from: a nested mux would label every route /v1/.
-func (s *Server) routes(mux *http.ServeMux) {
-	handleFor := func(pattern string, h http.Handler, d time.Duration) {
-		mux.Handle(pattern, s.authorize(httpserver.RouteDeadline(h, d)))
-	}
-	handle := func(pattern string, h http.Handler) { handleFor(pattern, h, routeDeadline) }
-	handle("POST /v1/register", s.keyed(s.register))
-	handle("POST /v1/revive", s.keyed(s.revive))
-	handle("GET /v1/me", s.identity(s.me))
-	handle("PATCH /v1/me", s.renewable(s.patchMe))
-	handle("DELETE /v1/me", s.keyed(s.deleteMe))
-	handle("GET /v1/identities", s.anyone(s.who))
-	handle("GET /v1/version", s.anyone(s.serverVersion))
-	handle("POST /v1/posts", s.keyed(s.post))
-	handle("GET /v1/threads", s.identity(s.threads))
-	handle("GET /v1/messages/{id}/receipts", s.identity(s.receipts))
-	handle("GET /v1/history", s.identity(s.history))
-	handle("PUT /v1/follows", s.keyed(s.follow))
-	handle("DELETE /v1/follows", s.keyed(s.unfollow))
-	handle("POST /v1/inbox/ack", s.keyed(s.ack))
-	handle("POST /v1/reservations", s.keyed(s.reserve))
-	handle("GET /v1/reservations", s.identity(s.reservations))
-	handle("GET /v1/holders", s.identity(s.holders))
-	handle("PATCH /v1/reservations/{id}", s.keyed(s.renewReservation))
-	handle("DELETE /v1/reservations/{id}", s.keyed(s.release))
-	handle("POST /v1/delegates", s.keyed(s.grant))
-	handle("DELETE /v1/delegates/{label}", s.keyed(s.revoke))
-	handle("POST /v1/lifecycle", s.identity(s.lifecycle))
-	handle("POST /v1/events/hold", s.identity(s.eventHold))
-	handleFor("POST /v1/events/wait", s.identity(s.standingWait), waitRouteDeadline)
-	handleFor("GET /v1/inbox", s.identity(s.inbox), waitRouteDeadline)
-	mux.Handle("/v1/", s.authorize(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		s.fail(w, r, &apiError{status: http.StatusNotFound, code: "not_found", msg: "no such route: " + r.Method + " " + r.URL.Path})
-	})))
+func (s *Server) recordHTTP(rm httpserver.RequestMetric) {
+	s.metrics.RecordHTTP(rm)
+	s.sampler.request(rm)
 }
 
 // state is the census the /metrics gauges read; false when the store

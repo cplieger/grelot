@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 const (
@@ -41,7 +42,7 @@ type sessionWaits struct {
 	// newest is the newest wait's replaced channel.
 	newest chan struct{}
 	// handed is a nudge a replaced wait sent, which the newest returns.
-	handed *nudgeJSON
+	handed *wire.Nudge
 	// id is the identity the newest wait holds for.
 	id   uint64
 	open int
@@ -133,7 +134,7 @@ func (p *presence) opened(id uint64, session string, now time.Time) waitTicket {
 
 // next reports whether a newer standing wait of t's session replaced t
 // and, when none has, takes the nudge a replaced wait handed it.
-func (p *presence) next(t waitTicket) (handed *nudgeJSON, replaced bool) {
+func (p *presence) next(t waitTicket) (handed *wire.Nudge, replaced bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	sw := p.sessions[t.session]
@@ -147,7 +148,7 @@ func (p *presence) next(t waitTicket) (handed *nudgeJSON, replaced bool) {
 
 // handOff reports whether t was replaced when it sent n and, when the
 // session's newest wait holds for t's identity too, hands n to it.
-func (p *presence) handOff(t waitTicket, n nudgeJSON) (handed, replaced bool) {
+func (p *presence) handOff(t waitTicket, n wire.Nudge) (handed, replaced bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	sw := p.sessions[t.session]

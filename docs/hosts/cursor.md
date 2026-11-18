@@ -24,7 +24,7 @@ Follow [the client page](../client.md), and add `provider: cursor` to the client
 The hook file is [`providers/cursor/hooks.json`](../../providers/cursor/hooks.json). It wires `sessionStart` and `stop` to `grelot hook cursor <role>` with a 30 second timeout. Save it as `~/.cursor/hooks.json`. When that file exists, add the two events to its `hooks` object, after any entries an event already has.
 
 ```sh
-VERSION=v1.2.3   # the client's release
+VERSION=v2.1.3   # the client's release
 curl -fL -o grelot-hooks.json \
   "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/cursor/hooks.json"
 ```
@@ -32,7 +32,7 @@ curl -fL -o grelot-hooks.json \
 In PowerShell on Windows:
 
 ```powershell
-$VERSION = 'v1.2.3'   # the client's release
+$VERSION = 'v2.1.3'   # the client's release
 curl.exe -fL -o grelot-hooks.json "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/cursor/hooks.json"
 ```
 

@@ -9,7 +9,7 @@ The provider file is [`providers/codex.yaml`](../../providers/codex.yaml). Its b
 Follow [the client page](../client.md), with two Codex facts in mind:
 
 - **Use a directory on the login shell's `PATH`.** Codex runs the agent's commands in a login shell by default, and a login profile can reset `PATH`. If the agent's `grelot` command answers `command not found` while your own terminal finds it, move the binary to a directory the login profile keeps on `PATH`.
-- **Keep the token in the config file** when your `config.toml` sets a `shell_environment_policy` that applies the default excludes (`ignore_default_excludes = false`). That filter drops every variable whose name contains `KEY`, `SECRET` or `TOKEN`, so `GRELOT_TOKEN_FILE` never reaches the agent's shell. Either put the token in the client config, or exclude that name from the filter.
+- **Keep the machine key in the config file** when your `config.toml` sets a `shell_environment_policy` that applies the default excludes (`ignore_default_excludes = false`). That filter drops every variable whose name contains `KEY`, `SECRET` or `TOKEN`, so `GRELOT_TOKEN_FILE` never reaches the agent's shell. Either put the key in the client config as `token:`, or exclude that name from the filter.
 
 The client detects Codex from `CODEX_THREAD_ID` in the agent's shell, so the config file needs no `provider:` line. Set `host:` when the machine's hostname is a container id.
 
@@ -18,7 +18,7 @@ The client detects Codex from `CODEX_THREAD_ID` in the agent's shell, so the con
 Codex runs the agent's commands in a sandbox that, on Linux and macOS, cuts the network off, and on Windows can fail to start them with `CreateProcessAsUserW failed: 5 (Access is denied.)`. The rule file [`providers/codex/grelot.rules`](../../providers/codex/grelot.rules) allows every command that starts with `grelot` or `grelot.exe`, so it runs with no approval prompt and outside the sandbox, with the network. Save it in `$CODEX_HOME/rules/` (`~/.codex/rules/` by default, `%USERPROFILE%\.codex\rules\` on Windows):
 
 ```sh
-VERSION=v1.2.3   # the client's release
+VERSION=v2.1.3   # the client's release
 base="https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/codex"
 mkdir -p ~/.codex/rules
 curl -fL -o ~/.codex/rules/grelot.rules "$base/grelot.rules"
@@ -27,7 +27,7 @@ curl -fL -o ~/.codex/rules/grelot.rules "$base/grelot.rules"
 In PowerShell on Windows:
 
 ```powershell
-$VERSION = 'v1.2.3'   # the client's release
+$VERSION = 'v2.1.3'   # the client's release
 $base = "https://raw.githubusercontent.com/cplieger/grelot/$VERSION/providers/codex"
 New-Item -ItemType Directory -Force "$env:USERPROFILE\.codex\rules" | Out-Null
 curl.exe -fL -o "$env:USERPROFILE\.codex\rules\grelot.rules" "$base/grelot.rules"

@@ -3,69 +3,76 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/cplieger/access"
 	"github.com/cplieger/go/httpserver/v2"
+	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // apiError is a refusal the HTTP layer makes itself, before the store.
 type apiError struct {
 	code   httpserver.ErrorCode
 	msg    string
+	reason string
+	fields []wire.FieldError
 	status int
-	// retryAfter, when set, goes out as Retry-After in whole seconds.
+	// retryAfter, when set, goes out as Retry-After in whole seconds,
+	// rounded up, and as retry_after_ms.
 	retryAfter time.Duration
 }
 
 func (e *apiError) Error() string { return e.msg }
 
+// refusal is an apiError with one of the refusals wire declares.
+func refusal(c wire.ErrorCode, msg string) *apiError {
+	return &apiError{status: c.Status, code: httpserver.ErrorCode(c.Code), msg: msg}
+}
+
 // errShuttingDown answers a request the server cannot serve because it is
 // stopping: a wait at Release, or any route once the store is closed.
-var errShuttingDown = &apiError{
-	status: http.StatusServiceUnavailable, code: "shutting_down",
-	msg: "the server is shutting down; retry once it is back",
-}
+var errShuttingDown = refusal(wire.ErrShuttingDown, "the server is shutting down; retry once it is back")
 
 // errTimeout answers a request whose route deadline passed. The deadline
 // ends store calls only before they commit, so nothing changed.
-var errTimeout = &apiError{
-	status: http.StatusServiceUnavailable, code: "timeout", retryAfter: time.Second,
-	msg: "the request ran out of time before anything was stored; nothing changed: send it again",
-}
+var errTimeout = func() *apiError {
+	e := refusal(wire.ErrTimeout, "the request ran out of time before anything was stored; nothing changed: send it again")
+	e.retryAfter = time.Second
+	return e
+}()
 
 func badRequest(msg string) *apiError {
-	return &apiError{status: http.StatusBadRequest, code: "invalid", msg: msg}
+	return refusal(wire.ErrInvalid, msg)
 }
 
-// errorBody is every error response. PathRoot is the server's path root,
-// which a client needs to name a path again; an unauthenticated caller
-// never gets it.
-type errorBody struct {
-	Error     string               `json:"error"`
-	Code      httpserver.ErrorCode `json:"code,omitempty"`
-	RequestID string               `json:"request_id,omitempty"`
-	PathRoot  string               `json:"path_root,omitempty"`
+// fieldRefusal is an invalid naming the refused fields.
+func fieldRefusal(msg string, fields ...wire.FieldError) *apiError {
+	e := badRequest(msg)
+	e.fields = fields
+	return e
 }
 
 // whyDelegateGate is the store's Why on the delegate gate's 409.
 const whyDelegateGate = "delegate_gate"
 
-var kindStatus = map[store.Kind]struct {
-	code   httpserver.ErrorCode
-	status int
-}{
-	store.KindInvalid:   {"invalid", http.StatusBadRequest},
-	store.KindNotFound:  {"not_found", http.StatusNotFound},
-	store.KindConflict:  {"conflict", http.StatusConflict},
-	store.KindGone:      {"gone", http.StatusGone},
-	store.KindFull:      {"store_full", http.StatusInsufficientStorage},
-	store.KindForbidden: {"forbidden", http.StatusForbidden},
-	store.KindKeyReused: {"key_reused", http.StatusUnprocessableEntity},
+var kindStatus = map[store.Kind]wire.ErrorCode{
+	store.KindInvalid:   wire.ErrInvalid,
+	store.KindNotFound:  wire.ErrNotFound,
+	store.KindConflict:  wire.ErrConflict,
+	store.KindGone:      wire.ErrGone,
+	store.KindFull:      wire.ErrStoreFull,
+	store.KindForbidden: wire.ErrForbidden,
+	store.KindKeyReused: wire.ErrKeyReused,
 }
 
 // fail answers err: a refusal with its status and the fix, anything else
@@ -80,41 +87,99 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		err = errShuttingDown
 	case errors.Is(err, context.DeadlineExceeded) && r.Context().Err() != nil:
 		err = errTimeout
+	case errors.Is(err, store.ErrOtherKey):
+		s.metrics.AuthFailures.Inc(obs.AuthWrongKeyIdentity)
 	}
-	body := errorBody{RequestID: httpserver.RequestIDFromContext(r.Context()), PathRoot: s.cfg.PathRoot}
-	status := http.StatusInternalServerError
+	body := wire.Error{RequestID: httpserver.RequestIDFromContext(r.Context())}
+	var status int
 	var se *store.Error
 	var ae *apiError
 	switch {
 	case errors.As(err, &se):
 		k := kindStatus[se.Kind]
-		status, body.Code, body.Error = k.status, k.code, se.Msg
+		status, body.Code, body.Error, body.Reason = k.Status, k.Code, se.Msg, se.Reason
 		if se.Why != "" {
-			body.Code = httpserver.ErrorCode(se.Why)
+			body.Code = se.Why
+		}
+		if se.Field != nil {
+			body.Fields = []wire.FieldError{*se.Field}
 		}
 		if se.Why == whyDelegateGate {
 			s.log.Info("request refused", "method", r.Method, "path", r.URL.Path)
 		}
 	case errors.As(err, &ae):
-		status, body.Code, body.Error = ae.status, ae.code, ae.msg
+		status, body.Code, body.Error, body.Reason, body.Fields = ae.status, string(ae.code), ae.msg, ae.reason, ae.fields
 		if ae.retryAfter > 0 {
-			w.Header().Set("Retry-After", strconv.Itoa(int(ae.retryAfter.Seconds())))
+			secs := int64(retryAfter(ae.retryAfter) / time.Second)
+			w.Header().Set("Retry-After", strconv.FormatInt(secs, 10))
+			body.RetryAfterMS = secs * 1000
 		}
 	default:
 		s.log.Error("request failed", "path", r.URL.Path, "error", err)
-		body.Code, body.Error = "internal_error", "internal server error"
-	}
-	if status == http.StatusUnauthorized || status == http.StatusUpgradeRequired {
-		body.PathRoot = ""
+		status, body.Code, body.Error = wire.ErrInternal.Status, wire.ErrInternal.Code, "internal server error"
 	}
 	httpserver.WriteJSONStatus(w, status, body)
 }
 
+// AuthErrors writes access's refusals, the sign-in routes' and the gate's,
+// in the API's error envelope, logging to logger each one of status 500 or
+// more and counting on m each attempt the failure limiter refused. A gate
+// refusal says what grelot wants instead (gateWords); a sign-in route's keeps
+// access's words. A refusal access gives a Retry-After carries it as
+// retry_after_ms too.
+func AuthErrors(logger *slog.Logger, m *obs.Metrics) access.ErrorWriter {
+	return func(w http.ResponseWriter, r *http.Request, e access.Error) {
+		if e.Status >= http.StatusInternalServerError {
+			logger.Warn("auth request failed", "path", r.URL.Path, "code", string(e.Code), "error", fmt.Sprint(e.Err))
+		}
+		if e.Code == access.CodeRateLimited {
+			m.AuthFailures.Inc(obs.AuthRateLimited)
+		}
+		msg := e.Detail
+		if !strings.HasPrefix(r.URL.Path, wire.AuthPrefix+"/") {
+			msg = cmp.Or(gateWords(r, &e), msg)
+		}
+		body := wire.Error{Error: msg, Code: string(e.Code), Reason: e.Reason, RequestID: httpserver.RequestIDFromContext(r.Context())}
+		if e.RetryAfter > 0 {
+			body.RetryAfterMS = int64(retryAfter(e.RetryAfter) / time.Millisecond)
+		}
+		httpserver.WriteJSONStatus(w, e.Status, body)
+	}
+}
+
+// gateWords is the fix for the gate refusal e of r, "" for a code the gate
+// does not answer.
+func gateWords(r *http.Request, e *access.Error) string {
+	machine := strings.HasPrefix(r.URL.Path, "/v1/")
+	switch e.Code {
+	case access.CodeAuthRequired, access.CodeSessionExpired, access.CodeInvalidCredentials, access.CodeKeyInvalid:
+		if machine {
+			return "a valid machine key is required: set token in the grelot client config to a key from grelot key create"
+		}
+		return "sign in to use the web UI"
+	case access.CodeKeyRequired:
+		return "the agent API takes a machine's API key, not a browser session"
+	case access.CodeSessionRequired:
+		if errors.Is(e.Err, access.ErrRestrictedSession) {
+			return "a recovery session only sets a new password or passkey: finish the recovery, then sign in"
+		}
+		return "this route takes a signed-in browser session, not an API key"
+	case access.CodeCrossOrigin:
+		return "a cross-origin request cannot change anything: send it from grelot's own pages"
+	case access.CodeUnavailable:
+		return "the accounts file could not be read; try again shortly"
+	case access.CodeNotFound, access.CodeMethodNotAllowed:
+		return "no such route: " + r.Method + " " + r.URL.Path
+	default:
+		return ""
+	}
+}
+
 // panicked answers a recovered panic in grelot's error body, the one fail
 // writes for an internal error; Recoverer has already logged the panic.
-func (s *Server) panicked(w http.ResponseWriter, r *http.Request, status int, _ httpserver.ErrorCode, _ string) {
-	httpserver.WriteJSONStatus(w, status, errorBody{
-		Error: "internal server error", Code: "internal_error",
-		RequestID: httpserver.RequestIDFromContext(r.Context()), PathRoot: s.cfg.PathRoot,
+func panicked(w http.ResponseWriter, r *http.Request, status int, _ httpserver.ErrorCode, _ string) {
+	httpserver.WriteJSONStatus(w, status, wire.Error{
+		Error: "internal server error", Code: wire.ErrInternal.Code,
+		RequestID: httpserver.RequestIDFromContext(r.Context()),
 	})
 }

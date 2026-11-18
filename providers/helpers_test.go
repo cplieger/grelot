@@ -65,8 +65,10 @@ type request struct {
 type testServer struct {
 	clock *clock
 	URL   string
-	mu    sync.Mutex
-	reqs  []request
+	// Key is the machine key the server admits.
+	Key  string
+	mu   sync.Mutex
+	reqs []request
 }
 
 func (ts *testServer) count() int {
@@ -104,11 +106,15 @@ type shell struct {
 	inHook    bool
 }
 
-// useServer points the shell's client config at url instead of its test
-// server.
+// useServer points the shell's client config at url: with the test
+// server's own key when url is that server, a placeholder key otherwise.
 func (s *shell) useServer(url string) {
 	s.t.Helper()
-	if err := os.WriteFile(client.ConfigFile(s.config), fmt.Appendf(nil, "server: %s\ntoken: test-token\nhost: box\n", url), 0o600); err != nil {
+	token := "test-token"
+	if s.srv != nil && url == s.srv.URL {
+		token = s.srv.Key
+	}
+	if err := os.WriteFile(client.ConfigFile(s.config), fmt.Appendf(nil, "server: %s\ntoken: %s\nhost: box\n", url, token), 0o600); err != nil {
 		s.t.Fatal(err)
 	}
 }

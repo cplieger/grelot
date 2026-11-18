@@ -9,21 +9,19 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/provider"
 	"github.com/cplieger/grelot/internal/transport"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // maxHold is the longest one standing or in-turn wait holds, the server's
 // 55 s ceiling; a longer wait is several requests.
-var maxHold = 55 * time.Second
-
-// waitKey names the hold in a standing wait's body and an in-turn wait's
-// query.
-const waitKey = "wait"
+var maxHold = wire.MaxWaitMS * time.Millisecond
 
 // waitMargin is how long past its hold a wait request may take to answer.
 const waitMargin = 15 * time.Second
@@ -191,7 +189,7 @@ type watcher struct {
 // polled is what one poll came to: a nudge, an end reason (a 410's code,
 // or upgrade), or neither when a door's hold lapsed.
 type polled struct {
-	nudge *client.Nudge
+	nudge *wire.Nudge
 	end   string
 }
 
@@ -213,7 +211,7 @@ func (ws *watcher) run(ctx context.Context, data *provider.Data) error {
 		case got.end != "":
 			data.Line, data.Seq = transport.EndLine(got.end), 0
 			step, err = ws.w.End(ctx, data)
-			if got.end == transport.EndReplaced || got.end == transport.EndRestored {
+			if got.end == wire.ErrReplaced.Code || got.end == wire.ErrRestored.Code {
 				// Another watcher of the session runs on, or host push wakes
 				// it, so nothing failed.
 				step.Code = 0
@@ -294,8 +292,8 @@ func holdUntil(until time.Time) time.Duration {
 // with no error, is a wait that passed with none.
 func (ws *watcher) once(ctx context.Context, hold time.Duration) (got polled, done bool, err error) {
 	req := &client.Request{
-		Method: http.MethodPost, Path: "/v1/events/wait",
-		Body: map[string]string{waitKey: hold.String()}, Timeout: hold + waitMargin, Once: true,
+		Method: http.MethodPost, Path: wire.Path("waitEvent", nil),
+		Body: wire.WaitRequest{WaitMS: wire.StandingWaitMS(hold.Milliseconds())}, Timeout: hold + waitMargin, Once: true,
 	}
 	resp, err := ws.api.Do(ctx, req, nil)
 	if ae, ok := errors.AsType[*client.APIError](err); ok && ae.HTTP == http.StatusGone {
@@ -304,7 +302,7 @@ func (ws *watcher) once(ctx context.Context, hold time.Duration) (got polled, do
 	if err != nil || resp.Code != http.StatusOK {
 		return polled{}, false, err
 	}
-	var n client.Nudge
+	var n wire.Nudge
 	if json.Unmarshal(resp.Body, &n) != nil {
 		return polled{}, false, errors.New("grelot watch: the server's nudge is not the JSON this client reads; check that the client and server versions match with grelot version")
 	}
@@ -330,6 +328,17 @@ func sleep(ctx context.Context, d time.Duration) error {
 	case <-t.C:
 		return nil
 	}
+}
+
+// waitRetry is the pause before grelot wait sends a wait its machine's key
+// or the server refused for holding too many.
+var waitRetry = 2 * time.Second
+
+// tooManyWaits reports the server refusing a wait for the waits already
+// held, which pass once one answers.
+func tooManyWaits(err error) bool {
+	ae, ok := errors.AsType[*client.APIError](err)
+	return ok && ae.HTTP == http.StatusTooManyRequests && ae.Code == "too_many_waits"
 }
 
 // wait is grelot wait --timeout: the in-turn wait, one request per hold of
@@ -358,15 +367,22 @@ func (r *run) wait(ctx context.Context, args []string) error {
 	for {
 		hold := max(min(maxHold, time.Until(deadline)), 0).Round(time.Millisecond)
 		req := &client.Request{
-			Method: http.MethodGet, Path: "/v1/inbox",
-			Query: url.Values{waitKey: {hold.String()}}, Timeout: hold + waitMargin,
+			Method: http.MethodGet, Path: wire.Path("readInbox", nil), Timeout: hold + waitMargin,
+			Query: url.Values{"wait_ms": {strconv.FormatInt(hold.Milliseconds(), 10)}, wire.QueryLimit: {strconv.Itoa(printLimit)}},
 		}
-		var page client.Inbox
+		var page wire.Inbox
 		resp, err := a.Do(ctx, r.bounded(req), &page)
+		// Past the deadline the next request holds 0, a read no cap refuses.
+		if tooManyWaits(err) {
+			if serr := sleep(ctx, max(min(waitRetry, time.Until(deadline)), 0)); serr != nil {
+				return serr
+			}
+			continue
+		}
 		if err != nil {
 			return err
 		}
-		if len(page.Entries) > 0 {
+		if len(page.Items) > 0 {
 			r.printStatus(resp.Status)
 			return r.showPage(ctx, &page)
 		}

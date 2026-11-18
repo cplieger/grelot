@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 func TestReservations_reserveQueueRenewAndHandOff(t *testing.T) {
@@ -19,7 +20,7 @@ func TestReservations_reserveQueueRenewAndHandOff(t *testing.T) {
 	h.mustRegister(sessA, "holder")
 	h.mustRegister(sessB, "waiter")
 	path := repoGrelot + "/internal"
-	body := map[string]any{"path": path, "reason": "editing", "ttl": "1h"}
+	body := map[string]any{"path": path, "reason": "editing", "ttl_ms": durMS("1h")}
 	r := h.as(sessA, http.MethodPost, "/v1/reservations", body)
 	if r.status != http.StatusCreated {
 		t.Fatalf("reserve: %d %s", r.status, r.raw)
@@ -40,12 +41,12 @@ func TestReservations_reserveQueueRenewAndHandOff(t *testing.T) {
 		t.Errorf("behind = %v, want the holder", behind)
 	}
 	list := h.as(sessB, http.MethodGet, "/v1/reservations?path="+repoGrelot, nil)
-	if n := len(list.body["reservations"].([]any)); list.status != http.StatusOK || n != 2 {
+	if n := len(list.body["items"].([]any)); list.status != http.StatusOK || n != 2 {
 		t.Errorf("list: %d with %d entries, want the grant and the queue entry", list.status, n)
 	}
 	id := fmt.Sprint(held["id"])
 	h.clk.advance(10 * time.Minute)
-	r = h.as(sessA, http.MethodPatch, "/v1/reservations/"+id, map[string]any{"ttl": "2h"})
+	r = h.as(sessA, http.MethodPatch, "/v1/reservations/"+id, map[string]any{"ttl_ms": durMS("2h")})
 	if r.status != http.StatusOK || r.body["reservation"].(map[string]any)["expires_at"] != h.clk.now().Add(2*time.Hour).Format(time.RFC3339) {
 		t.Errorf("renew: %d %s, want the expiry 2 h from now", r.status, r.raw)
 	}
@@ -53,7 +54,7 @@ func TestReservations_reserveQueueRenewAndHandOff(t *testing.T) {
 		t.Fatalf("release: %d %s", r.status, r.raw)
 	}
 	list = h.as(sessB, http.MethodGet, "/v1/reservations?path="+path, nil)
-	rs := list.body["reservations"].([]any)
+	rs := list.body["items"].([]any)
 	if len(rs) != 1 || rs[0].(map[string]any)["state"] != "held" || rs[0].(map[string]any)["holder"] != "waiter" {
 		t.Errorf("after the release = %v, want the waiter holding it", rs)
 	}
@@ -73,7 +74,7 @@ func TestDelegates_grantGateAndRevoke(t *testing.T) {
 	if r := h.as(sessA, http.MethodPost, "/v1/delegates", map[string]any{"label": "review"}); r.status != http.StatusBadRequest {
 		t.Errorf("a grant with no ttl: %d %s, want 400", r.status, r.raw)
 	}
-	g := h.as(sessA, http.MethodPost, "/v1/delegates", map[string]any{"label": "review", "ttl": "1h"})
+	g := h.as(sessA, http.MethodPost, "/v1/delegates", map[string]any{"label": "review", "ttl_ms": durMS("1h")})
 	if g.status != http.StatusCreated || !strings.HasPrefix(g.str("link"), "grelot-link:") || g.str("handle") != "parent/review" {
 		t.Fatalf("grant: %d %s", g.status, g.raw)
 	}
@@ -84,7 +85,7 @@ func TestDelegates_grantGateAndRevoke(t *testing.T) {
 	if n := len(h.logs.lines(slog.LevelInfo, "request refused")); n != 1 {
 		t.Errorf("request refused lines = %d, want 1", n)
 	}
-	self := map[string]string{headerSession: sessA, headerSelf: "1"}
+	self := map[string]string{wire.HeaderSession: sessA, wire.HeaderSelf: "1"}
 	if r := h.request(http.MethodGet, "/v1/inbox", nil, self); r.status != http.StatusOK {
 		t.Errorf("the same request with Self: %d %s", r.status, r.raw)
 	}
@@ -101,7 +102,7 @@ func TestLifecycle_sessionEndSubagentStopAndTurnEnd(t *testing.T) {
 	h := newHarness(t)
 	h.mustRegister(sessA, "parent")
 	handle := h.grantDelegate(sessA, "review")
-	self := map[string]string{headerSession: sessA, headerSelf: "1"}
+	self := map[string]string{wire.HeaderSession: sessA, wire.HeaderSelf: "1"}
 	life := func(headers map[string]string, event, agent string) *response {
 		return h.request(http.MethodPost, "/v1/lifecycle", map[string]any{"event": event, "agent_id": agent}, headers)
 	}
@@ -114,13 +115,13 @@ func TestLifecycle_sessionEndSubagentStopAndTurnEnd(t *testing.T) {
 		return id
 	}
 	ended := func() bool {
-		st, err := h.store.Status(t.Context(), store.Caller{Session: sessA, Self: true})
+		st, err := h.store.Status(t.Context(), store.Caller{Key: h.keyID(), Session: sessA, Self: true})
 		if err != nil {
 			t.Fatalf("Status: %v", err)
 		}
 		return st.Identity.Ended
 	}
-	if r := life(map[string]string{headerSession: sessA}, eventSubagentStop, "internal-agent"); r.status != http.StatusOK {
+	if r := life(map[string]string{wire.HeaderSession: sessA}, eventSubagentStop, "internal-agent"); r.status != http.StatusOK {
 		t.Errorf("subagent_stop for an unbound id: %d %s, want 200 past the gate", r.status, r.raw)
 	}
 	if n := len(h.logs.lines(slog.LevelInfo, "request refused")); n != 0 {
@@ -132,7 +133,7 @@ func TestLifecycle_sessionEndSubagentStopAndTurnEnd(t *testing.T) {
 	if r := life(self, eventTurnEnd, ""); r.status != http.StatusOK {
 		t.Errorf("turn_end: %d %s", r.status, r.raw)
 	}
-	if r := h.request(http.MethodGet, "/v1/inbox", nil, map[string]string{headerSession: sessA, headerAs: handle}); r.status != http.StatusOK {
+	if r := h.request(http.MethodGet, "/v1/inbox", nil, map[string]string{wire.HeaderSession: sessA, wire.HeaderAs: handle}); r.status != http.StatusOK {
 		t.Errorf("the parent's subagent_stop ended its delegate: %d %s, want it still acting", r.status, r.raw)
 	}
 
@@ -140,7 +141,7 @@ func TestLifecycle_sessionEndSubagentStopAndTurnEnd(t *testing.T) {
 	if r := life(self, eventSessionEnd, ""); r.status != http.StatusOK || !ended() {
 		t.Fatalf("session_end: %d %s, want the session marked ended", r.status, r.raw)
 	}
-	if r := h.request(http.MethodGet, "/v1/inbox", nil, map[string]string{headerSession: sessA, headerAs: second}); r.status/100 != 4 {
+	if r := h.request(http.MethodGet, "/v1/inbox", nil, map[string]string{wire.HeaderSession: sessA, wire.HeaderAs: second}); r.status/100 != 4 {
 		t.Errorf("a delegate outlived its parent's session end: %d %s", r.status, r.raw)
 	}
 	id := me()
@@ -164,7 +165,7 @@ func TestHolders_route(t *testing.T) {
 	h.mustRegister(sessA, "holder")
 	h.mustRegister(sessB, "writer")
 	held := repoGrelot + "/internal"
-	if r := h.as(sessA, http.MethodPost, "/v1/reservations", map[string]any{"path": held, "reason": "editing", "ttl": "1h"}); r.status != http.StatusCreated {
+	if r := h.as(sessA, http.MethodPost, "/v1/reservations", map[string]any{"path": held, "reason": "editing", "ttl_ms": time.Hour.Milliseconds()}); r.status != http.StatusCreated {
 		t.Fatalf("reserve: %d %s", r.status, r.raw)
 	}
 	file, free := held+"/a.go", repoGrelot+"/README.md"
@@ -189,7 +190,7 @@ func TestHolders_route(t *testing.T) {
 		}
 	})
 	t.Run("the caller's queue entry", func(t *testing.T) {
-		q := h.as(sessB, http.MethodPost, "/v1/reservations", map[string]any{"path": held, "reason": "next", "ttl": "30m", "queue": true})
+		q := h.as(sessB, http.MethodPost, "/v1/reservations", map[string]any{"path": held, "reason": "next", "ttl_ms": (30 * time.Minute).Milliseconds(), "queue": true})
 		if q.status != http.StatusCreated {
 			t.Fatalf("queue: %d %s", q.status, q.raw)
 		}

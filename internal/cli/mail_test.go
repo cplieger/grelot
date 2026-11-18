@@ -358,13 +358,13 @@ func TestPost_notifyReadAndBy(t *testing.T) {
 		a.mustPost("x", append([]string{"announce", "Read this", "--notify-read", c.flag, "--by", "4h"}, keep...)...)
 		var got struct {
 			NotifyRead json.RawMessage `json:"notify_read"`
-			By         string          `json:"by"`
+			ByMS       int64           `json:"by_ms"`
 		}
 		if err := json.Unmarshal([]byte(ts.last(t, http.MethodPost, "/v1/posts").Body), &got); err != nil {
 			t.Fatal(err)
 		}
-		if string(got.NotifyRead) != c.want || got.By != "4h" {
-			t.Errorf("--notify-read %s sent notify_read %s, by %q, want %s and 4h", c.flag, got.NotifyRead, got.By, c.want)
+		if string(got.NotifyRead) != c.want || got.ByMS != (4*time.Hour).Milliseconds() {
+			t.Errorf("--notify-read %s sent notify_read %s, by_ms %d, want %s and 4h", c.flag, got.NotifyRead, got.ByMS, c.want)
 		}
 	}
 }
@@ -574,7 +574,7 @@ func TestInbox_theAckIsOneKeyedCall(t *testing.T) {
 			a.must("inbox")
 			id := b.mustPost("x", append([]string{"@ant-dev", "Hello"}, keep...)...)
 			front, acks, keys := flakyAcks(t, ts, c.fails)
-			writeClientConfig(t, a.env.ConfigDir, "server: "+front+"\ntoken: test-token\nhost: box\n")
+			writeClientConfig(t, a.env.ConfigDir, "server: "+front+"\ntoken: "+ts.Key+"\nhost: box\n")
 
 			out := a.must("inbox")
 			if got := acks.Load(); got != c.wantAcks {
@@ -608,7 +608,7 @@ func TestHistory_mapsEveryFilter(t *testing.T) {
 	}
 	want := url.Values{
 		"thread": {"3"}, "path": {"/workspace/toolbelt/internal"}, "with": {"@bee-dev"}, "announce": {"1"},
-		"from": {"@me"}, "since": {"48h"}, "until": {"1h"}, "grep": {"notify"}, "limit": {"5"}, "full": {"1"}, "last_read": {"1"},
+		"from": {"@me"}, "since": {"2026-11-03T09:00:00Z"}, "until": {"2026-11-05T08:00:00Z"}, "grep": {"notify"}, "limit": {"5"}, "full": {"1"}, "last_read": {"1"},
 	}
 	if got := u.Query(); got.Encode() != want.Encode() {
 		t.Errorf("query = %s, want %s", got.Encode(), want.Encode())
@@ -705,5 +705,61 @@ func TestThreadsFollowAndUnfollow(t *testing.T) {
 	out = c.must("follow", adir)
 	if want := "grelot: no thread lives at " + adir + " now: its next post reaches you (grelot threads lists the live ones)\n"; !strings.Contains(out, want) {
 		t.Errorf("follow of a path with no thread printed %q, want %q", out, want)
+	}
+}
+
+func TestHistory_namesTheNextPage(t *testing.T) {
+	ts := newServer(t)
+	a, _ := registerAt(t, ts, "s-1", "ant-dev")
+	b, _ := registerAt(t, ts, "s-2", "bee-dev")
+	for _, subject := range []string{"first", "second", "third"} {
+		b.postTo("@ant-dev", subject)
+		ts.clock.advance(time.Minute)
+	}
+	out := a.must("history", "--from", "@bee-dev", "--limit", "2")
+	if strings.Contains(out, "| first") || !strings.Contains(out, "| second") || !strings.Contains(out, "| third") {
+		t.Errorf("the first page %q, want the two newest posts", out)
+	}
+	line := out[strings.LastIndex(strings.TrimSuffix(out, "\n"), "\n")+1:]
+	prefix := "grelot: 2 of 3 shown; for the older ones, run grelot history again with the same flags and --cursor="
+	cursor, ok := strings.CutPrefix(strings.TrimSuffix(line, "\n"), prefix)
+	if !ok || cursor == "" {
+		t.Fatalf("last line %q, want it to start %q with the cursor", line, prefix)
+	}
+	out = a.must("history", "--from", "@bee-dev", "--limit", "2", "--cursor="+cursor)
+	if !strings.Contains(out, "| first") || strings.Contains(out, "| second") || strings.Contains(out, "--cursor=") {
+		t.Errorf("the next page %q, want only the oldest post and no next-page line", out)
+	}
+}
+
+// A relative --since or --until is a different instant on each run, and the
+// cursor binds the query sent, so the next-page line names the instants the
+// first page was read with.
+func TestHistory_namesTheNextPageWithARelativeSince(t *testing.T) {
+	ts := newServer(t)
+	a, _ := registerAt(t, ts, "s-1", "ant-dev")
+	b, _ := registerAt(t, ts, "s-2", "bee-dev")
+	for _, subject := range []string{"first", "second", "third"} {
+		b.postTo("@ant-dev", subject)
+		ts.clock.advance(time.Minute)
+	}
+	args := []string{"history", "--from", "@bee-dev", "--since=2h", "--until=0s", "--limit", "2"}
+	out := a.must(args...)
+	line := strings.TrimSuffix(out[strings.LastIndex(strings.TrimSuffix(out, "\n"), "\n")+1:], "\n")
+	prefix := "grelot: 2 of 3 shown; for the older ones, run grelot history again with the same flags and "
+	tail, ok := strings.CutPrefix(line, prefix)
+	if !ok {
+		t.Fatalf("last line %q, want it to start %q", line, prefix)
+	}
+	since := ts.clock.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339)
+	until := ts.clock.Now().UTC().Format(time.RFC3339)
+	words := strings.Fields(tail)
+	if len(words) != 3 || words[0] != "--since="+since || words[1] != "--until="+until || !strings.HasPrefix(words[2], "--cursor=") {
+		t.Fatalf("next-page flags %q, want --since=%s --until=%s --cursor=<c>", words, since, until)
+	}
+	ts.clock.advance(time.Second)
+	out = a.must(append(args, words...)...)
+	if !strings.Contains(out, "| first") || strings.Contains(out, "| second") || strings.Contains(out, "--cursor=") {
+		t.Errorf("the next page %q, want only the oldest post and no next-page line", out)
 	}
 }

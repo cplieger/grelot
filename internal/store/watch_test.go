@@ -69,8 +69,8 @@ func TestNotifyRead_allFiresReceiptsCompleteOnceWhenTheLastRecipientReads(t *tes
 	})
 	t.Run("the event wakes the sender", func(t *testing.T) {
 		page := mustInbox(t, s, sess("alpha"), 0)
-		i := slices.IndexFunc(page.Entries, func(e Entry) bool { return e.Kind == kindReceiptsComplete })
-		if page.Unread.Receipts != 1 || page.Unread.Wake() != 1 || i < 0 || !page.Entries[i].Wake || page.Entries[i].Text != want {
+		i := slices.IndexFunc(page.Items, func(e Entry) bool { return e.Kind == kindReceiptsComplete })
+		if page.Unread.Receipts != 1 || page.Unread.Wake() != 1 || i < 0 || !page.Items[i].Wake || page.Items[i].Text != want {
 			t.Errorf("sender's inbox %+v, want one waking receipts event", page.Unread)
 		}
 	})
@@ -241,7 +241,7 @@ func TestNotifyRead_byIsCappedAtTheMessagesExpiry(t *testing.T) {
 	bravo := regAt(t, s, "bravo")
 	keepAlive(t, s, sender.ID, bravo.ID)
 	mustPost(t, s, watchedPost("alpha", Target{Agent: "bravo"}, NotifyRead{All: true, By: 30 * 24 * time.Hour}))
-	clk.advance(DefaultThreadTTL - time.Minute)
+	clk.advance(DefaultRetention - time.Minute)
 	mustSweep(t, s)
 	wantEvents(t, s, sender.ID, kindReceiptsDue)
 	clk.advance(time.Minute)
@@ -257,7 +257,7 @@ func TestNotifyRead_withoutByEndsSilentlyWithTheMessage(t *testing.T) {
 	bravo := regAt(t, s, "bravo")
 	keepAlive(t, s, sender.ID, bravo.ID)
 	mustPost(t, s, watchedPost("alpha", Target{Agent: "bravo"}, NotifyRead{All: true}))
-	clk.advance(DefaultThreadTTL)
+	clk.advance(DefaultRetention)
 	mustSweep(t, s)
 	if n := watchCount(t, s); n != 0 {
 		t.Errorf("%d watches after the message expired, want 0", n)
@@ -336,8 +336,8 @@ func TestNotifyRead_aDormantSenderGetsTheEventAndReadsItAfterRevival(t *testing.
 
 	mustRevive(t, s, revival(sess("alpha"), "", envA()))
 	page := mustInbox(t, s, sess("alpha"), 0)
-	if !slices.ContainsFunc(page.Entries, func(e Entry) bool { return e.Kind == kindReceiptsComplete && e.Text == want }) {
-		t.Errorf("inbox after revival %+v, want the receipts_complete event", page.Entries)
+	if !slices.ContainsFunc(page.Items, func(e Entry) bool { return e.Kind == kindReceiptsComplete && e.Text == want }) {
+		t.Errorf("inbox after revival %+v, want the receipts_complete event", page.Items)
 	}
 }
 
@@ -351,10 +351,10 @@ func TestNotifyRead_anAnnouncementWhileDormantIsInTheInboxAfterRevival(t *testin
 
 	mustRevive(t, s, revival(sessA, "", envA()))
 	page := mustInbox(t, s, sessA, 0)
-	if !slices.ContainsFunc(page.Entries, func(e Entry) bool { return e.Message == msg }) {
-		t.Errorf("inbox of %d after revival %+v, want the announcement", sleeper.ID, page.Entries)
+	if !slices.ContainsFunc(page.Items, func(e Entry) bool { return e.Message == msg }) {
+		t.Errorf("inbox of %d after revival %+v, want the announcement", sleeper.ID, page.Items)
 	}
-	mustAck(t, s, sessA, page.Entries[len(page.Entries)-1].Seq)
+	mustAck(t, s, sessA, page.Items[len(page.Items)-1].Seq)
 	wantEvents(t, s, sender.ID, kindReceiptsComplete, fmt.Sprintf("message %d: all 1 have read %s", msg, subject))
 }
 
@@ -374,7 +374,7 @@ func TestNotifyRead_aDelegateRecipientsEndCountsRetired(t *testing.T) {
 func TestNotifyRead_aParentKeepsContiguousSeqsWhenItsDelegatesEndCompletesItsWatch(t *testing.T) {
 	for name, end := range map[string]func(t *testing.T, s *Store){
 		"session end": func(t *testing.T, s *Store) {
-			if err := s.EndSession(t.Context(), sess("subflux-dev")); err != nil {
+			if err := s.EndSession(t.Context(), sess("subflux-dev"), 0); err != nil {
 				t.Fatal(err)
 			}
 		},

@@ -3,6 +3,7 @@
 package version
 
 import (
+	"fmt"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -50,16 +51,25 @@ func Parse(s string) (V, bool) {
 	return out, true
 }
 
-// Install is the instruction that gets the client of version v: go install
-// at its tag, and for a release also its release page, which carries the
-// client binaries. A dev build's tag has no release, so the page is left out.
+// Install is the instruction that gets the client for a server of version
+// v, which Parse accepts: v's release page, which carries the client
+// binaries. A -dev.N build names its base's page, because a stable image
+// is the promoted development build and keeps its -dev.N, and falls back
+// to go install @dev only while that page does not exist, since @dev builds
+// a tip sent as dev, which no skew check covers. No line names go install
+// at a version: an app's module path takes no /vN, so the go command
+// resolves no v2 or later tag.
 func Install(v string) string {
-	line := "install grelot " + v + " with go install github.com/cplieger/grelot@" + v
-	if p, ok := Parse(v); ok && p.Dev < 0 {
-		line += " or from https://github.com/cplieger/grelot/releases/tag/" + v
+	p, _ := Parse(v)
+	base := fmt.Sprintf("v%d.%d.%d", p.Release[0], p.Release[1], p.Release[2])
+	line := "install grelot " + base + " from " + releasePage + base
+	if p.Dev >= 0 {
+		line += ", or, if that page does not exist yet, a development build with go install github.com/cplieger/grelot@dev"
 	}
 	return line + ", then check both with grelot version"
 }
+
+const releasePage = "https://github.com/cplieger/grelot/releases/tag/"
 
 func isNumber(s string) bool {
 	if s == "" || len(s) > 9 || (len(s) > 1 && s[0] == '0') {

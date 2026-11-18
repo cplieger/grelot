@@ -3,6 +3,7 @@
 package server
 
 import (
+	"fmt"
 	"maps"
 	"net/http"
 	"slices"
@@ -10,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/store"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 const (
@@ -46,7 +47,7 @@ func whoHarness(t *testing.T) *harness {
 	ctx := t.Context()
 	reserve := func(name, path string, queue bool) {
 		if _, _, err := h.store.Reserve(ctx, store.Keyed{}, &store.Reserving{
-			Caller: store.Caller{Session: sessOf(name)}, Path: path, Reason: "editing", TTL: time.Hour, Queue: queue,
+			Caller: store.Caller{Key: h.keyID(), Session: sessOf(name)}, Path: path, Reason: "editing", TTL: time.Hour, Queue: queue,
 		}); err != nil {
 			t.Fatalf("Reserve(%s, %s): %v", name, path, err)
 		}
@@ -56,17 +57,17 @@ func whoHarness(t *testing.T) *harness {
 	reserve("docs-writer", engineGo, true)
 	nc := store.Fields{Name: store.NoChange, Description: store.NoChange, Paths: []string{store.NoChange}}
 	if _, _, err := h.store.Post(ctx, store.Keyed{}, &store.Posting{
-		Caller: store.Caller{Session: sessOf("docs-writer")}, Subject: "install guide", Body: "a body",
+		Caller: store.Caller{Key: h.keyID(), Session: sessOf("docs-writer")}, Subject: "install guide", Body: "a body",
 		To: store.Target{Path: repoWTK}, Fields: nc,
 	}); err != nil {
 		t.Fatalf("Post: %v", err)
 	}
-	g, _, err := h.store.Delegate(ctx, store.Keyed{}, &store.Grant{Caller: store.Caller{Session: sessOf("toolbelt-dev")}, Label: "review", TTL: time.Hour})
+	g, _, err := h.store.Delegate(ctx, store.Keyed{}, &store.Grant{Caller: store.Caller{Key: h.keyID(), Session: sessOf("toolbelt-dev")}, Label: "review", TTL: time.Hour})
 	if err != nil {
 		t.Fatalf("Delegate: %v", err)
 	}
 	if _, _, err := h.store.Register(ctx, store.Keyed{}, &store.Registration{
-		Session: sessOf("toolbelt-dev"), Link: g.Link, Fields: store.Fields{Description: "reviewing the chooser"},
+		Session: sessOf("toolbelt-dev"), Key: h.keyID(), Link: g.Link, Fields: store.Fields{Description: "reviewing the chooser"},
 	}); err != nil {
 		t.Fatalf("Register delegate: %v", err)
 	}
@@ -79,7 +80,7 @@ func entries(t *testing.T, r *response) map[string]map[string]any {
 	if r.status != http.StatusOK {
 		t.Fatalf("GET /v1/identities: %d %s", r.status, r.raw)
 	}
-	list, _ := r.body["identities"].([]any)
+	list, _ := r.body["items"].([]any)
 	out := map[string]map[string]any{}
 	for _, e := range list {
 		m, _ := e.(map[string]any)
@@ -103,8 +104,8 @@ func TestWho_listsEveryAgentWithItsDeclaredWork(t *testing.T) {
 		headers  map[string]string
 		relation string
 	}{
-		{"from the third agent", map[string]string{headerSession: sessOf("docs-writer")}, "same environment"},
-		{"from a session with no identity", map[string]string{headerSession: "kiro-cli:nobody"}, "unknown"},
+		{"from the third agent", map[string]string{wire.HeaderSession: sessOf("docs-writer")}, "same environment"},
+		{"from a session with no identity", map[string]string{wire.HeaderSession: "kiro-cli:nobody"}, "unknown"},
 		{"with no session at all", nil, "unknown"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -183,26 +184,12 @@ func TestWho_filtersCombineWithAnd(t *testing.T) {
 	}
 }
 
-func TestWho_fieldsKeepsTheNamedOnesAndName(t *testing.T) {
-	h := whoHarness(t)
-	got := entries(t, h.as(sessOf("docs-writer"), http.MethodGet, "/v1/identities?fields=description", nil))
-	if len(got) != 4 {
-		t.Fatalf("%d identities, want 4", len(got))
-	}
-	for name, e := range got {
-		if keys := sortedKeys(e); !slices.Equal(keys, []string{"description", "name"}) {
-			t.Errorf("%s has %v, want name and description alone", name, keys)
-		}
-	}
-}
-
 func TestWho_refusals(t *testing.T) {
 	h := whoHarness(t)
 	for _, tc := range []struct {
 		name, query string
 		parts       []string
 	}{
-		{"an unknown field", "fields=description,bogus", []string{`"bogus"`, "valid fields are", "reservations", "queued", "delegates"}},
 		{"a non-canonical holds", "holds=" + repoToolbelt + "/../docs", []string{"holds", "/workspace/<repo>"}},
 		{"a relative path", "path=toolbelt", []string{"path", "/workspace/<repo>"}},
 		{"a repo with a slash", "repo=cplieger/docs", []string{"repo", "/workspace/<repo>"}},
@@ -218,10 +205,30 @@ func TestWho_refusals(t *testing.T) {
 					t.Errorf("%s: error %q lacks %q", tc.query, r.str("error"), p)
 				}
 			}
-			if r.str("path_root") != protopath.DefaultRoot {
-				t.Errorf("%s: path_root %q, want %s", tc.query, r.str("path_root"), protopath.DefaultRoot)
+			if _, ok := r.body["path_root"]; ok {
+				t.Errorf("%s: the refusal carries path_root, which left the envelope for GET /v1/version", tc.query)
 			}
 		})
+	}
+}
+
+func TestFlags_refuseAValueOtherThan0Or1WithItsFieldError(t *testing.T) {
+	h := whoHarness(t)
+	for _, q := range []string{
+		"/v1/identities?online=yes", "/v1/identities?here=2", "/v1/identities?all=true",
+		"/v1/history?announce=yes", "/v1/history?full=2", "/v1/history?last_read=true",
+	} {
+		r := h.as(sessOf("docs-writer"), http.MethodGet, q, nil)
+		name, _, _ := strings.Cut(q[strings.IndexByte(q, '?')+1:], "=")
+		fields, _ := r.body["fields"].([]any)
+		var f map[string]any
+		if len(fields) == 1 {
+			f, _ = fields[0].(map[string]any)
+		}
+		if r.status != http.StatusBadRequest || r.str("code") != "invalid" || f["field"] != name || f["code"] != "one_of" ||
+			fmt.Sprint(f["allowed"]) != "[0 1]" {
+			t.Errorf("%s: %d %s, want 400 invalid naming %s one_of [0 1]", q, r.status, r.raw, name)
+		}
 	}
 }
 
@@ -242,8 +249,8 @@ func TestRegister_twoRemotesNamedDocsAre409(t *testing.T) {
 	if r.status != http.StatusConflict || r.str("error") != want || r.str("code") != "other_repository" {
 		t.Errorf("got %d %s, want 409 %q", r.status, r.raw, want)
 	}
-	if r.str("path_root") != protopath.DefaultRoot {
-		t.Errorf("path_root %q, want %s", r.str("path_root"), protopath.DefaultRoot)
+	if _, ok := r.body["path_root"]; ok {
+		t.Errorf("the refusal carries path_root, which left the envelope for GET /v1/version")
 	}
 }
 
@@ -282,7 +289,7 @@ func TestWho_aPostToTheAgentWhoseDescriptionFitsReachesItAlone(t *testing.T) {
 	h.mustPost(sessOf("docs-writer"), map[string]any{"agent": pick}, "resize question")
 	for _, name := range []string{"wtk-server", "wtk-ui", "toolbelt-dev"} {
 		has := false
-		self := map[string]string{headerSession: sessOf(name), headerSelf: "1"}
+		self := map[string]string{wire.HeaderSession: sessOf(name), wire.HeaderSelf: "1"}
 		for _, e := range entriesOf(t, h.request(http.MethodGet, "/v1/inbox", nil, self)) {
 			if e["subject"] == "resize question" {
 				has = true
@@ -319,7 +326,7 @@ func TestWho_aDelegateIsOnlineWhileItWasSeenUnder90s(t *testing.T) {
 
 func TestWho_aDelegateWhoseSessionEndedIsOfflineAtOnce(t *testing.T) {
 	h := whoHarness(t)
-	g, _, err := h.store.Delegate(t.Context(), store.Keyed{}, &store.Grant{Caller: store.Caller{Session: sessOf("toolbelt-dev"), Self: true}, Label: "sub", TTL: time.Hour})
+	g, _, err := h.store.Delegate(t.Context(), store.Keyed{}, &store.Grant{Caller: store.Caller{Key: h.keyID(), Session: sessOf("toolbelt-dev"), Self: true}, Label: "sub", TTL: time.Hour})
 	if err != nil {
 		t.Fatalf("Delegate: %v", err)
 	}

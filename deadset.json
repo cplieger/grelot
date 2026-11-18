@@ -1,0 +1,11 @@
+{
+  "target": {
+    "kind": "application"
+  },
+  "ts": {
+    "entry_files": [
+      "internal/webui/static-src/src/main.ts",
+      "internal/webui/static-src/src/prepaint.ts"
+    ]
+  }
+}

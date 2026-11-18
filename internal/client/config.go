@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -18,7 +19,7 @@ import (
 	"github.com/cplieger/grelot/internal/statefile"
 )
 
-// EnvTokenFile names a file holding the bearer token, which wins over the
+// EnvTokenFile names a file holding the machine key, which wins over the
 // config file's token.
 const EnvTokenFile = "GRELOT_TOKEN_FILE" //nolint:gosec // an environment variable name, not a credential
 
@@ -49,7 +50,7 @@ func LoadConfig(configDir string, lookup func(string) (string, bool), hostname f
 	file := ConfigFile(configDir)
 	info, err := os.Stat(file)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, fmt.Errorf("grelot has no client config: write %s with server: <url> and token: <token>; run grelot help for the keys", file)
+		return nil, fmt.Errorf("grelot has no client config: write %s with server: <url> and token: <this machine's key>; run grelot help for the keys", file)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("grelot cannot read its client config %s: %w", file, err)
@@ -93,7 +94,7 @@ func (c *Config) finish(lookup func(string) (string, bool), hostname func() (str
 	}
 	c.Token = strings.TrimSpace(c.Token)
 	if c.Token == "" {
-		return fmt.Errorf("token is missing: set token: <token>, or %s to a file holding it", EnvTokenFile)
+		return fmt.Errorf("token is missing: set token: <this machine's key>, or %s to a file holding it", EnvTokenFile)
 	}
 	if c.Host = strings.TrimSpace(c.Host); c.Host == "" {
 		if h, err := hostname(); err == nil {
@@ -104,8 +105,9 @@ func (c *Config) finish(lookup func(string) (string, bool), hostname func() (str
 	return c.normalizeRepos()
 }
 
-// checkServer answers the server URL with no trailing slash: http or https,
-// a host, and no user, query or fragment.
+// checkServer answers the server URL with no trailing slash: https, or http
+// to a loopback host, and no user, query or fragment. Plain http elsewhere
+// would send the machine key in the clear.
 func checkServer(raw string) (string, error) {
 	if raw == "" {
 		return "", errors.New("server is missing: set server: <url of the grelot server>")
@@ -115,7 +117,19 @@ func checkServer(raw string) (string, error) {
 		u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
 		return "", fmt.Errorf("server %q is not an http or https URL with a host and no user, query or fragment", raw)
 	}
+	if u.Scheme == "http" && !loopback(u.Hostname()) {
+		return "", fmt.Errorf("grelot refuses http:// to %s: use https://, or a loopback address", u.Hostname())
+	}
 	return strings.TrimRight(raw, "/"), nil
+}
+
+// loopback reports whether host is localhost or a loopback IP literal.
+func loopback(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip, err := netip.ParseAddr(host)
+	return err == nil && ip.IsLoopback()
 }
 
 // normalizeRepos keys the alias map by normalized remote, since every

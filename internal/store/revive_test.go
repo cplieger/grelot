@@ -3,10 +3,14 @@
 package store
 
 import (
+	"cmp"
+	"errors"
 	"log/slog"
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 func revival(session, name string, w Where) Revival {
@@ -183,12 +187,13 @@ func TestRevive_byNameRefusalsInOrder(t *testing.T) {
 	other := func(m, env string) Where { return Where{Machine: m, Environment: env} }
 	tests := []struct {
 		setup   func(t *testing.T, s *Store)
-		caller  Where
 		name    string
 		session string
 		target  string
 		why     string
+		logged  string
 		want    string
+		caller  Where
 		kind    Kind
 	}{
 		{
@@ -211,15 +216,15 @@ func TestRevive_byNameRefusalsInOrder(t *testing.T) {
 		},
 		{
 			name: "a matching host label in another environment", session: sessB, target: "subflux-dev", caller: other(dmi("1"), hex32("b")),
-			kind: KindNotFound, why: "other_environment", want: "no dormant identity subflux-dev in this environment (same machine, other environment)",
+			kind: KindNotFound, logged: "other_environment", want: "no dormant identity subflux-dev in this environment (same machine, other environment)",
 		},
 		{
 			name: "a copied environment on another machine", session: sessB, target: "subflux-dev", caller: other(dmi("2"), hex32("a")),
-			kind: KindNotFound, why: "other_environment", want: "no dormant identity subflux-dev in this environment (other machine)",
+			kind: KindNotFound, logged: "other_environment", want: "no dormant identity subflux-dev in this environment (other machine)",
 		},
 		{
 			name: "a copied environment on a machine of another kind", session: sessB, target: "subflux-dev", caller: other(machineID("1"), hex32("a")),
-			kind: KindNotFound, why: "other_environment", want: "no dormant identity subflux-dev in this environment (other environment, machine not comparable (dmi · machine-id))",
+			kind: KindNotFound, logged: "other_environment", want: "no dormant identity subflux-dev in this environment (other environment, machine not comparable (dmi · machine-id))",
 		},
 		{
 			name: "another provider", session: "claude-code:session-b", target: "subflux-dev", caller: envA(),
@@ -236,12 +241,17 @@ func TestRevive_byNameRefusalsInOrder(t *testing.T) {
 			}
 			_, _, err := s.Revive(t.Context(), Keyed{}, new(revival(tt.session, tt.target, tt.caller)))
 			wantRefusal(t, err, tt.kind, tt.why, tt.want)
+			var e *Error
+			if tt.logged != "" && (!errors.As(err, &e) || e.Reason != wire.ReasonIdentity) {
+				t.Errorf("a revive from another environment = %v, want reason %s", err, wire.ReasonIdentity)
+			}
+			logged := cmp.Or(tt.logged, tt.why)
 			lines := sink.lines(slog.LevelInfo, "move refused")
-			if tt.why == "" && len(lines) != 0 {
+			if logged == "" && len(lines) != 0 {
 				t.Errorf("%d move refused lines, want none", len(lines))
 			}
-			if tt.why != "" && (len(lines) != 1 || attr(lines[0], "why") != tt.why || attr(lines[0], "verb") != "revive") {
-				t.Errorf("move refused lines %v, want one revive line with why %s", lines, tt.why)
+			if logged != "" && (len(lines) != 1 || attr(lines[0], "why") != logged || attr(lines[0], "verb") != "revive") {
+				t.Errorf("move refused lines %v, want one revive line with why %s", lines, logged)
 			}
 			if row := getIdentity(t, s, old.ID); row.State != stateDormant || row.Session != sessA {
 				t.Errorf("state %q session %q, want it dormant on its own session", row.State, row.Session)
@@ -345,7 +355,7 @@ func TestTakeOverHint(t *testing.T) {
 			r := registration(sessA, "subflux-dev", envA())
 			r.Proc = proc
 			mustRegister(t, s, r)
-			got, found, err := s.TakeOverHint(t.Context(), tt.session, tt.proc, tt.caller)
+			got, found, err := s.TakeOverHint(t.Context(), tt.session, 0, tt.proc, tt.caller)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -364,7 +374,7 @@ func TestTakeOverHint_dormantAndLive(t *testing.T) {
 	mustRegister(t, s, r)
 	clk.advance(15 * time.Minute)
 
-	got, found, err := s.TakeOverHint(t.Context(), sessB, proc, envA())
+	got, found, err := s.TakeOverHint(t.Context(), sessB, 0, proc, envA())
 	if err != nil || !found || got.Name != "subflux-dev" || got.State != stateDormant {
 		t.Errorf("hint %q state %q found %v err %v, want the dormant subflux-dev", got.Name, got.State, found, err)
 	}
@@ -372,13 +382,13 @@ func TestTakeOverHint_dormantAndLive(t *testing.T) {
 	fresh := registration(sessB, "subflux-two", envA())
 	fresh.Proc = proc
 	mustRegister(t, s, fresh)
-	got, found, err = s.TakeOverHint(t.Context(), sessC, proc, envA())
+	got, found, err = s.TakeOverHint(t.Context(), sessC, 0, proc, envA())
 	if err != nil || !found || got.Name != "subflux-two" {
 		t.Errorf("hint %q found %v err %v, want the live subflux-two before the dormant one", got.Name, found, err)
 	}
 
 	clk.advance(72 * time.Hour)
-	if got, found, err = s.TakeOverHint(t.Context(), sessC, proc, envA()); err != nil || found && got.Name == "subflux-dev" {
+	if got, found, err = s.TakeOverHint(t.Context(), sessC, 0, proc, envA()); err != nil || found && got.Name == "subflux-dev" {
 		t.Errorf("hint %q found %v err %v, want the purged identity never offered", got.Name, found, err)
 	}
 }

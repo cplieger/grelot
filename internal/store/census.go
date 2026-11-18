@@ -9,7 +9,8 @@ import (
 	"github.com/cplieger/bolttable"
 )
 
-// Census is what the /metrics gauges read. Unread and Oldest cover
+// Census is what the /metrics gauges read, @user left out of every
+// count. Unread and Oldest cover
 // the wake deliveries past read of live identities only: a dormant
 // identity's mail waits for a revival, and counting it would hold Oldest
 // at days.
@@ -76,7 +77,7 @@ func (s *Store) censusIdentities(r *bolttable.ReadTx, out *Census, online func(*
 	var rows []identityRow
 	err := s.t.identities.table.Scan(r, bolttable.Range{}, func(_ uint64, v *identityRow) (bool, error) {
 		switch v = settled(v, now, s.dormantTTL); {
-		case v == nil:
+		case v == nil, isUser(v):
 		case v.State == stateDormant:
 			out.Dormant++
 		default:

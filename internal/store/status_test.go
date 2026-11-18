@@ -47,7 +47,7 @@ func TestStatus_passesTheDelegateGateAndMarksADelegate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Inbox(t.Context(), Caller{Session: sessA}, 0); err == nil {
+	if _, err := s.Inbox(t.Context(), Caller{Session: sessA}, InboxQuery{Limit: 0}); err == nil {
 		t.Fatal("the gate let an unnamed inbox through")
 	}
 	if st, err := s.Status(t.Context(), Caller{Session: sessA}); err != nil || st.Identity.Name != "subflux-dev" {

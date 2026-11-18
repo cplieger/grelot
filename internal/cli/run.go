@@ -13,6 +13,7 @@ import (
 	"github.com/cplieger/grelot/internal/proctree"
 	"github.com/cplieger/grelot/internal/provider"
 	"github.com/cplieger/grelot/internal/where"
+	"github.com/cplieger/grelot/internal/wire"
 )
 
 // run is one command's state. Each piece is read once, when first needed,
@@ -23,7 +24,7 @@ type run struct {
 	prov         *provider.Provider
 	api          *client.API
 	resolver     *canon.Resolver
-	place        *client.Where
+	place        *wire.Where
 	verb         string
 	providerFlag string
 	// handle is the delegate a grelot as command acts as.
@@ -153,7 +154,7 @@ func (r *run) peek(ctx context.Context, req *client.Request, out any) error {
 }
 
 // peekMe reads GET /v1/me before the command's answer.
-func (r *run) peekMe(ctx context.Context) (*client.Me, error) {
+func (r *run) peekMe(ctx context.Context) (*wire.Me, error) {
 	a, err := r.client(true)
 	if err != nil {
 		return nil, err
@@ -217,9 +218,9 @@ func (r *run) paths() (*canon.Resolver, error) {
 
 // machineAndEnvironment are this process's machine and environment ids,
 // read once.
-func (r *run) machineAndEnvironment(ctx context.Context) client.Where {
+func (r *run) machineAndEnvironment(ctx context.Context) wire.Where {
 	if r.place == nil {
-		w := client.Where{Environment: where.Environment(ctx, where.EnvironmentFile(r.ConfigDir), r.InContainer())}
+		w := wire.Where{Environment: where.Environment(ctx, where.EnvironmentFile(r.ConfigDir), r.InContainer())}
 		w.Machine = r.Machine(ctx)
 		r.place = &w
 	}

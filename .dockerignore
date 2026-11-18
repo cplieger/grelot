@@ -5,6 +5,10 @@
 !go.sum
 !*.go
 !internal/
+!cmd/
+internal/webui/static-src/node_modules/
+internal/webui/static/*
+!internal/webui/static/.gitkeep
 !providers/*.go
 !providers/*.yaml
 !LICENSE
