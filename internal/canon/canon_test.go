@@ -145,6 +145,30 @@ func TestPath_outsideAClone(t *testing.T) {
 	}
 }
 
+func TestPath_windowsShareInAClone(t *testing.T) {
+	win := windowsResolver("/workspace", fakeGit{
+		"//server/share/work/toolbelt": {
+			Toplevel: "//server/share/work/toolbelt",
+			GitDir:   "//server/share/work/toolbelt/.git",
+			Remote:   "https://github.com/cplieger/toolbelt.git",
+		},
+	}, []string{"//server/share/", "//server/share/work", "//server/share/work/toolbelt"}, nil)
+	for _, local := range []string{`\\server\share\work\toolbelt\a.go`, "//server/share/work/toolbelt/x/../a.go", `\\server\share\work\toolbelt\new\a.go`} {
+		loc, err := win.Path(t.Context(), local)
+		want := "/workspace/toolbelt/a.go"
+		if strings.Contains(local, "new") {
+			want = "/workspace/toolbelt/new/a.go"
+		}
+		if err != nil || loc.Canonical != want || loc.Clone == nil {
+			t.Errorf("Windows %q: got %+v, %v; want %q in the clone", local, loc, err, want)
+		}
+	}
+	loc, err := win.Path(t.Context(), `\\server\share\elsewhere\a.go`)
+	if err != nil || loc.Clone != nil {
+		t.Errorf("a share file in no clone: got %+v, %v; want no clone", loc, err)
+	}
+}
+
 // On Windows a rooted path with no drive is already in grelot form: the
 // manual tells agents to write repository paths as /workspace/<repo>/<file>.
 func TestPath_windowsRootedPathIsGrelotForm(t *testing.T) {
@@ -344,9 +368,9 @@ func TestPaths_asksGitOncePerDirectory(t *testing.T) {
 	})
 }
 
-// A rooted path with no drive, \x, is on the folder's drive, never under
-// the folder: Rust's Path::join, which Codex's apply_patch resolves with,
-// keeps only the folder's prefix for one
+// A rooted path with no drive, \x, is on the folder's drive or share, never
+// under the folder: Rust's Path::join, which Codex's apply_patch resolves
+// with, keeps only the folder's prefix for one
 // (https://doc.rust-lang.org/std/path/struct.PathBuf.html#method.push).
 func TestFrom_placesAFileAsItsToolDoes(t *testing.T) {
 	win := windowsResolver("/workspace", fakeGit{}, nil, nil)
@@ -362,6 +386,13 @@ func TestFrom_placesAFileAsItsToolDoes(t *testing.T) {
 		{win, "a rooted path on the folder's drive", "/workspace/grelot/a.go", `D:\Users\me\work`, "D:/workspace/grelot/a.go"},
 		{win, "a rooted path with backslashes", `\workspace\grelot\a.go`, `C:\Users\me`, "C:/workspace/grelot/a.go"},
 		{win, "a relative path under the folder", "internal/a.go", `C:\Users\me\work`, "C:/Users/me/work/internal/a.go"},
+		{win, "a relative path under a share", "internal/a.go", `\\server\share\work`, "//server/share/work/internal/a.go"},
+		{win, "a rooted path on the folder's share", "/workspace/a.go", `\\server\share\work`, "//server/share/workspace/a.go"},
+		{win, "a relative path under a verbatim drive", "a.go", `\\?\C:\Users\me`, "//?/C:/Users/me/a.go"},
+		{win, "a rooted path on a verbatim drive", "/workspace/a.go", `\\?\C:\Users\me`, "//?/C:/workspace/a.go"},
+		{win, "a rooted path on a verbatim share", "/workspace/a.go", `\\?\UNC\server\share\x`, "//?/UNC/server/share/workspace/a.go"},
+		{win, "a rooted path on a device drive", "/workspace/a.go", `\\.\D:\x`, "//./D:/workspace/a.go"},
+		{win, "a drive-relative path", "C:foo", `D:\x`, "C:foo"},
 		{unix, "an absolute path", "/workspace/grelot/a.go", "/home/me", "/workspace/grelot/a.go"},
 		{unix, "a relative path under the folder", "internal/../a.go", "/home/me/work", "/home/me/work/a.go"},
 	} {
@@ -378,6 +409,7 @@ func TestFrom_placesAFileAsItsToolDoes(t *testing.T) {
 		{win, "a relative path with no folder", "internal/a.go", ""},
 		{win, "a rooted path with no folder", "/workspace/grelot/a.go", ""},
 		{win, "a rooted path from a folder with no drive", "/workspace/grelot/a.go", "/srv/work"},
+		{win, "a rooted path from a server with no share", "/workspace/grelot/a.go", `\\server`},
 		{unix, "a relative path with no folder", "a.go", ""},
 	} {
 		t.Run(strings.ReplaceAll(c.name, " ", "_"), func(t *testing.T) {
