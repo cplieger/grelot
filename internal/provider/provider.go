@@ -165,7 +165,8 @@ type Role struct {
 	// its listed values.
 	When  map[string][]string `yaml:"when"`
 	Event string              `yaml:"event"`
-	// Budget is the request budget, set only when under DefaultBudget.
+	// Budget bounds the role's lookups and request, set only when under
+	// DefaultBudget.
 	Budget time.Duration `yaml:"budget"`
 	// Once suppresses the role's output after its first print for a session.
 	Once bool `yaml:"once"`

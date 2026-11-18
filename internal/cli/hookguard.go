@@ -38,8 +38,8 @@ func (h *hookCall) guard(ctx context.Context, role *provider.GuardRole) {
 	if len(locals) == 0 || h.oneShot() {
 		return
 	}
-	// The budget bounds the whole wait the write sees, git's lookups of
-	// the paths included, not only the request.
+	// The budget bounds git's lookups of the paths and the request
+	// together.
 	ctx, cancel := budgetCtx(ctx, role.Budget)
 	defer cancel()
 	paths := h.repoPaths(ctx, locals)
