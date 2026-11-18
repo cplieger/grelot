@@ -7,6 +7,7 @@ import {
   button,
   h,
   hour,
+  rested,
   settingsOf,
   start,
   useMessagesHarness,
@@ -203,7 +204,7 @@ describe("the Settings screen", () => {
       expect(savebar()?.hidden).toBe(true);
     });
     await type(retention(), "24");
-    await userEvent.click(button("Save changes"));
+    await userEvent.click(await rested("Save changes"));
 
     await until(() => {
       expect(sent).toHaveLength(2);
