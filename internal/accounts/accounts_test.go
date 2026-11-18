@@ -271,6 +271,9 @@ func TestPut_refusesARetentionOutOfBounds(t *testing.T) {
 			if want := (accounts.RangeError{Min: time.Hour, Max: 90 * 24 * time.Hour, Whole: c.whole}); *re != want {
 				t.Errorf("RangeError = %+v, want %+v", *re, want)
 			}
+			if want := "the history retention must be from 1 hour to 90 days"; !c.whole && re.Error() != want {
+				t.Errorf("RangeError says %q, want %q", re.Error(), want)
+			}
 			got, gerr := db.Get(t.Context())
 			if gerr != nil {
 				t.Fatal(gerr)

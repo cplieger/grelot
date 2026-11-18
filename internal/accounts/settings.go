@@ -5,6 +5,7 @@ package accounts
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/cplieger/bolttable"
@@ -33,7 +34,20 @@ func (e *RangeError) Error() string {
 	if e.Whole {
 		return "the history retention must be a whole number of minutes"
 	}
-	return "the history retention must be from 1 hour to 90 days"
+	return fmt.Sprintf("the history retention must be from %s to %s", spanWords(e.Min), spanWords(e.Max))
+}
+
+// spanWords says d in whole days when it is a number of days, else in
+// hours.
+func spanWords(d time.Duration) string {
+	n, unit := int64(d/time.Hour), "hour"
+	if d%(24*time.Hour) == 0 {
+		n, unit = int64(d/(24*time.Hour)), "day"
+	}
+	if n != 1 {
+		unit += "s"
+	}
+	return fmt.Sprintf("%d %s", n, unit)
 }
 
 // Methods are the sign-in methods the operator has left on.
