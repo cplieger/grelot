@@ -1,0 +1,19 @@
+{
+  "session_id": "c7c9f051-5a2c-4a93-8ebf-32e253f05809",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-work\\c7c9f051-5a2c-4a93-8ebf-32e253f05809.jsonl",
+  "cwd": "C:\\Users\\user\\work",
+  "agent_id": "a7c19e04d2b85f36",
+  "agent_type": "general-purpose",
+  "prompt_id": "7cf7f30a-8646-4696-a016-fedb55e605ee",
+  "permission_mode": "auto",
+  "effort": {
+    "level": "xhigh"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\guard-probe\\guard-probe-claude.txt",
+    "content": "probe\n"
+  },
+  "tool_use_id": "toolu_bdrk_0197ud68jyW3fMumcTmDZnBp"
+}

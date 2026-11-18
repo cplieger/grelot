@@ -348,3 +348,20 @@ func sessionOf(t *testing.T, dir, name string) string {
 	}
 	return in.Session
 }
+
+// A Write of a file another agent holds gets the holder's line as
+// additional context with no decision: exit 0, one JSON object on stdout,
+// nothing on stderr, so Claude Code runs the write through its normal
+// permission flow (https://code.claude.com/docs/en/hooks, "PreToolUse
+// decision control").
+func TestClaudeCodeGuard_namesTheHolder(t *testing.T) {
+	sc := claudeScene(t)
+	got := sc.writer.hook("guard", sc.write(sc.file))
+	want := `{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"` + holderLine + `"}}` + "\n"
+	if got.Code != 0 || got.Stdout != want || got.Stderr != "" {
+		t.Errorf("exit %d, stdout %q, stderr %q; want 0, %q and no stderr", got.Code, got.Stdout, got.Stderr, want)
+	}
+	if asked := holdersAsked(t, got.Requests); !slices.EqualFunc(asked, [][]string{{heldFile}}, slices.Equal) {
+		t.Errorf("asked %v, want one GET /v1/holders for %s", asked, heldFile)
+	}
+}

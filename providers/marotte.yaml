@@ -37,4 +37,6 @@ doors:
     # marotte drops a repeated key for the same fixed window.
     dedupe_window: 10m
     gone: [404]
+# No guard: a marotte chat runs kiro-cli's hooks, and kiro-cli's tool hooks
+# reach the model only by blocking the call.
 notes: docs/hosts/marotte.md

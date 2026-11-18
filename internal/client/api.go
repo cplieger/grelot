@@ -315,3 +315,16 @@ func (a *API) Me(ctx context.Context, q url.Values, header http.Header) (*Me, Re
 	SaveFacts(a.configDir, f)
 	return &me, resp, nil
 }
+
+// Holders sends one GET /v1/holders for paths, canonical and 1 to
+// [protopath.MaxHolderPaths] of them, and answers each grant another agent
+// holds over any of them, once, in grant id order.
+func (a *API) Holders(ctx context.Context, paths []string) ([]Holding, error) {
+	var out struct {
+		Holders []Holding `json:"holders"`
+	}
+	if _, err := a.Do(ctx, &Request{Method: http.MethodGet, Path: "/v1/holders", Query: url.Values{"path": paths}}, &out); err != nil {
+		return nil, err
+	}
+	return out.Holders, nil
+}

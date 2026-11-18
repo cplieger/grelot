@@ -5,7 +5,7 @@
   "agent_transcript_path": "C:\\Users\\user\\.codex\\sessions\\2026\\11\\02\\rollout-2026-11-02T21-24-58-01a19ef2-1c3d-7a52-8e4f-3b6d9c0a7e15.jsonl",
   "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\work\\codex-x",
   "hook_event_name": "SubagentStop",
-  "model": "openai.gpt-6.1-sol",
+  "model": "model-a",
   "permission_mode": "default",
   "stop_hook_active": false,
   "agent_id": "01a19ef2-1c3d-7a52-8e4f-3b6d9c0a7e15",

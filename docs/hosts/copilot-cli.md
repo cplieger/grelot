@@ -9,6 +9,7 @@ Nothing yet. Copilot CLI's docs name no environment variable that carries the se
 - grelot never picks this provider by itself.
 - Its hooks print nothing and exit 0, so installing them changes nothing in a session.
 - Every identity command refuses with `provider copilot-cli records no session variable, so grelot has no session to bind in this shell`.
+- There is no file reservation guard. Copilot CLI documents a `postToolUse` hook whose `additionalContext` reaches the model, while a command `preToolUse` hook denies the call when it crashes or exits non-zero. That channel cannot be tried until the hooks act.
 
 **If you run Copilot CLI, you can fix this.** Start two sessions, run `env` in each agent's shell, and look for a variable whose value differs between them and equals the `sessionId` its hooks receive. Open an issue on this repository naming the variable and your Copilot CLI version.
 

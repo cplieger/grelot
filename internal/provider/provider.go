@@ -145,6 +145,7 @@ type Hooks struct {
 	TurnEnd      *LifecycleRole    `yaml:"turn_end"`
 	SessionEnd   *LifecycleRole    `yaml:"session_end"`
 	SubagentStop *SubagentStopRole `yaml:"subagent_stop"`
+	Guard        *GuardRole        `yaml:"guard"`
 	// LostFix is the person's fix, a verb phrase ("re-trust ..."), for
 	// hooks the host stops running with no sign to the agent; "" for a
 	// host that never loses them that way.
@@ -164,7 +165,8 @@ type Role struct {
 	// its listed values.
 	When  map[string][]string `yaml:"when"`
 	Event string              `yaml:"event"`
-	// Budget is the request budget, set only when under DefaultBudget.
+	// Budget bounds the role's lookups and request, set only when under
+	// DefaultBudget.
 	Budget time.Duration `yaml:"budget"`
 	// Once suppresses the role's output after its first print for a session.
 	Once bool `yaml:"once"`
@@ -274,6 +276,34 @@ type SubagentStopRole struct {
 type SubagentStdin struct {
 	AgentID string `yaml:"agent_id"`
 	Session string `yaml:"session"`
+}
+
+// GuardRole is the guard role, before a file-write tool: it names each other
+// agent holding a written file and never stops the write.
+type GuardRole struct {
+	Outputs GuardOutputs `yaml:"outputs"`
+	Stdin   GuardStdin   `yaml:"stdin"`
+	Role    `yaml:",inline"`
+	// ContextLimit is the most bytes of rendered context the host gives the
+	// model whole, 0 for no limit; over it the guard ends with a count of
+	// the holders it left out.
+	ContextLimit int `yaml:"context_limit"`
+}
+
+// GuardStdin names where the hook input spells the written files.
+type GuardStdin struct {
+	AgentID string `yaml:"agent_id"`
+	// Patch holds a patch whose headers name the files, relative ones under
+	// the directory at Cwd.
+	Patch string `yaml:"patch"`
+	Cwd   string `yaml:"cwd"`
+	// Paths each hold one file's path.
+	Paths []string `yaml:"paths"`
+}
+
+// GuardOutputs are the output kinds the guard role can print.
+type GuardOutputs struct {
+	Context *Output `yaml:"context"`
 }
 
 // has reports whether the file set the top-level key itself, which extends

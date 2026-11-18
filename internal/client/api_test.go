@@ -409,3 +409,41 @@ func TestDo_aNewerServersRefusalNamesTheUpgrade(t *testing.T) {
 		})
 	}
 }
+
+func TestHolders_sendsOneGetWithEveryPath(t *testing.T) {
+	f := newFake(t, answerJSON(http.StatusOK, `{"holders":[{`+
+		`"held":{"id":3,"holder":"other-dev","path":"/workspace/tool","state":"held","reason":"editing","expires_at":"2026-11-05T10:00:00Z"},`+
+		`"queued":{"id":4,"holder":"tool-dev","path":"/workspace/tool/a.go","state":"queued"}}]}`))
+	a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
+	a.Session, a.Self = "alpha:s-1", true
+	got, err := a.Holders(t.Context(), []string{"/workspace/tool/a.go", "/workspace/tool/b c.go"})
+	if err != nil {
+		t.Fatalf("Holders: %v", err)
+	}
+	seen := f.requests()
+	if len(seen) != 1 || seen[0].method != http.MethodGet || seen[0].uri != "/v1/holders?path=%2Fworkspace%2Ftool%2Fa.go&path=%2Fworkspace%2Ftool%2Fb+c.go" {
+		t.Fatalf("server saw %+v, want one GET /v1/holders with both paths in order", seen)
+	}
+	want := Holding{
+		Held: Reservation{
+			ID: 3, Holder: "other-dev", Path: "/workspace/tool", State: "held", Reason: "editing",
+			Expires: time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC),
+		},
+	}
+	if len(got) != 1 || got[0].Queued == nil || *got[0].Queued != (Reservation{ID: 4, Holder: "tool-dev", Path: "/workspace/tool/a.go", State: "queued"}) {
+		t.Fatalf("Holders = %+v, want one entry with the caller's queue entry 4", got)
+	}
+	if got[0].Queued = nil; got[0] != want {
+		t.Errorf("Holders[0] = %+v, want %+v", got[0], want)
+	}
+}
+
+func TestHolders_aRefusalIsAnAPIError(t *testing.T) {
+	f := newFake(t, answerJSON(http.StatusNotFound, `{"error":"no such route: GET /v1/holders","code":"not_found"}`))
+	a, _ := newTestAPI(t, f.srv.URL, "v1.1.0")
+	got, err := a.Holders(t.Context(), []string{"/workspace/tool/a.go"})
+	var ae *APIError
+	if !errors.As(err, &ae) || ae.HTTP != http.StatusNotFound || got != nil {
+		t.Errorf("Holders = %v, %v; want no entries and the 404 *APIError", got, err)
+	}
+}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cplieger/bolttable"
+	"github.com/cplieger/grelot/internal/protopath"
 )
 
 const (
@@ -853,5 +854,162 @@ func TestTakeOver_keepsReservationIDsWorkingFromTheNewSession(t *testing.T) {
 	wantRefusal(t, err, KindGone, "")
 	if _, err := s.Release(t.Context(), Keyed{}, Caller{Session: sessB}, held.Reservation.ID); err != nil {
 		t.Errorf("release from the new session: %v", err)
+	}
+}
+
+// holdersOf is c's Holders of paths, failing the test on an error.
+func holdersOf(t *testing.T, s *Store, c Caller, paths ...string) []Holding {
+	t.Helper()
+	got, err := s.Holders(t.Context(), c, paths)
+	if err != nil {
+		t.Fatalf("Holders(%s, %v): %v", c.Session, paths, err)
+	}
+	return got
+}
+
+// holding is one Holders entry as its held grant id and queued entry id, 0
+// for none.
+type holding struct {
+	held   uint64
+	queued uint64
+}
+
+func holdingsOf(got []Holding) []holding {
+	out := make([]holding, 0, len(got))
+	for _, h := range got {
+		e := holding{held: h.Held.ID}
+		if h.Queued != nil {
+			e.queued = h.Queued.ID
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+func TestHolders_listsEachGrantOthersHoldOverThePaths(t *testing.T) {
+	s, clk, _ := openIdentityStore(t)
+	regAt(t, s, "web")
+	regAt(t, s, "api")
+	regAt(t, s, "me")
+	web := mustReserve(t, s, reserving("web", pathWeb, time.Hour)).Reservation
+	api := mustReserve(t, s, reserving("api", pathAPI, 2*time.Hour)).Reservation
+	readme := pathMarotte + "/README.md"
+	mustReserve(t, s, reserving("me", readme, time.Hour))
+	me := Caller{Session: sess("me")}
+
+	t.Run("one entry per grant another identity holds, in grant id order", func(t *testing.T) {
+		got := holdersOf(t, s, me, pathAPI+"/a.go", readme, pathWeb+"/index.ts", "/workspace/grelot/main.go", pathAPI+"/b.go")
+		if want := []holding{{held: web.ID}, {held: api.ID}}; !slices.Equal(holdingsOf(got), want) {
+			t.Fatalf("Holders = %+v, want %+v", holdingsOf(got), want)
+		}
+		if h := got[0].Held; h.Holder != "web" || h.Path != pathWeb || h.Reason != "reason of web" || h.State != reservationHeld || !h.Expires.Equal(testNow.Add(time.Hour)) {
+			t.Errorf("the first entry's grant = %+v, want web's grant on %s until %v", h, pathWeb, testNow.Add(time.Hour))
+		}
+	})
+	t.Run("a folder lists every grant under it", func(t *testing.T) {
+		got := holdersOf(t, s, me, pathMarotte)
+		if want := []holding{{held: web.ID}, {held: api.ID}}; !slices.Equal(holdingsOf(got), want) {
+			t.Errorf("Holders = %+v, want %+v", holdingsOf(got), want)
+		}
+	})
+	q := mustQueue(t, s, reserving("me", pathWeb, 30*time.Minute)).Reservation
+	t.Run("the caller's own queue entry on the path", func(t *testing.T) {
+		got := holdersOf(t, s, me, pathWeb+"/index.ts", pathAPI+"/a.go")
+		if want := []holding{{held: web.ID, queued: q.ID}, {held: api.ID}}; !slices.Equal(holdingsOf(got), want) {
+			t.Fatalf("Holders = %+v, want %+v", holdingsOf(got), want)
+		}
+		if got[0].Queued.Path != pathWeb || got[0].Queued.State != reservationQueued {
+			t.Errorf("queued = %+v, want the caller's queue entry on %s", got[0].Queued, pathWeb)
+		}
+	})
+	b := mustQueue(t, s, reserving("me", pathAPI+"/b.go", 30*time.Minute)).Reservation
+	t.Run("a queue entry on any queried path under the grant", func(t *testing.T) {
+		got := holdersOf(t, s, me, pathAPI+"/a.go", pathAPI+"/b.go")
+		if want := []holding{{held: api.ID, queued: b.ID}}; !slices.Equal(holdingsOf(got), want) {
+			t.Errorf("Holders = %+v, want %+v", holdingsOf(got), want)
+		}
+	})
+	t.Run("no queue entry on a path not queried", func(t *testing.T) {
+		got := holdersOf(t, s, me, pathAPI+"/a.go")
+		if want := []holding{{held: api.ID}}; !slices.Equal(holdingsOf(got), want) {
+			t.Errorf("Holders = %+v, want %+v, not the queue entry %d on b.go", holdingsOf(got), want, b.ID)
+		}
+	})
+	folder := mustQueue(t, s, reserving("me", pathAPI, 30*time.Minute)).Reservation
+	t.Run("the oldest of the caller's queue entries", func(t *testing.T) {
+		if got, want := holdingsOf(holdersOf(t, s, me, pathAPI+"/a.go", pathAPI+"/b.go")), []holding{{held: api.ID, queued: b.ID}}; !slices.Equal(got, want) {
+			t.Errorf("Holders of a.go and b.go = %+v, want %+v", got, want)
+		}
+		if got, want := holdingsOf(holdersOf(t, s, me, pathAPI+"/a.go")), []holding{{held: api.ID, queued: folder.ID}}; !slices.Equal(got, want) {
+			t.Errorf("Holders of a.go = %+v, want %+v", got, want)
+		}
+	})
+	t.Run("the holder sees none of its own", func(t *testing.T) {
+		if got := holdersOf(t, s, Caller{Session: sess("web")}, pathWeb+"/index.ts"); len(got) != 0 {
+			t.Errorf("Holders as web = %+v, want none", holdingsOf(got))
+		}
+	})
+	t.Run("a grant past its expiry before the sweep", func(t *testing.T) {
+		clk.set(testNow.Add(61 * time.Minute))
+		got := holdersOf(t, s, me, pathMarotte)
+		if want := []holding{{held: api.ID, queued: b.ID}}; !slices.Equal(holdingsOf(got), want) {
+			t.Errorf("Holders = %+v, want only the unexpired %+v with its own queue entry, not %d on web", holdingsOf(got), want, q.ID)
+		}
+	})
+}
+
+// A delegate acts for its parent, so the parent's grants are no other
+// agent's to it, from the parent's session or from its own.
+func TestHolders_skipsTheCallersParent(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	regAt(t, s, "parent", repoSubflux)
+	regAt(t, s, "other")
+	g := mustGrant(t, s, grantFrom("parent", "codex"))
+	own := "codex:thread-1"
+	d := mustRegisterDelegate(t, s, own, g.Link)
+	mine := mustReserve(t, s, reserving("parent", repoSubflux+"/engine.go", time.Hour)).Reservation
+	theirs := mustReserve(t, s, reserving("other", repoSubflux+"/docs", time.Hour)).Reservation
+	paths := []string{repoSubflux + "/engine.go", repoSubflux + "/docs/a.md"}
+	for name, c := range map[string]Caller{"its own session": {Session: own}, "the parent's session": as(sess("parent"), d.Name)} {
+		t.Run(name, func(t *testing.T) {
+			got := holdersOf(t, s, c, paths...)
+			if want := []holding{{held: theirs.ID}}; !slices.Equal(holdingsOf(got), want) {
+				t.Errorf("Holders = %+v, want only the other identity's %+v, not the parent's grant %d", holdingsOf(got), want, mine.ID)
+			}
+		})
+	}
+}
+
+func TestHolders_needsALiveIdentity(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	regAt(t, s, "holder")
+	mustReserve(t, s, reserving("holder", pathMarotte, time.Hour))
+	_, err := s.Holders(t.Context(), Caller{Session: sess("nobody")}, []string{pathWeb})
+	wantRefusal(t, err, KindGone, "none")
+}
+
+func TestHolders_refusesTooManyPaths(t *testing.T) {
+	s, _, _ := openIdentityStore(t)
+	regAt(t, s, "me")
+	me := Caller{Session: sess("me")}
+	paths := make([]string, 0, protopath.MaxHolderPaths+1)
+	for i := range protopath.MaxHolderPaths + 1 {
+		paths = append(paths, pathMarotte+"/f"+strconv.Itoa(i))
+	}
+	if _, err := s.Holders(t.Context(), me, paths[:protopath.MaxHolderPaths]); err != nil {
+		t.Errorf("Holders of %d paths: %v", protopath.MaxHolderPaths, err)
+	}
+	_, err := s.Holders(t.Context(), me, paths)
+	wantRefusal(t, err, KindInvalid, "", strconv.Itoa(protopath.MaxHolderPaths))
+	// The refusal comes at the first path past the cap, before any later one is read.
+	_, err = s.Holders(t.Context(), me, append(slices.Clone(paths), "workspace/relative"))
+	wantRefusal(t, err, KindInvalid, "", "distinct paths")
+	twice := append(slices.Clone(paths[:protopath.MaxHolderPaths]), paths[0])
+	if _, err := s.Holders(t.Context(), me, twice); err != nil {
+		t.Errorf("Holders of %d distinct paths, one asked twice: %v", protopath.MaxHolderPaths, err)
+	}
+	for _, bad := range [][]string{nil, {"workspace/marotte"}, {pathMarotte + "/../x"}} {
+		_, err := s.Holders(t.Context(), me, bad)
+		wantRefusal(t, err, KindInvalid, "")
 	}
 }

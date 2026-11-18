@@ -51,8 +51,8 @@ func TestCodexHookEvents(t *testing.T) {
 	for _, w := range want {
 		events = append(events, w.Event)
 	}
-	if !slices.Equal(events, []string{"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd", "SubagentStop"}) {
-		t.Errorf("the provider spells events %v, want SessionStart, UserPromptSubmit, Stop, SessionEnd and SubagentStop", events)
+	if !slices.Equal(events, []string{"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd", "SubagentStop", "PreToolUse"}) {
+		t.Errorf("the provider spells events %v, want SessionStart, UserPromptSubmit, Stop, SessionEnd, SubagentStop and PreToolUse", events)
 	}
 }
 

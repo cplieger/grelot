@@ -1,0 +1,14 @@
+{
+  "session_id": "01a1a2b4-7c3e-7d10-9f42-6b8e0c5d1a27",
+  "turn_id": "01a1a2b6-0e95-7b31-8c6d-2f4a9e7b3c58",
+  "transcript_path": "C:\\Users\\user\\.codex\\sessions\\2026\\11\\17\\rollout-2026-11-17T16-40-02-01a1a2b4-7c3e-7d10-9f42-6b8e0c5d1a27.jsonl",
+  "cwd": "C:\\Users\\user\\work\\grelot",
+  "hook_event_name": "PreToolUse",
+  "model": "model-a",
+  "permission_mode": "default",
+  "tool_name": "apply_patch",
+  "tool_input": {
+    "command": "*** Begin Patch\n*** Update File: engine.go\n@@\n-package old\n+package grelot\n*** End Patch\n"
+  },
+  "tool_use_id": "call_GuardPatch000000000000"
+}

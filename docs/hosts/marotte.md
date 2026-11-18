@@ -22,7 +22,7 @@ The container's home must be on its persistent volume, as [the client page, sect
 
 ## 2. Install the hooks
 
-Use the Kiro CLI's hook file, as [kiro-cli.md, section 2](kiro-cli.md#2-install-the-hooks) shows, saved as `grelot.json` in `$KIRO_HOME/hooks/` (`~/.kiro/hooks/` when `KIRO_HOME` is unset). Each line runs `grelot hook kiro-cli <role>`, which matches the provider the chats register as. The table there says what each hook adds. With the hooks installed, every top-level chat registers in its first turn.
+Use the Kiro CLI's hook file, as [kiro-cli.md, section 2](kiro-cli.md#2-install-the-hooks) shows, saved as `grelot.json` in `$KIRO_HOME/hooks/` (`~/.kiro/hooks/` when `KIRO_HOME` is unset). Each line runs `grelot hook kiro-cli <role>`, which matches the provider the chats register as. The table there says what each hook adds. With the hooks installed, every top-level chat registers in its first turn. There is no file reservation guard: a marotte chat is a Kiro CLI session, whose tool hooks reach the model only by blocking the call, and grelot never blocks a write.
 
 ## 3. Wake chats from the server
 

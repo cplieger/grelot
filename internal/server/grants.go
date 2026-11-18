@@ -103,6 +103,30 @@ func (s *Server) reservations(r *http.Request, c store.Caller) (status int, body
 	return http.StatusOK, map[string]any{"reservations": out}, nil
 }
 
+type holdingJSON struct {
+	Queued *reservationJSON `json:"queued,omitempty"`
+	Held   reservationJSON  `json:"held"`
+}
+
+// holders is GET /v1/holders?path=&path=: each grant another agent holds
+// over a queried path, once, for the file reservation guard.
+func (s *Server) holders(r *http.Request, c store.Caller) (status int, body any, err error) {
+	got, err := s.store.Holders(r.Context(), c, r.URL.Query()["path"])
+	if err != nil {
+		return 0, nil, err
+	}
+	out := make([]holdingJSON, 0, len(got))
+	for i := range got {
+		h := holdingJSON{Held: reservationOut(&got[i].Held)}
+		if got[i].Queued != nil {
+			q := reservationOut(got[i].Queued)
+			h.Queued = &q
+		}
+		out = append(out, h)
+	}
+	return http.StatusOK, map[string]any{"holders": out}, nil
+}
+
 func reservationID(r *http.Request) (uint64, error) {
 	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
 	if err != nil || id == 0 {

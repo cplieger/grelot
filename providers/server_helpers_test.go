@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -116,4 +117,69 @@ func (s *silentServer) waited(t *testing.T) time.Duration {
 		t.Fatal("the client never gave up its request to the silent server")
 		return 0
 	}
+}
+
+// grelotRemote is the origin of the clones repoClone makes, whose files are
+// /workspace/grelot/<rel> in grelot's form under the default path root.
+const grelotRemote = "https://github.com/cplieger/grelot.git"
+
+// repoClone makes dir a git working tree whose origin is remote, none when
+// remote is "", with the developer's git config kept out, and answers dir.
+func repoClone(t *testing.T, dir, remote string) string {
+	t.Helper()
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmds := [][]string{{"init", "-q"}}
+	if remote != "" {
+		cmds = append(cmds, []string{"remote", "add", "origin", remote})
+	}
+	for _, args := range cmds {
+		cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	return dir
+}
+
+// closedServer is the URL of a server that is no longer listening.
+func closedServer(t *testing.T) string {
+	t.Helper()
+	hs := httptest.NewServer(http.NotFoundHandler())
+	hs.Close()
+	return hs.URL
+}
+
+// answering is a server that answers every request with status and a
+// grelot error body, counting the requests by path.
+type answering struct {
+	paths []string
+	URL   string
+	mu    sync.Mutex
+}
+
+func newAnswering(t *testing.T, status int, code, msg string) *answering {
+	t.Helper()
+	a := &answering{}
+	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		a.mu.Lock()
+		a.paths = append(a.paths, r.URL.Path)
+		a.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = fmt.Fprintf(w, `{"error":%q,"code":%q}`, msg, code)
+	}))
+	t.Cleanup(hs.Close)
+	a.URL = hs.URL
+	return a
+}
+
+// got lists the paths of the requests the server received.
+func (a *answering) got() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]string(nil), a.paths...)
 }
