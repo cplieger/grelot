@@ -349,7 +349,7 @@ func TestCodexGuard_namesTheHolder(t *testing.T) {
 // Every file a patch adds, updates, deletes or moves is asked about in one
 // request, relative paths against the hook's cwd, and a file outside any
 // repository is left out; each grant another agent holds gets a line, in
-// the patch's order.
+// grant id order.
 func TestCodexGuard_checksEveryFileOfThePatchInOneRequest(t *testing.T) {
 	sc := codexScene(t)
 	docs := newShell(t, sc.srv, "claude-code", map[string]string{"CLAUDE_CODE_SESSION_ID": "docs-session"})
