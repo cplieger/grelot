@@ -52,6 +52,13 @@ func TestNormalizeRemote_noHost(t *testing.T) {
 		"https://github.com/.git",
 		"https://github.com/a/../b",
 		"dir/with:colon",
+		// git takes none of these as the repository its path names.
+		"https://github.com/o/r?x",
+		"https://github.com/o/r?",
+		"https://github.com/o/r#y",
+		"https://github.com/o/r#",
+		"https://github.com/o%2Fr/x",
+		"https://github.com/o%2fr/x",
 	} {
 		if got, ok := NormalizeRemote(raw); ok {
 			t.Errorf("NormalizeRemote(%q) = %q, true; want no remote", raw, got)
