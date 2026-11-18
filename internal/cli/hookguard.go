@@ -13,15 +13,17 @@ import (
 )
 
 // The guard's lines, each naming one grant another agent holds over a
-// written file, and the last line counting the grants left out when the
-// rest would pass the host's context limit, after some lines or alone. A
-// host may show them after the write's result, so they read true before
-// and after it.
+// written file; a line counting the grants left out when the rest would
+// pass the host's context limit, after some lines or alone; and last, when
+// the write names more files than one request takes, a line saying the
+// rest went unchecked. A host may show them after the write's result, so
+// they read true before and after it.
 const (
 	lineGuardHeld   = "grelot: @%s holds %s until %s (%s); your write goes ahead. Coordinate with grelot post '@%s' or reserve it after them."
 	lineGuardQueued = "grelot: @%s holds %s until %s (%s); your write goes ahead. You are queued for %s (reservation %d): coordinate with grelot post '@%s' or wait for the grant, which reaches you as mail."
 	lineGuardMore   = "grelot: other agents hold more reservations over files in this write, %d not shown; grelot reservations lists them."
 	lineGuardCount  = "grelot: other agents hold reservations over files in this write, %d not shown; grelot reservations lists them."
+	lineGuardCapped = "grelot: files after the first %d in this write were not checked for other agents' reservations."
 )
 
 // guard runs before a file-write tool: it names each other agent holding a
@@ -42,7 +44,7 @@ func (h *hookCall) guard(ctx context.Context, role *provider.GuardRole) {
 	// together.
 	ctx, cancel := budgetCtx(ctx, role.Budget)
 	defer cancel()
-	paths := h.repoPaths(ctx, locals)
+	paths, capped := h.repoPaths(ctx, locals)
 	if len(paths) == 0 {
 		return
 	}
@@ -55,7 +57,7 @@ func (h *hookCall) guard(ctx context.Context, role *provider.GuardRole) {
 	if err != nil {
 		return
 	}
-	_ = h.emit(role.Outputs.Context, guardText(held, role.ContextLimit, role.Outputs.Context))
+	_ = h.emit(role.Outputs.Context, guardText(held, capped, role.ContextLimit, role.Outputs.Context))
 }
 
 // written is one file the hook input names, as given, and the folder a
@@ -84,12 +86,13 @@ func (h *hookCall) writtenFiles(role *provider.GuardRole) []written {
 }
 
 // repoPaths is the canonical form of each file inside a clone with a
-// remote, in order with repeats dropped, at most protopath.MaxHolderPaths; a
-// file that does not resolve is left out.
-func (h *hookCall) repoPaths(ctx context.Context, files []written) []string {
+// remote, in order with repeats dropped, at most protopath.MaxHolderPaths,
+// and capped true when another such file follows them; a file that does not
+// resolve is left out.
+func (h *hookCall) repoPaths(ctx context.Context, files []written) (out []string, capped bool) {
 	res, err := h.paths()
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	var locals []string
 	for _, f := range files {
@@ -97,37 +100,43 @@ func (h *hookCall) repoPaths(ctx context.Context, files []written) []string {
 			locals = append(locals, p)
 		}
 	}
-	var out []string
 	for loc, err := range res.Paths(ctx, locals) {
 		if err != nil || loc.Clone == nil || loc.Clone.Repo == "" || slices.Contains(out, loc.Canonical) {
 			continue
 		}
-		if out = append(out, loc.Canonical); len(out) == protopath.MaxHolderPaths {
-			break
+		if len(out) == protopath.MaxHolderPaths {
+			return out, true
 		}
+		out = append(out, loc.Canonical)
 	}
-	return out
+	return out, false
 }
 
 // guardText is one line per grant in held, in answer order, keeping the
 // most lines whose rendered text through out fits limit (0 for none) with
-// a last line counting the grants left out.
-func guardText(held []client.Holding, limit int, out *provider.Output) string {
+// a line counting the grants left out, then the capped line when capped,
+// which is always kept.
+func guardText(held []client.Holding, capped bool, limit int, out *provider.Output) string {
 	lines := make([]string, 0, len(held))
 	for i := range held {
 		lines = append(lines, guardLine(&held[i]))
 	}
-	text := strings.Join(lines, "\n")
-	if limit == 0 || len(rendered(out, text)) <= limit {
+	var tail []string
+	if capped {
+		tail = []string{fmt.Sprintf(lineGuardCapped, protopath.MaxHolderPaths)}
+	}
+	join := func(lines ...string) string { return strings.Join(append(slices.Clip(lines), tail...), "\n") }
+	text := join(lines...)
+	if limit == 0 || len(lines) == 0 || len(rendered(out, text)) <= limit {
 		return text
 	}
 	for n := len(lines) - 1; n > 0; n-- {
-		text = strings.Join(append(slices.Clip(lines[:n]), fmt.Sprintf(lineGuardMore, len(lines)-n)), "\n")
+		text = join(append(slices.Clip(lines[:n]), fmt.Sprintf(lineGuardMore, len(lines)-n))...)
 		if len(rendered(out, text)) <= limit {
 			return text
 		}
 	}
-	return fmt.Sprintf(lineGuardCount, len(lines))
+	return join(fmt.Sprintf(lineGuardCount, len(lines)))
 }
 
 func guardLine(e *client.Holding) string {

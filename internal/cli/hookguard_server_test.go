@@ -47,6 +47,7 @@ const (
 		"Coordinate with grelot post '@holder-dev' or reserve it after them."
 	guardReadme = "grelot: @holder-dev holds /workspace/toolbelt/README.md until 2026-11-05 10:00 UTC (rewriting the docs); your write goes ahead. " +
 		"Coordinate with grelot post '@holder-dev' or reserve it after them."
+	guardUnchecked = "grelot: files after the first 256 in this write were not checked for other agents' reservations."
 )
 
 // guardSetup is a writer of alpha session s-2 registered on a clone of
@@ -201,7 +202,7 @@ func TestHookGuard_contextLimit(t *testing.T) {
 }
 
 // One request names at most the server's 256 paths: the first ones the
-// call writes.
+// call writes, and a line says the rest went unchecked.
 func TestHookGuard_asksAboutTheFirstPathsUpToTheServersCap(t *testing.T) {
 	g := newGuardSetup(t, 0)
 	var lines, want []string
@@ -212,13 +213,45 @@ func TestHookGuard_asksAboutTheFirstPathsUpToTheServersCap(t *testing.T) {
 		}
 	}
 	code, out, _, asked := g.guard(t, map[string]any{"patch": patchOf(lines...)}, g.clone)
-	if code != 0 || out != "" || len(asked) != 1 || !slices.Equal(asked[0], want) {
-		t.Errorf("exit %d, stdout %q, asked %d requests; want 0, no output and one request for the first 256 files", code, out, len(asked))
+	if code != 0 || out != guardUnchecked+"\n" || len(asked) != 1 || !slices.Equal(asked[0], want) {
+		t.Errorf("exit %d, stdout %q, asked %d requests; want 0, %q and one request for the first 256 files", code, out, len(asked), guardUnchecked+"\n")
 	}
 }
 
-// The budget bounds the guard's whole wait, git's lookup of the written
-// path included: a git that hangs ends at the budget, and nothing is asked.
+// A held file past the cap is named by the unchecked line, which stays
+// when the context limit drops a grant's line; exactly 256 files get none.
+func TestHookGuard_saysWhenFilesPastTheCapWentUnchecked(t *testing.T) {
+	var files []string
+	for i := range 256 {
+		files = append(files, fmt.Sprintf("*** Add File: f%03d.go", i), "+x")
+	}
+	held := append(slices.Clip(files), "*** Update File: internal/a.go", "@@", "-a", "+b")
+	for _, limit := range []int{0, 10} {
+		t.Run(fmt.Sprintf("a_held_257th_file_at_limit_%d", limit), func(t *testing.T) {
+			g := newGuardSetup(t, limit)
+			if code, out, _, asked := g.guard(t, map[string]any{"patch": patchOf(held...)}, g.clone); code != 0 || out != guardUnchecked+"\n" || len(asked) != 1 || len(asked[0]) != 256 {
+				t.Errorf("exit %d, stdout %q, asked %d requests; want 0, %q and one request", code, out, len(asked), guardUnchecked+"\n")
+			}
+		})
+	}
+	t.Run("kept_under_the_context_limit", func(t *testing.T) {
+		readme := append([]string{"*** Update File: README.md", "@@", "-a", "+b"}, held...)
+		want := "grelot: other agents hold reservations over files in this write, 1 not shown; grelot reservations lists them.\n" + guardUnchecked + "\n"
+		g := newGuardSetup(t, len(guardReadme)+len(guardUnchecked)+1)
+		if code, out, _, _ := g.guard(t, map[string]any{"patch": patchOf(readme...)}, g.clone); code != 0 || out != want {
+			t.Errorf("exit %d, stdout %q; want %q", code, out, want)
+		}
+	})
+	t.Run("exactly_256_files", func(t *testing.T) {
+		g := newGuardSetup(t, 0)
+		if code, out, _, _ := g.guard(t, map[string]any{"patch": patchOf(files...)}, g.clone); code != 0 || out != "" {
+			t.Errorf("exit %d, stdout %q; want 0 and no output", code, out)
+		}
+	})
+}
+
+// The budget bounds git's lookup of the written path with the request: a
+// git that hangs ends at the budget, and nothing is asked.
 func TestHookGuard_silentWhenGitPassesTheBudget(t *testing.T) {
 	g := newGuardSetup(t, 0)
 	g.wantNamed(t)

@@ -186,7 +186,7 @@ A tool's hook file wires each event to `grelot hook <provider> <role>`, and the 
 | `turn_end` | A turn ends some other way than `stop`, such as an error or an interruption | Tells the server the turn ended. Prints nothing |
 | `session_end` | A session closes | Tells the server, which ends the session's delegates and lets the identity go dormant within the hour. Prints nothing |
 | `subagent_stop` | A subagent ends | Ends the delegate that subagent's own session held. Prints nothing |
-| `guard` | Before a file-write tool runs | Prints, as `context`, a line for each other agent holding a written file: who, which path, until when and why. Checks every written file in one request, and only files inside a clone with a remote. Says nothing for a free file or one the identity or its parent holds, in a subagent or a one-shot run, and on any error. Never blocks or asks, stops its lookups at its `budget`, and only reads |
+| `guard` | Before a file-write tool runs | Prints, as `context`, a line for each other agent holding a written file: who, which path, until when and why. Checks the first 256 distinct written files inside a clone with a remote in one request, and only those; a last line says when more went unchecked. Says nothing for a free file or one the identity or its parent holds, in a subagent or a one-shot run, and on any error. Never blocks or asks, stops its lookups at its `budget`, and only reads |
 
 A hook reads at most 16 MiB of input, room for the whole file body or patch a write tool carries; past that it prints nothing.
 
@@ -211,7 +211,7 @@ And these, by role:
 | `take_over_every_start` | `session_start` | `true` for a tool that reports no source and starts a session in its process only for a chat with no history. Every start but a fork may then get the hint. Not with `source.take_over` |
 | `once_per_turn` | `stop` | `true` for a tool that runs its stop hooks at most once per turn, so the hold ends the turn whether or not it blocks |
 | `stdin.paths` | `guard` | Stdin paths each holding one written file, such as `[tool_input.file_path]`. A relative one is read from the hook's working folder |
-| `stdin.patch`, `stdin.cwd` | `guard` | The stdin path of a patch's text, for a tool whose write tool takes one, and of the folder its relative paths start from; on Windows a rooted path with no drive, `\x`, takes that folder's drive or share. Every file the patch adds, updates, deletes or moves is checked. They go together, and a `guard` needs `stdin.paths` or `stdin.patch` |
+| `stdin.patch`, `stdin.cwd` | `guard` | The stdin path of a patch's text, for a tool whose write tool takes one, and of the folder its relative paths start from; on Windows a rooted path with no drive, `\x`, takes that folder's drive or share. Every file the patch adds, updates, deletes or moves is read, and checked as the `guard` row says. They go together, and a `guard` needs `stdin.paths` or `stdin.patch` |
 | `stdin.session` | `subagent_stop` | The stdin path of the session the subagent's own shell carries, for a tool whose subagent hooks name the parent at `session.stdin`. `session.stdin` when left out |
 
 Outputs, under `outputs.context`, `outputs.block` and `outputs.notice`:
