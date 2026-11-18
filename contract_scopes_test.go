@@ -6,13 +6,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -120,6 +123,7 @@ var scopeMatrix = map[string]cells{
 type matrix struct {
 	c                         *contract
 	recovery                  *browser
+	alpha                     *agent
 	owner, agent, scopeless   string
 	conversation, lastMessage string
 }
@@ -130,6 +134,7 @@ func newMatrix(t *testing.T, o contractOptions) *matrix {
 	m := &matrix{c: c, agent: c.mintKey("agent-machine"), owner: c.mintScoped("owner-machine", wire.ScopeOwner)}
 	m.scopeless = c.mintThroughAccess("scopeless-machine")
 	alpha := c.agent(m.agent, sessAlpha, "a")
+	m.alpha = alpha
 	alpha.call(http.StatusCreated, "register", "/v1/register", alpha.registerBody("alpha", hourMS, "/workspace/a"))
 	alpha.call(http.StatusCreated, "createPost", "/v1/posts", postBody(map[string]any{"agent": "user"}, "for the owner", "a body"))
 	rows, _ := m.as(asSession, http.MethodGet, wire.Path("listConversations", nil), nil, nil).body["rows"].([]any)
@@ -141,6 +146,28 @@ func newMatrix(t *testing.T, o contractOptions) *matrix {
 	m.lastMessage = strconv.FormatInt(num(obj(row, "last"), "id"), 10)
 	m.recovery = c.recoverySession()
 	return m
+}
+
+// sleepDormant gives each caller a dormant identity for revive's row to
+// wake, registered with keyFor(who) under the session agentCall names.
+func (m *matrix) sleepDormant() {
+	for _, who := range callers {
+		a := m.c.agent(m.keyFor(who), dormantSession(who), "a")
+		a.call(http.StatusCreated, "register", "/v1/register", a.registerBody("dormant-"+strings.ReplaceAll(who.String(), "_", "-"), shortMS, "/workspace/a"))
+	}
+	m.c.clk.advance(time.Duration(shortMS)*time.Millisecond + time.Minute)
+}
+
+func dormantSession(who caller) string { return "kiro-cli:matrix-dormant-" + who.String() }
+
+// keyFor is the agent key who acts with on an agent row: its own when it
+// is one, else the agent key, so a refused caller's request is one the
+// agent key would be admitted with.
+func (m *matrix) keyFor(who caller) string {
+	if who == asScopelessKey {
+		return m.scopeless
+	}
+	return m.agent
 }
 
 // mintThroughAccess mints a key with no scope through access's key route,
@@ -286,16 +313,15 @@ type rowCall struct {
 	path    string
 }
 
-func (m *matrix) callFor(r *wire.Route, methods bool) rowCall {
-	params := map[string]string{"id": m.conversation, "label": "laptop", "name": "alpha"}
+func (m *matrix) callFor(r *wire.Route, who caller, methods bool) rowCall {
+	if r.Access == wire.AccessAgent {
+		return m.agentCall(r, who)
+	}
+	params := map[string]string{"id": m.conversation, "name": "alpha"}
 	if r.Name == "getUserReceipts" {
 		params["id"] = m.lastMessage
 	}
 	call := rowCall{method: r.Method, path: wire.Path(r.Name, params), headers: map[string]string{}}
-	if r.Access == wire.AccessAgent {
-		call.headers["Grelot-Version"] = contractVersion
-		call.headers["Grelot-Session"] = "kiro-cli:matrix"
-	}
 	if r.Keyed {
 		call.headers["Idempotency-Key"] = newIdemKey()
 	}
@@ -309,26 +335,106 @@ func (m *matrix) callFor(r *wire.Route, methods bool) rowCall {
 		call.body = m.settingsBody(methods)
 	case "getStats":
 		call.path += "?range=6h"
-	default:
-		if r.Method != http.MethodGet && r.Method != http.MethodDelete {
-			call.body = map[string]any{}
-		}
 	}
 	return call
 }
 
-// cell calls r as who and holds the answer to want: admitted, so it
-// carries the server's version and no gate code, or refused with want's
-// status and code, declared on the row, and no change to what the owner
-// sees.
+var matrixIdentities atomic.Int64
+
+// agentCall is a request of the agent row r, with keyFor(who), as a fresh
+// identity holding what the row acts on; revive's wakes who's dormant one,
+// which sleepDormant puts.
+func (m *matrix) agentCall(r *wire.Route, who caller) rowCall {
+	t := m.c.t
+	t.Helper()
+	name := fmt.Sprintf("matrix-%d", matrixIdentities.Add(1))
+	a, path := m.c.agent(m.keyFor(who), "kiro-cli:"+name, "a"), "/workspace/"+name
+	switch r.Name {
+	case "register":
+	case "revive":
+		a.session = dormantSession(who)
+	default:
+		a.call(http.StatusCreated, "register", "/v1/register", a.registerBody(name, hourMS, path))
+	}
+	call := rowCall{method: r.Method, headers: map[string]string{"Grelot-Version": contractVersion, "Grelot-Session": a.session}}
+	if r.Keyed {
+		call.headers["Idempotency-Key"] = newIdemKey()
+	}
+	params, query := map[string]string{}, ""
+	reservation := map[string]any{"path": path + "/x", "reason": "a change", "ttl_ms": hourMS}
+	switch r.Name {
+	case "register":
+		call.body = a.registerBody(name, hourMS, path)
+	case "revive":
+		call.body = map[string]any{"host": "host-a", "os": "linux", "arch": "amd64", "where": a.where(), "ttl_ms": hourMS}
+	case "patchMe":
+		call.body = map[string]any{"description": "patched", "ttl_ms": hourMS, "where": a.where()}
+	case "createPost":
+		call.body = postBody(map[string]any{"path": path}, "from the matrix", "a body")
+	case "getReceipts":
+		sent := a.call(http.StatusCreated, "createPost", "/v1/posts", postBody(map[string]any{"path": path}, "a receipt", "a body"))
+		params["id"] = strconv.FormatInt(num(sent.body, "message"), 10)
+	case "follow", "unfollow":
+		query = "?path=" + url.QueryEscape(path+"-followed")
+		if r.Name == "unfollow" {
+			a.call(http.StatusOK, "follow", "/v1/follows"+query, nil)
+		}
+	case "ackInbox":
+		m.alpha.call(http.StatusCreated, "createPost", "/v1/posts", postBody(map[string]any{"agent": name}, "for the inbox", "a body"))
+		items := a.call(http.StatusOK, "readInbox", "/v1/inbox", nil).items()
+		if len(items) == 0 {
+			t.Fatalf("%s's inbox is empty after alpha's direct post", name)
+		}
+		call.body = map[string]any{"upto": num(items[len(items)-1], "seq")}
+	case "reserve":
+		call.body = reservation
+	case "renewReservation", "releaseReservation":
+		held := a.call(http.StatusCreated, "reserve", "/v1/reservations", reservation)
+		params["id"] = strconv.FormatInt(num(obj(held.body, "reservation"), "id"), 10)
+		if r.Name == "renewReservation" {
+			call.body = map[string]any{"ttl_ms": halfMS}
+		}
+	case "grantDelegate", "revokeDelegate":
+		grant := map[string]any{"label": "helper", "ttl_ms": hourMS}
+		if r.Name == "grantDelegate" {
+			call.body = grant
+			break
+		}
+		a.call(http.StatusCreated, "grantDelegate", "/v1/delegates", grant)
+		params["label"] = "helper"
+		call.headers["Grelot-Self"] = "1"
+	case "lifecycle":
+		call.body = map[string]any{"event": "turn_end"}
+	case "holdEvent":
+		call.body = map[string]any{"for": "stop"}
+	case "waitEvent":
+		call.body = map[string]any{"wait_ms": int64(1000)}
+	}
+	call.path = wire.Path(r.Name, params) + query
+	return call
+}
+
+// cell calls r as who and holds the answer to want: admitted, so a 2xx the
+// row declares with the server's version (an event stream's 200 with its
+// media type), or refused with want's status and code, declared on the
+// row, and no change to what the owner sees.
 func (m *matrix) cell(t *testing.T, r *wire.Route, who caller, want outcome, methods bool) {
 	t.Helper()
-	call := m.callFor(r, methods)
+	parent := m.c.t
+	m.c.t = t
+	defer func() { m.c.t = parent }()
+	call := m.callFor(r, who, methods)
 	before := m.view()
 	ans := m.as(who, call.method, call.path, call.body, call.headers)
 	if want == admit {
-		if ans.header.Get("Grelot-Version") != contractVersion || strings.HasPrefix(ans.str("code"), "auth_") {
-			t.Errorf("%s %s as %s: %d %s, want it admitted", call.method, call.path, who, ans.status, ans.raw)
+		ok := ans.status >= 200 && ans.status < 300 && ans.header.Get("Grelot-Version") == contractVersion
+		if r.Kind == wire.KindEventStream {
+			ok = ok && ans.status == http.StatusOK && strings.HasPrefix(ans.header.Get("Content-Type"), "text/event-stream")
+		} else {
+			m.c.check(call.method, call.path, r.Name, ans)
+		}
+		if !ok {
+			t.Errorf("%s %s as %s: %d %s, want it admitted with a 2xx", call.method, call.path, who, ans.status, ans.raw)
 		}
 		return
 	}
@@ -343,6 +449,7 @@ func (m *matrix) cell(t *testing.T, r *wire.Route, who caller, want outcome, met
 
 func TestScopeMatrix(t *testing.T) {
 	m := newMatrix(t, contractOptions{})
+	m.sleepDormant()
 	for i := range wire.Routes {
 		r := &wire.Routes[i]
 		line, ok := scopeMatrix[r.Name]

@@ -530,8 +530,8 @@ func templateMatches(template, path string) bool {
 var instantMembers = []string{"since", "until", "dormant_since", "last_seen", "written"}
 
 // checkForms walks v for the wire forms docs/client.md names: no
-// duration string (ttl, wait), every *_ms an integer, every instant
-// RFC 3339.
+// duration string (ttl, wait), every *_ms an integer or a list of them,
+// every instant RFC 3339.
 func checkForms(t *testing.T, where, at string, v any) {
 	t.Helper()
 	switch v := v.(type) {
@@ -542,8 +542,8 @@ func checkForms(t *testing.T, where, at string, v any) {
 			case k == "ttl" || k == "wait":
 				t.Errorf("%s: %s is a duration string, want %s_ms", where, p, k)
 			case strings.HasSuffix(k, "_ms"):
-				if n, ok := m.(json.Number); !ok || strings.ContainsAny(n.String(), ".eE") {
-					t.Errorf("%s: %s = %v, want an integer of milliseconds", where, p, m)
+				if !isMS(m) {
+					t.Errorf("%s: %s = %v, want an integer of milliseconds or a list of them", where, p, m)
 				}
 			case strings.HasSuffix(k, "_at") || slices.Contains(instantMembers, k):
 				if s, ok := m.(string); !ok {
@@ -559,6 +559,20 @@ func checkForms(t *testing.T, where, at string, v any) {
 			checkForms(t, where, at+"["+strconv.Itoa(i)+"]", m)
 		}
 	}
+}
+
+// isMS reports whether v is an integer of milliseconds, or a list of them.
+func isMS(v any) bool {
+	l, ok := v.([]any)
+	if !ok {
+		l = []any{v}
+	}
+	for _, e := range l {
+		if n, ok := e.(json.Number); !ok || strings.ContainsAny(n.String(), ".eE") {
+			return false
+		}
+	}
+	return true
 }
 
 // members is what a refusal's code carries beside error, code and
