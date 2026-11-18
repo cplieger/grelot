@@ -15,7 +15,7 @@
   "parentSessionId": "sess_dd97485d-a96a-44bc-ba17-eb8230525c06",
   "forkedAtMessageId": "71b07cc0-176c-499c-9a6d-7270ef2c9f41-turn-end",
   "createdReason": "rewind",
-  "modelId": "claude-sonnet-5.5",
+  "modelId": "model-a",
   "workflowLaunch": "when-asked",
   "effortLevel": "high",
   "disableAutoCompaction": true,

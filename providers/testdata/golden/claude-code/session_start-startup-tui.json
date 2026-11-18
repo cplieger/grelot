@@ -4,5 +4,5 @@
   "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\work\\claude-i",
   "hook_event_name": "SessionStart",
   "source": "startup",
-  "model": "global.anthropic.claude-opus-5-5"
+  "model": "model-a"
 }

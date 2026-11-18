@@ -198,7 +198,7 @@ func TestOneShot_unregistered(t *testing.T) {
 		"kiro-cli chat --no-interactive":                                kiroRun(kiroChain("--v3", "chat", "--no-interactive", "--trust-workspace", oneShotPrompt), true),
 		"kiro-cli chat --output-format stream-json":                     kiroRun(kiroChain("--v3", "chat", "--output-format", "stream-json", "--trust-workspace", oneShotPrompt), true),
 		"kiro-cli chat --output-format=stream-json":                     kiroRun(kiroChain("chat", "--output-format=stream-json", oneShotPrompt), true),
-		"the kiro-cli TUI":                                              kiroRun(kiroTUIChain("--trust-workspace", "-a", "--model", "claude-sonnet-5.5"), false),
+		"the kiro-cli TUI":                                              kiroRun(kiroTUIChain("--trust-workspace", "-a", "--model", "model-a"), false),
 		"the kiro-cli TUI given text output and a first prompt":         kiroRun(kiroTUIChain("--output-format", "text", oneShotPrompt), false),
 		"the kiro-cli TUI whose first question is stream-json":          kiroRun(kiroTUIChain("stream-json"), false),
 		"the kiro-cli TUI given text output and stream-json to ask":     kiroRun(kiroTUIChain("--output-format", "text", "stream-json"), false),

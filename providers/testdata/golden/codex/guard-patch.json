@@ -4,7 +4,7 @@
   "transcript_path": "C:\\Users\\user\\.codex\\sessions\\2026\\11\\17\\rollout-2026-11-17T16-40-02-01a1a2b4-7c3e-7d10-9f42-6b8e0c5d1a27.jsonl",
   "cwd": "C:\\Users\\user\\work\\grelot",
   "hook_event_name": "PreToolUse",
-  "model": "openai.gpt-6.1-sol",
+  "model": "model-a",
   "permission_mode": "default",
   "tool_name": "apply_patch",
   "tool_input": {

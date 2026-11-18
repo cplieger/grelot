@@ -3,7 +3,7 @@
   "transcript_path": null,
   "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\work\\codex-x",
   "hook_event_name": "SessionStart",
-  "model": "openai.gpt-6.1-sol",
+  "model": "model-a",
   "permission_mode": "default",
   "source": "startup"
 }
