@@ -186,7 +186,7 @@ A tool's hook file wires each event to `grelot hook <provider> <role>`, and the 
 | `turn_end` | A turn ends some other way than `stop`, such as an error or an interruption | Tells the server the turn ended. Prints nothing |
 | `session_end` | A session closes | Tells the server, which ends the session's delegates and lets the identity go dormant within the hour. Prints nothing |
 | `subagent_stop` | A subagent ends | Ends the delegate that subagent's own session held. Prints nothing |
-| `guard` | Before a file-write tool runs | Prints, as `context`, a line for each other agent holding a written file: who, which path, until when and why. Checks every written file in one request, and only files inside a clone with a remote. Says nothing for a free file or one the identity or its parent holds, in a subagent or a one-shot run, and on any error. Never blocks, asks or delays the write, and only reads |
+| `guard` | Before a file-write tool runs | Prints, as `context`, a line for each other agent holding a written file: who, which path, until when and why. Checks every written file in one request, and only files inside a clone with a remote. Says nothing for a free file or one the identity or its parent holds, in a subagent or a one-shot run, and on any error. Never blocks or asks, holds the write at most its `budget`, and only reads |
 
 A hook reads at most 16 MiB of input, room for the whole file body or patch a write tool carries; past that it prints nothing.
 

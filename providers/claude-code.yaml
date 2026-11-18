@@ -95,8 +95,9 @@ hooks:
     # matcher names the same tools, so a read, a search or a shell command
     # never runs the guard.
     when: {tool_name: [Edit, Write, NotebookEdit]}
-    # A slow server holds the write for at most this long, and the guard
-    # then says nothing.
+    # The write waits for the guard, git's lookups of the files and the
+    # server's answer together, at most this long; past it the guard says
+    # nothing.
     budget: 1s
     # As session_start's.
     context_limit: 10000
