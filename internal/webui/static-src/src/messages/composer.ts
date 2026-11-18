@@ -1,7 +1,12 @@
 import { el } from "@cplieger/reactive/dom";
 import { showError } from "@cplieger/ui/form";
 
-import { idempotencyWindowMs, newIdempotencyKey, type ApiResult } from "../transport.js";
+import {
+  idempotencyWindowMs,
+  newIdempotencyKey,
+  requestDeadlineMs,
+  type ApiResult,
+} from "../transport.js";
 import { createUserPost } from "../wire/client.gen.js";
 import type { Post, PostTarget } from "../wire/types.gen.js";
 import {
@@ -26,7 +31,10 @@ interface Mounted {
   readonly unsure: (d: Draft) => void;
 }
 
-/** An entry's Idempotency-Key, and when the server stops answering it with the first answer. */
+/**
+ * An entry's Idempotency-Key, and the last moment a re-send under it is
+ * sure to reach the server while it keeps the first answer.
+ */
 interface Kept {
   readonly key: string;
   readonly until: number;
@@ -34,7 +42,8 @@ interface Kept {
 
 const freshKey = (): Kept => ({
   key: newIdempotencyKey(),
-  until: Date.now() + idempotencyWindowMs,
+  // A re-send may take a whole request deadline to arrive, and the server checks the window at its arrival.
+  until: Date.now() + idempotencyWindowMs - requestDeadlineMs,
 });
 
 /** One conversation's sends, kept for the page's life. */

@@ -45,12 +45,12 @@ export function failureWords(f: { readonly message: string | null }): string {
 }
 
 /** How long a request may wait for its whole answer before it fails as "deadline". */
-const requestDeadlineMs = 30_000;
+export const requestDeadlineMs = 30_000;
 
 /**
  * A new Idempotency-Key value: the RFC 8941 String the server's keyed
  * routes read, quotes included. A re-send of the same write may reuse it
- * only within idempotencyWindowMs of its first send.
+ * only while it is sure to arrive within idempotencyWindowMs of its first send.
  */
 export function newIdempotencyKey(): string {
   return `"${crypto.randomUUID().replaceAll("-", "")}"`;

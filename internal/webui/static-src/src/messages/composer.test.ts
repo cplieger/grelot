@@ -394,8 +394,10 @@ describe("the conversation's composer", () => {
 
   describe("a post whose key the server keeps no longer", () => {
     // docs/client.md section 6: the server answers a key sent again with its
-    // first answer for 5 minutes after the post succeeds, and after that the key is new.
+    // first answer for 5 minutes after the post succeeds, so a re-send must
+    // leave a whole request deadline (30 s) to arrive inside that window.
     const keyWindow = 5 * minute;
+    const lastRetry = keyWindow - 30_000;
     const unsure = "This may have been sent. Check the conversation before sending it again.";
 
     afterEach(() => {
@@ -428,9 +430,9 @@ describe("the conversation's composer", () => {
       return sent;
     }
 
-    it("sends it under its first key on a Retry just before the window ends", async () => {
+    it("sends it under its first key on a Retry just before its last safe moment", async () => {
       const sent = await lost();
-      await vi.advanceTimersByTimeAsync(keyWindow - 2000);
+      await vi.advanceTimersByTimeAsync(lastRetry - 2000);
       button("Retry", entries()[1] as HTMLElement).click();
       await until(() => {
         expect(entries()[1]?.querySelector("footer")?.textContent).toBe("Read by 1 of 2");
@@ -439,9 +441,9 @@ describe("the conversation's composer", () => {
       expect(sent.keys[1]).toBe(sent.keys[0]);
     });
 
-    it("drops Retry once the window ends and says it may have been sent", async () => {
+    it("drops Retry once a re-send could arrive after the window and says it may have been sent", async () => {
       const sent = await lost();
-      await vi.advanceTimersByTimeAsync(keyWindow);
+      await vi.advanceTimersByTimeAsync(lastRetry);
       await until(() => {
         expect(entries()[1]?.querySelector("footer")?.textContent).toBe(unsure);
       });
@@ -452,9 +454,9 @@ describe("the conversation's composer", () => {
       expect(sent.keys.length).toBe(1);
     });
 
-    it("sends nothing on a Retry pressed after the window ended, before the page caught up", async () => {
+    it("sends nothing on a Retry pressed past its last safe moment, before the page caught up", async () => {
       const sent = await lost();
-      vi.setSystemTime(Date.now() + keyWindow);
+      vi.setSystemTime(Date.now() + lastRetry);
       button("Retry", entries()[1] as HTMLElement).click();
       await until(() => {
         expect(entries()[1]?.querySelector("footer")?.textContent).toBe(unsure);
@@ -463,9 +465,9 @@ describe("the conversation's composer", () => {
       expect(sent.keys.length).toBe(1);
     });
 
-    it("takes Send on the same text after the window as a new post under a new key", async () => {
+    it("takes Send on the same text after the last Retry as a new post under a new key", async () => {
       const sent = await lost();
-      await vi.advanceTimersByTimeAsync(keyWindow);
+      await vi.advanceTimersByTimeAsync(lastRetry);
       await until(() => {
         expect(entries()[1]?.querySelector("footer")?.textContent).toBe(unsure);
       });
