@@ -317,11 +317,10 @@ func (sc *guardScene) patch(text, cwd string) []byte {
 
 // overflowLine is the guard's last line when the lines naming holders pass
 // the host's context limit.
-var overflowLine = regexp.MustCompile(`^grelot: (\d+) more paths in this write are held by other agents; grelot reservations lists them\.$`)
+var overflowLine = regexp.MustCompile(`^grelot: other agents hold more reservations over files in this write, (\d+) not shown; grelot reservations lists them\.$`)
 
-// Each held grant gets one line in the order the patch names its files,
-// until the next would pass Codex's 10,000 bytes; the last line counts the
-// rest.
+// Each held grant gets one line in grant id order, until the next would
+// pass Codex's 10,000 bytes; the last line counts the rest.
 func TestGuard_staysUnderTheContextLimit(t *testing.T) {
 	sc := codexScene(t)
 	reason := strings.Repeat("r", 280)

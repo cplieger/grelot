@@ -161,11 +161,11 @@ func TestHookGuard_aRelativePatchPathNeedsACwd(t *testing.T) {
 
 // The guard keeps the most lines whose rendered text fits the limit, then
 // a line counting the grants it left out; under even one line and that
-// count, the count alone.
+// count, a line counting them all.
 func TestHookGuard_contextLimit(t *testing.T) {
 	both := guardInternal + "\n" + guardReadme + "\n"
-	first := guardInternal + "\n" + "grelot: 1 more paths in this write are held by other agents; grelot reservations lists them.\n"
-	none := "grelot: 2 more paths in this write are held by other agents; grelot reservations lists them.\n"
+	first := guardInternal + "\n" + "grelot: other agents hold more reservations over files in this write, 1 not shown; grelot reservations lists them.\n"
+	none := "grelot: other agents hold reservations over files in this write, 2 not shown; grelot reservations lists them.\n"
 	for _, c := range []struct {
 		name, want string
 		limit      int

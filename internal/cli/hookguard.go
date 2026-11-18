@@ -14,13 +14,15 @@ import (
 )
 
 // The guard's lines, each naming one grant another agent holds over a
-// written file, and the last line when the rest would pass the host's
-// context limit. A host may show them after the write's result, so they
-// read true before and after it.
+// written file, and the last line counting the grants left out when the
+// rest would pass the host's context limit, after some lines or alone. A
+// host may show them after the write's result, so they read true before
+// and after it.
 const (
-	lineGuardHeld     = "grelot: @%s holds %s until %s (%s); your write goes ahead. Coordinate with grelot post '@%s' or reserve it after them."
-	lineGuardQueued   = "grelot: @%s holds %s until %s (%s); your write goes ahead. You are queued for %s (reservation %d): coordinate with grelot post '@%s' or wait for the grant, which reaches you as mail."
-	lineGuardOverflow = "grelot: %d more paths in this write are held by other agents; grelot reservations lists them."
+	lineGuardHeld   = "grelot: @%s holds %s until %s (%s); your write goes ahead. Coordinate with grelot post '@%s' or reserve it after them."
+	lineGuardQueued = "grelot: @%s holds %s until %s (%s); your write goes ahead. You are queued for %s (reservation %d): coordinate with grelot post '@%s' or wait for the grant, which reaches you as mail."
+	lineGuardMore   = "grelot: other agents hold more reservations over files in this write, %d not shown; grelot reservations lists them."
+	lineGuardCount  = "grelot: other agents hold reservations over files in this write, %d not shown; grelot reservations lists them."
 )
 
 // guard runs before a file-write tool: it names each other agent holding a
@@ -115,12 +117,12 @@ func guardText(held []client.Holding, limit int, out *provider.Output) string {
 		return text
 	}
 	for n := len(lines) - 1; n > 0; n-- {
-		text = strings.Join(append(slices.Clip(lines[:n]), fmt.Sprintf(lineGuardOverflow, len(lines)-n)), "\n")
+		text = strings.Join(append(slices.Clip(lines[:n]), fmt.Sprintf(lineGuardMore, len(lines)-n)), "\n")
 		if len(rendered(out, text)) <= limit {
 			return text
 		}
 	}
-	return fmt.Sprintf(lineGuardOverflow, len(lines))
+	return fmt.Sprintf(lineGuardCount, len(lines))
 }
 
 func guardLine(e *client.Holding) string {
