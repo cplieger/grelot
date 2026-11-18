@@ -298,9 +298,10 @@ func (s *Store) Reservations(ctx context.Context, c Caller, q ReservationQuery) 
 	return out, err
 }
 
-// Holding is one grant another agent holds over a queried path. Queued is
-// the caller's own oldest queue entry overlapping the grant and a queried
-// path the grant covers, nil for none.
+// Holding is one grant another agent holds over a queried path, overlapping
+// it either way: covering it or lying under it. Queued is the caller's own
+// oldest queue entry overlapping both the grant and a queried path the grant
+// overlaps, nil for none.
 type Holding struct {
 	Queued *Reservation
 	Held   Reservation
