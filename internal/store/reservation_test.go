@@ -1001,6 +1001,9 @@ func TestHolders_refusesTooManyPaths(t *testing.T) {
 	}
 	_, err := s.Holders(t.Context(), me, paths)
 	wantRefusal(t, err, KindInvalid, "", strconv.Itoa(protopath.MaxHolderPaths))
+	// The refusal comes at the first path past the cap, before any later one is read.
+	_, err = s.Holders(t.Context(), me, append(slices.Clone(paths), "workspace/relative"))
+	wantRefusal(t, err, KindInvalid, "", "distinct paths")
 	twice := append(slices.Clone(paths[:protopath.MaxHolderPaths]), paths[0])
 	if _, err := s.Holders(t.Context(), me, twice); err != nil {
 		t.Errorf("Holders of %d distinct paths, one asked twice: %v", protopath.MaxHolderPaths, err)

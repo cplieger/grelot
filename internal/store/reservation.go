@@ -348,20 +348,29 @@ func (s *Store) Holders(ctx context.Context, c Caller, paths []string) ([]Holdin
 	return out, err
 }
 
+// checkHolderPaths is paths with repeats dropped. It refuses at the first
+// distinct path past the cap, so a longer query costs no more to refuse.
 func checkHolderPaths(paths []string) ([]string, error) {
 	var out []string
 	for _, p := range paths {
 		if _, err := checkPaths([]string{p}); err != nil {
 			return nil, err
 		}
-		if !slices.Contains(out, p) {
-			out = append(out, p)
+		if slices.Contains(out, p) {
+			continue
+		}
+		if out = append(out, p); len(out) > protopath.MaxHolderPaths {
+			return nil, holderPathsRefusal()
 		}
 	}
-	if len(out) == 0 || len(out) > protopath.MaxHolderPaths {
-		return nil, refuse(KindInvalid, fmt.Sprintf("ask for 1 to %d distinct paths", protopath.MaxHolderPaths))
+	if len(out) == 0 {
+		return nil, holderPathsRefusal()
 	}
 	return out, nil
+}
+
+func holderPathsRefusal() *Error {
+	return refuse(KindInvalid, fmt.Sprintf("ask for 1 to %d distinct paths", protopath.MaxHolderPaths))
 }
 
 // holdings is Holders' answer as it is gathered, by grant id: the grant and
