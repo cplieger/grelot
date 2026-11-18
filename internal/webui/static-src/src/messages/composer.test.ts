@@ -365,6 +365,33 @@ describe("the conversation's composer", () => {
     expect(sent.keys.length).toBe(1);
   });
 
+  it("offers Retry on a post a proxy answered 504, and Retry sends it under its first key", async () => {
+    answer(pageOf([row(1)]));
+    serve(
+      1,
+      conversationOf(1, { posts: [post(4)] }),
+      conversationOf(1, { posts: [post(4), mine(5, "Merge order", "Now.")] }),
+    );
+    const sent = posts(() => new HttpResponse(null, { status: 504 }), stored(5));
+    start("/messages/1");
+    await shown(1);
+    await write("Merge order", "Now.");
+    button("Send", detail()).click();
+
+    const retry = await until(() => {
+      expect(entries()[1]?.getAttribute("data-state")).toBe("failed");
+      return button("Retry", entries()[1] as HTMLElement);
+    });
+    retry.click();
+    await until(() => {
+      expect(entries()[1]?.querySelector("footer")?.textContent).toBe("Read by 1 of 2");
+    });
+    expect(sent.keys.length).toBe(2);
+    expect(sent.keys[0]).not.toBeNull();
+    expect(sent.keys[1]).toBe(sent.keys[0]);
+    expect(sent.bodies[1]).toEqual(sent.bodies[0]);
+  });
+
   it("offers Retry on a rate-limited post once the server's wait has passed", async () => {
     answer(pageOf([row(1)]));
     serve(
@@ -376,7 +403,7 @@ describe("the conversation's composer", () => {
       () =>
         HttpResponse.json(
           { error: "Too many requests.", code: "rate_limited", retry_after_ms: 1000 },
-          { status: 429 },
+          { status: 429, headers: { "Retry-After": "1" } },
         ),
       stored(5),
     );

@@ -17,8 +17,11 @@ describe("retryableIn", () => {
   it.each([
     ["no answer", failure(0, "network"), 0],
     ["no answer in time", failure(0, "deadline"), 0],
-    ["a route timeout", failure(503, "timeout", 1000), 0],
+    ["a route timeout naming its wait", failure(503, "timeout", 1000), 1000],
     ["a server shutting down", failure(503, "shutting_down"), 0],
+    ["a proxy that could not reach the server", failure(502, "http"), 0],
+    ["a proxy that gave up waiting", failure(504, "http"), 0],
+    ["a 502 whatever its body names", failure(502, "internal_error"), 0],
     ["an unavailable account store", failure(503, "auth_unavailable"), 0],
     ["a rate limit naming its wait", failure(429, "rate_limited", 1500), 1500],
     ["a rate limit naming no wait", failure(429, "rate_limited"), 0],
@@ -48,7 +51,7 @@ describe("whenRetryable", () => {
 
   it("shows Retry at once when sending again can succeed now", () => {
     const show = vi.fn();
-    whenRetryable(failure(503, "timeout"), new AbortController().signal, show);
+    whenRetryable(failure(504, "http"), new AbortController().signal, show);
     expect(show).toHaveBeenCalledOnce();
   });
 
@@ -57,6 +60,16 @@ describe("whenRetryable", () => {
     const show = vi.fn();
     whenRetryable(failure(429, "rate_limited", 2000), new AbortController().signal, show);
     vi.advanceTimersByTime(1999);
+    expect(show).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(show).toHaveBeenCalledOnce();
+  });
+
+  it("holds Retry back on a 503 until the wait it names has passed", () => {
+    vi.useFakeTimers();
+    const show = vi.fn();
+    whenRetryable(failure(503, "shutting_down", 3000), new AbortController().signal, show);
+    vi.advanceTimersByTime(2999);
     expect(show).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(show).toHaveBeenCalledOnce();

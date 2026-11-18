@@ -6,19 +6,22 @@ import type { ApiResult } from "../transport.js";
 
 type Failure = Extract<ApiResult<unknown, string>, { readonly ok: false }>;
 
+// The statuses after which the same request sent again can succeed: no
+// answer, a proxy that could not reach or wait for the server, a server not
+// serving yet, and a rate limit.
+const transient = new Set([0, 429, 502, 503, 504]);
+
 /**
  * When sending f's request again unchanged can succeed, which is when a
- * Retry may show: 0 after no answer or a 503, a 429's named wait, or null
- * when only a changed request can.
+ * Retry may show: its Retry-After wait (0 when it names none) after a
+ * transient status, or null when only a changed request can. The status
+ * decides, never the body.
  */
 export function retryableIn(f: Failure): number | null {
-  if (f.code === "aborted") {
+  if (f.code === "aborted" || !transient.has(f.status)) {
     return null;
   }
-  if (f.status === 0 || f.status === 503) {
-    return 0;
-  }
-  return f.status === 429 ? (f.retryAfterMs ?? 0) : null;
+  return f.retryAfterMs ?? 0;
 }
 
 /** Runs show once retryableIn(f) has passed, unless signal ends first; never when it is null. */

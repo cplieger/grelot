@@ -386,13 +386,43 @@ describe("the Settings screen", () => {
     });
   });
 
+  it.each([502, 504])(
+    "offers Retry on a save a proxy answered %i with no body, and Retry sends it again",
+    async (status) => {
+      const sent = serve(
+        settings(),
+        () => new HttpResponse(null, { status }),
+        () => HttpResponse.json(settings({ revision: 4, retention_ms: 12 * hour })),
+      );
+      await open();
+
+      await type(retention(), "12");
+      await userEvent.click(button("Save changes"));
+
+      const notice = await until(() => {
+        const n = h.root.querySelector<HTMLElement>("form .cp-notice");
+        expect(n?.textContent).toBe(
+          "Settings were not saved. grelot did not answer. Try again in a moment.Retry",
+        );
+        return n;
+      });
+      await userEvent.click(button("Retry", notice ?? undefined));
+
+      await until(() => {
+        expect(savebar()?.hidden).toBe(true);
+      });
+      expect(sent).toHaveLength(2);
+      expect(sent[1]).toEqual(sent[0]);
+    },
+  );
+
   it("offers Retry on a rate-limited save once the server's wait has passed", async () => {
     const sent = serve(
       settings(),
       () =>
         HttpResponse.json(
           { code: "rate_limited", error: "Too many requests.", retry_after_ms: 1000 },
-          { status: 429 },
+          { status: 429, headers: { "Retry-After": "1" } },
         ),
       () => HttpResponse.json(settings({ revision: 4, retention_ms: 12 * hour })),
     );

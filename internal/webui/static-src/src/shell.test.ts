@@ -275,6 +275,33 @@ describe("startShell", () => {
     expect(posted).toBe(2);
   });
 
+  it("offers Retry when a proxy answers signing out 502 with no body", async () => {
+    let posted = 0;
+    worker.use(
+      http.post("/api/auth/logout", () => {
+        posted++;
+        return posted === 1
+          ? new HttpResponse(null, { status: 502 })
+          : new HttpResponse(null, { status: 204 });
+      }),
+    );
+    start("/messages");
+    (root.querySelector(".cp-account") as HTMLElement).click();
+    (root.querySelector('#account-menu [role="menuitem"]') as HTMLElement).click();
+    const retry = await until(() => {
+      expect(document.body.textContent).toContain("Sign out did not finish.");
+      const b = toastButton("Retry");
+      expect(b).not.toBeNull();
+      return b as HTMLButtonElement;
+    });
+
+    retry.click();
+    await until(() => {
+      expect(leaveTo).toHaveBeenCalledExactlyOnceWith("/sign-in");
+    });
+    expect(posted).toBe(2);
+  });
+
   it("offers no Retry when signing out fails in a way sending it again cannot fix", async () => {
     worker.use(
       http.post("/api/auth/logout", () =>

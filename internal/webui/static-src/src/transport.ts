@@ -33,7 +33,7 @@ interface ApiFailure<E extends string> {
   readonly code: E | TransportCode;
   /** The server's own words for the refusal, written for a person; null when it sent none. */
   readonly message: string | null;
-  /** The envelope's retry_after_ms: how long to wait before sending it again; null when it named none. */
+  /** The answer's Retry-After in ms: how long to wait before sending it again; null when it named none. */
   readonly retryAfterMs: number | null;
 }
 
@@ -67,23 +67,34 @@ function failure<E extends string>(
 interface Envelope {
   readonly code: string | null;
   readonly message: string | null;
-  readonly retryAfterMs: number | null;
 }
 
-/** An error envelope's code, words and wait, read from v as untrusted JSON. */
+/**
+ * The wait in ms a Retry-After value names, delta-seconds or an HTTP-date
+ * (RFC 9110 section 10.2.3); null when absent or neither. A date passed is 0.
+ */
+export function retryAfterOf(headers: Headers | undefined): number | null {
+  const v = headers?.get("Retry-After")?.trim() ?? "";
+  if (/^\d+$/.test(v)) {
+    const ms = Number(v) * 1000;
+    return Number.isSafeInteger(ms) ? ms : null;
+  }
+  const at = /^[A-Za-z]{3}, /.test(v) ? Date.parse(v) : Number.NaN;
+  return Number.isNaN(at) ? null : Math.max(0, at - Date.now());
+}
+
+/** An error envelope's code and words, read from v as untrusted JSON. */
 export function envelopeOf(v: unknown): Envelope {
   if (typeof v !== "object" || v === null || Array.isArray(v)) {
-    return { code: null, message: null, retryAfterMs: null };
+    return { code: null, message: null };
   }
   const read = (k: string): unknown =>
     Object.hasOwn(v, k) ? (v as Record<string, unknown>)[k] : null;
   const code = read("code");
   const error = read("error");
-  const wait = read("retry_after_ms");
   return {
     code: typeof code === "string" ? code : null,
     message: typeof error === "string" && error !== "" ? error : null,
-    retryAfterMs: Number.isSafeInteger(wait) && (wait as number) >= 0 ? (wait as number) : null,
   };
 }
 
@@ -154,7 +165,7 @@ export async function clientRequest<T, E extends string>(
       leaveTo(signIn);
     }
   }
-  const { code, message, retryAfterMs } = envelope(text);
+  const { code, message } = envelope(text);
   const listed = code !== null && spec.codes.includes(code) ? (code as E) : "http";
-  return failure(response.status, listed, message, retryAfterMs);
+  return failure(response.status, listed, message, retryAfterOf(response.headers));
 }

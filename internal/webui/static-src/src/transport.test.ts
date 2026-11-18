@@ -150,22 +150,35 @@ describe("clientRequest", () => {
     });
   });
 
-  it("carries the wait the server names, and none for a value that is no wait", async () => {
-    const answers = [2000, 0, -5, 1.5, "3", null];
+  it("carries the wait the answer's Retry-After names, and none for a value that is no wait", async () => {
+    const now = Date.now();
+    const answers: (string | null)[] = [
+      "2",
+      "0",
+      "-5",
+      "1.5",
+      "soon",
+      new Date(now + 60_000).toUTCString(),
+      new Date(now - 60_000).toUTCString(),
+      null,
+    ];
     const seen: (number | null)[] = [];
     for (const wait of answers) {
       worker.use(
         http.get("/api/thing", () =>
           HttpResponse.json(
-            { error: "slow down", code: "too_large", retry_after_ms: wait },
-            { status: 429 },
+            { error: "slow down", code: "too_large", retry_after_ms: 9000 },
+            { status: 429, headers: wait === null ? {} : { "Retry-After": wait } },
           ),
         ),
       );
       const result = await clientRequest(spec(), asIs);
       seen.push(result.ok ? -1 : result.retryAfterMs);
     }
-    expect(seen).toEqual([2000, 0, null, null, null, null]);
+    expect(seen.slice(0, 5)).toEqual([2000, 0, null, null, null]);
+    expect(seen[5]).toBeGreaterThan(50_000);
+    expect(seen[5]).toBeLessThanOrEqual(60_000);
+    expect(seen.slice(6)).toEqual([0, null]);
   });
 
   it("fails as network when no answer arrives, and as aborted when the caller gave up", async () => {
