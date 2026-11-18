@@ -14,6 +14,7 @@ import {
   type Draft,
 } from "./compose.js";
 import type { Pending } from "./feed.js";
+import { whenRetryable } from "./parts.js";
 
 type Failure = Extract<ApiResult<unknown, string>, { readonly ok: false }>;
 
@@ -143,7 +144,7 @@ export function conversationComposer(opts: ComposerOptions): Composer {
     }
   });
 
-  const set = (n: number, change: Partial<Pick<Pending, "state" | "message">>): void => {
+  const set = (n: number, change: Partial<Pick<Pending, "state" | "retry" | "message">>): void => {
     sends.pending = sends.pending.map((p) => (p.n === n ? { ...p, ...change } : p));
     sends.mounted?.drawPending();
   };
@@ -173,8 +174,13 @@ export function conversationComposer(opts: ComposerOptions): Composer {
       return;
     }
     sends.refusals.set(n, result);
-    set(n, { state: "failed" });
+    set(n, { state: "failed", retry: false });
     sends.mounted?.failed(result);
+    whenRetryable(result, opts.page, () => {
+      if (sends.refusals.get(n) === result) {
+        set(n, { retry: true });
+      }
+    });
   };
 
   /** Sends entry n, or waits on it when it is already on its way. */
@@ -206,7 +212,7 @@ export function conversationComposer(opts: ComposerOptions): Composer {
           sends.keys.set(n, newIdempotencyKey());
           sends.pending = [
             ...sends.pending,
-            { n, ...d, at: Date.now(), state: "sending", message: null },
+            { n, ...d, at: Date.now(), state: "sending", retry: false, message: null },
           ];
         }
         await deliver(n);

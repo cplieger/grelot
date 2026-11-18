@@ -3,7 +3,7 @@ import { createFetch, type ApiErr } from "@cplieger/reactive/fetch";
 
 import { leaveTo } from "./location.js";
 import { signInHref } from "./router.js";
-import type { ApiResult } from "./transport.js";
+import { envelopeOf, type ApiResult } from "./transport.js";
 
 /** The signed-in account, as the header's account menu names it. */
 export interface Account {
@@ -43,19 +43,10 @@ function codeOf(err: ApiErr): "http" | "decode" | "network" | "deadline" | "abor
   return err.status < 300 ? "decode" : "http";
 }
 
-/** err as transport.ts's failure: the server's own words, or null when it sent none. */
+/** err as transport.ts's failure, with the envelope's words and wait. */
 function failed(err: ApiErr): ApiResult<never> {
-  const body = err.body;
-  const words =
-    typeof body === "object" && body !== null && Object.hasOwn(body, "error")
-      ? (body as Record<string, unknown>)["error"]
-      : null;
-  return {
-    ok: false,
-    status: err.status,
-    code: codeOf(err),
-    message: typeof words === "string" && words !== "" ? words : null,
-  };
+  const { message, retryAfterMs } = envelopeOf(err.body);
+  return { ok: false, status: err.status, code: codeOf(err), message, retryAfterMs };
 }
 
 export async function fetchAccount(): Promise<ApiResult<Account>> {

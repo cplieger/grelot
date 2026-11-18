@@ -19,6 +19,8 @@ export interface Pending {
   readonly body: string;
   readonly at: number;
   readonly state: "sending" | "failed" | "sent";
+  /** A failed entry offers Retry: sending it again unchanged can succeed now. */
+  readonly retry: boolean;
   /** The stored message, once sent: its entry replaces this one. */
   readonly message: number | null;
 }
@@ -193,7 +195,7 @@ export function conversationFeed(idPrefix: string, signal: AbortSignal): Convers
   const summaries = new Map<number, ReturnType<typeof readSummary>>();
   let path: string | null = null;
   let retryPending: ((n: number) => void) | undefined;
-  const drawnState = new WeakMap<HTMLElement, Pending["state"]>();
+  const drawnState = new WeakMap<HTMLElement, string>();
 
   const entry = (post: Post): HTMLElement => {
     const drawn = postEntry(post, { path, idPrefix, signal });
@@ -204,10 +206,11 @@ export function conversationFeed(idPrefix: string, signal: AbortSignal): Convers
   };
 
   const pendingFooter = (li: HTMLElement, p: Pending): void => {
-    if (drawnState.get(li) === p.state) {
+    const drawn = p.state === "failed" && p.retry ? "failed, retry" : p.state;
+    if (drawnState.get(li) === drawn) {
       return;
     }
-    drawnState.set(li, p.state);
+    drawnState.set(li, drawn);
     const footer = li.querySelector(":scope > footer");
     if (p.state === "sent") {
       li.removeAttribute("data-state");
@@ -229,6 +232,16 @@ export function conversationFeed(idPrefix: string, signal: AbortSignal): Convers
       return;
     }
     li.removeAttribute("aria-busy");
+    const notSent = el(
+      "span",
+      { className: "cp-state", "data-tone": "danger" },
+      icon("circle-x"),
+      "Not sent.",
+    );
+    if (!p.retry) {
+      footer?.replaceChildren(notSent);
+      return;
+    }
     const retry = el(
       "button",
       { className: "cp-button", "data-size": "sm", type: "button" },
@@ -237,10 +250,7 @@ export function conversationFeed(idPrefix: string, signal: AbortSignal): Convers
     retry.addEventListener("click", () => {
       retryPending?.(p.n);
     });
-    footer?.replaceChildren(
-      el("span", { className: "cp-state", "data-tone": "danger" }, icon("circle-x"), "Not sent."),
-      retry,
-    );
+    footer?.replaceChildren(notSent, retry);
   };
 
   const pendingEntry = (p: Pending): HTMLElement => {

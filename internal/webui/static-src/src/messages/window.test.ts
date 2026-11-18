@@ -35,6 +35,7 @@ const failed = (code: string): ApiResult<Window<number, number>, string> => ({
   status: code === "aborted" ? 0 : 503,
   code,
   message: code === "aborted" ? null : "The store is busy.",
+  retryAfterMs: null,
 });
 
 describe("rewalk", () => {

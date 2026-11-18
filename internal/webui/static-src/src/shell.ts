@@ -20,6 +20,7 @@ import { clockTime } from "./format.js";
 import { icon } from "./icons.js";
 import type { Connection, Live } from "./live.js";
 import { leaveTo } from "./location.js";
+import { whenRetryable } from "./messages/parts.js";
 import { routeHref, type Located, type Route, type Router } from "./router.js";
 import { failureWords } from "./transport.js";
 
@@ -345,11 +346,14 @@ function frame(opts: ShellOptions, owner: Owner): void {
       leaveTo(routeHref({ screen: "sign-in", next: null }));
       return;
     }
-    toast({
+    const refused = {
       kind: "error",
       title: "Sign out did not finish.",
       body: failureWords(result),
-      actions: [{ label: "Retry", run: () => void endSession() }],
+    } as const;
+    const shown = toast(refused);
+    whenRetryable(result, signal, () => {
+      shown.update({ ...refused, actions: [{ label: "Retry", run: () => void endSession() }] });
     });
   };
 

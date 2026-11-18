@@ -72,6 +72,10 @@ const errorOf = (f: HTMLInputElement): string | null =>
   f.getAttribute("aria-invalid") === "true"
     ? (h.root.querySelector(`#${f.id}-error`)?.textContent ?? null)
     : null;
+const retries = (): HTMLButtonElement[] =>
+  [...h.root.querySelectorAll<HTMLButtonElement>("button")].filter(
+    (b) => b.textContent === "Retry",
+  );
 const question = (): HTMLDialogElement | null =>
   document.querySelector<HTMLDialogElement>('dialog[data-variant="confirm"][open]');
 
@@ -207,7 +211,7 @@ describe("the Settings screen", () => {
     expect(sent.map((b) => b.revision)).toEqual([3, 4]);
   });
 
-  it("says a stale save as any refused save and keeps the changes", async () => {
+  it("says a stale save as any refused save, with no Retry, and keeps the changes", async () => {
     const sent = serve(
       settings(),
       refusal(409, "stale_revision", "the settings changed since they were read: read them again"),
@@ -219,9 +223,10 @@ describe("the Settings screen", () => {
 
     await until(() => {
       expect(h.root.querySelector("form .cp-notice")?.textContent).toBe(
-        "Settings were not saved. the settings changed since they were read: read them againRetry",
+        "Settings were not saved. the settings changed since they were read: read them again",
       );
     });
+    expect(retries()).toEqual([]);
     expect(retention().value).toBe("168");
     expect(savebar()?.textContent).toMatch(/^1 unsaved change/);
     expect(sent.map((b) => b.revision)).toEqual([3]);
@@ -296,6 +301,7 @@ describe("the Settings screen", () => {
     });
     expect(location.pathname).toBe("/settings/history");
     expect(document.activeElement).toBe(retention());
+    expect(retries()).toEqual([]);
   });
 
   it("names the method turned off when the change would lock the account out", async () => {
@@ -335,11 +341,15 @@ describe("the Settings screen", () => {
     expect(savebar()?.textContent).toMatch(/^1 unsaved change/);
   });
 
-  it("says a failed save in the server's words and saves on Retry", async () => {
+  it("says a save that ran out of time in the server's words and saves on Retry", async () => {
     const sent = serve(
       settings(),
-      refusal(500, "internal_error", "The accounts file could not be written."),
-      () => HttpResponse.json(settings({ retention_ms: 12 * hour })),
+      () =>
+        HttpResponse.json(
+          { code: "timeout", error: "The request ran out of time.", retry_after_ms: 1000 },
+          { status: 503 },
+        ),
+      () => HttpResponse.json(settings({ revision: 4, retention_ms: 12 * hour })),
     );
     await open();
 
@@ -348,9 +358,7 @@ describe("the Settings screen", () => {
 
     const notice = await until(() => {
       const n = h.root.querySelector<HTMLElement>("form .cp-notice");
-      expect(n?.textContent).toBe(
-        "Settings were not saved. The accounts file could not be written.Retry",
-      );
+      expect(n?.textContent).toBe("Settings were not saved. The request ran out of time.Retry");
       return n;
     });
     await userEvent.click(button("Retry", notice ?? undefined));
@@ -359,7 +367,74 @@ describe("the Settings screen", () => {
       expect(savebar()?.hidden).toBe(true);
     });
     expect(sent).toHaveLength(2);
+    expect(sent[1]).toEqual(sent[0]);
     expect(h.root.querySelector("form .cp-notice")).toBeNull();
+  });
+
+  it("offers Retry on a save that got no answer", async () => {
+    serve(settings(), () => HttpResponse.error());
+    await open();
+
+    await type(retention(), "12");
+    await userEvent.click(button("Save changes"));
+
+    await until(() => {
+      expect(h.root.querySelector("form .cp-notice")?.textContent).toBe(
+        "Settings were not saved. grelot did not answer. Try again in a moment.Retry",
+      );
+    });
+  });
+
+  it("offers Retry on a rate-limited save once the server's wait has passed", async () => {
+    const sent = serve(
+      settings(),
+      () =>
+        HttpResponse.json(
+          { code: "rate_limited", error: "Too many requests.", retry_after_ms: 1000 },
+          { status: 429 },
+        ),
+      () => HttpResponse.json(settings({ revision: 4, retention_ms: 12 * hour })),
+    );
+    await open();
+
+    await type(retention(), "12");
+    await userEvent.click(button("Save changes"));
+
+    const offeredAtOnce = await until(() => {
+      expect(h.root.querySelector("form .cp-notice p")?.textContent).toBe(
+        "Settings were not saved. Too many requests.",
+      );
+      return retries().length > 0;
+    });
+    expect(offeredAtOnce).toBe(false);
+    const retry = await until(() =>
+      button("Retry", h.root.querySelector("form .cp-notice") ?? undefined),
+    );
+    await userEvent.click(retry);
+    await until(() => {
+      expect(savebar()?.hidden).toBe(true);
+    });
+    expect(sent).toHaveLength(2);
+  });
+
+  it.each([
+    [500, "internal_error", "The accounts file could not be written."],
+    [403, "person_reserved", "Only a person signed in can change the sign-in methods."],
+  ])("says a %i %s save in the server's words with no Retry", async (status, code, words) => {
+    const sent = serve(settings(), refusal(status, code, words));
+    await open();
+
+    await type(retention(), "12");
+    await userEvent.click(button("Save changes"));
+
+    await until(() => {
+      expect(h.root.querySelector("form .cp-notice")?.textContent).toBe(
+        `Settings were not saved. ${words}`,
+      );
+    });
+    expect(retries()).toEqual([]);
+    expect(sent).toHaveLength(1);
+    expect(savebar()?.textContent).toMatch(/^1 unsaved change/);
   });
 
   it("asks before leaving with unsaved changes, and stays on Keep editing", async () => {

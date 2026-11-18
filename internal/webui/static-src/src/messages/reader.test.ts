@@ -16,6 +16,7 @@ const busy = {
   code: "timeout",
   message: "The store is busy.",
   status: 503,
+  retryAfterMs: null,
 } as const;
 
 /** A view whose every read waits to be answered, recording what reached its screen. */

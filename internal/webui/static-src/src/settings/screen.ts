@@ -6,7 +6,7 @@ import { clearError, showError } from "@cplieger/ui/form";
 import { toast } from "@cplieger/ui/toast";
 
 import { icon } from "../icons.js";
-import { retryButton } from "../messages/parts.js";
+import { retryButton, whenRetryable } from "../messages/parts.js";
 import { reader, type Answer } from "../messages/reader.js";
 import type { SettingsSection } from "../router.js";
 import type { ScreenMount } from "../shell.js";
@@ -365,12 +365,16 @@ export const mountSettings: ScreenMount<"settings"> = (host, first, ctx) => {
         return;
       default: {
         const words = `Settings were not saved. ${failureWords(result)}`;
-        formNotice.replaceChildren(
-          notice("danger", words, () => {
-            form.requestSubmit(saveButton);
-          }),
-        );
+        const shown = notice("danger", words);
+        formNotice.replaceChildren(shown);
         announce(words);
+        whenRetryable(result, signal, () => {
+          shown.append(
+            retryButton(() => {
+              form.requestSubmit(saveButton);
+            }),
+          );
+        });
       }
     }
   };

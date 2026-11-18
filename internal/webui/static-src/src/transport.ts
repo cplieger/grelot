@@ -33,6 +33,8 @@ interface ApiFailure<E extends string> {
   readonly code: E | TransportCode;
   /** The server's own words for the refusal, written for a person; null when it sent none. */
   readonly message: string | null;
+  /** The envelope's retry_after_ms: how long to wait before sending it again; null when it named none. */
+  readonly retryAfterMs: number | null;
 }
 
 export type ApiResult<T, E extends string = never> = ApiOk<T> | ApiFailure<E>;
@@ -57,27 +59,40 @@ function failure<E extends string>(
   status: number,
   code: E | TransportCode,
   message: string | null,
+  retryAfterMs: number | null = null,
 ): ApiFailure<E> {
-  return { ok: false, status, code, message };
+  return { ok: false, status, code, message, retryAfterMs };
 }
 
-/** The envelope's code and words, read as untrusted JSON. */
-function envelope(text: string): { readonly code: string | null; readonly message: string | null } {
-  let v: unknown;
-  try {
-    v = JSON.parse(text);
-  } catch {
-    return { code: null, message: null };
-  }
+interface Envelope {
+  readonly code: string | null;
+  readonly message: string | null;
+  readonly retryAfterMs: number | null;
+}
+
+/** An error envelope's code, words and wait, read from v as untrusted JSON. */
+export function envelopeOf(v: unknown): Envelope {
   if (typeof v !== "object" || v === null || Array.isArray(v)) {
-    return { code: null, message: null };
+    return { code: null, message: null, retryAfterMs: null };
   }
-  const code: unknown = Object.hasOwn(v, "code") ? (v as Record<string, unknown>)["code"] : null;
-  const error: unknown = Object.hasOwn(v, "error") ? (v as Record<string, unknown>)["error"] : null;
+  const read = (k: string): unknown =>
+    Object.hasOwn(v, k) ? (v as Record<string, unknown>)[k] : null;
+  const code = read("code");
+  const error = read("error");
+  const wait = read("retry_after_ms");
   return {
     code: typeof code === "string" ? code : null,
     message: typeof error === "string" && error !== "" ? error : null,
+    retryAfterMs: Number.isSafeInteger(wait) && (wait as number) >= 0 ? (wait as number) : null,
   };
+}
+
+function envelope(text: string): Envelope {
+  try {
+    return envelopeOf(JSON.parse(text));
+  } catch {
+    return envelopeOf(null);
+  }
 }
 
 /**
@@ -139,7 +154,7 @@ export async function clientRequest<T, E extends string>(
       leaveTo(signIn);
     }
   }
-  const { code, message } = envelope(text);
+  const { code, message, retryAfterMs } = envelope(text);
   const listed = code !== null && spec.codes.includes(code) ? (code as E) : "http";
-  return failure(response.status, listed, message);
+  return failure(response.status, listed, message, retryAfterMs);
 }

@@ -75,6 +75,16 @@ const storeFull: Answer = () =>
     { status: 507 },
   );
 
+const timedOut: Answer = () =>
+  HttpResponse.json(
+    {
+      error: "The request ran out of time; nothing changed.",
+      code: "timeout",
+      retry_after_ms: 1000,
+    },
+    { status: 503 },
+  );
+
 /** POST /api/posts waits for release, then answers then, and answers each later send after. */
 function heldPosts(
   then: Answer,
@@ -284,14 +294,14 @@ describe("the conversation's composer", () => {
     ]);
   });
 
-  it("marks a refused post Not sent, keeps the text with the server's words, and Retry sends it again under its key", async () => {
+  it("marks a post that ran out of time Not sent, keeps the text with the server's words, and Retry sends it again under its key", async () => {
     answer(pageOf([row(1)]));
     serve(
       1,
       conversationOf(1, { posts: [post(4)] }),
       conversationOf(1, { posts: [post(4), mine(5, "Merge order", "Now.")] }),
     );
-    const sent = posts(storeFull, stored(5));
+    const sent = posts(timedOut, stored(5));
     start("/messages/1");
     await shown(1);
     await write("Merge order", "Now.");
@@ -308,7 +318,7 @@ describe("the conversation's composer", () => {
     expect(subject().value).toBe("Merge order");
     expect(message().value).toBe("Now.");
     expect(message().getAttribute("aria-invalid")).toBe("true");
-    expect(errorOf(message())).toBe("The store is full: new writes stop at 90 % of 512 MiB.");
+    expect(errorOf(message())).toBe("The request ran out of time; nothing changed.");
     expect(document.activeElement).toBe(message());
 
     button("Retry", failed).click();
@@ -322,6 +332,73 @@ describe("the conversation's composer", () => {
     expect(message().value).toBe("");
   });
 
+  it.each([
+    ["a full store", storeFull],
+    [
+      "a refused field",
+      () =>
+        HttpResponse.json({ error: "The subject is too long.", code: "invalid" }, { status: 400 }),
+    ],
+    [
+      "a server failure",
+      () =>
+        HttpResponse.json(
+          { error: "internal server error", code: "internal_error" },
+          { status: 500 },
+        ),
+    ],
+  ])("marks a post refused for %s Not sent with no Retry", async (_, refused: Answer) => {
+    answer(pageOf([row(1)]));
+    serve(1, conversationOf(1, { posts: [post(4)] }));
+    const sent = posts(refused);
+    start("/messages/1");
+    await shown(1);
+    await write("Merge order", "Now.");
+    button("Send", detail()).click();
+
+    await until(() => {
+      expect(entries()[1]?.getAttribute("data-state")).toBe("failed");
+    });
+    const failed = entries()[1] as HTMLElement;
+    expect(failed.querySelector("footer")?.textContent).toBe("Not sent.");
+    expect(failed.querySelector("footer button")).toBeNull();
+    expect(sent.keys.length).toBe(1);
+  });
+
+  it("offers Retry on a rate-limited post once the server's wait has passed", async () => {
+    answer(pageOf([row(1)]));
+    serve(
+      1,
+      conversationOf(1, { posts: [post(4)] }),
+      conversationOf(1, { posts: [post(4), mine(5, "Merge order", "Now.")] }),
+    );
+    const sent = posts(
+      () =>
+        HttpResponse.json(
+          { error: "Too many requests.", code: "rate_limited", retry_after_ms: 1000 },
+          { status: 429 },
+        ),
+      stored(5),
+    );
+    start("/messages/1");
+    await shown(1);
+    await write("Merge order", "Now.");
+    button("Send", detail()).click();
+
+    const offeredAtOnce = await until(() => {
+      expect(entries()[1]?.getAttribute("data-state")).toBe("failed");
+      return entries()[1]?.querySelector("footer button") !== null;
+    });
+    expect(offeredAtOnce).toBe(false);
+    const retry = await until(() => button("Retry", entries()[1] as HTMLElement));
+    retry.click();
+    await until(() => {
+      expect(entries()[1]?.querySelector("footer")?.textContent).toBe("Read by 1 of 2");
+    });
+    expect(sent.keys.length).toBe(2);
+    expect(sent.keys[1]).toBe(sent.keys[0]);
+  });
+
   it("sends on a Retry pressed while Send still shows it was busy", async () => {
     answer(pageOf([row(1)]));
     serve(
@@ -329,7 +406,7 @@ describe("the conversation's composer", () => {
       conversationOf(1, { posts: [post(4)] }),
       conversationOf(1, { posts: [post(4), mine(5, "Merge order", "Now.")] }),
     );
-    const { seen, release } = heldPosts(storeFull);
+    const { seen, release } = heldPosts(timedOut);
     start("/messages/1");
     await shown(1);
     await write("Merge order", "Now.");
@@ -535,12 +612,12 @@ describe("the conversation's composer", () => {
     });
 
     it("shows it Not sent when it fails meanwhile, and Retry sends it under its first key", async () => {
-      const { seen, release } = await sentThenAway(storeFull);
+      const { seen, release } = await sentThenAway(timedOut);
       release();
       await until(() => {
         expect(entries()[1]?.getAttribute("data-state")).toBe("failed");
       });
-      expect(errorOf(message())).toBe("The store is full: new writes stop at 90 % of 512 MiB.");
+      expect(errorOf(message())).toBe("The request ran out of time; nothing changed.");
       expect(subject().value).toBe("Merge order");
 
       button("Retry", entries()[1] as HTMLElement).click();
@@ -694,12 +771,12 @@ describe("the conversation's composer", () => {
     });
 
     it("shows it Not sent with the server's words when it failed there, and Retry sends it under its first key", async () => {
-      const { router, held } = await sending(storeFull);
+      const { router, held } = await sending(timedOut);
       await roundTrip(router, held.release);
       await until(() => {
         expect(entries()[1]?.getAttribute("data-state")).toBe("failed");
       });
-      expect(errorOf(message())).toBe("The store is full: new writes stop at 90 % of 512 MiB.");
+      expect(errorOf(message())).toBe("The request ran out of time; nothing changed.");
       expect(subject().value).toBe("Merge order");
 
       button("Retry", entries()[1] as HTMLElement).click();

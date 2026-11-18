@@ -100,6 +100,7 @@ describe("clientRequest", () => {
       status: 200,
       code: "decode",
       message: null,
+      retryAfterMs: null,
     });
     worker.use(http.get("/api/thing", () => HttpResponse.text("<html>")));
     await expect(clientRequest(spec(), asIs)).resolves.toMatchObject({ ok: false, code: "decode" });
@@ -116,6 +117,7 @@ describe("clientRequest", () => {
       status: 413,
       code: "too_large",
       message: "the body is over 64 KiB",
+      retryAfterMs: null,
     });
   });
 
@@ -130,11 +132,13 @@ describe("clientRequest", () => {
       status: 429,
       code: "http",
       message: "slow down",
+      retryAfterMs: null,
     });
     worker.use(http.get("/api/thing", () => HttpResponse.json(["not_found"], { status: 404 })));
     await expect(clientRequest(spec(), asIs)).resolves.toMatchObject({
       code: "http",
       message: null,
+      retryAfterMs: null,
     });
     worker.use(http.get("/api/thing", () => HttpResponse.text("Bad Gateway", { status: 502 })));
     await expect(clientRequest(spec(), asIs)).resolves.toEqual({
@@ -142,7 +146,26 @@ describe("clientRequest", () => {
       status: 502,
       code: "http",
       message: null,
+      retryAfterMs: null,
     });
+  });
+
+  it("carries the wait the server names, and none for a value that is no wait", async () => {
+    const answers = [2000, 0, -5, 1.5, "3", null];
+    const seen: (number | null)[] = [];
+    for (const wait of answers) {
+      worker.use(
+        http.get("/api/thing", () =>
+          HttpResponse.json(
+            { error: "slow down", code: "too_large", retry_after_ms: wait },
+            { status: 429 },
+          ),
+        ),
+      );
+      const result = await clientRequest(spec(), asIs);
+      seen.push(result.ok ? -1 : result.retryAfterMs);
+    }
+    expect(seen).toEqual([2000, 0, null, null, null, null]);
   });
 
   it("fails as network when no answer arrives, and as aborted when the caller gave up", async () => {
@@ -152,6 +175,7 @@ describe("clientRequest", () => {
       status: 0,
       code: "network",
       message: null,
+      retryAfterMs: null,
     });
     worker.use(http.get("/api/thing", () => HttpResponse.json({})));
     const gaveUp = new AbortController();

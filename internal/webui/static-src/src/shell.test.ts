@@ -70,6 +70,10 @@ const navLink = (word: string): HTMLElement =>
   [...header().querySelectorAll<HTMLElement>("a")].find(
     (a) => a.textContent === word || a.getAttribute("aria-label") === word,
   ) as HTMLElement;
+const toastButton = (word: string): HTMLButtonElement | null =>
+  [...document.querySelectorAll<HTMLButtonElement>(".cp-toast button")].find(
+    (b) => b.textContent === word,
+  ) ?? null;
 const statusButton = (): HTMLButtonElement =>
   root.querySelector(".cp-header-status") as HTMLButtonElement;
 
@@ -235,13 +239,46 @@ describe("startShell", () => {
     expect(posted).toBe(1);
   });
 
-  it("keeps the person here with a Retry when signing out fails", async () => {
-    worker.use(
-      http.post("/api/auth/logout", () =>
+  it("keeps the person here with a Retry when signing out fails, and Retry signs out", async () => {
+    const answers = [
+      () =>
         HttpResponse.json(
           { error: "the account store is unavailable", code: "auth_unavailable" },
           { status: 503 },
         ),
+      () => new HttpResponse(null, { status: 204 }),
+    ];
+    let posted = 0;
+    worker.use(
+      http.post("/api/auth/logout", () => {
+        posted++;
+        const next = answers.length > 1 ? answers.shift() : answers[0];
+        return next?.() ?? HttpResponse.error();
+      }),
+    );
+    start("/messages");
+    (root.querySelector(".cp-account") as HTMLElement).click();
+    (root.querySelector('#account-menu [role="menuitem"]') as HTMLElement).click();
+    const retry = await until(() => {
+      expect(document.body.textContent).toContain("Sign out did not finish.");
+      const b = toastButton("Retry");
+      expect(b).not.toBeNull();
+      return b as HTMLButtonElement;
+    });
+    expect(document.body.textContent).toContain("the account store is unavailable");
+    expect(leaveTo).not.toHaveBeenCalled();
+
+    retry.click();
+    await until(() => {
+      expect(leaveTo).toHaveBeenCalledExactlyOnceWith("/sign-in");
+    });
+    expect(posted).toBe(2);
+  });
+
+  it("offers no Retry when signing out fails in a way sending it again cannot fix", async () => {
+    worker.use(
+      http.post("/api/auth/logout", () =>
+        HttpResponse.json({ error: "the session store failed", code: "internal" }, { status: 500 }),
       ),
     );
     start("/messages");
@@ -250,8 +287,8 @@ describe("startShell", () => {
     await until(() => {
       expect(document.body.textContent).toContain("Sign out did not finish.");
     });
-    expect(document.body.textContent).toContain("the account store is unavailable");
-    expect(leaveTo).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain("the session store failed");
+    expect(toastButton("Retry")).toBeNull();
   });
 
   it("says grelot did not answer when signing out gets no answer", async () => {
