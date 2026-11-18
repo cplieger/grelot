@@ -18,7 +18,8 @@ type Error struct {
 	// not_found names.
 	Reason    string `json:"reason,omitempty"`
 	RequestID string `json:"request_id"`
-	// Fields are the refused request fields of an invalid or too_large.
+	// Fields are the refused request fields, on the codes that name them
+	// (invalid, too_large, person_reserved).
 	Fields []FieldError `json:"fields,omitempty"`
 	// RetryAfterMS is set, with Retry-After, when a wait fixes the refusal.
 	RetryAfterMS int64 `json:"retry_after_ms,omitempty"`
@@ -426,8 +427,9 @@ type Settings struct {
 	OIDCConfigured bool `json:"oidc_configured"`
 }
 
-// SettingsRequest replaces the settings. A change of methods needs a
-// sign-in or step-up of the last 10 minutes.
+// SettingsRequest replaces the settings. A change of methods is a
+// session's alone, after a sign-in or step-up of the last 10 minutes; a
+// key that sends one gets person_reserved.
 type SettingsRequest struct {
 	Methods Methods `json:"methods"`
 	// Revision is the Settings revision the change was made over; any

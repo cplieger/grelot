@@ -254,7 +254,7 @@ var specs = map[string]Spec{
 		Response: typeOf[wire.Settings](),
 	},
 	"putSettings": {
-		Summary: "Replace the settings; a change of sign-in methods needs a recent sign-in",
+		Summary: "Replace the settings; only a session changes the sign-in methods, after a recent sign-in",
 		Request: typeOf[wire.SettingsRequest](), Response: typeOf[wire.Settings](),
 		Errors: []wire.ErrorCode{wire.ErrInvalid, wire.ErrStaleRevision, wire.ErrRecentAuthRequired, wire.ErrPersonReserved, wire.ErrWouldLockOut},
 	},

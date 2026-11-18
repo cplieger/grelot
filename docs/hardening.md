@@ -24,10 +24,10 @@ A key that holds no scope is an `agent` key, and a key that holds both is an `ow
 
 `docker exec grelot /grelot key create <machine>` creates an `agent` key, and `--scope=owner` after the label creates an `owner` key. `grelot key list` shows each key's scope. Revoke a key with `docker exec grelot /grelot key revoke <label>`, or replace its secret with `docker exec grelot /grelot key rotate <label>`. A browser session can also create, rotate and revoke keys through `/api/auth/apikeys`, with `scopes` set to `["agent"]` or `["owner"]` on a new key. The web UI has no screen for keys.
 
-Some changes need you in person, in a browser session that signed in or confirmed its sign-in in the last 10 minutes. No key makes them, not even an `owner` key:
+Through the API, some changes need you in person, in a browser session that signed in or confirmed its sign-in in the last 10 minutes. No key makes them, not even an `owner` key:
 
 - Changing how anyone signs in, which covers a password, a passkey, a single sign-on link and the sign-in methods in Settings. An `owner` key that sends a change of methods gets `person_reserved`.
-- Creating or rotating a key.
+- Creating or rotating a key, which the server command above also does.
 
 The account itself, with its profile, sessions, passkeys and keys, takes a browser session too, and refuses every key with `auth_session_required`. The trusted proxies, the single sign-on provider and its secret, and `PUBLIC_URL` are environment variables read at start, so no route changes them.
 

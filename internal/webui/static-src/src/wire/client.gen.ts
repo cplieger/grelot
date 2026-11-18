@@ -1538,7 +1538,7 @@ const putSettingsCodes = ["invalid", "stale_revision", "recent_auth_required", "
 
 export type PutSettingsError = (typeof putSettingsCodes)[number];
 
-/** Replace the settings; a change of sign-in methods needs a recent sign-in */
+/** Replace the settings; only a session changes the sign-in methods, after a recent sign-in */
 export const putSettingsEndpoint = {
   method: "PUT",
   path: "/api/settings",
@@ -1554,7 +1554,7 @@ export const putSettingsEndpoint = {
   decode: decodeSettings,
 } as const;
 
-/** Replace the settings; a change of sign-in methods needs a recent sign-in */
+/** Replace the settings; only a session changes the sign-in methods, after a recent sign-in */
 export function putSettings(args: PutSettingsArgs, opts?: ClientOpts): globalThis.Promise<ApiResult<Settings, PutSettingsError>> {
   return clientRequest<Settings, PutSettingsError>(putSettingsEndpoint.request(args), putSettingsEndpoint.decode, opts);
 }

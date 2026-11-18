@@ -4407,7 +4407,7 @@
             ]
           }
         ],
-        "summary": "Replace the settings; a change of sign-in methods needs a recent sign-in"
+        "summary": "Replace the settings; only a session changes the sign-in methods, after a recent sign-in"
       }
     },
     "/api/sign-in": {

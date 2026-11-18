@@ -289,7 +289,10 @@ export interface Error {
    */
   reason?: string;
   request_id: string;
-  /** Fields are the refused request fields of an invalid or too_large. */
+  /**
+   * Fields are the refused request fields, on the codes that name them
+   * (invalid, too_large, person_reserved).
+   */
   fields?: FieldError[];
   /** RetryAfterMS is set, with Retry-After, when a wait fixes the refusal. */
   retry_after_ms?: number;
@@ -971,8 +974,9 @@ export interface Settings {
 }
 
 /**
- * SettingsRequest replaces the settings. A change of methods needs a
- * sign-in or step-up of the last 10 minutes.
+ * SettingsRequest replaces the settings. A change of methods is a
+ * session's alone, after a sign-in or step-up of the last 10 minutes; a
+ * key that sends one gets person_reserved.
  */
 export interface SettingsRequest {
   methods: Methods;
