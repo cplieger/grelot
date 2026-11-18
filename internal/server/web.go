@@ -19,7 +19,8 @@ import (
 	"github.com/cplieger/grelot/internal/wire"
 )
 
-// principal is the session the gate admitted r with.
+// principal is the session or key the gate admitted r with, the zero
+// principal on a public row.
 func principal(r *http.Request) *access.Principal {
 	p, _ := gate.Principal(r.Context())
 	return &p
@@ -259,7 +260,9 @@ func (s *Server) putSettings(r *http.Request, _ store.Keyed) (body any, err erro
 		}
 		return nil, fieldRefusal(re.Error(), f)
 	case errors.Is(err, auth.ErrPersonReserved):
-		return nil, personReserved("only a signed-in person changes the sign-in methods, never a key", "methods")
+		e := refusal(wire.ErrPersonReserved, "only a signed-in person changes the sign-in methods, never a key")
+		e.fields = []wire.FieldError{{Field: "methods", Code: wire.FieldPersonReserved}}
+		return nil, e
 	case errors.Is(err, accounts.ErrStaleRevision):
 		return nil, refusal(wire.ErrStaleRevision, err.Error())
 	case errors.Is(err, auth.ErrRecentAuth):

@@ -62,14 +62,6 @@ func fieldRefusal(msg string, fields ...wire.FieldError) *apiError {
 	return e
 }
 
-// personReserved refuses a key the request field only a signed-in person
-// may send.
-func personReserved(msg, field string) *apiError {
-	e := refusal(wire.ErrPersonReserved, msg)
-	e.fields = []wire.FieldError{{Field: field, Code: wire.FieldPersonReserved}}
-	return e
-}
-
 // whyDelegateGate is the store's Why on the delegate gate's 409.
 const whyDelegateGate = "delegate_gate"
 
