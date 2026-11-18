@@ -266,9 +266,9 @@ func hasDrive(p string) bool {
 	return len(p) >= 2 && p[1] == ':' && ('a' <= p[0] && p[0] <= 'z' || 'A' <= p[0] && p[0] <= 'Z')
 }
 
-// clean is path.Clean, except that a Windows volume is kept whole: a drive
-// root stays C:/ where path.Clean would make it the drive-relative C:, and a
-// share or verbatim prefix keeps its leading //, which path.Clean collapses.
+// clean is path.Clean keeping a Windows volume whole: a drive root stays C:/,
+// not the drive-relative C:, and a share or verbatim prefix keeps its
+// leading //.
 func (r *Resolver) clean(p string) string {
 	if v := r.volume(p); strings.HasPrefix(v, "//") {
 		return v + path.Clean("/"+p[len(v):])
