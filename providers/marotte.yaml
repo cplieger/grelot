@@ -16,8 +16,9 @@ doors:
   # accepted the line onto the chat's queue, which it then steers into a
   # busy chat, prompts an idle one with, or holds behind the user's waiting
   # messages. It answers 200 too for a key it saw in the last 10 minutes,
-  # 404 for a session it does not have, and 503 with Retry-After when busy
-  # or closing. The session is the chat's KIRO_SESSION_ID. The
+  # 404 for a session it does not have, 410 session_closed for a chat the
+  # user closed (marotte v0.18.0-dev.313 and later), and 503 with
+  # Retry-After when busy or closing. The session is the chat's KIRO_SESSION_ID. The
   # text may not start with [notification/ or hold a #[[kind:query]]
   # reference, which grelot's signal line never does.
   - name: notify
@@ -36,7 +37,7 @@ doors:
     body: '{"text":{{json .Line}},"source":"grelot","dedupe_key":{{json .DedupeKey}}}'
     # marotte drops a repeated key for the same fixed window.
     dedupe_window: 10m
-    gone: [404]
+    gone: [404, 410]
 # No guard: a marotte chat runs kiro-cli's hooks, and kiro-cli's tool hooks
 # reach the model only by blocking the call.
 notes: docs/hosts/marotte.md

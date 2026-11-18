@@ -83,8 +83,8 @@ func TestMarotte_file(t *testing.T) {
 	if d.Name != "notify" || d.Layer != 1 || d.Transport != provider.TransportHTTP {
 		t.Errorf("door %s, layer %d, transport %s; want the layer 1 http door notify", d.Name, d.Layer, d.Transport)
 	}
-	if d.DedupeWindow != 10*time.Minute || !slices.Equal(d.Gone, []int{404}) {
-		t.Errorf("dedupe_window %v, gone %v; want marotte's fixed 10 min window and 404 as gone", d.DedupeWindow, d.Gone)
+	if d.DedupeWindow != 10*time.Minute || !slices.Equal(d.Gone, []int{404, 410}) {
+		t.Errorf("dedupe_window %v, gone %v; want marotte's fixed 10 min window and 404 and 410 as gone", d.DedupeWindow, d.Gone)
 	}
 }
 
@@ -114,7 +114,8 @@ func TestMarotteNotify_request(t *testing.T) {
 }
 
 // Each of marotte's answers comes to the outcome the server acts on: both
-// 200 forms accepted unread, 404 gone, 503 a retry after its Retry-After,
+// 200 forms accepted unread, 404 and a closed chat's 410 gone, 503 a retry
+// after its Retry-After,
 // and an auth refusal a give up.
 func TestMarotteNotify_outcomes(t *testing.T) {
 	withMarotteKey(t)
@@ -129,6 +130,7 @@ func TestMarotteNotify_outcomes(t *testing.T) {
 		{name: "delivered", status: 200, body: `{"delivered":"accepted"}`, want: transport.Accepted},
 		{name: "duplicate", status: 200, body: `{"duplicate":true}`, want: transport.Accepted},
 		{name: "unknown session", status: 404, want: transport.Gone},
+		{name: "closed chat", status: 410, body: `{"error":"this chat was closed by the user","code":"session_closed"}`, want: transport.Gone},
 		{name: "busy", status: 503, retryAfter: "30", want: transport.RetryLater, wantAfter: 30 * time.Second},
 		{name: "key refused", status: 401, want: transport.GiveUp},
 		{name: "scope missing", status: 403, want: transport.GiveUp},
