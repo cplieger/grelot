@@ -7,6 +7,7 @@ import {
   button,
   h,
   hour,
+  settingsOf,
   start,
   useMessagesHarness,
   worker,
@@ -17,15 +18,7 @@ import { mountSettings } from "./screen.js";
 useMessagesHarness();
 
 function settings(over: Partial<Settings> = {}): Settings {
-  return {
-    revision: 3,
-    retention_ms: 72 * hour,
-    retention_min_ms: hour,
-    retention_max_ms: 2160 * hour,
-    methods: { password: true, passkeys: true, oidc: false },
-    oidc_configured: false,
-    ...over,
-  };
+  return settingsOf({ revision: 3, ...over });
 }
 
 /** GET /api/settings answers s; each PUT is recorded and answers the next of puts, the last
