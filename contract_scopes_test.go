@@ -481,6 +481,31 @@ func TestPutSettings_aStaleRevisionIsRefused(t *testing.T) {
 	}
 }
 
+func TestPutSettings_aStaleRevisionIsRefusedBeforeTheMethodsAreJudged(t *testing.T) {
+	m := newMatrix(t, contractOptions{})
+	path := wire.Path("putSettings", nil)
+	stale := m.settingsBody(false)
+	if r := m.as(asSession, http.MethodPut, path, m.settingsBody(true), nil); r.status != http.StatusOK {
+		t.Fatalf("the session's methods change: %d %s, want 200", r.status, r.raw)
+	}
+	stored := m.settings().raw
+	for _, who := range []struct {
+		name   string
+		caller caller
+		ahead  time.Duration
+	}{{"an owner key", asOwnerKey, 0}, {"a session signed in 11 minutes ago", asSession, 11 * time.Minute}} {
+		m.c.authAhead.Store(int64(who.ahead))
+		r := m.as(who.caller, http.MethodPut, path, stale, nil)
+		if r.status != http.StatusConflict || r.str("code") != "stale_revision" {
+			t.Errorf("%s saving over revision %v with the methods it read: %d %s, want 409 stale_revision", who.name, stale["revision"], r.status, r.raw)
+		}
+		m.c.check(http.MethodPut, path, "putSettings", r)
+		if after := m.settings().raw; !bytes.Equal(after, stored) {
+			t.Errorf("the settings after %s's stale save are %s, want %s", who.name, after, stored)
+		}
+	}
+}
+
 func TestPutSettings_aRetentionOutOfRangeNamesItsField(t *testing.T) {
 	m := newMatrix(t, contractOptions{})
 	path := wire.Path("putSettings", nil)

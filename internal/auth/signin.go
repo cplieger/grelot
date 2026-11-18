@@ -215,16 +215,21 @@ func (a *Auth) Settings() Settings {
 	return Settings{Settings: a.db.Current(), OIDCConfigured: a.oidcConfigured}
 }
 
-// PutSettings stores s for p, a session or an owner key. A change of
-// method is a session's alone (ErrPersonReserved), needs its recent
-// sign-in (ErrRecentAuth) and must leave its account a method it can sign
-// in with (ErrWouldLockOut); accounts.DB.Put owns the retention's and the
-// revision's refusals. Calls run one at a time, so two changes never both
-// pass the lock-out check.
+// PutSettings stores s for p, a session or an owner key. A save over a
+// revision other than the stored one is accounts.ErrStaleRevision before
+// its methods are compared. A change of method is a session's alone
+// (ErrPersonReserved), needs its recent sign-in (ErrRecentAuth) and must
+// leave its account a method it can sign in with (ErrWouldLockOut);
+// accounts.DB.Put owns the retention's refusal. Calls run one at a time,
+// so two changes never both pass the lock-out check.
 func (a *Auth) PutSettings(ctx context.Context, p *access.Principal, s accounts.Settings) error {
 	a.putMu.Lock()
 	defer a.putMu.Unlock()
-	if s.Methods != a.db.Current().Methods {
+	cur := a.db.Current()
+	if s.Revision != cur.Revision {
+		return accounts.ErrStaleRevision
+	}
+	if s.Methods != cur.Methods {
 		if !p.IsSession() {
 			return ErrPersonReserved
 		}

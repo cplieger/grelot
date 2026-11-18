@@ -260,3 +260,31 @@ func TestPutSettings_aKeyNeverChangesTheMethods(t *testing.T) {
 		t.Errorf("settings after both saves = %+v, want %+v", got, want)
 	}
 }
+
+func TestPutSettings_aStaleRevisionIsRefusedBeforeTheMethodsAreJudged(t *testing.T) {
+	a, ps := newPrincipals(t)
+	read := a.Settings().Settings
+	changed := read
+	changed.Methods.OIDC = false
+	if err := a.PutSettings(t.Context(), &ps.session, changed); err != nil {
+		t.Fatalf("PutSettings of the methods by a session just signed in = %v, want nil", err)
+	}
+	stored := a.Settings().Settings
+	stale := read
+	stale.Retention = 5 * time.Hour
+	signedInLongAgo := ps.session
+	signedInLongAgo.AuthTime = signedInLongAgo.AuthTime.Add(-time.Hour)
+	for _, n := range []struct {
+		name string
+		p    access.Principal
+	}{{"an owner key", ps.owner}, {"a session signed in an hour ago", signedInLongAgo}} {
+		t.Run(n.name, func(t *testing.T) {
+			if err := a.PutSettings(t.Context(), &n.p, stale); !errors.Is(err, accounts.ErrStaleRevision) {
+				t.Errorf("PutSettings over revision %d by %s = %v, want ErrStaleRevision", stale.Revision, n.name, err)
+			}
+			if got := a.Settings().Settings; got != stored {
+				t.Errorf("settings after the refusal = %+v, want %+v", got, stored)
+			}
+		})
+	}
+}
