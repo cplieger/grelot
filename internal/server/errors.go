@@ -160,14 +160,10 @@ func gateWords(r *http.Request, e *access.Error) string {
 	case access.CodeKeyRequired:
 		return "the agent API takes a machine's API key, not a browser session"
 	case access.CodeSessionRequired:
-		switch {
-		case errors.Is(e.Err, access.ErrRestrictedSession):
+		if errors.Is(e.Err, access.ErrRestrictedSession) {
 			return "a recovery session only sets a new password or passkey: finish the recovery, then sign in"
-		case r.URL.Path == wire.Path("events", nil):
-			return "the event stream takes a signed-in browser session and refuses every API key"
-		default:
-			return "this route takes a signed-in browser session, not an API key"
 		}
+		return "this route takes a signed-in browser session, not an API key"
 	case access.CodeCrossOrigin:
 		return "a cross-origin request cannot change anything: send it from grelot's own pages"
 	case access.CodeUnavailable:

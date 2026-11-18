@@ -179,9 +179,9 @@ func TestAuthErrors_carriesTheEnvelope(t *testing.T) {
 }
 
 // TestAuthErrors_aSessionRefusalNamesWhatTheRouteTakes pins the words an
-// auth_session_required refusal carries outside the sign-in routes: the
-// event stream refuses every key, another route takes a session, and a
-// recovery session is told to finish its recovery.
+// auth_session_required refusal carries outside the sign-in routes: a key
+// on the event stream is told the route takes a session, and a recovery
+// session is told to finish its recovery.
 func TestAuthErrors_aSessionRefusalNamesWhatTheRouteTakes(t *testing.T) {
 	write := AuthErrors(slog.New(slog.DiscardHandler), obs.New())
 	restricted := &access.InvalidCredentialError{Err: access.ErrRestrictedSession}
@@ -192,10 +192,6 @@ func TestAuthErrors_aSessionRefusalNamesWhatTheRouteTakes(t *testing.T) {
 	}{
 		{
 			"eventStream", wire.Path("events", nil), access.NewError(access.CodeSessionRequired, "", nil),
-			"the event stream takes a signed-in browser session and refuses every API key",
-		},
-		{
-			"otherRoute", "/api/settings", access.NewError(access.CodeSessionRequired, "", nil),
 			"this route takes a signed-in browser session, not an API key",
 		},
 		{
