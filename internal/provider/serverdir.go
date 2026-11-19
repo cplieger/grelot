@@ -8,7 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cplieger/go/envx"
+	"github.com/cplieger/go/envx/v2"
+	"github.com/cplieger/go/masked"
 )
 
 // ServerDoor is one http door the server pushes through, with the file it
@@ -86,21 +87,22 @@ func (s *ServerDoors) add(p *Provider) *LoadError {
 }
 
 // resolveSecrets reads each secret d's headers name and binds it, returning
-// the values, or the problem that names the failed one.
+// the values in clear for the server's log redaction, or the problem that
+// names the failed one.
 func resolveSecrets(d *Door) (values []string, problem string) {
-	resolved := map[string]string{}
+	resolved := map[string]masked.Secret{}
 	for _, name := range d.secretNames() {
 		v, err := envx.Secret(secretKey(name))
 		if err != nil {
 			return nil, secretProblem(name, err)
 		}
-		if !headerSafe(v) {
+		if !headerSafe(v.Reveal()) {
 			return nil, fmt.Sprintf("secret %s: %s holds a character a header value cannot carry", name, secretKey(name))
 		}
 		resolved[name] = v
-		values = append(values, v)
+		values = append(values, v.Reveal())
 	}
-	if err := d.ResolveSecrets(func(name string) (string, error) { return resolved[name], nil }); err != nil {
+	if err := d.ResolveSecrets(func(name string) (masked.Secret, error) { return resolved[name], nil }); err != nil {
 		return nil, err.Error()
 	}
 	return values, ""

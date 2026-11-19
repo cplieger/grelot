@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cplieger/go/masked"
 	"github.com/cplieger/grelot/internal/obs"
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/store"
@@ -179,7 +180,7 @@ func buildHarness(t *testing.T, o store.Options, now func() time.Time, edits ...
 		h.push = &fakePush{states: map[uint64]pushReading{}}
 		opts := &Options{
 			Store: st, Logger: logger, Now: now, Version: testVersion, Push: h.push, Hub: hub, Metrics: m,
-			Config: Config{Token: testToken, PathRoot: protopath.DefaultRoot},
+			Config: Config{Token: masked.NewSecret(testToken), PathRoot: protopath.DefaultRoot},
 		}
 		for _, edit := range edits {
 			edit(opts)

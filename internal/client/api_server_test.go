@@ -15,6 +15,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cplieger/go/masked"
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/server"
 	"github.com/cplieger/grelot/internal/store"
@@ -37,7 +38,7 @@ func realServer(t *testing.T) string {
 	t.Cleanup(func() { _ = st.Close() })
 	srv := server.New(&server.Options{
 		Store: st, Logger: logger, Hub: hub, Version: serverVersion,
-		Config: server.Config{Token: "test-token", PathRoot: protopath.DefaultRoot},
+		Config: server.Config{Token: masked.NewSecret("test-token"), PathRoot: protopath.DefaultRoot},
 	})
 	h := httptest.NewServer(srv.Handler())
 	t.Cleanup(h.Close)

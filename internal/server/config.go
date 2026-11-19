@@ -13,7 +13,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/cplieger/go/envx"
+	"github.com/cplieger/go/envx/v2"
+	"github.com/cplieger/go/masked"
 	"github.com/cplieger/go/pathinside"
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/store"
@@ -22,7 +23,7 @@ import (
 // Config is the server's configuration, read from the environment once at
 // startup.
 type Config struct {
-	Token     string
+	Token     masked.Secret
 	PathRoot  string
 	StorePath string
 	// ProvidersDir is the folder of the provider files whose http doors
