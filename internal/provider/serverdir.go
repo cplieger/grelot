@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cplieger/go/envx"
+	"github.com/cplieger/go/envx/v2"
 )
 
 // ServerDoor is one http door the server pushes through, with the file it
