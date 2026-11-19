@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cplieger/go/masked"
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/server"
 	"github.com/cplieger/grelot/internal/store"
@@ -49,7 +50,7 @@ var listeningAddr = regexp.MustCompile(`"msg":"listening","addr":"([^"]+)"`)
 func testConfig(t *testing.T) *server.Config {
 	t.Helper()
 	return &server.Config{
-		Token: "test-token", PathRoot: protopath.DefaultRoot,
+		Token: masked.NewSecret("test-token"), PathRoot: protopath.DefaultRoot,
 		StorePath: filepath.Join(t.TempDir(), "grelot.db"),
 	}
 }

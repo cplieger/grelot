@@ -3,13 +3,16 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/cplieger/go/masked"
 	"github.com/cplieger/grelot/internal/store"
 )
 
@@ -32,11 +35,17 @@ func TestLoadConfig_defaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := Config{
-		Token: "test-token", PathRoot: "/workspace", StorePath: "/data/grelot.db",
+		PathRoot: "/workspace", StorePath: "/data/grelot.db",
 		MaxBytes: 512 << 20, ThreadTTL: 72 * time.Hour, DormantTTL: 72 * time.Hour, ReservationMaxTTL: 8 * time.Hour,
 		ProvidersDir: "/providers",
 	}
-	if c != want {
+	if got := c.Token.Reveal(); got != "test-token" {
+		t.Errorf("token %q, want test-token", got)
+	}
+	if printed := fmt.Sprintf("%+v %#v", c, c); strings.Contains(printed, "test-token") {
+		t.Errorf("a printed config shows the token: %s", printed)
+	}
+	if c.Token = (masked.Secret{}); !reflect.DeepEqual(c, want) {
 		t.Errorf("config %+v, want %+v", c, want)
 	}
 	if want.MaxBytes != store.DefaultMaxBytes {
@@ -63,11 +72,14 @@ func TestLoadConfig_readsEachKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := Config{
-		Token: "file-token", PathRoot: "/src", StorePath: "/var/lib/grelot/g.db",
+		PathRoot: "/src", StorePath: "/var/lib/grelot/g.db",
 		MaxBytes: 1 << 20, ThreadTTL: 24 * time.Hour, DormantTTL: 12 * time.Hour, ReservationMaxTTL: 2 * time.Hour,
 		ProvidersDir: "/etc/grelot/providers",
 	}
-	if c != want {
+	if got := c.Token.Reveal(); got != "file-token" {
+		t.Errorf("token %q, want file-token trimmed", got)
+	}
+	if c.Token = (masked.Secret{}); !reflect.DeepEqual(c, want) {
 		t.Errorf("config %+v, want %+v", c, want)
 	}
 }

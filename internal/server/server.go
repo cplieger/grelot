@@ -81,8 +81,8 @@ func New(o *Options) *Server {
 		store: o.Store, log: o.Logger, now: now, version: o.Version, cfg: o.Config,
 		presence: newPresence(), posts: newPostLimit(), hub: hub, push: o.Push, metrics: m,
 		health:   health.NewStatus(health.WithLogger(o.Logger)),
-		needles:  append([]string{o.Config.Token}, doors.Secrets()...),
-		bearer:   httpserver.NewStaticTokenVerifier(o.Config.Token),
+		needles:  append([]string{o.Config.Token.Reveal()}, doors.Secrets()...),
+		bearer:   httpserver.NewStaticTokenVerifier(o.Config.Token.Reveal()),
 		stopping: make(chan struct{}),
 	}
 	m.ServeState(s.state, now)

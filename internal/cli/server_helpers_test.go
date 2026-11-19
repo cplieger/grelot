@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cplieger/go/masked"
 	"github.com/cplieger/grelot/internal/client"
 	"github.com/cplieger/grelot/internal/protopath"
 	"github.com/cplieger/grelot/internal/server"
@@ -64,7 +65,7 @@ func newServerWith(t *testing.T, version string, refuse func(*http.Request) bool
 	t.Cleanup(func() { _ = st.Close() })
 	srv := server.New(&server.Options{
 		Store: st, Logger: logger, Hub: hub, Version: version, Now: ts.clock.Now, Providers: doors,
-		Config: server.Config{Token: "test-token", PathRoot: protopath.DefaultRoot},
+		Config: server.Config{Token: masked.NewSecret("test-token"), PathRoot: protopath.DefaultRoot},
 	})
 	if doors != nil {
 		t.Cleanup(srv.Release)

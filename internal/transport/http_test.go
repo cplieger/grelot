@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cplieger/go/masked"
 	"github.com/cplieger/grelot/internal/provider"
 )
 
@@ -66,7 +67,7 @@ func TestHTTPAccepted(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	door := loadDoor(t, httpFile(srv.URL, "    headers:\n      Authorization: 'Bearer {{secret \"test_token\"}}'\n      Content-Type: application/json\n"))
-	if err := door.ResolveSecrets(func(string) (string, error) { return "test-token-value", nil }); err != nil {
+	if err := door.ResolveSecrets(func(string) (masked.Secret, error) { return masked.NewSecret("test-token-value"), nil }); err != nil {
 		t.Fatalf("ResolveSecrets: %v", err)
 	}
 
@@ -190,7 +191,7 @@ func TestHTTPRedirectNotFollowed(t *testing.T) {
 	srv := httptest.NewServer(http.RedirectHandler(other.URL+"/elsewhere", http.StatusFound))
 	t.Cleanup(srv.Close)
 	door := loadDoor(t, httpFile(srv.URL, "    headers:\n      Authorization: 'Bearer {{secret \"test_token\"}}'\n"))
-	if err := door.ResolveSecrets(func(string) (string, error) { return "test-token-value", nil }); err != nil {
+	if err := door.ResolveSecrets(func(string) (masked.Secret, error) { return masked.NewSecret("test-token-value"), nil }); err != nil {
 		t.Fatalf("ResolveSecrets: %v", err)
 	}
 	res, err := NewHTTP().Send(t.Context(), door, nudgeData())

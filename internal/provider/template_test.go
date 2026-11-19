@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/cplieger/go/masked"
 )
 
 // httpDoor is a file with one http door; extra is spliced into the door.
@@ -118,7 +120,7 @@ func TestTemplateSecret(t *testing.T) {
 	t.Run("resolved", func(t *testing.T) {
 		p := mustLoad(t, httpDoor(header))
 		values := map[string]string{"door_token": "tok-1", "other_key": "k2"}
-		err := p.Doors[0].ResolveSecrets(func(name string) (string, error) { return values[name], nil })
+		err := p.Doors[0].ResolveSecrets(func(name string) (masked.Secret, error) { return masked.NewSecret(values[name]), nil })
 		if err != nil {
 			t.Fatalf("ResolveSecrets: %v", err)
 		}
@@ -135,11 +137,11 @@ func TestTemplateSecret(t *testing.T) {
 	})
 	t.Run("lookup failure names the secret", func(t *testing.T) {
 		p := mustLoad(t, httpDoor(header))
-		err := p.Doors[0].ResolveSecrets(func(name string) (string, error) {
+		err := p.Doors[0].ResolveSecrets(func(name string) (masked.Secret, error) {
 			if name == "other_key" {
-				return "", errors.New("unset")
+				return masked.Secret{}, errors.New("unset")
 			}
-			return "tok-1", nil
+			return masked.NewSecret("tok-1"), nil
 		})
 		if err == nil || !strings.Contains(err.Error(), "other_key") || strings.Contains(err.Error(), "tok-1") {
 			t.Errorf("error = %v, want one naming other_key and no value", err)

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"text/template"
 	"text/template/parse"
+
+	"github.com/cplieger/go/masked"
 )
 
 // Data is what a door or hook output template reads. Every value is made by
@@ -471,12 +473,13 @@ func (d *Door) secretNames() []string {
 
 // ResolveSecrets binds the door's secret calls to the values lookup returns,
 // once, before the door is rendered; it is not safe to call while another
-// goroutine renders the door. An error names the secret, never a value.
-func (d *Door) ResolveSecrets(lookup func(name string) (string, error)) error {
+// goroutine renders the door. A value stays masked until a header renders
+// it. An error names the secret, never a value.
+func (d *Door) ResolveSecrets(lookup func(name string) (masked.Secret, error)) error {
 	if d.tmpl == nil {
 		return errNotLoaded
 	}
-	values := map[string]string{}
+	values := map[string]masked.Secret{}
 	for _, name := range d.secretNames() {
 		v, err := lookup(name)
 		if err != nil {
@@ -493,7 +496,7 @@ func (d *Door) ResolveSecrets(lookup func(name string) (string, error)) error {
 		if err != nil {
 			return err
 		}
-		c.Funcs(template.FuncMap{funcSecret: func(n string) string { return values[n] }})
+		c.Funcs(template.FuncMap{funcSecret: func(n string) string { return values[n].Reveal() }})
 		resolved[name] = c
 	}
 	d.tmpl.resolved = resolved
